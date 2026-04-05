@@ -500,6 +500,11 @@ def main() -> None:
         "--tailor", type=int, metavar="ID", help="Tailor resume for job ID"
     )
     parser.add_argument("--list", action="store_true", help="List all scored jobs")
+    parser.add_argument(
+        "--dashboard",
+        action="store_true",
+        help="Launch Streamlit dashboard after run completes",
+    )
     args = parser.parse_args()
 
     # Load config and set up logging
@@ -533,6 +538,15 @@ def main() -> None:
     finally:
         db.close()
         logger.info("Job search agent finished")
+
+    if args.dashboard:
+        import subprocess
+        console.print("\n[bold cyan]Launching Streamlit dashboard...[/bold cyan]")
+        subprocess.Popen(["streamlit", "run", "dashboard.py"])
+        console.print(
+            "[green]Dashboard opening at http://localhost:8501[/green]\n"
+            "[dim]Stop it with Ctrl+C in the Streamlit terminal.[/dim]"
+        )
 
 
 if __name__ == "__main__":

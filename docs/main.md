@@ -9,6 +9,8 @@
 | `python main.py` | Scrape new jobs, score them with Claude, print results |
 | `python main.py --list` | Show all scored jobs from the database |
 | `python main.py --tailor <ID>` | Tailor resume for a specific job by its database ID |
+| `python main.py --dashboard` | Same as default run, then launch Streamlit dashboard automatically |
+| `python main.py --list --dashboard` | List jobs then open dashboard |
 
 ## Startup Sequence
 
@@ -53,6 +55,10 @@ Looks up the job by ID from the database, prompts for which career track (IC / A
 
 Dumps all jobs from the database with status breakdown, then shows the scored jobs table.
 
+## Flag: `--dashboard`
+
+Can be combined with any command. After the primary command completes, launches `streamlit run dashboard.py` as a background subprocess via `subprocess.Popen`. The terminal prints the local URL (`http://localhost:8501`) and returns immediately — the main.py process exits while Streamlit keeps running independently.
+
 ## Key Functions
 
 | Function | Purpose |
@@ -66,6 +72,8 @@ Dumps all jobs from the database with status breakdown, then shows the scored jo
 | `cmd_scrape_and_score()` | Orchestrates the default run. |
 | `cmd_tailor()` | Handles `--tailor` flow including track selection and APPLIED status. |
 | `cmd_list()` | Shows all DB jobs with status distribution. |
+
+`--dashboard` is handled in `main()` itself after the try/finally block using `subprocess.Popen(["streamlit", "run", "dashboard.py"])`. It is fire-and-forget — main.py does not wait for the Streamlit process to exit.
 
 ## Cost Estimation
 

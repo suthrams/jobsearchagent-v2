@@ -22,6 +22,9 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # ─── Page config ──────────────────────────────────────────────────────────────
 
@@ -33,6 +36,72 @@ st.set_page_config(
 )
 
 DB_PATH = Path("data/jobs.db")
+RESUME_PATH = "resume.pdf"
+
+# ─── Agent initialisation (runs once per server start) ────────────────────────
+
+
+@st.cache_resource
+def init_agents() -> dict | None:
+    """
+    Loads config and initialises the ProfileAgent and TailoringAgent.
+    Cached as a resource so the Anthropic client is created only once.
+    Returns None if config/config.yaml is missing or fails to load.
+    """
+    config_path = Path("config/config.yaml")
+    if not config_path.exists():
+        return None
+    try:
+        import yaml
+        from models.config_schema import AppConfig
+        from claude.client import ClaudeClient
+        from claude.prompt_loader import PromptLoader
+        from claude.response_parser import ResponseParser
+        from agents.profile_agent import ProfileAgent
+        from agents.tailoring_agent import TailoringAgent
+
+        with open(config_path, encoding="utf-8") as f:
+            raw = yaml.safe_load(f)
+        config = AppConfig.model_validate(raw)
+
+        client = ClaudeClient(config.claude)
+        loader = PromptLoader()
+        parser = ResponseParser()
+        return {
+            "profile_agent": ProfileAgent(client, loader, parser),
+            "tailoring_agent": TailoringAgent(
+                client, loader, parser, config.storage.tailored_resumes_dir
+            ),
+        }
+    except Exception as e:
+        return None
+
+
+# ─── DB helpers used by the tailoring UI ──────────────────────────────────────
+
+
+def load_job_description(job_id: int) -> str | None:
+    """Fetches the description text for a single job from the database."""
+    if not DB_PATH.exists():
+        return None
+    conn = sqlite3.connect(str(DB_PATH))
+    cur = conn.execute("SELECT description FROM jobs WHERE id = ?", (job_id,))
+    row = cur.fetchone()
+    conn.close()
+    return row[0] if row else None
+
+
+def mark_job_applied(job_id: int) -> None:
+    """Sets status = 'applied' and records applied_at for the given job."""
+    from datetime import datetime
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.execute(
+        "UPDATE jobs SET status = 'applied', applied_at = ? WHERE id = ?",
+        (datetime.utcnow().isoformat(), job_id),
+    )
+    conn.commit()
+    conn.close()
+    st.cache_data.clear()
 
 # ─── Data loading ─────────────────────────────────────────────────────────────
 
@@ -125,7 +194,7 @@ def score_badge(score: int | None) -> str:
 
 
 def render_job_card(row: pd.Series, highlight_track: str = "architect") -> None:
-    """Renders a single job as an expander with full detail."""
+    """Renders a single job as an expander with full detail and tailoring UI."""
     score = row.get(f"score_{highlight_track}")
     rec = get_recommended(row["scores_json"], highlight_track)
     rec_tag = " ✅" if rec else ""
@@ -152,6 +221,78 @@ def render_job_card(row: pd.Series, highlight_track: str = "architect") -> None:
             summary = get_summary(row["scores_json"], track)
             if summary:
                 st.markdown(f"**{label_}:** {summary}")
+
+        # ── Tailoring UI ─────────────────────────────────────────────────────
+        st.markdown("---")
+        st.markdown("**Tailor Resume**")
+
+        job_id = int(row["id"])
+        agents = init_agents()
+
+        if agents is None:
+            st.caption("Tailoring unavailable — config/config.yaml not found.")
+        else:
+            track_choice = st.selectbox(
+                "Track",
+                options=["IC", "Architect", "Management"],
+                key=f"track_{job_id}",
+            )
+            tailor_key = f"tailor_{job_id}_{track_choice}"
+
+            if st.button("Tailor Resume", key=f"btn_tailor_{job_id}"):
+                description = load_job_description(job_id)
+                if not description:
+                    st.error("No job description in database for this role.")
+                else:
+                    from models.job import Job, JobSource, CareerTrack
+                    track_map = {
+                        "IC": CareerTrack.IC,
+                        "Architect": CareerTrack.ARCHITECT,
+                        "Management": CareerTrack.MANAGEMENT,
+                    }
+                    source_map = {s.value: s for s in JobSource}
+                    source = source_map.get(str(row["source"]), JobSource.ADZUNA)
+                    location = row["location"] if pd.notna(row.get("location")) else None
+                    job_obj = Job(
+                        url=row["url"],
+                        source=source,
+                        title=row["title"],
+                        company=row["company"],
+                        location=location,
+                        description=description,
+                    )
+                    with st.spinner(f"Calling Claude to tailor for {track_choice}..."):
+                        try:
+                            result = agents["tailoring_agent"].tailor(
+                                job_obj,
+                                agents["profile_agent"].load(RESUME_PATH),
+                                track_map[track_choice],
+                            )
+                            st.session_state[tailor_key] = result
+                        except Exception as e:
+                            st.error(f"Tailoring failed: {e}")
+
+            # Show cached result if available
+            if tailor_key in st.session_state:
+                result = st.session_state[tailor_key]
+                st.success(f"Saved to: `{result.output_path}`")
+
+                if result.keywords:
+                    st.markdown(f"**ATS Keywords:** {', '.join(result.keywords)}")
+
+                if result.gaps:
+                    st.markdown("**Gaps to address:**")
+                    for gap in result.gaps:
+                        st.markdown(f"- {gap}")
+
+                applied_key = f"applied_{job_id}"
+                if applied_key not in st.session_state:
+                    if st.button("Mark as Applied", key=f"btn_applied_{job_id}"):
+                        mark_job_applied(job_id)
+                        st.session_state[applied_key] = True
+                        st.success("Status updated to APPLIED")
+                else:
+                    st.info("Marked as APPLIED ✓")
 
 
 def render_track_table(df: pd.DataFrame, score_col: str, min_score: int) -> None:

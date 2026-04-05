@@ -2,7 +2,7 @@
 
 ## Purpose
 
-A browser-based dashboard for browsing scored job results. Reads directly from the SQLite database and renders scored jobs across five views. Run with:
+A browser-based dashboard for browsing scored job results and triggering resume tailoring. Reads directly from the SQLite database and renders scored jobs across five views. From any job card, you can tailor your resume and mark roles as Applied — all without leaving the browser. Run with:
 
 ```bash
 streamlit run dashboard.py
@@ -46,6 +46,26 @@ Each job is rendered as a `st.expander` with:
 - Company, location, salary, posted date, source
 - Clickable link to the original job posting
 - Claude's per-track one-sentence summary
+- **Tailoring section** — track selector, Tailor Resume button, and results display (see below)
+
+## Resume Tailoring
+
+Each job card includes a tailoring panel at the bottom of its expander. The flow:
+
+1. Select a career track (IC / Architect / Management)
+2. Click **Tailor Resume** — the dashboard calls Claude via `TailoringAgent`
+3. A spinner shows while Claude runs (~5–10 seconds)
+4. On completion: the saved file path, ATS keywords, and gaps are shown inline
+5. A **Mark as Applied** button sets the job status to `APPLIED` in the database
+
+Tailoring results are held in `st.session_state` keyed by `tailor_{job_id}_{track}` — they persist across rerenders until the dashboard server restarts.
+
+**Agent initialisation:** `@st.cache_resource` ensures `ClaudeClient`, `ProfileAgent`, and `TailoringAgent` are created once per server start, not on every page render. If `config/config.yaml` is missing, the tailoring section shows a warning instead.
+
+**Requirements for tailoring to work:**
+- `config/config.yaml` must exist
+- `resume.pdf` must be present in the project root
+- `ANTHROPIC_API_KEY` must be set in `.env`
 
 ## Score Badges
 
@@ -92,3 +112,6 @@ st.set_page_config(
 - `streamlit >= 1.35.0`
 - `pandas >= 2.0.0`
 - `plotly >= 5.20.0`
+- `python-dotenv` — loads `.env` on startup so `ANTHROPIC_API_KEY` is available
+- `pyyaml`, `pydantic` — for config loading in the tailoring path
+- `anthropic` — via `ClaudeClient` when tailoring is triggered

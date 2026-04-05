@@ -44,6 +44,7 @@ graph TB
     CLI --> SA
     CLI --> TA
     DASH -->|"reads scores"| DB
+    DASH -->|"triggers tailoring"| TA
 
     PA --> CC
     PA --> CACHE
@@ -87,9 +88,16 @@ flowchart TD
     V5 --> CHART["Plotly Bar Chart\ntop 20 companies\nby best match score"]
     V1 --> CARDS["Job Cards\nexpandable detail view\nClaude summaries + links"]
 
+    CARDS --> TAILOR_UI["Tailor Resume button\ntrack selector per card"]
+    TAILOR_UI -->|"load once via cache_resource"| AGENTS["ProfileAgent + TailoringAgent\nAnthropicClient"]
+    AGENTS -->|"Claude API call"| TRESULT["Tailored resume\nkeywords + gaps shown inline"]
+    TRESULT --> APPLY["Mark as Applied button\nwrites status to SQLite"]
+
     style DB fill:#fef9c3,stroke:#eab308
     style CHART fill:#dbeafe,stroke:#3b82f6
     style CARDS fill:#dcfce7,stroke:#16a34a
+    style AGENTS fill:#fce7f3,stroke:#db2777
+    style TRESULT fill:#dcfce7,stroke:#16a34a
 ```
 
 ---
