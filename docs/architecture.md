@@ -4,6 +4,60 @@ All diagrams are written in [Mermaid](https://mermaid.js.org/) and render automa
 
 ---
 
+## 0. Solution Architecture — High-Level Overview
+
+The simplest picture of the system: what goes in, what the agent does, and what comes out.
+
+```mermaid
+flowchart TD
+    subgraph YOU["What You Bring"]
+        R["Your Resume PDF"]
+        PREFS["Your Preferences\nlocations, salary, tracks"]
+    end
+
+    subgraph SOURCES["Job Sources"]
+        AZ["Adzuna API\nIncludes Indeed and Glassdoor"]
+        LI["LinkedIn URLs\nmanual copy-paste intake"]
+    end
+
+    subgraph PIPELINE["Job Search Agent Pipeline"]
+        SCRAPE["Scrape\ncollect raw listings"]
+        FILTER["Pre-Filter Gate\nremove irrelevant roles cheaply"]
+        SCORE["Claude AI — Scoring\nrate each job across 3 career tracks"]
+        DB[("SQLite Database\nall jobs and scores")]
+        TAILOR["Claude AI — Tailoring\nrewrite resume for chosen role"]
+    end
+
+    subgraph OUTPUTS["Your Results"]
+        TERM["Terminal Table\nranked results with scores"]
+        DASH["Streamlit Dashboard\nbrowse, filter, and trigger tailoring"]
+        FILE["Tailored Resume\ntext file ready to customise"]
+    end
+
+    R --> SCORE
+    R --> TAILOR
+    PREFS --> SCRAPE
+    PREFS --> SCORE
+    AZ --> SCRAPE
+    LI --> SCRAPE
+    SCRAPE --> FILTER
+    FILTER --> SCORE
+    SCORE --> DB
+    DB --> TERM
+    DB --> DASH
+    DB --> TAILOR
+    DASH --> TAILOR
+    TAILOR --> FILE
+
+    style SCORE fill:#dbeafe,stroke:#3b82f6
+    style TAILOR fill:#dbeafe,stroke:#3b82f6
+    style DB fill:#fef9c3,stroke:#eab308
+    style FILTER fill:#fee2e2,stroke:#dc2626
+    style FILE fill:#dcfce7,stroke:#16a34a
+```
+
+---
+
 ## 1. System Architecture — Component Overview
 
 High-level block diagram showing all five layers including the Streamlit dashboard UI.

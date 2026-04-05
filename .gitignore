@@ -63,3 +63,6 @@ desktop.ini
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 tmp_*.py
+
+# ─── Blog drafts and personal writing (keep local only) ──────────────────────
+docs/blog_draft.md

@@ -15,7 +15,8 @@ See [architecture.md](architecture.md) for all Mermaid diagrams — renders on G
 
 | Diagram | What it shows |
 |---|---|
-| [System Architecture](architecture.md#1-system-architecture--component-overview) | 4-layer block diagram |
+| [Solution Architecture Overview](architecture.md#0-solution-architecture--high-level-overview) | High-level: inputs → pipeline → outputs |
+| [System Architecture](architecture.md#1-system-architecture--component-overview) | 5-layer component block diagram |
 | [Main Run Control Flow](architecture.md#2-main-run--control-flow) | Scrape → filter → score → display |
 | [Cache-Aside Pattern](architecture.md#3-agentic-pattern-cache-aside-profileagent) | ProfileAgent sequence diagram |
 | [Batched Fan-Out Pattern](architecture.md#4-agentic-pattern-batched-fan-out-scoringagent) | ScoringAgent sequence diagram |
