@@ -1,0 +1,11 @@
+flowchart LR
+    U["You\n(User)"] --> P["Prompt\n(Instructions)"]
+    P --> LLM["LLM\n(The Brain)"]
+    LLM --> A["Action\n(Use a Tool)"]
+    A --> O["Observation\n(Tool Result)"]
+    O --> LLM
+    LLM --> OUT["Final Answer"]
+
+    style LLM fill:#dbeafe,stroke:#3b82f6
+    style A fill:#fef9c3,stroke:#eab308
+    style O fill:#fef9c3,stroke:#eab308

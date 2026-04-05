@@ -93,14 +93,12 @@ flowchart TB
 One thing my courses made very clear: **not everything that uses an LLM is an agent**.
 
 ```mermaid
-flowchart LR
-    subgraph W["Workflow (Predefined)"]
-        direction LR
+flowchart TB
+    subgraph WORKFLOW["Workflow — Predefined Steps"]
         W1["Step 1\nLLM Call"] --> W2["Step 2\nLLM Call"] --> W3["Step 3\nLLM Call"]
     end
 
-    subgraph A["Agent (Self-Directed)"]
-        direction LR
+    subgraph AGENT["Agent — Self-Directed"]
         A1["LLM decides\nwhat to do"] --> A2["Uses tools\nas needed"] --> A3["LLM decides\nwhen done"]
         A3 -->|"not done yet"| A1
     end
@@ -233,24 +231,23 @@ In practice, these four filters eliminate 30–50% of scraped jobs before Claude
 
 ```mermaid
 flowchart LR
-    subgraph BEFORE["Without batching"]
-        direction TB
+    subgraph BEFORE["Without Batching — 50 calls"]
         J1["Job 1"] --> C1["Claude call 1"]
         J2["Job 2"] --> C2["Claude call 2"]
         J3["Job 3"] --> C3["Claude call 3"]
-        JN["... 50 jobs"] --> CN["50 calls"]
+        JN["50 jobs total"] --> CN["50 API calls"]
     end
 
-    subgraph AFTER["With batching (5 per call)"]
-        direction TB
-        B1["Jobs 1-5"] --> CB1["Claude call 1\n5 scores returned"]
-        B2["Jobs 6-10"] --> CB2["Claude call 2\n5 scores returned"]
-        BN["..."] --> CBN["10 calls total"]
+    subgraph AFTER["With Batching — 10 calls"]
+        B1["Jobs 1 to 5"] --> CB1["Claude call 1\n5 scores back"]
+        B2["Jobs 6 to 10"] --> CB2["Claude call 2\n5 scores back"]
+        BN["10 batches total"] --> CBN["10 API calls"]
     end
 
     style CB1 fill:#dcfce7,stroke:#16a34a
     style CB2 fill:#dcfce7,stroke:#16a34a
     style CN fill:#fee2e2,stroke:#dc2626
+    style CBN fill:#dcfce7,stroke:#16a34a
 ```
 
 Each job gets an index tag in the prompt. Claude returns a JSON array with one score per index. The code maps scores back to jobs by index — safe even if Claude reorders the output.
