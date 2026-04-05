@@ -542,7 +542,7 @@ def main() -> None:
     if args.dashboard:
         import subprocess
         console.print("\n[bold cyan]Launching Streamlit dashboard...[/bold cyan]")
-        subprocess.Popen(["streamlit", "run", "dashboard.py"])
+        subprocess.Popen([sys.executable, "-m", "streamlit", "run", "dashboard.py"])
         console.print(
             "[green]Dashboard opening at http://localhost:8501[/green]\n"
             "[dim]Stop it with Ctrl+C in the Streamlit terminal.[/dim]"
