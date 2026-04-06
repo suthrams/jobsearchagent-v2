@@ -128,7 +128,9 @@ How the browser dashboard reads and displays scored job data.
 ```mermaid
 flowchart TD
     DB[("SQLite Database\njobs.db")] -->|"SQL query\nscored jobs only"| LOAD["load_jobs()\ncached 30 seconds"]
+    DB -->|"SELECT * FROM runs"| LOAD_RUNS["load_runs()\ncached 30 seconds"]
     LOAD --> DF["Pandas DataFrame\nall scored jobs"]
+    LOAD_RUNS --> RDF["Pandas DataFrame\nall run records"]
 
     DF --> SIDEBAR["Sidebar Controls\nmin score slider\nsearch filter\nview selector"]
     SIDEBAR --> FILTER["Filtered DataFrame"]
@@ -138,8 +140,12 @@ flowchart TD
     FILTER --> V3["Architect Track View\nSolutions Principal Architect\nranked by architect score"]
     FILTER --> V4["Management Track View\nDirector VP Head of Eng\nranked by management score"]
     FILTER --> V5["Companies View\nbar chart of top companies\ndrill-down by company"]
+    RDF --> V6["Run History View\ncost and token reporting"]
 
     V5 --> CHART["Plotly Bar Chart\ntop 20 companies\nby best match score"]
+    V6 --> COST_CHART["Cost per Run + Cumulative Spend\nbar + line charts"]
+    V6 --> TOKEN_CHART["Token Breakdown\nstacked bars by operation\nscoring vs parsing vs tailoring"]
+    V6 --> RUN_TABLE["All Runs Table\ntimestamp cost tokens per run"]
     V1 --> CARDS["Job Cards\nexpandable detail view\nClaude summaries + links"]
 
     CARDS --> TAILOR_UI["Tailor Resume button\ntrack selector per card"]
@@ -149,6 +155,8 @@ flowchart TD
 
     style DB fill:#fef9c3,stroke:#eab308
     style CHART fill:#dbeafe,stroke:#3b82f6
+    style COST_CHART fill:#dbeafe,stroke:#3b82f6
+    style TOKEN_CHART fill:#dbeafe,stroke:#3b82f6
     style CARDS fill:#dcfce7,stroke:#16a34a
     style AGENTS fill:#fce7f3,stroke:#db2777
     style TRESULT fill:#dcfce7,stroke:#16a34a
@@ -186,12 +194,14 @@ flowchart TD
         PROFILE["ProfileAgent.load()\nresume.pdf to Profile"]
         PROFILE --> FILTER["Filter: stale, no desc,\nexcluded title, non-tech"]
         FILTER --> BATCH["Chunk into batches of 5"]
-        BATCH --> CLAUDE["Claude API call\n5 jobs to 3-track scores"]
+        BATCH --> CLAUDE["Claude API call\n5 jobs to 3-track scores\ntokens accumulated in ClaudeClient"]
         CLAUDE --> SAVE["db.update_job() — status = SCORED"]
         SAVE --> BATCH
     end
 
-    SAVE --> DISPLAY["print_scored_jobs()\nRich table + results.txt"]
+    SAVE --> USAGE["client.get_usage()\nread actual input+output tokens\nper operation"]
+    USAGE --> RUN["db.insert_run()\npersist run stats + token counts\nto runs table"]
+    RUN --> DISPLAY["print_scored_jobs()\nRich table + results.txt"]
     DISPLAY --> END([Done])
 ```
 
@@ -494,4 +504,16 @@ mindmap
       Active tracks from config
       Null for disabled tracks
       3x cost reduction vs per-track
+    Token Accumulation
+      ClaudeClient _usage dict
+      Keyed by operation name
+      reset_usage at run start
+      get_usage after scoring
+      Persisted to runs table
+    Run History
+      runs table in SQLite
+      One row per execution
+      Actual vs estimated cost
+      Per-operation token breakdown
+      Dashboard Run History view
 ```

@@ -363,10 +363,18 @@ def estimate_scoring_cost(num_jobs: int, batch_size: int) -> tuple[float, int]:
     return cost, num_batches
 
 
+def tokens_to_cost(input_tokens: int, output_tokens: int) -> float:
+    """Converts actual token counts to USD using Sonnet 4.6 pricing."""
+    return (
+        input_tokens  / 1_000_000 * _INPUT_COST_PER_MTOK
+        + output_tokens / 1_000_000 * _OUTPUT_COST_PER_MTOK
+    )
+
+
 # ─── Main commands ────────────────────────────────────────────────────────────
 
 
-def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict) -> None:
+def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: ClaudeClient) -> None:
     """
     Default command — scrape new jobs, score them, save to DB, print summary.
 
@@ -375,8 +383,11 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict) -> None:
       2. Insert new jobs into the database (duplicates are ignored)
       3. Score all new (unscored) jobs with Claude
       4. Update the database with scores
-      5. Print the results table
+      5. Record run stats (including actual token usage) to the runs table
+      6. Print the results table
     """
+    client.reset_usage()  # clear any tokens from previous operations this session
+
     console.print("[bold]Scraping jobs...[/bold]")
     raw_jobs = run_scrapers(config)
     console.print(f"Found [cyan]{len(raw_jobs)}[/cyan] jobs across all sources")
@@ -391,14 +402,25 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict) -> None:
 
     console.print(f"[cyan]{new_count}[/cyan] new jobs added to database")
 
-    # Score all unscored jobs
+    # Score all unscored jobs — includes carry-overs from previous runs where scoring was skipped
     unscored = db.get_by_status(ApplicationStatus.NEW)
+    jobs_scored = 0
+    jobs_skipped = 0
+    actual_batches = 0
+    actual_cost = 0.0
+
     if not unscored:
-        console.print("[yellow]No new jobs to score.[/yellow]")
+        console.print("[yellow]No unscored jobs in database.[/yellow]")
     else:
+        carry_over = len(unscored) - new_count
+        source_note = f"[cyan]{new_count}[/cyan] from this run"
+        if carry_over > 0:
+            source_note += f" + [cyan]{carry_over}[/cyan] unscored from previous run(s)"
+
         est_cost, num_batches = estimate_scoring_cost(len(unscored), BATCH_SIZE)
         console.print(
-            f"\n[bold]Scoring plan:[/bold] [cyan]{len(unscored)}[/cyan] jobs in "
+            f"\n[bold]Scoring plan:[/bold] [cyan]{len(unscored)}[/cyan] jobs "
+            f"({source_note}) in "
             f"[cyan]{num_batches}[/cyan] batch(es) of up to [cyan]{BATCH_SIZE}[/cyan]\n"
             f"Estimated API cost: [yellow]~${est_cost:.2f}[/yellow] (Sonnet 4.6)\n"
         )
@@ -413,7 +435,78 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict) -> None:
 
             agents["scoring"].score_batch(unscored, profile, db=db, on_progress=on_progress)
 
-    # Print all scored jobs
+            # Count outcomes for run record
+            jobs_scored = sum(1 for j in unscored if j.status == ApplicationStatus.SCORED)
+            jobs_skipped = len(unscored) - jobs_scored
+            actual_batches = math.ceil(jobs_scored / BATCH_SIZE) if jobs_scored else 0
+            actual_cost, _ = estimate_scoring_cost(jobs_scored, BATCH_SIZE)
+
+            # Warn if a large proportion of jobs failed to score — likely a parsing issue
+            if jobs_skipped > 0 and jobs_scored == 0:
+                console.print(
+                    "[red bold]Warning:[/red bold] [red]0 jobs were successfully scored. "
+                    "Check output/logs/run.log for details.[/red]"
+                )
+            elif jobs_skipped > jobs_scored:
+                console.print(
+                    f"[yellow]Note:[/yellow] {jobs_skipped} jobs were filtered out before scoring "
+                    f"(stale, no description, excluded title, or non-tech). "
+                    f"See output/logs/run.log for per-job reasons."
+                )
+
+    # Pull actual token usage accumulated across all Claude calls this run
+    usage = client.get_usage()
+    scoring  = usage.get("job_scoring",       {"input": 0, "output": 0})
+    parsing  = usage.get("resume_parsing",    {"input": 0, "output": 0})
+    tailoring = usage.get("resume_tailoring", {"input": 0, "output": 0})
+
+    total_input  = scoring["input"]  + parsing["input"]  + tailoring["input"]
+    total_output = scoring["output"] + parsing["output"] + tailoring["output"]
+    actual_cost_from_tokens = tokens_to_cost(total_input, total_output)
+
+    # Post-run summary — surfaces what happened without requiring the user to read run.log
+    if jobs_scored > 0 or jobs_skipped > 0:
+        cost_display = (
+            f"[green]${actual_cost_from_tokens:.4f}[/green] (actual)"
+            if actual_cost_from_tokens > 0
+            else f"[yellow]~${actual_cost:.4f}[/yellow] (estimated)"
+        )
+        token_line = ""
+        if total_input > 0:
+            token_line = (
+                f"  Tokens used   : [dim]{total_input:,}[/dim] input / "
+                f"[dim]{total_output:,}[/dim] output\n"
+            )
+        console.print(
+            f"\n[bold]Run summary[/bold]\n"
+            f"  Scraped       : [cyan]{len(raw_jobs)}[/cyan] jobs across all sources\n"
+            f"  New this run  : [cyan]{new_count}[/cyan]\n"
+            f"  Sent to Claude: [cyan]{jobs_scored + jobs_skipped}[/cyan]\n"
+            f"  Scored        : [green]{jobs_scored}[/green]\n"
+            f"  Pre-filtered  : [dim]{jobs_skipped}[/dim] "
+            f"(stale / no description / excluded title / non-tech)\n"
+            f"{token_line}"
+            f"  API cost      : {cost_display}\n"
+            f"  Full log      : [dim]output/logs/run.log[/dim]"
+        )
+
+    # Record this run regardless of whether scoring happened
+    db.insert_run(
+        jobs_scraped=len(raw_jobs),
+        jobs_new=new_count,
+        jobs_scored=jobs_scored,
+        jobs_skipped=jobs_skipped,
+        batches=actual_batches,
+        est_cost_usd=actual_cost,
+        tokens_input_scoring=scoring["input"],
+        tokens_output_scoring=scoring["output"],
+        tokens_input_parsing=parsing["input"],
+        tokens_output_parsing=parsing["output"],
+        tokens_input_tailoring=tailoring["input"],
+        tokens_output_tailoring=tailoring["output"],
+        actual_cost_usd=actual_cost_from_tokens,
+    )
+
     # Print all scored jobs
     all_scored = db.get_by_status(ApplicationStatus.SCORED)
     if not all_scored:
@@ -550,7 +643,7 @@ def main() -> None:
         elif args.list:
             cmd_list(db)
         else:
-            cmd_scrape_and_score(config, db, agents)
+            cmd_scrape_and_score(config, db, agents, client)
     finally:
         db.close()
         logger.info("Job search agent finished")

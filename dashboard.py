@@ -153,6 +153,32 @@ def load_jobs() -> pd.DataFrame:
     return df
 
 
+@st.cache_data(ttl=30)
+def load_runs() -> pd.DataFrame:
+    """Loads all run history records from the database into a DataFrame."""
+    if not DB_PATH.exists():
+        return pd.DataFrame()
+
+    conn = sqlite3.connect(str(DB_PATH))
+    try:
+        df = pd.read_sql_query(
+            "SELECT * FROM runs ORDER BY run_at ASC",
+            conn,
+        )
+    except Exception:
+        # runs table doesn't exist yet (first launch before any run)
+        return pd.DataFrame()
+    finally:
+        conn.close()
+
+    if df.empty:
+        return df
+
+    df["run_at"] = pd.to_datetime(df["run_at"], errors="coerce")
+    df["cumulative_cost"] = df["est_cost_usd"].cumsum()
+    return df
+
+
 def get_summary(scores_json: str | None, track: str) -> str:
     """Extracts Claude's one-sentence summary for a given track."""
     if not scores_json:
@@ -347,7 +373,7 @@ with st.sidebar:
 
     view = st.radio(
         "View",
-        ["Top Matches", "IC Track", "Architect Track", "Management Track", "Companies"],
+        ["Top Matches", "IC Track", "Architect Track", "Management Track", "Companies", "Run History"],
         index=0,
     )
 
@@ -366,12 +392,16 @@ with st.sidebar:
 
 df = load_jobs()
 
-if df.empty:
+# Run History is self-contained — doesn't need the jobs dataframe
+if view == "Run History":
+    df = pd.DataFrame()  # suppress the empty-jobs warning below
+
+if df.empty and view != "Run History":
     st.warning("No scored jobs found. Run `python main.py` first.")
     st.stop()
 
-# Apply search filter
-if search:
+# Apply search filter (jobs views only)
+if search and not df.empty:
     mask = (
         df["title"].str.contains(search, case=False, na=False)
         | df["company"].str.contains(search, case=False, na=False)
@@ -542,3 +572,270 @@ elif view == "Companies":
         st.subheader(f"{selected_company} — {len(company_jobs)} role(s)")
         for _, row in company_jobs.iterrows():
             render_job_card(row, highlight_track="architect")
+
+elif view == "Run History":
+    st.header("Run History")
+    st.caption("Cost and activity for each `python main.py` execution")
+
+    runs_df = load_runs()
+
+    if runs_df.empty:
+        st.info("No runs recorded yet. Run `python main.py` to populate history.")
+        st.stop()
+
+    # Derive token totals per run
+    has_token_data = (
+        "tokens_input_scoring" in runs_df.columns
+        and runs_df[["tokens_input_scoring", "tokens_input_parsing", "tokens_input_tailoring"]].sum().sum() > 0
+    )
+
+    runs_df["total_input_tokens"]  = (
+        runs_df.get("tokens_input_scoring",  0)
+        + runs_df.get("tokens_input_parsing",   0)
+        + runs_df.get("tokens_input_tailoring", 0)
+    )
+    runs_df["total_output_tokens"] = (
+        runs_df.get("tokens_output_scoring",  0)
+        + runs_df.get("tokens_output_parsing",   0)
+        + runs_df.get("tokens_output_tailoring", 0)
+    )
+
+    # Use actual cost where available, fall back to estimate
+    runs_df["display_cost"] = runs_df.apply(
+        lambda r: r.get("actual_cost_usd", 0) if r.get("actual_cost_usd", 0) > 0 else r["est_cost_usd"],
+        axis=1,
+    )
+    runs_df["cumulative_display_cost"] = runs_df["display_cost"].cumsum()
+
+    # ── Summary metrics ───────────────────────────────────────────────────────
+    total_runs          = len(runs_df)
+    total_cost          = runs_df["display_cost"].sum()
+    total_scored        = runs_df["jobs_scored"].sum()
+    total_input_tokens  = int(runs_df["total_input_tokens"].sum())
+    total_output_tokens = int(runs_df["total_output_tokens"].sum())
+    last_run            = runs_df["run_at"].max()
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Total Runs", total_runs)
+    m2.metric("Total Cost", f"${total_cost:.4f}", help="Actual cost where tokens were tracked; estimated otherwise")
+    m3.metric("Total Jobs Scored", int(total_scored))
+    m4.metric("Last Run", last_run.strftime("%b %d %H:%M") if pd.notna(last_run) else "—")
+
+    if has_token_data:
+        t1, t2, t3 = st.columns(3)
+        t1.metric("Total Input Tokens",  f"{total_input_tokens:,}")
+        t2.metric("Total Output Tokens", f"{total_output_tokens:,}")
+        t3.metric("Input : Output Ratio",
+                  f"{total_input_tokens / total_output_tokens:.1f}x" if total_output_tokens else "—")
+
+    st.markdown("---")
+
+    # ── Cost charts ───────────────────────────────────────────────────────────
+    st.subheader("Cost")
+
+    chart_col1, chart_col2 = st.columns(2)
+
+    with chart_col1:
+        fig_cost = px.bar(
+            runs_df,
+            x="run_at",
+            y="display_cost",
+            labels={"run_at": "Run Time", "display_cost": "Cost (USD)"},
+            title="Cost per Run",
+            color="display_cost",
+            color_continuous_scale="teal",
+            text=runs_df["display_cost"].apply(lambda v: f"${v:.4f}"),
+        )
+        fig_cost.update_layout(coloraxis_showscale=False, xaxis_title=None)
+        fig_cost.update_traces(textposition="outside")
+        st.plotly_chart(fig_cost, use_container_width=True)
+
+    with chart_col2:
+        fig_cum = px.line(
+            runs_df,
+            x="run_at",
+            y="cumulative_display_cost",
+            labels={"run_at": "Run Time", "cumulative_display_cost": "Cumulative Cost (USD)"},
+            title="Cumulative Spend",
+            markers=True,
+        )
+        fig_cum.update_layout(xaxis_title=None)
+        st.plotly_chart(fig_cum, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Token breakdown charts (only when real token data exists) ─────────────
+    if has_token_data:
+        st.subheader("Token Usage by Operation")
+        st.caption("Actual tokens reported by the Anthropic API — input tokens drive cost more than output")
+
+        tok_col1, tok_col2 = st.columns(2)
+
+        with tok_col1:
+            # Stacked bar — input tokens per run, broken down by operation
+            fig_input = px.bar(
+                runs_df,
+                x="run_at",
+                y=["tokens_input_scoring", "tokens_input_parsing", "tokens_input_tailoring"],
+                labels={
+                    "run_at": "Run Time",
+                    "value": "Input Tokens",
+                    "variable": "Operation",
+                },
+                title="Input Tokens per Run",
+                barmode="stack",
+                color_discrete_map={
+                    "tokens_input_scoring":   "#1f77b4",
+                    "tokens_input_parsing":   "#2ca02c",
+                    "tokens_input_tailoring": "#ff7f0e",
+                },
+            )
+            fig_input.update_layout(
+                xaxis_title=None,
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    title=None,
+                ),
+            )
+            newnames = {
+                "tokens_input_scoring":   "Job Scoring",
+                "tokens_input_parsing":   "Resume Parsing",
+                "tokens_input_tailoring": "Resume Tailoring",
+            }
+            fig_input.for_each_trace(lambda t: t.update(name=newnames.get(t.name, t.name)))
+            st.plotly_chart(fig_input, use_container_width=True)
+
+        with tok_col2:
+            # Stacked bar — output tokens per run, broken down by operation
+            fig_output = px.bar(
+                runs_df,
+                x="run_at",
+                y=["tokens_output_scoring", "tokens_output_parsing", "tokens_output_tailoring"],
+                labels={
+                    "run_at": "Run Time",
+                    "value": "Output Tokens",
+                    "variable": "Operation",
+                },
+                title="Output Tokens per Run",
+                barmode="stack",
+                color_discrete_map={
+                    "tokens_output_scoring":   "#1f77b4",
+                    "tokens_output_parsing":   "#2ca02c",
+                    "tokens_output_tailoring": "#ff7f0e",
+                },
+            )
+            fig_output.update_layout(
+                xaxis_title=None,
+                legend=dict(
+                    orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1,
+                    title=None,
+                ),
+            )
+            fig_output.for_each_trace(lambda t: t.update(name=newnames.get(t.name, t.name)))
+            st.plotly_chart(fig_output, use_container_width=True)
+
+        # Per-operation token cost breakdown (last run highlighted)
+        st.subheader("Cost Breakdown by Operation — Latest Run")
+        last = runs_df.sort_values("run_at").iloc[-1]
+        ops = {
+            "Job Scoring":      (int(last.get("tokens_input_scoring", 0)),  int(last.get("tokens_output_scoring", 0))),
+            "Resume Parsing":   (int(last.get("tokens_input_parsing", 0)),  int(last.get("tokens_output_parsing", 0))),
+            "Resume Tailoring": (int(last.get("tokens_input_tailoring", 0)), int(last.get("tokens_output_tailoring", 0))),
+        }
+        _INPUT_COST  = 3.00 / 1_000_000
+        _OUTPUT_COST = 15.00 / 1_000_000
+        breakdown_rows = []
+        for op, (inp, out) in ops.items():
+            cost = inp * _INPUT_COST + out * _OUTPUT_COST
+            breakdown_rows.append({
+                "Operation":     op,
+                "Input Tokens":  inp,
+                "Output Tokens": out,
+                "Total Tokens":  inp + out,
+                "Cost (USD)":    f"${cost:.5f}",
+            })
+        st.dataframe(
+            pd.DataFrame(breakdown_rows),
+            hide_index=True,
+            use_container_width=True,
+            column_config={
+                "Operation":     st.column_config.TextColumn("Operation",     width="medium"),
+                "Input Tokens":  st.column_config.NumberColumn("Input Tokens",  width="small"),
+                "Output Tokens": st.column_config.NumberColumn("Output Tokens", width="small"),
+                "Total Tokens":  st.column_config.NumberColumn("Total Tokens",  width="small"),
+                "Cost (USD)":    st.column_config.TextColumn("Cost (USD)",    width="small"),
+            },
+        )
+
+        st.markdown("---")
+
+    # ── Activity chart ────────────────────────────────────────────────────────
+    st.subheader("Job Activity")
+    fig_activity = px.bar(
+        runs_df,
+        x="run_at",
+        y=["jobs_scraped", "jobs_new", "jobs_scored", "jobs_skipped"],
+        labels={"run_at": "Run Time", "value": "Jobs", "variable": "Metric"},
+        title="Jobs per Run — Scraped / New / Scored / Skipped",
+        barmode="group",
+    )
+    fig_activity.update_layout(xaxis_title=None, legend_title=None)
+    newnames_activity = {
+        "jobs_scraped": "Scraped",
+        "jobs_new":     "New",
+        "jobs_scored":  "Scored",
+        "jobs_skipped": "Skipped",
+    }
+    fig_activity.for_each_trace(lambda t: t.update(name=newnames_activity.get(t.name, t.name)))
+    st.plotly_chart(fig_activity, use_container_width=True)
+
+    st.markdown("---")
+
+    # ── Run table ─────────────────────────────────────────────────────────────
+    st.subheader("All Runs")
+
+    display = runs_df.sort_values("run_at", ascending=False).copy()
+    display["run_at_fmt"]   = display["run_at"].dt.strftime("%Y-%m-%d %H:%M:%S")
+    display["cost_fmt"]     = display["display_cost"].apply(lambda v: f"${v:.4f}")
+    display["cum_cost_fmt"] = display["cumulative_display_cost"].apply(lambda v: f"${v:.4f}")
+
+    table_cols = ["id", "run_at_fmt", "jobs_scraped", "jobs_new", "jobs_scored", "jobs_skipped", "batches"]
+    rename_map = {
+        "id":           "Run #",
+        "run_at_fmt":   "Timestamp",
+        "jobs_scraped": "Scraped",
+        "jobs_new":     "New",
+        "jobs_scored":  "Scored",
+        "jobs_skipped": "Skipped",
+        "batches":      "Batches",
+    }
+
+    if has_token_data:
+        table_cols += ["total_input_tokens", "total_output_tokens"]
+        rename_map["total_input_tokens"]  = "Input Tok"
+        rename_map["total_output_tokens"] = "Output Tok"
+
+    table_cols += ["cost_fmt", "cum_cost_fmt"]
+    rename_map["cost_fmt"]     = "Cost"
+    rename_map["cum_cost_fmt"] = "Cumulative"
+
+    col_config = {
+        "Run #":      st.column_config.NumberColumn("Run #",    width="small"),
+        "Timestamp":  st.column_config.TextColumn("Timestamp",  width="medium"),
+        "Scraped":    st.column_config.NumberColumn("Scraped",   width="small"),
+        "New":        st.column_config.NumberColumn("New",       width="small"),
+        "Scored":     st.column_config.NumberColumn("Scored",    width="small"),
+        "Skipped":    st.column_config.NumberColumn("Skipped",   width="small"),
+        "Batches":    st.column_config.NumberColumn("Batches",   width="small"),
+        "Input Tok":  st.column_config.NumberColumn("Input Tok", width="small"),
+        "Output Tok": st.column_config.NumberColumn("Output Tok",width="small"),
+        "Cost":       st.column_config.TextColumn("Cost",        width="small"),
+        "Cumulative": st.column_config.TextColumn("Cumulative",  width="small"),
+    }
+
+    st.dataframe(
+        display[table_cols].rename(columns=rename_map),
+        hide_index=True,
+        use_container_width=True,
+        column_config=col_config,
+    )

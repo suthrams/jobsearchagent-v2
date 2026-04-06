@@ -32,6 +32,8 @@ All components are created once and injected into agents — no globals, no sing
 ## Command: Scrape and Score (default)
 
 ```
+client.reset_usage()              — clear token counters before this run starts
+
 run_scrapers(config)
   └─ LinkedInScraper, AdzunaScraper, LaddersScraper run independently
   └─ one failure does not stop the others
@@ -43,6 +45,12 @@ estimate_scoring_cost(num_jobs)   — prints cost estimate and asks for confirma
 
 ScoringAgent.score_batch(unscored, profile, db=db)
   └─ saves each job to DB immediately after scoring (crash-safe)
+  └─ ClaudeClient accumulates real token counts per operation
+
+client.get_usage()                — retrieve actual input/output tokens per operation
+tokens_to_cost(input, output)     — convert to USD using Sonnet 4.6 pricing
+
+db.insert_run(...)                — persist run stats and token counts to runs table
 
 print_scored_jobs(all_scored)     — Rich table + output/logs/results.txt
 ```
@@ -66,16 +74,17 @@ Can be combined with any command. After the primary command completes, launches 
 | `load_config()` | Loads and Pydantic-validates `config/config.yaml`. Exits with a clear error if invalid. |
 | `setup_logging()` | File handler at DEBUG, terminal at WARNING. Suppresses noisy third-party loggers. |
 | `run_scrapers()` | Runs all scrapers, combines results. Failures are warnings, not fatal. |
-| `estimate_scoring_cost()` | Calculates API cost estimate before spending tokens. |
+| `estimate_scoring_cost()` | Calculates API cost estimate before spending tokens. Returns `(cost_usd, num_batches)`. |
+| `tokens_to_cost()` | Converts real `(input_tokens, output_tokens)` to USD using Sonnet 4.6 pricing. Used after scoring to compute `actual_cost_usd`. |
 | `print_scored_jobs()` | Rich table with colour-coded scores. Filters jobs below score 50. |
 | `_write_results_file()` | Saves full job details to `output/logs/results.txt`. |
-| `cmd_scrape_and_score()` | Orchestrates the default run. |
+| `cmd_scrape_and_score()` | Orchestrates the default run — scrape, dedup, score, record run, print results. Takes `client` so it can reset and read token usage. |
 | `cmd_tailor()` | Handles `--tailor` flow including track selection and APPLIED status. |
 | `cmd_list()` | Shows all DB jobs with status distribution. |
 
 `--dashboard` is handled in `main()` itself after the try/finally block using `subprocess.Popen(["streamlit", "run", "dashboard.py"])`. It is fire-and-forget — main.py does not wait for the Streamlit process to exit.
 
-## Cost Estimation
+## Cost Estimation and Actual Tracking
 
 Before scoring, the app estimates API spend using token averages observed with Sonnet 4.6:
 
@@ -84,6 +93,8 @@ Before scoring, the app estimates API spend using token averages observed with S
 - Pricing: $3/M input, $15/M output
 
 The user must confirm `y` before any tokens are spent.
+
+After scoring completes, actual token counts are read from `ClaudeClient.get_usage()` — these are the real values returned by the Anthropic API in `message.usage`. The actual cost is computed via `tokens_to_cost()` and stored in the `runs` table alongside per-operation breakdowns (scoring, parsing, tailoring). The dashboard Run History view uses actual cost where available and falls back to the estimate for older runs.
 
 ## Configuration
 

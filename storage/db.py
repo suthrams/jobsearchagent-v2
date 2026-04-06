@@ -51,6 +51,39 @@ _MIGRATIONS = [
     ("score_best",       "ALTER TABLE jobs ADD COLUMN score_best       INTEGER"),
 ]
 
+# Run history table — one row per main.py execution
+CREATE_RUNS_TABLE_SQL = """
+CREATE TABLE IF NOT EXISTS runs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_at        TEXT    NOT NULL,   -- ISO 8601 UTC timestamp
+    jobs_scraped  INTEGER NOT NULL DEFAULT 0,  -- total returned by all scrapers
+    jobs_new      INTEGER NOT NULL DEFAULT 0,  -- newly inserted (not duplicates)
+    jobs_scored   INTEGER NOT NULL DEFAULT 0,  -- successfully scored by Claude
+    jobs_skipped  INTEGER NOT NULL DEFAULT 0,  -- stale / no description / excluded
+    batches       INTEGER NOT NULL DEFAULT 0,  -- number of Claude API batches
+    est_cost_usd  REAL    NOT NULL DEFAULT 0.0, -- estimated USD cost (Sonnet pricing)
+    -- Actual token usage per operation (populated from API response metadata)
+    tokens_input_scoring    INTEGER NOT NULL DEFAULT 0,
+    tokens_output_scoring   INTEGER NOT NULL DEFAULT 0,
+    tokens_input_parsing    INTEGER NOT NULL DEFAULT 0,
+    tokens_output_parsing   INTEGER NOT NULL DEFAULT 0,
+    tokens_input_tailoring  INTEGER NOT NULL DEFAULT 0,
+    tokens_output_tailoring INTEGER NOT NULL DEFAULT 0,
+    actual_cost_usd         REAL    NOT NULL DEFAULT 0.0  -- cost from real token counts
+);
+"""
+
+# Migrations for the runs table — for databases created before token tracking was added
+_RUNS_MIGRATIONS = [
+    ("tokens_input_scoring",    "ALTER TABLE runs ADD COLUMN tokens_input_scoring    INTEGER NOT NULL DEFAULT 0"),
+    ("tokens_output_scoring",   "ALTER TABLE runs ADD COLUMN tokens_output_scoring   INTEGER NOT NULL DEFAULT 0"),
+    ("tokens_input_parsing",    "ALTER TABLE runs ADD COLUMN tokens_input_parsing    INTEGER NOT NULL DEFAULT 0"),
+    ("tokens_output_parsing",   "ALTER TABLE runs ADD COLUMN tokens_output_parsing   INTEGER NOT NULL DEFAULT 0"),
+    ("tokens_input_tailoring",  "ALTER TABLE runs ADD COLUMN tokens_input_tailoring  INTEGER NOT NULL DEFAULT 0"),
+    ("tokens_output_tailoring", "ALTER TABLE runs ADD COLUMN tokens_output_tailoring INTEGER NOT NULL DEFAULT 0"),
+    ("actual_cost_usd",         "ALTER TABLE runs ADD COLUMN actual_cost_usd         REAL    NOT NULL DEFAULT 0.0"),
+]
+
 
 class Database:
     """
@@ -84,24 +117,35 @@ class Database:
         logger.debug("Database opened: %s", self.db_path)
 
     def _create_tables(self) -> None:
-        """Creates the jobs table if it does not already exist, then runs migrations."""
+        """Creates the jobs and runs tables if they do not already exist, then runs migrations."""
         self._conn.execute(CREATE_TABLE_SQL)
+        self._conn.execute(CREATE_RUNS_TABLE_SQL)
         self._conn.commit()
         self._run_migrations()
 
     def _run_migrations(self) -> None:
         """
-        Adds any new columns to an existing database.
+        Adds any new columns to existing tables.
         Safe to run on every startup — skips columns that already exist.
         """
-        existing = {
+        jobs_cols = {
             row[1]
             for row in self._conn.execute("PRAGMA table_info(jobs)").fetchall()
         }
         for col_name, alter_sql in _MIGRATIONS:
-            if col_name not in existing:
+            if col_name not in jobs_cols:
                 self._conn.execute(alter_sql)
-                logger.debug("Migration applied: added column %s", col_name)
+                logger.debug("Migration applied (jobs): added column %s", col_name)
+
+        runs_cols = {
+            row[1]
+            for row in self._conn.execute("PRAGMA table_info(runs)").fetchall()
+        }
+        for col_name, alter_sql in _RUNS_MIGRATIONS:
+            if col_name not in runs_cols:
+                self._conn.execute(alter_sql)
+                logger.debug("Migration applied (runs): added column %s", col_name)
+
         self._conn.commit()
 
     # ─── Write operations ─────────────────────────────────────────────────────
@@ -351,6 +395,83 @@ class Database:
             found_at=datetime.fromisoformat(row["found_at"]),
             applied_at=datetime.fromisoformat(row["applied_at"]) if row["applied_at"] else None,
         )
+
+    # ─── Run history ──────────────────────────────────────────────────────────
+
+    def insert_run(
+        self,
+        jobs_scraped: int,
+        jobs_new: int,
+        jobs_scored: int,
+        jobs_skipped: int,
+        batches: int,
+        est_cost_usd: float,
+        tokens_input_scoring: int = 0,
+        tokens_output_scoring: int = 0,
+        tokens_input_parsing: int = 0,
+        tokens_output_parsing: int = 0,
+        tokens_input_tailoring: int = 0,
+        tokens_output_tailoring: int = 0,
+        actual_cost_usd: float = 0.0,
+    ) -> int:
+        """
+        Records one agent execution in the runs table.
+
+        Args:
+            jobs_scraped            : Total jobs returned by all scrapers.
+            jobs_new                : Jobs newly inserted (de-duplicated).
+            jobs_scored             : Jobs successfully scored by Claude.
+            jobs_skipped            : Jobs skipped (stale, no description, excluded).
+            batches                 : Number of Claude API batch calls made.
+            est_cost_usd            : Estimated USD cost (used when no actual tokens available).
+            tokens_input_scoring    : Actual input tokens used for job_scoring calls.
+            tokens_output_scoring   : Actual output tokens used for job_scoring calls.
+            tokens_input_parsing    : Actual input tokens used for resume_parsing calls.
+            tokens_output_parsing   : Actual output tokens used for resume_parsing calls.
+            tokens_input_tailoring  : Actual input tokens used for resume_tailoring calls.
+            tokens_output_tailoring : Actual output tokens used for resume_tailoring calls.
+            actual_cost_usd         : Cost derived from real token counts (0.0 if none made).
+
+        Returns:
+            The new run id.
+        """
+        cursor = self._conn.execute(
+            """
+            INSERT INTO runs (
+                run_at, jobs_scraped, jobs_new, jobs_scored, jobs_skipped, batches, est_cost_usd,
+                tokens_input_scoring, tokens_output_scoring,
+                tokens_input_parsing, tokens_output_parsing,
+                tokens_input_tailoring, tokens_output_tailoring,
+                actual_cost_usd
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                datetime.utcnow().isoformat(),
+                jobs_scraped, jobs_new, jobs_scored, jobs_skipped, batches,
+                round(est_cost_usd, 6),
+                tokens_input_scoring, tokens_output_scoring,
+                tokens_input_parsing, tokens_output_parsing,
+                tokens_input_tailoring, tokens_output_tailoring,
+                round(actual_cost_usd, 6),
+            ),
+        )
+        self._conn.commit()
+        logger.debug(
+            "Run recorded: id=%d scored=%d est_cost=$%.4f actual_cost=$%.4f",
+            cursor.lastrowid, jobs_scored, est_cost_usd, actual_cost_usd,
+        )
+        return cursor.lastrowid
+
+    def get_runs(self) -> list[dict]:
+        """
+        Returns all run records ordered by most recent first.
+        Each record is a plain dict matching the runs table columns.
+        """
+        rows = self._conn.execute(
+            "SELECT * FROM runs ORDER BY run_at DESC"
+        ).fetchall()
+        return [dict(row) for row in rows]
 
     def close(self) -> None:
         """Closes the database connection. Call this on clean shutdown."""

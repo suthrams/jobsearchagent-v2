@@ -67,6 +67,10 @@ TECH_DESCRIPTION_KEYWORDS = [
     "engineering team", "software engineer", "software development",
     "technology", "digital transformation", "technical leadership",
     "information technology", " it ", "tech stack",
+    # IoT / connected devices / edge
+    "iot", "internet of things", "mqtt", "edge computing",
+    "embedded", "connected devices", "industrial iot", "iiot",
+    "device management", "telemetry", "firmware",
 ]
 
 

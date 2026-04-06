@@ -27,6 +27,7 @@ class ClaudeClient:
     - Loads the API key from the environment
     - Provides a single call() method used by all agents
     - Applies retry logic with exponential backoff on rate limit / server errors
+    - Accumulates actual token usage per operation for cost reporting
     - Logs every request at DEBUG level for cost tracking
     """
 
@@ -51,6 +52,11 @@ class ClaudeClient:
 
         # Holds model name, max_tokens, and temperature per operation type
         self.config = config
+
+        # Accumulated token counts keyed by operation name.
+        # Structure: { operation: {"input": int, "output": int} }
+        # Reset between runs via reset_usage().
+        self._usage: dict[str, dict[str, int]] = {}
 
         logger.debug("ClaudeClient initialised with model=%s", config.model)
 
@@ -117,11 +123,32 @@ class ClaudeClient:
         # Claude always returns at least one text block for our use case
         response_text = message.content[0].text
 
+        input_tokens  = message.usage.input_tokens
+        output_tokens = message.usage.output_tokens
+
         logger.debug(
             "Claude response | operation=%s | input_tokens=%d | output_tokens=%d",
-            operation,
-            message.usage.input_tokens,
-            message.usage.output_tokens,
+            operation, input_tokens, output_tokens,
         )
 
+        # Accumulate into the per-operation usage store
+        if operation not in self._usage:
+            self._usage[operation] = {"input": 0, "output": 0}
+        self._usage[operation]["input"]  += input_tokens
+        self._usage[operation]["output"] += output_tokens
+
         return response_text
+
+    def get_usage(self) -> dict[str, dict[str, int]]:
+        """
+        Returns accumulated token usage since the last reset_usage() call.
+
+        Returns:
+            Dict keyed by operation name, each with 'input' and 'output' token counts.
+            Example: {'job_scoring': {'input': 12000, 'output': 3600}, ...}
+        """
+        return {op: dict(counts) for op, counts in self._usage.items()}
+
+    def reset_usage(self) -> None:
+        """Resets all accumulated token counters. Call at the start of each run."""
+        self._usage = {}

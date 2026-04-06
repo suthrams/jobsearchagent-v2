@@ -13,6 +13,11 @@ search:
     - Senior Manager Engineering
     - Director of Engineering
     - Head of Engineering
+    # Optional — IoT / connected devices track (uncomment to enable)
+    # - IoT Solutions Architect
+    # - Head of IoT Engineering
+    # - Director of IoT
+    # - IoT Engineering Manager
 
   locations:
     - Atlanta, GA
@@ -80,9 +85,22 @@ scrapers:
       - software engineer
       - solutions architect
       - engineering manager
+      # Optional — IoT local search (uncomment to enable)
+      # - IoT architect
+      # - IoT solutions architect
+      # - head of IoT
     location: Atlanta, GA
     radius_km: 80
     results_per_page: 20
+    # Separate US-wide remote search — no location filter, "remote" appended to each keyword
+    remote_keywords:
+      - software architect
+      - principal engineer
+      - solutions architect
+      # Optional — IoT remote search (uncomment to enable)
+      # - IoT architect
+      # - IoT solutions architect
+      # - head of IoT
 
   # Ladders — focuses on $100k+ roles, good signal-to-noise for senior jobs
   ladders:

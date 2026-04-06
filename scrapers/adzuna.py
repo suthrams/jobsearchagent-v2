@@ -45,6 +45,11 @@ RELEVANT_TITLE_KEYWORDS = [
     "solutions",
     "technical",
     "developer",
+    # IoT / connected devices
+    "iot",
+    "embedded",
+    "connected devices",
+    "edge computing",
 ]
 
 # Titles that match RELEVANT_TITLE_KEYWORDS but are not relevant to this search.

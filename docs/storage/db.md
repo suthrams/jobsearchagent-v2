@@ -17,7 +17,11 @@ Additionally, individual score values (`score_ic`, `score_architect`, `score_man
 - The Streamlit dashboard to query scores directly via `pd.read_sql_query`
 
 ### Schema Migrations
-New columns are added via `ALTER TABLE` without recreating the table. The `_MIGRATIONS` list tracks every column added after the initial schema. On startup, `_run_migrations()` checks which columns already exist and only adds the missing ones. Safe to run every time — idempotent.
+New columns are added via `ALTER TABLE` without recreating the table. Two migration lists exist:
+- `_MIGRATIONS` — tracks columns added to the `jobs` table after initial schema
+- `_RUNS_MIGRATIONS` — tracks columns added to the `runs` table (e.g. token tracking columns added after the table was first introduced)
+
+On startup, `_run_migrations()` checks existing columns for both tables and only applies the ones that are missing. Safe to run every time — idempotent.
 
 ### WAL Mode
 ```python
@@ -37,6 +41,7 @@ Opens or creates the database file. Creates the jobs table if it doesn't exist. 
 | `insert_job(job) → Job` | Inserts a job. Silently ignores duplicate URLs (`INSERT OR IGNORE`). Sets `job.id` from the database. |
 | `update_job(job)` | Updates all fields of an existing job. Requires `job.id` to be set. |
 | `upsert_job(job) → Job` | Inserts if new (by URL), updates if exists. Convenience wrapper. |
+| `insert_run(...) → int` | Records one agent execution in the `runs` table. Returns the new run id. |
 
 ### Read Operations
 
@@ -48,11 +53,14 @@ Opens or creates the database file. Creates the jobs table if it doesn't exist. 
 | `get_by_status(status)` | `list[Job]` | Key for pipeline: `get_by_status(NEW)` = jobs to score |
 | `get_all()` | `list[Job]` | All jobs, newest first |
 | `count()` | `int` | Total job count |
+| `get_runs()` | `list[dict]` | All run records, newest first. Used by the dashboard Run History view. |
 
 ### `close()`
 Closes the database connection. Always called in `main.py`'s `finally` block.
 
 ## Schema
+
+### `jobs` table
 
 ```sql
 CREATE TABLE jobs (
@@ -77,6 +85,33 @@ CREATE TABLE jobs (
     score_best       INTEGER                    -- max(ic, architect, management)
 )
 ```
+
+### `runs` table
+
+One row per `python main.py` execution. Used by the Run History dashboard view for cost and token reporting.
+
+```sql
+CREATE TABLE runs (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_at        TEXT    NOT NULL,   -- ISO 8601 UTC timestamp
+    jobs_scraped  INTEGER NOT NULL DEFAULT 0,  -- total returned by all scrapers
+    jobs_new      INTEGER NOT NULL DEFAULT 0,  -- newly inserted (not duplicates)
+    jobs_scored   INTEGER NOT NULL DEFAULT 0,  -- successfully scored by Claude
+    jobs_skipped  INTEGER NOT NULL DEFAULT 0,  -- stale / no description / excluded
+    batches       INTEGER NOT NULL DEFAULT 0,  -- number of Claude API batches
+    est_cost_usd  REAL    NOT NULL DEFAULT 0.0, -- estimated cost (pre-run approximation)
+    -- Actual token counts per operation from Anthropic API response metadata
+    tokens_input_scoring    INTEGER NOT NULL DEFAULT 0,
+    tokens_output_scoring   INTEGER NOT NULL DEFAULT 0,
+    tokens_input_parsing    INTEGER NOT NULL DEFAULT 0,
+    tokens_output_parsing   INTEGER NOT NULL DEFAULT 0,
+    tokens_input_tailoring  INTEGER NOT NULL DEFAULT 0,
+    tokens_output_tailoring INTEGER NOT NULL DEFAULT 0,
+    actual_cost_usd         REAL    NOT NULL DEFAULT 0.0  -- cost from real token counts
+)
+```
+
+`actual_cost_usd` uses the same Sonnet 4.6 pricing as the estimate ($3/M input, $15/M output) but is derived from real token counts returned by the API. The dashboard prefers `actual_cost_usd` over `est_cost_usd` whenever it is non-zero.
 
 ## Serialisation
 

@@ -33,12 +33,14 @@ Two search passes per run:
 
 This ensures you capture both local opportunities and fully remote roles from across the country.
 
+Both keyword lists support optional IoT-specific entries (commented out by default in `config.yaml`). Uncomment the IoT blocks to add searches like `"IoT architect"` and `"head of IoT"` to both local and remote passes.
+
 ## Title Filtering
 
 Before creating a `Job` object, two filters run on the title:
 
 **Inclusion filter** (`RELEVANT_TITLE_KEYWORDS`) — title must contain at least one:
-`engineer`, `architect`, `director`, `manager`, `principal`, `staff`, `lead`, `head of`, `vp`, `cloud`, `data`, `devops`, `solutions`, `technical`, `developer`
+`engineer`, `architect`, `director`, `manager`, `principal`, `staff`, `lead`, `head of`, `vp`, `cloud`, `data`, `devops`, `solutions`, `technical`, `developer`, `iot`, `embedded`, `connected devices`, `edge computing`
 
 **Exclusion filter** (`EXCLUDED_TITLE_KEYWORDS`) — title must NOT contain:
 `presales`, `sales manager`, `sales engineer`, `account manager`, `java developer`, `electrical engineer`, etc.

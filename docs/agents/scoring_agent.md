@@ -60,6 +60,7 @@ At least one of these must appear in the description:
 - Core tech: `software`, `cloud`, `api`, `python`, `kubernetes`, `aws`, etc.
 - Leadership: `engineering team`, `technical leadership`, `digital transformation`
 - Domain: `machine learning`, `llm`, `data pipeline`, `ci/cd`
+- IoT / edge: `iot`, `internet of things`, `mqtt`, `edge computing`, `embedded`, `connected devices`, `iiot`, `device management`, `telemetry`, `firmware`
 
 ## Claude Call Details
 
