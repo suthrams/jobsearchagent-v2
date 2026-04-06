@@ -26,6 +26,10 @@ output/
 # Processed automatically — no need to commit, and may contain private URLs
 inbox/linkedin.txt
 
+# ─── Mermaid folder ───────────────────────────────────────────────────────────
+# Processed automatically — no need to commit
+mermaid/
+
 # ─── Config (user-specific, never commit) ────────────────────────────────────
 config/config.yaml
 

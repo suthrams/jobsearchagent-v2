@@ -505,6 +505,11 @@ def main() -> None:
         action="store_true",
         help="Launch Streamlit dashboard after run completes",
     )
+    parser.add_argument(
+        "--dashboard-only",
+        action="store_true",
+        help="Launch Streamlit dashboard immediately without scraping or scoring",
+    )
     args = parser.parse_args()
 
     # Load config and set up logging
@@ -527,6 +532,17 @@ def main() -> None:
             client, loader, rparser, config.storage.tailored_resumes_dir
         ),
     }
+
+    if args.dashboard_only:
+        import subprocess
+        console.print("\n[bold cyan]Launching Streamlit dashboard...[/bold cyan]")
+        subprocess.Popen([sys.executable, "-m", "streamlit", "run", "dashboard.py"])
+        console.print(
+            "[green]Dashboard opening at http://localhost:8501[/green]\n"
+            "[dim]Stop it with Ctrl+C in the Streamlit terminal.[/dim]"
+        )
+        db.close()
+        return
 
     try:
         if args.tailor:

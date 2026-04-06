@@ -25,12 +25,14 @@ class JobSource(str, Enum):
     - INDEED    : parsed from Indeed RSS feed
     - GLASSDOOR : parsed from Glassdoor RSS feed
     - LADDERS   : scraped from Ladders, which focuses on $100k+ roles
+    - ADZUNA    : scraped from Adzuna job search API
     """
 
     LINKEDIN = "linkedin"
     INDEED = "indeed"
     GLASSDOOR = "glassdoor"
     LADDERS = "ladders"
+    ADZUNA = "adzuna"
 
 
 class WorkMode(str, Enum):
