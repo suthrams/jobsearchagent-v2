@@ -41,7 +41,7 @@ Opens or creates the database file. Creates the jobs table if it doesn't exist. 
 | `insert_job(job) → Job` | Inserts a job. Silently ignores duplicate URLs (`INSERT OR IGNORE`). Sets `job.id` from the database. |
 | `update_job(job)` | Updates all fields of an existing job. Requires `job.id` to be set. |
 | `upsert_job(job) → Job` | Inserts if new (by URL), updates if exists. Convenience wrapper. |
-| `insert_run(...) → int` | Records one agent execution in the `runs` table. Returns the new run id. |
+| `insert_run(run_at, ...) → int` | Records one agent execution in the `runs` table. `run_at` must be captured **before scraping begins** so the dashboard `New Jobs` query (`WHERE found_at >= run_at`) correctly returns all jobs from that run. Returns the new run id. |
 
 ### Read Operations
 
@@ -88,7 +88,9 @@ CREATE TABLE jobs (
 
 ### `runs` table
 
-One row per `python main.py` execution. Used by the Run History dashboard view for cost and token reporting.
+One row per `python main.py` execution. Used by the Run History dashboard view and by the **New Jobs** dashboard view (which queries `WHERE found_at >= run_at` to show only jobs found in the latest run).
+
+> **Important:** `run_at` must be captured at the **start** of the run (before any scraping), not at the end. If `run_at` is later than `found_at` for the scraped jobs, the New Jobs view returns empty. `main.py` captures `run_started_at = datetime.utcnow()` as the very first action in `cmd_scrape_and_score()` and passes it to `insert_run(run_at=run_started_at, ...)`.
 
 ```sql
 CREATE TABLE runs (

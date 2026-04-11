@@ -164,7 +164,7 @@ Scrapers run in sequence. If one fails (network error, rate limit), the others c
 ### Phase 2 — Cost estimate and confirmation
 
 ```
-Scoring plan: 12 jobs in 3 batches of up to 5
+Scoring plan: 12 jobs in 2 batches of up to 10
 Estimated API cost: ~$0.01 (Sonnet 4.6)
 
 Continue? [y/N]:
@@ -180,7 +180,7 @@ Type `y` to proceed. This is the only point where API tokens are spent. The esti
   Scoring batch 3/3...
 ```
 
-Each batch of up to 5 jobs is sent to Claude in one API call. Scores are saved to the database immediately after each batch — if the run is interrupted, already-scored jobs are preserved.
+Each batch of up to 10 jobs is sent to Claude in one API call. Scores are saved to the database immediately after each batch — if the run is interrupted, already-scored jobs are preserved.
 
 ---
 
@@ -378,4 +378,4 @@ Delete `data/profile.json` manually, then run `python main.py`. The agent checks
 
 ### Claude returns invalid JSON
 
-Rare, but possible. The run logs at `output/logs/run.log` include the raw response that failed to parse. This usually resolves on the next run. If it happens consistently, reduce the batch size (`BATCH_SIZE` in `agents/scoring_agent.py`) from 5 to 3.
+Rare, but possible. The run logs at `output/logs/run.log` include the raw response that failed to parse. This usually resolves on the next run. If it happens consistently, reduce the batch size (`BATCH_SIZE` in `agents/scoring_agent.py`) from 10 to 5.

@@ -20,6 +20,7 @@ Versions reflect the current development environment — pin to these in `requir
 | [streamlit](https://streamlit.io) | 1.56.0 | Apache 2.0 | Browser dashboard (`dashboard.py`) |
 | [pandas](https://pandas.pydata.org) | 3.0.2 | BSD 3-Clause | DataFrame operations in the dashboard |
 | [plotly](https://plotly.com/python) | 6.6.0 | MIT | Bar charts in the Companies dashboard view |
+| [pytest](https://docs.pytest.org) | 9.0.3 | MIT | Test framework — `python -m pytest tests/` |
 
 ## Licence Summary
 
@@ -46,5 +47,5 @@ This project also uses the following standard library modules, which require no 
 To regenerate installed versions:
 
 ```bash
-pip show anthropic pydantic pyyaml python-dotenv httpx feedparser pdfplumber beautifulsoup4 tenacity rich streamlit pandas plotly | grep -E "^(Name|Version):"
+pip show anthropic pydantic pyyaml python-dotenv httpx feedparser pdfplumber beautifulsoup4 tenacity rich streamlit pandas plotly pytest | grep -E "^(Name|Version):"
 ```

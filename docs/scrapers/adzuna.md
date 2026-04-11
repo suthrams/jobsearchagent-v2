@@ -28,24 +28,34 @@ Get credentials at [developer.adzuna.com](https://developer.adzuna.com).
 
 Two search passes per run:
 
-1. **Local search** — uses `config.location` + `config.radius_km`, one call per keyword in `config.keywords`
-2. **Remote search** — no location filter, appends `"remote"` to each keyword in `config.remote_keywords`
+1. **Local search** — iterates over every location in `config.locations` × every keyword in `config.keywords`. One API call per combination.
+2. **Remote search** — no location filter, appends `"remote"` to each keyword in `config.remote_keywords`. One call per keyword.
 
-This ensures you capture both local opportunities and fully remote roles from across the country.
+**Example with 4 locations and 6 keywords:**
+- 4 × 6 = 24 local calls + 6 remote calls = **30 calls per run** (well within the 100/day free tier)
 
-Both keyword lists support optional IoT-specific entries (commented out by default in `config.yaml`). Uncomment the IoT blocks to add searches like `"IoT architect"` and `"head of IoT"` to both local and remote passes.
+Results are deduplicated by URL across all location/keyword combinations, so the same posting returned by multiple searches is only stored once.
+
+## API Quota Planning
+
+Free tier: **100 calls/day**. Budget is: `(len(locations) × len(keywords)) + len(remote_keywords)`.
+
+Keep this total below 100 to allow multiple runs per day. `results_per_page` defaults to 10 — raise it toward 50 (the free-tier max) only if you're getting too few results per keyword.
 
 ## Title Filtering
 
-Before creating a `Job` object, two filters run on the title:
+Before creating a `Job` object, two filters run on the title. Both filter lists are **imported from `models/filters.py`** — the single source of truth shared with `ScoringAgent`.
 
 **Inclusion filter** (`RELEVANT_TITLE_KEYWORDS`) — title must contain at least one:
-`engineer`, `architect`, `director`, `manager`, `principal`, `staff`, `lead`, `head of`, `vp`, `cloud`, `data`, `devops`, `solutions`, `technical`, `developer`, `iot`, `embedded`, `connected devices`, `edge computing`
+`engineer`, `architect`, `director`, `manager`, `principal`, `staff`, `lead`, `head of`, `vp`, `cloud`, `devops`, `solutions`, `developer`, `iot`, `embedded`, `connected devices`, `edge computing`
 
-**Exclusion filter** (`EXCLUDED_TITLE_KEYWORDS`) — title must NOT contain:
-`presales`, `sales manager`, `sales engineer`, `account manager`, `java developer`, `electrical engineer`, etc.
+**Exclusion filter** (`EXCLUDED_TITLE_KEYWORDS`) — title must NOT contain any of:
+- Sales: `presales`, `sales manager`, `sales engineer`, `account manager`, `business development`
+- Non-tech management: `property manager`, `community manager`, `leasing`, `project manager`, `program manager`, `office manager`, `operations manager`, `fundraising`, `transcription`
+- Non-software engineering: `electrical engineer`, `civil engineer`, `structural engineer`, `landscape architect`, `design specification`, `hvac`, `substation`
+- Junior/unrelated: `intern`, `internship`, `associate engineer`, `hotel`, `medical`
 
-This pre-filters noise at the scraper level before jobs reach the more expensive Claude scoring stage.
+This pre-filters noise at the scraper level before jobs reach the more expensive Claude scoring stage. Adding a keyword to `models/filters.py` automatically applies it in both the scraper and the scoring agent.
 
 ## URL Resolution
 
@@ -70,9 +80,11 @@ Each `_fetch_jobs()` call is decorated with `@retry` from `tenacity`:
 
 ## Rate Limit Awareness
 
-Free tier: 100 calls/day. With 3 local keywords + 3 remote keywords = **6 calls per run**, giving ~16 full runs per day.
+Free tier: 100 calls/day. Budget formula: `(len(locations) × len(keywords)) + len(remote_keywords)`.
 
-`results_per_page` defaults to 20 but can be raised to 50 (the free-tier max) in `config.yaml`.
+Default config: 4 locations × 6 keywords + 6 remote = **30 calls/run** → ~3 full runs per day before hitting the limit.
+
+`results_per_page` defaults to 10. Raise toward 50 (the free-tier max) if you need more results per search. Halving `results_per_page` doesn't reduce call count but does reduce the number of noisy jobs ingested.
 
 ## Field Mapping
 

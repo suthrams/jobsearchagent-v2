@@ -34,10 +34,12 @@ Extracts structured profile data from raw resume text. Instructs Claude to retur
 ## score_job.md
 
 **Used by:** `ScoringAgent`  
-**Variables:** `{{profile}}`, `{{jobs}}`, `{{num_jobs}}`, `{{tracks}}`, `{{salary_min}}`, `{{salary_currency}}`  
+**Variables:** `{{profile}}`, `{{tracks}}`, `{{salary_min}}`, `{{salary_currency}}`  
 **Output:** JSON array of `BatchJobScore` objects
 
-Scores up to 5 jobs in a single call. Each job in the input is wrapped in `<job index="N">` tags so Claude can return results in any order and they can be remapped by index.
+Scores up to 10 jobs in a single call. Each job in the input is wrapped in `<job index="N">` tags so Claude can return results in any order and they can be remapped by index.
+
+`num_jobs` is intentionally **not** a template variable. It was removed because including it in the cached system prompt caused a cache miss on the last batch of every run (when the count differs from `BATCH_SIZE`). The job count is passed in the user message instead, keeping the system prompt byte-identical across all batches.
 
 **Key instructions given to Claude:**
 - Score range meaning: 80–100 excellent, 60–79 good, 40–59 partial, 0–39 poor

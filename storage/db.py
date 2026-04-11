@@ -406,6 +406,7 @@ class Database:
         jobs_skipped: int,
         batches: int,
         est_cost_usd: float,
+        run_at: datetime | None = None,
         tokens_input_scoring: int = 0,
         tokens_output_scoring: int = 0,
         tokens_input_parsing: int = 0,
@@ -424,6 +425,8 @@ class Database:
             jobs_skipped            : Jobs skipped (stale, no description, excluded).
             batches                 : Number of Claude API batch calls made.
             est_cost_usd            : Estimated USD cost (used when no actual tokens available).
+            run_at                  : When the run started (captured before scraping).
+                                      Defaults to now() if not provided.
             tokens_input_scoring    : Actual input tokens used for job_scoring calls.
             tokens_output_scoring   : Actual output tokens used for job_scoring calls.
             tokens_input_parsing    : Actual input tokens used for resume_parsing calls.
@@ -447,7 +450,7 @@ class Database:
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                datetime.utcnow().isoformat(),
+                (run_at or datetime.utcnow()).isoformat(),
                 jobs_scraped, jobs_new, jobs_scored, jobs_skipped, batches,
                 round(est_cost_usd, 6),
                 tokens_input_scoring, tokens_output_scoring,

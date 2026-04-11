@@ -64,7 +64,7 @@ Controls which career tracks are scored. Disabling a track saves API tokens.
 | Operation | Default | Rationale |
 |---|---|---|
 | `resume_parsing` | 1,000 | Profile JSON is compact |
-| `job_scoring` | 2,000 | Covers 5 score objects + summaries |
+| `job_scoring` | 3,500 | Covers 10 score objects + summaries (~300 tokens each) |
 | `resume_tailoring` | 2,000 | Longer freeform content |
 
 #### `TemperatureConfig`
@@ -79,11 +79,13 @@ Controls which career tracks are scored. Disabling a track saves API tokens.
 |---|---|---|
 | `enabled` | `True` | Can be disabled without removing config |
 | `country` | `"us"` | ISO country code for Adzuna endpoint |
-| `keywords` | `[]` | Search terms for local searches |
-| `location` | `""` | City and state, e.g. "Atlanta, GA" |
-| `radius_km` | `80` | Search radius around location |
-| `results_per_page` | `20` | Results per keyword (max 50 on free tier) |
-| `remote_keywords` | `[]` | Keywords for US-wide remote search (no location filter) |
+| `keywords` | `[]` | Search terms used for every local location search |
+| `locations` | `[]` | Cities/states to search, e.g. `["Atlanta, GA", "Houston, TX"]`. One API call per keyword × location combination. |
+| `radius_km` | `80` | Search radius around each location in kilometres |
+| `results_per_page` | `10` | Results per keyword per call (max 50 on free tier) |
+| `remote_keywords` | `[]` | Keywords for US-wide remote search (no location filter, one call per keyword) |
+
+> **Quota planning:** Total calls per run = `(len(locations) × len(keywords)) + len(remote_keywords)`. Keep below 100 (free tier daily limit).
 
 ### `StorageConfig`
 | Field | Default | Meaning |

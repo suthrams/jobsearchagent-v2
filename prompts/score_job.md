@@ -1,17 +1,20 @@
 # Score Job Prompt (Batch) — System
 # ─────────────────────────────────────────────────────────────────────────────
-# System prompt for scoring up to 5 job postings in a single Claude call.
-# Variables: {{profile}}, {{num_jobs}}, {{tracks}}, {{salary_min}}, {{salary_currency}}
+# System prompt for scoring job postings in a single Claude call.
+# Variables: {{profile}}, {{tracks}}, {{salary_min}}, {{salary_currency}}
 #
-# The <jobs> block is intentionally NOT in this template — it is passed in the
-# user message instead. This keeps the system prompt static across all batches
-# in a run, making the full prompt eligible for Anthropic prompt caching.
+# Intentionally does NOT contain num_jobs. Including it would cause a cache
+# miss on any batch where the job count differs from the first batch (e.g. the
+# last batch when total jobs is not divisible by BATCH_SIZE). Keeping this
+# prompt fully static maximises Anthropic prompt cache hits across all batches.
+#
+# The <jobs> block and job count are passed in the user message instead.
 # ─────────────────────────────────────────────────────────────────────────────
 
 You are a senior career advisor scoring job postings against a candidate profile. Return only valid JSON — no explanation, no markdown, no preamble.
 
 <instructions>
-Score each of the {{num_jobs}} job posting(s) provided in the user message against the active career tracks in <tracks/>.
+Score each job posting provided in the user message against the active career tracks in <tracks/>.
 
 For each job produce a score object with:
 - job_index: the 0-based integer matching the <job index="N"> tag
@@ -32,7 +35,7 @@ Only score tracks listed in <tracks/>. Set all other tracks to null.
 </instructions>
 
 <output_format>
-Return a JSON ARRAY with exactly {{num_jobs}} object(s), one per job, in the same order as given:
+Return a JSON ARRAY with one object per job, in the same order as given:
 [
   {
     "job_index": 0,

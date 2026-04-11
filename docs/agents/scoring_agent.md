@@ -7,13 +7,15 @@ Scores job postings against the candidate's profile across all active career tra
 ## Agentic Patterns
 
 ### 1. Batched Fan-Out
-Instead of one Claude call per job, jobs are grouped into batches of 5 (`BATCH_SIZE = 5`). Each job in the batch gets an XML index tag (`<job index="0">`, `<job index="1">`, etc.) so Claude can return an array and scores can be mapped back even if Claude reorders items.
+Instead of one Claude call per job, jobs are grouped into batches of 10 (`BATCH_SIZE = 10`). Each job in the batch gets an XML index tag (`<job index="0">`, `<job index="1">`, etc.) so Claude can return an array and scores can be mapped back even if Claude reorders items.
 
 ```
-50 jobs → 10 batches of 5 → 10 Claude calls
+50 jobs →  5 batches of 10 →  5 Claude calls
 vs.
-50 jobs → 50 Claude calls  (without batching)
+50 jobs → 50 Claude calls   (without batching)
 ```
+
+**Cache correctness:** `num_jobs` is intentionally absent from the system prompt. Including it caused a cache miss on the last batch of every run (e.g. "Score these 3 jobs" ≠ "Score these 10 jobs" → different cache key → full input charge). The count is passed in the user message only, keeping the system prompt byte-identical across all batches.
 
 ### 2. Pre-Filter Gate (Cheap Before Expensive)
 Two filter stages run before any Claude call, eliminating irrelevant jobs:
@@ -49,18 +51,24 @@ Returns the same list with `scores` and `status` populated on eligible jobs.
 
 ## Filter Keywords
 
+Both filter lists live in **`models/filters.py`** — the single source of truth imported by both `ScoringAgent` and `AdzunaScraper`. Editing `models/filters.py` updates both gatekeeping layers simultaneously, preventing the drift that caused noisy jobs to reach Claude while the scraper dropped them.
+
 ### Excluded Titles (`EXCLUDED_TITLE_KEYWORDS`)
-Titles containing these strings are skipped regardless of source:
-- `presales`, `sales manager`, `sales engineer`, `account manager`
-- `java developer`, `electrical engineer`, `structural engineer`
-- `hotel`, `hvac`, and other non-IT disciplines
+Titles containing these strings are skipped regardless of source (LinkedIn and Adzuna both pass through this gate):
+- Sales: `presales`, `sales manager`, `sales engineer`, `account manager`, `business development`
+- Non-tech management: `property manager`, `community manager`, `leasing`, `project manager`, `program manager`, `office manager`, `operations manager`, `fundraising`, `transcription`
+- Non-software engineering: `electrical engineer`, `civil engineer`, `structural engineer`, `landscape architect`, `design specification`, `hvac`, `substation`, `medical`
+- Junior/unrelated: `intern`, `internship`, `associate engineer`, `hotel`
+- Language-specific: `java developer`, `java engineer`
 
 ### Required Description Keywords (`TECH_DESCRIPTION_KEYWORDS`)
-At least one of these must appear in the description:
-- Core tech: `software`, `cloud`, `api`, `python`, `kubernetes`, `aws`, etc.
-- Leadership: `engineering team`, `technical leadership`, `digital transformation`
-- Domain: `machine learning`, `llm`, `data pipeline`, `ci/cd`
-- IoT / edge: `iot`, `internet of things`, `mqtt`, `edge computing`, `embedded`, `connected devices`, `iiot`, `device management`, `telemetry`, `firmware`
+At least one of these must appear in the description. Deliberately excludes broad words like `"technology"`, `"technical"`, `" it "`, and `"information technology"` that appear in HR, biotech, and office management roles:
+- Languages: `software`, `python`, `javascript`, `typescript`, `.net`, `golang`, `rust`
+- Cloud/infra: `cloud`, `aws`, `azure`, `gcp`, `kubernetes`, `docker`, `terraform`, `ci/cd`, `devops`, `platform engineering`
+- Architecture: `api`, `microservice`, `distributed system`, `backend`, `frontend`, `saas`, `paas`, `application development`
+- Data/AI: `data engineering`, `data pipeline`, `machine learning`, `artificial intelligence`, ` ai `, `llm`, `database`
+- Leadership (scoped): `engineering team`, `software engineer`, `software development`, `digital transformation`
+- IoT/edge: `iot`, `internet of things`, `mqtt`, `edge computing`, `embedded`, `connected devices`, `iiot`, `device management`, `telemetry`, `firmware`
 
 ## Claude Call Details
 
@@ -68,7 +76,7 @@ At least one of these must appear in the description:
 |---|---|
 | Prompt template | `prompts/score_job.md` |
 | Operation | `job_scoring` |
-| Max tokens | 2,000 (covers 5 jobs) |
+| Max tokens | 3,500 (covers 10 jobs — ~300 tokens/score object) |
 | Temperature | 0.1 (consistent scoring) |
 
 ## Data Flow

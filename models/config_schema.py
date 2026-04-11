@@ -73,7 +73,7 @@ class MaxTokensConfig(BaseModel):
     it produces a full rewritten resume section, not just a JSON score.
     """
     resume_parsing:   int = Field(1000, description="Max tokens for resume parsing")
-    job_scoring:      int = Field(2000, description="Max tokens for job scoring (covers up to 5 jobs per batch)")
+    job_scoring:      int = Field(3500, description="Max tokens for job scoring (covers up to 10 jobs per batch)")
     resume_tailoring: int = Field(2000, description="Max tokens for resume tailoring")
 
 
@@ -116,18 +116,18 @@ class AdzunaConfig(BaseModel):
     Requires ADZUNA_APP_ID and ADZUNA_APP_KEY in your .env file.
     - country          : ISO country code, 'us' for United States
     - keywords         : Search terms — one API call per keyword
-    - location         : City and state, e.g. 'Atlanta, GA'
+    - locations        : List of cities/states to search, e.g. ['Atlanta, GA', 'Houston, TX']
+    - Local search keywords come from search.titles (AppConfig), not from this model.
     - radius_km        : Search radius in kilometres around the location
     - results_per_page : Number of results per keyword (max 50 on free tier)
     """
 
     enabled: bool = Field(True, description="Whether to run the Adzuna scraper")
     country: str = Field("us", description="ISO country code for the Adzuna endpoint")
-    keywords: list[str] = Field(default_factory=list, description="Search keywords for the local location search")
-    location: str = Field("", description="City and state, e.g. Atlanta, GA")
+    locations: list[str] = Field(default_factory=list, description="Cities/states to search, e.g. ['Atlanta, GA', 'Houston, TX']")
     radius_km: int = Field(80, description="Search radius in kilometres")
-    results_per_page: int = Field(20, description="Results per keyword per call (max 50)")
-    remote_keywords: list[str] = Field(default_factory=list, description="Keywords for a separate US-wide remote search (no location filter)")
+    results_per_page: int = Field(10, description="Results per keyword per call (max 50)")
+    remote_keywords: list[str] = Field(default_factory=list, description="Subset of titles for US-wide remote search. Kept separate for quota control — remote adds one call per entry.")
 
 
 class LaddersConfig(BaseModel):

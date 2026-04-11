@@ -16,62 +16,14 @@ from claude.response_parser import ResponseParser
 from models.job import BatchJobScore, Job, ApplicationStatus, TrackScores
 from models.profile import Profile
 from models.config_schema import TracksConfig, SalaryConfig
+from models.filters import EXCLUDED_TITLE_KEYWORDS, TECH_DESCRIPTION_KEYWORDS
 
 logger = logging.getLogger(__name__)
 
 # Number of jobs sent to Claude in a single API call.
-# At 5, one call covers ~4000 input tokens and ~1200 output tokens.
-BATCH_SIZE = 5
-
-# Title substrings that disqualify a job from scoring, regardless of source.
-# Mirrors the exclusion list in scrapers/adzuna.py so LinkedIn jobs are also filtered.
-EXCLUDED_TITLE_KEYWORDS = [
-    "presales",
-    "pre-sales",
-    "pre sales",
-    "sales manager",
-    "sales representative",
-    "sales engineer",
-    "account manager",
-    "account executive",
-    "java developer",
-    "java engineer",
-    "electrical engineer",
-    "department lead",
-    # Non-IT engineering disciplines
-    "structural engineer",
-    "mechanical engineer",
-    "process engineer",
-    "hydraulic engineer",
-    "civil engineer",
-    "landscape architect",
-    "maintenance engineer",
-    "facilities engineer",
-    "hotel",
-    "hvac",
-]
-
-# At least one of these must appear in the job description (case-insensitive).
-# Acts as a universal tech-domain gate — catches non-IT roles that slip past
-# the title filter (hotel maintenance, civil engineering, distribution ops, etc.).
-# Adzuna descriptions are short snippets (~200 chars) but always name the domain.
-TECH_DESCRIPTION_KEYWORDS = [
-    "software", "cloud", "api", "microservice", "kubernetes", "docker",
-    "aws", "azure", "gcp", "devops", "platform engineering",
-    "python", "javascript", "typescript", ".net", "golang", "rust",
-    "architecture", "distributed system", "data engineering", "data pipeline",
-    "machine learning", "artificial intelligence", " ai ", "llm",
-    "database", "backend", "frontend", "full stack", "fullstack",
-    "infrastructure", "terraform", "ci/cd", "cicd",
-    "saas", "paas", "iaas", "application development",
-    "engineering team", "software engineer", "software development",
-    "technology", "digital transformation", "technical leadership",
-    "information technology", " it ", "tech stack",
-    # IoT / connected devices / edge
-    "iot", "internet of things", "mqtt", "edge computing",
-    "embedded", "connected devices", "industrial iot", "iiot",
-    "device management", "telemetry", "firmware",
-]
+# At 10, one call covers ~6500 input tokens and ~3000 output tokens.
+# Doubling from 5 halves round-trips and keeps the ephemeral cache window tighter.
+BATCH_SIZE = 10
 
 
 class ScoringAgent:
@@ -205,11 +157,12 @@ class ScoringAgent:
             for i, job in enumerate(jobs)
         )
 
-        # System prompt: static content only (no jobs) — fully cacheable across batches
+        # System prompt: fully static across all batches — no per-batch variables.
+        # num_jobs is intentionally excluded: including it caused a cache miss on the
+        # last batch whenever len(jobs) != BATCH_SIZE (i.e. almost every run).
         prompt = self.loader.load(
             "score_job",
             profile=self._profile_summary(profile),
-            num_jobs=str(len(jobs)),
             tracks=", ".join(active_tracks),
             salary_min=str(self.salary_config.min_desired),
             salary_currency=self.salary_config.currency,
@@ -224,10 +177,12 @@ class ScoringAgent:
             }
         ]
 
-        # Jobs go in the user message — the only part that changes between batches
+        # Jobs go in the user message — the only part that changes between batches.
+        # Job count is stated here (not in the cached system prompt) so the system
+        # prompt stays byte-identical across all batches, maximising cache hits.
         user = (
             f"<jobs>\n{jobs_block}\n</jobs>\n\n"
-            f"Score these {len(jobs)} job posting(s) and return the JSON array."
+            f"Score these {len(jobs)} job(s) and return the JSON array."
         )
 
         raw = self.client.call(

@@ -52,7 +52,7 @@ This was chosen over Python's `str.format()` (`{variable}`) to avoid conflicts w
 | File | Variables | Used by |
 |---|---|---|
 | `prompts/parse_resume.md` | `resume_text` | `ProfileAgent` |
-| `prompts/score_job.md` | `profile`, `jobs`, `num_jobs`, `tracks`, `salary_min`, `salary_currency` | `ScoringAgent` |
+| `prompts/score_job.md` | `profile`, `tracks`, `salary_min`, `salary_currency` | `ScoringAgent` |
 | `prompts/tailor_resume.md` | `profile`, `job`, `track` | `TailoringAgent` |
 
 See [prompts/overview.md](../prompts/overview.md) for full prompt documentation.

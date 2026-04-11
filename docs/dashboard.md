@@ -12,6 +12,7 @@ streamlit run dashboard.py
 
 | View | Description |
 |---|---|
+| **New Jobs** | Jobs found in the most recent run, regardless of score. Shows both scored and unscored jobs so you can see what was just scraped. |
 | **Top Matches** | All scored jobs ranked by best score across all tracks. Shows score metrics and job cards. |
 | **IC Track** | Senior/Staff/Principal Engineer roles, ranked by IC score. |
 | **Architect Track** | Solutions/Principal/Enterprise Architect roles, ranked by architect score. |
@@ -43,6 +44,8 @@ def load_runs() -> pd.DataFrame:
 Both loaders are cached for 30 seconds. A `python main.py` run that finishes will be reflected within 30 seconds without a manual refresh. Both use pandas + direct SQLite connections — they do not go through the `Database` class.
 
 `load_jobs()` reads only `status = 'scored'` jobs, using the denormalised `score_ic`, `score_architect`, `score_management`, and `score_best` columns directly (avoiding JSON parsing in SQL).
+
+`load_new_jobs()` powers the **New Jobs** view. It reads `last_run_at()` from the `runs` table, then queries `WHERE found_at >= run_at`. This relies on `run_at` being captured at the **start** of the run (before scraping). If `run_at` were recorded at the end of the run, all jobs would have `found_at < run_at` and this view would show empty. See `main.py` and `storage/db.md` for the fix.
 
 `load_runs()` reads all rows from the `runs` table ordered by `run_at ASC`, adds a `cumulative_cost` column, and returns an empty DataFrame if the table doesn't exist yet (first launch before any run). It also derives `display_cost` — preferring `actual_cost_usd` over `est_cost_usd` when real token data is available.
 

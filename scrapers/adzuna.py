@@ -17,57 +17,13 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 
 from models.job import Job, JobSource
 from models.config_schema import AdzunaConfig
+from models.filters import RELEVANT_TITLE_KEYWORDS, EXCLUDED_TITLE_KEYWORDS
 from scrapers.base import BaseScraper
 
 logger = logging.getLogger(__name__)
 
 # Adzuna REST API base URL — country code is inserted per call
 ADZUNA_BASE = "https://api.adzuna.com/v1/api/jobs/{country}/search/1"
-
-RELEVANT_TITLE_KEYWORDS = [
-    "engineer",
-    "architect",
-    "director",
-    "manager",
-    "principal",
-    "staff",
-    "lead",
-    "head of",
-    "vp",
-    "vice president",
-    "software",
-    "platform",
-    "cloud",
-    "data",
-    "devops",
-    "sre",
-    "infrastructure",
-    "solutions",
-    "technical",
-    "developer",
-    # IoT / connected devices
-    "iot",
-    "embedded",
-    "connected devices",
-    "edge computing",
-]
-
-# Titles that match RELEVANT_TITLE_KEYWORDS but are not relevant to this search.
-# Checked after the inclusion pass — any title containing one of these is dropped.
-EXCLUDED_TITLE_KEYWORDS = [
-    "presales",
-    "pre-sales",
-    "pre sales",
-    "sales manager",
-    "sales representative",
-    "sales engineer",
-    "account manager",
-    "account executive",
-    "java developer",
-    "java engineer",
-    "electrical engineer",
-    "department lead",
-]
 
 
 class AdzunaScraper(BaseScraper):
@@ -82,17 +38,20 @@ class AdzunaScraper(BaseScraper):
       These must be set in your .env file before running.
 
     Rate limits:
-      Free tier allows 100 calls/day. With 3 keywords that is 3 calls per run,
-      giving you ~33 runs per day before hitting the limit.
+      Free tier allows 100 calls/day.
+      Budget = (len(titles) × len(locations)) + len(remote_keywords).
     """
 
-    def __init__(self, config: AdzunaConfig) -> None:
+    def __init__(self, config: AdzunaConfig, titles: list[str]) -> None:
         """
         Args:
-            config: AdzunaConfig from config.yaml
+            config: AdzunaConfig from config.yaml (locations, radius, remote_keywords, etc.)
+            titles: Job titles to search for — comes from search.titles in AppConfig,
+                    the single source of truth for what roles the user is targeting.
         """
         super().__init__("adzuna")
         self.config = config
+        self.titles = titles
 
         # Read credentials from environment — set in .env
         self.app_id = os.getenv("ADZUNA_APP_ID")
@@ -118,16 +77,21 @@ class AdzunaScraper(BaseScraper):
         seen_urls: set[str] = set()
         jobs: list[Job] = []
 
-        # Local search — scoped to config.location + radius
-        for keyword in self.config.keywords:
-            try:
-                new_jobs = self._fetch_jobs(keyword, location=self.config.location)
-                for job in new_jobs:
-                    if job.url not in seen_urls:
-                        seen_urls.add(job.url)
-                        jobs.append(job)
-            except Exception as e:
-                logger.warning("Adzuna fetch failed for keyword '%s': %s", keyword, e)
+        # Local search — one call per title × location combination
+        # Titles come from search.titles (AppConfig) — the single source of truth
+        for location in self.config.locations:
+            for keyword in self.titles:
+                try:
+                    new_jobs = self._fetch_jobs(keyword, location=location)
+                    for job in new_jobs:
+                        if job.url not in seen_urls:
+                            seen_urls.add(job.url)
+                            jobs.append(job)
+                except Exception as e:
+                    logger.warning(
+                        "Adzuna fetch failed for keyword '%s' in '%s': %s",
+                        keyword, location, e,
+                    )
 
         # Remote search — no location filter, appends "remote" to each keyword
         for keyword in self.config.remote_keywords:

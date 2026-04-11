@@ -83,15 +83,16 @@ graph TB
 
     subgraph DATA["Data Layer"]
         LI["LinkedIn Scraper"]
-        AZ["Adzuna Scraper"]
+        AZ["Adzuna Scraper\nmulti-location"]
         LA["Ladders Scraper"]
         DB[("SQLite Database")]
         CACHE["Profile Cache\nprofile.json"]
+        FILTERS["models/filters.py\nShared Filter Lists"]
     end
 
     subgraph EXTERNAL["External Services"]
         ANTHROPIC["Anthropic API\nclaude-sonnet-4-6"]
-        ADZUNA_API["Adzuna REST API"]
+        ADZUNA_API["Adzuna REST API\nper location × keyword"]
     end
 
     CLI --> PA
@@ -114,9 +115,14 @@ graph TB
     LA --> DB
     AZ --> ADZUNA_API
 
+    FILTERS -->|"EXCLUDED_TITLE_KEYWORDS"| AZ
+    FILTERS -->|"EXCLUDED_TITLE_KEYWORDS\nTECH_DESCRIPTION_KEYWORDS"| SA
+
     SA --> DB
     TA --> DB
     PA --> DB
+
+    style FILTERS fill:#fce7f3,stroke:#db2777
 ```
 
 ---
@@ -127,10 +133,17 @@ How the browser dashboard reads and displays scored job data.
 
 ```mermaid
 flowchart TD
-    DB[("SQLite Database\njobs.db")] -->|"SQL query\nscored jobs only"| LOAD["load_jobs()\ncached 30 seconds"]
+    DB[("SQLite Database\njobs.db")]
+
+    DB -->|"WHERE found_at >= run_at\nrun_at captured at run START"| LOAD_NEW["load_new_jobs()\ncached 30 seconds"]
+    DB -->|"WHERE status = scored"| LOAD["load_jobs()\ncached 30 seconds"]
     DB -->|"SELECT * FROM runs"| LOAD_RUNS["load_runs()\ncached 30 seconds"]
+
+    LOAD_NEW --> NDF["Pandas DataFrame\nall jobs from latest run\nincluding unscored"]
     LOAD --> DF["Pandas DataFrame\nall scored jobs"]
     LOAD_RUNS --> RDF["Pandas DataFrame\nall run records"]
+
+    NDF --> V0["New Jobs View\nlatest run only\nscored + unscored"]
 
     DF --> SIDEBAR["Sidebar Controls\nmin score slider\nsearch filter\nview selector"]
     SIDEBAR --> FILTER["Filtered DataFrame"]
@@ -154,6 +167,8 @@ flowchart TD
     TRESULT --> APPLY["Mark as Applied button\nwrites status to SQLite"]
 
     style DB fill:#fef9c3,stroke:#eab308
+    style LOAD_NEW fill:#fee2e2,stroke:#dc2626
+    style V0 fill:#fee2e2,stroke:#dc2626
     style CHART fill:#dbeafe,stroke:#3b82f6
     style COST_CHART fill:#dbeafe,stroke:#3b82f6
     style TOKEN_CHART fill:#dbeafe,stroke:#3b82f6
@@ -172,17 +187,18 @@ End-to-end flow for `python main.py` (the default scrape + score command).
 flowchart TD
     START([python main.py]) --> CONFIG[Load and validate config.yaml]
     CONFIG --> BOOT[Bootstrap DB, ClaudeClient, Agents]
-    BOOT --> SCRAPE
+    BOOT --> TIMESTAMP["run_started_at = datetime.utcnow()\ncaptured BEFORE scraping\nused as run_at in DB so dashboard\nWHERE found_at >= run_at works"]
+    TIMESTAMP --> SCRAPE
 
     subgraph SCRAPE["Scrape Phase"]
         S1["LinkedInScraper\ninbox/linkedin.txt"]
-        S2["AdzunaScraper\nAdzuna REST API"]
+        S2["AdzunaScraper\nper location × keyword call\nAtlanta · Houston · Newark · Seattle"]
         S3["LaddersScraper\nHTML scraping"]
         S1 & S2 & S3 --> MERGE["Merge results — N jobs"]
     end
 
     MERGE --> DEDUP["Deduplicate by URL and title+company"]
-    DEDUP --> INSERT["Insert new jobs — status = NEW"]
+    DEDUP --> INSERT["Insert new jobs — status = NEW\nfound_at = now()"]
     INSERT --> UNSCORED["Query: get_by_status(NEW)"]
 
     UNSCORED --> ESTIMATE["Estimate API cost and show to user"]
@@ -192,17 +208,19 @@ flowchart TD
 
     subgraph SCORE["Score Phase"]
         PROFILE["ProfileAgent.load()\nresume.pdf to Profile"]
-        PROFILE --> FILTER["Filter: stale, no desc,\nexcluded title, non-tech"]
-        FILTER --> BATCH["Chunk into batches of 5"]
+        PROFILE --> FILTER["Filter via models/filters.py\nstale · no desc · excluded title · non-tech"]
+        FILTER --> BATCH["Chunk into batches of 10"]
         BATCH --> CLAUDE["Claude API call\n5 jobs to 3-track scores\ntokens accumulated in ClaudeClient"]
         CLAUDE --> SAVE["db.update_job() — status = SCORED"]
         SAVE --> BATCH
     end
 
     SAVE --> USAGE["client.get_usage()\nread actual input+output tokens\nper operation"]
-    USAGE --> RUN["db.insert_run()\npersist run stats + token counts\nto runs table"]
+    USAGE --> RUN["db.insert_run(run_at=run_started_at)\npersist run stats + token counts\nto runs table"]
     RUN --> DISPLAY["print_scored_jobs()\nRich table + results.txt"]
     DISPLAY --> END([Done])
+
+    style TIMESTAMP fill:#fee2e2,stroke:#dc2626
 ```
 
 ---
@@ -259,11 +277,11 @@ sequenceDiagram
     participant RP as ResponseParser
     participant DB as SQLite
 
-    Note over SA: 50 jobs split into 10 batches of 5
+    Note over SA: 50 jobs split into 5 batches of 10
 
-    loop Each batch of 5 jobs
+    loop Each batch of 10 jobs
         SA->>SA: Filter — stale, no description,\nexcluded title, non-tech desc
-        Note over SA: Build XML block with index tags\njob index 0 through 4
+        Note over SA: Build XML block with index tags\njob index 0 through 9
         SA->>PL: load("score_job", profile, jobs, tracks, salary_min)
         PL-->>SA: rendered system prompt
 
@@ -418,7 +436,7 @@ flowchart LR
     L3 --> CC["ClaudeClient.call\nsystem = rendered prompt\nuser = task message\noperation = named operation"]
 
     A1 -->|"resume_text = pdf text"| L1
-    A2 -->|"profile, jobs, tracks,\nsalary_min, num_jobs"| L1
+    A2 -->|"profile, tracks, salary_min\n(num_jobs in user message only)"| L1
     A3 -->|"profile, job, track"| L1
 ```
 
@@ -427,10 +445,12 @@ flowchart LR
 ## 9. Pre-Filter Gate Pattern
 
 Four filter stages eliminate irrelevant jobs before any Claude API call is made.
+Filter lists (stages 3 & 4) are defined in `models/filters.py` and imported by both
+`AdzunaScraper` (scrape-time gate) and `ScoringAgent` (score-time gate).
 
 ```mermaid
 flowchart TD
-    START(["N unscored jobs"]) --> G1
+    START(["N unscored jobs\nLinkedIn + Adzuna + Ladders"]) --> G1
 
     G1{"posted more than\n30 days ago?"}
     G1 -- Yes --> SKIP1["Skip — stale listing"]
@@ -440,15 +460,20 @@ flowchart TD
     G2 -- Yes --> SKIP2["Skip — no content to score"]
     G2 -- No --> G3
 
-    G3{"title contains\nexcluded keyword?\npresales, sales eng,\njava dev, civil eng..."}
+    FILTERS["models/filters.py\nEXCLUDED_TITLE_KEYWORDS\nTECH_DESCRIPTION_KEYWORDS"]
+
+    G3{"title contains\nexcluded keyword?\nproperty mgr · leasing · project mgr\nsales eng · civil eng · intern..."}
+    FILTERS -->|"imported by ScoringAgent"| G3
     G3 -- Yes --> SKIP3["Skip — irrelevant role"]
     G3 -- No --> G4
 
-    G4{"description contains\nat least one tech keyword?\nsoftware, cloud, api,\nkubernetes, python, llm..."}
+    G4{"description contains\nat least one tech keyword?\nsoftware · cloud · api\nkubernetes · python · llm..."}
+    FILTERS -->|"imported by ScoringAgent"| G4
     G4 -- No --> SKIP4["Skip — non-tech role"]
     G4 -- Yes --> SCORE["Send to Claude for scoring\nAPI token cost incurred here"]
 
     style SCORE fill:#d4edda,stroke:#28a745
+    style FILTERS fill:#fce7f3,stroke:#db2777
     style SKIP1 fill:#f8d7da,stroke:#dc3545
     style SKIP2 fill:#f8d7da,stroke:#dc3545
     style SKIP3 fill:#f8d7da,stroke:#dc3545

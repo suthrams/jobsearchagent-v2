@@ -16,6 +16,7 @@ import argparse
 import logging
 import math
 import sys
+from datetime import datetime
 from pathlib import Path
 
 import yaml
@@ -132,7 +133,7 @@ def run_scrapers(config: AppConfig) -> list:
 
     scrapers = [
         LinkedInScraper(config.scrapers.linkedin.inbox_file),
-        AdzunaScraper(config.scrapers.adzuna),
+        AdzunaScraper(config.scrapers.adzuna, titles=config.search.titles),
         LaddersScraper(config.scrapers.ladders),
     ]
 
@@ -266,7 +267,6 @@ def _write_results_file(jobs: list, best_fn, rec_fn) -> None:
     Each job gets a full block with title, company, URL, scores, and summaries.
     """
     import os
-    from datetime import datetime as dt
 
     out_dir = Path("output/logs")
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -274,7 +274,7 @@ def _write_results_file(jobs: list, best_fn, rec_fn) -> None:
 
     lines = [
         "=" * 70,
-        f"JOB SEARCH RESULTS — {dt.now().strftime('%Y-%m-%d %H:%M')}",
+        f"JOB SEARCH RESULTS — {datetime.now().strftime('%Y-%m-%d %H:%M')}",
         f"Total jobs shown (score >= 50): {len(jobs)}",
         "=" * 70,
         "",
@@ -400,6 +400,7 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
       6. Print the results table
     """
     client.reset_usage()  # clear any tokens from previous operations this session
+    run_started_at = datetime.utcnow()  # capture before scraping so dashboard query works
 
     console.print("[bold]Scraping jobs...[/bold]")
     raw_jobs = run_scrapers(config)
@@ -536,8 +537,11 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
             f"  Full log      : [dim]output/logs/run.log[/dim]"
         )
 
-    # Record this run regardless of whether scoring happened
+    # Record this run regardless of whether scoring happened.
+    # run_started_at is captured before scraping so the dashboard query
+    # (WHERE found_at >= run_at) correctly returns jobs from this run.
     db.insert_run(
+        run_at=run_started_at,
         jobs_scraped=len(raw_jobs),
         jobs_new=new_count,
         jobs_scored=jobs_scored,
@@ -605,8 +609,6 @@ def cmd_tailor(config: AppConfig, db: Database, agents: dict, job_id: int) -> No
     # Mark as applied if the user confirms
     apply = input("\nMark as APPLIED? (y/n): ").strip().lower()
     if apply == "y":
-        from datetime import datetime
-
         job.applied_at = datetime.utcnow()
         job.status = ApplicationStatus.APPLIED
         db.update_job(job)
@@ -675,7 +677,7 @@ def main() -> None:
     if args.dashboard_only:
         import subprocess
         console.print("\n[bold cyan]Launching Streamlit dashboard...[/bold cyan]")
-        subprocess.Popen([sys.executable, "-m", "streamlit", "run", "dashboard.py"])
+        subprocess.Popen(["streamlit", "run", "dashboard.py", "--server.address=localhost"])
         console.print(
             "[green]Dashboard opening at http://localhost:8501[/green]\n"
             "[dim]Stop it with Ctrl+C in the Streamlit terminal.[/dim]"
@@ -697,7 +699,7 @@ def main() -> None:
     if args.dashboard:
         import subprocess
         console.print("\n[bold cyan]Launching Streamlit dashboard...[/bold cyan]")
-        subprocess.Popen([sys.executable, "-m", "streamlit", "run", "dashboard.py"])
+        subprocess.Popen(["streamlit", "run", "dashboard.py", "--server.address=localhost"])
         console.print(
             "[green]Dashboard opening at http://localhost:8501[/green]\n"
             "[dim]Stop it with Ctrl+C in the Streamlit terminal.[/dim]"

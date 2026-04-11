@@ -23,10 +23,16 @@ python main.py --dashboard-only # launch dashboard immediately (no scraping)
 ```
 
 ## File structure
-- `models/`      — Pydantic data models
+- `models/`      — Pydantic data models + shared filter lists (`filters.py`)
 - `claude/`      — Anthropic SDK client, prompt loader, response parser
 - `prompts/`     — Claude prompt templates
 - `scrapers/`    — Job scrapers (LinkedIn, Adzuna, Ladders)
 - `agents/`      — Profile parsing, scoring, tailoring
 - `storage/`     — SQLite database layer
 - `dashboard.py` — Streamlit UI (job list + resume tailoring)
+- `tests/`       — pytest test suite (`python -m pytest tests/`)
+
+## Key invariants
+- `EXCLUDED_TITLE_KEYWORDS` and `TECH_DESCRIPTION_KEYWORDS` live **only** in `models/filters.py`. Both `scrapers/adzuna.py` and `agents/scoring_agent.py` import from there — never define local copies.
+- `run_at` in `db.insert_run()` must be captured **before** scraping begins (see `run_started_at` in `main.py`). If captured at run end, the dashboard "New Jobs" view returns empty.
+- Adzuna quota: `(len(locations) × len(keywords)) + len(remote_keywords)` must stay below 100/day (free tier).

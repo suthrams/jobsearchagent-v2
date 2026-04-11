@@ -32,7 +32,9 @@ All components are created once and injected into agents — no globals, no sing
 ## Command: Scrape and Score (default)
 
 ```
-client.reset_usage()              — clear token counters before this run starts
+run_started_at = datetime.utcnow()  — captured BEFORE scraping; passed to insert_run
+                                       so dashboard WHERE found_at >= run_at works correctly
+client.reset_usage()                — clear token counters before this run starts
 
 run_scrapers(config)
   └─ LinkedInScraper, AdzunaScraper, LaddersScraper run independently
@@ -41,18 +43,18 @@ run_scrapers(config)
 for each job:
   └─ deduplicate by URL and by title+company before inserting
 
-estimate_scoring_cost(num_jobs)   — prints cost estimate and asks for confirmation
+estimate_scoring_cost(num_jobs)     — prints cost estimate and asks for confirmation
 
 ScoringAgent.score_batch(unscored, profile, db=db)
   └─ saves each job to DB immediately after scoring (crash-safe)
   └─ ClaudeClient accumulates real token counts per operation
 
-client.get_usage()                — retrieve actual input/output tokens per operation
-tokens_to_cost(input, output)     — convert to USD using Sonnet 4.6 pricing
+client.get_usage()                  — retrieve actual input/output tokens per operation
+tokens_to_cost(input, output)       — convert to USD using Sonnet 4.6 pricing
 
-db.insert_run(...)                — persist run stats and token counts to runs table
+db.insert_run(run_at=run_started_at, ...)  — persist run stats and token counts to runs table
 
-print_scored_jobs(all_scored)     — Rich table + output/logs/results.txt
+print_scored_jobs(all_scored)       — Rich table + output/logs/results.txt
 ```
 
 ## Command: Tailor (`--tailor <ID>`)
@@ -88,8 +90,8 @@ Can be combined with any command. After the primary command completes, launches 
 
 Before scoring, the app estimates API spend using token averages observed with Sonnet 4.6:
 
-- ~4,000 input tokens per batch (profile + 5 jobs + prompt)
-- ~1,200 output tokens per batch (5 score objects)
+- ~6,500 input tokens per batch (profile + 10 jobs + prompt)
+- ~3,000 output tokens per batch (10 score objects — ~300 tokens each)
 - Pricing: $3/M input, $15/M output
 
 The user must confirm `y` before any tokens are spent.
