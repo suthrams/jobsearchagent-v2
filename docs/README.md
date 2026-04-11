@@ -13,6 +13,9 @@ Each doc covers purpose, public interface, data flow, and the agentic AI pattern
 
 ---
 
+### Feature Overview
+See [features.md](features.md) for a complete summary of every feature and capability — scraping, filtering, scoring, dashboard, exclusion, tailoring, cost tracking, and CLI commands.
+
 ### User Guide
 See [user_guide.md](user_guide.md) for the full end-to-end walkthrough — setup, daily workflow, reading results, tailoring, and troubleshooting.
 
