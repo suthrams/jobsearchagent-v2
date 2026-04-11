@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import os
 import logging
+import threading
 
 import anthropic
 from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
@@ -54,9 +55,11 @@ class ClaudeClient:
         self.config = config
 
         # Accumulated token counts keyed by operation name.
-        # Structure: { operation: {"input": int, "output": int} }
+        # Structure: { operation: {"input": int, "output": int, "cache_write": int, "cache_read": int} }
         # Reset between runs via reset_usage().
+        # Protected by _usage_lock — call() is called from parallel threads in score_batch().
         self._usage: dict[str, dict[str, int]] = {}
+        self._usage_lock = threading.Lock()
 
         logger.debug("ClaudeClient initialised with model=%s", config.model)
 
@@ -138,13 +141,16 @@ class ClaudeClient:
             operation, input_tokens, output_tokens, cache_write_tokens, cache_read_tokens,
         )
 
-        # Accumulate into the per-operation usage store
-        if operation not in self._usage:
-            self._usage[operation] = {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0}
-        self._usage[operation]["input"]       += input_tokens
-        self._usage[operation]["output"]      += output_tokens
-        self._usage[operation]["cache_write"] += cache_write_tokens
-        self._usage[operation]["cache_read"]  += cache_read_tokens
+        # Accumulate into the per-operation usage store.
+        # Lock required: score_batch() calls this from multiple threads concurrently.
+        # Without the lock, +=  is a read-modify-write that can lose increments.
+        with self._usage_lock:
+            if operation not in self._usage:
+                self._usage[operation] = {"input": 0, "output": 0, "cache_write": 0, "cache_read": 0}
+            self._usage[operation]["input"]       += input_tokens
+            self._usage[operation]["output"]      += output_tokens
+            self._usage[operation]["cache_write"] += cache_write_tokens
+            self._usage[operation]["cache_read"]  += cache_read_tokens
 
         return response_text
 

@@ -8,7 +8,9 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 from claude.client import ClaudeClient
@@ -25,6 +27,12 @@ logger = logging.getLogger(__name__)
 # At 10, one call covers ~6500 input tokens and ~3000 output tokens.
 # Doubling from 5 halves round-trips and keeps the ephemeral cache window tighter.
 BATCH_SIZE = 10
+
+# Maximum number of Claude API calls to run concurrently.
+# Set to 3 — safe for Anthropic free-tier RPM limits while still giving
+# a meaningful speedup (3x over sequential for typical 3-5 batch runs).
+# Raise to 5 on paid tiers with higher RPM allowances.
+MAX_PARALLEL_BATCHES = 3
 
 
 class ScoringAgent:
@@ -109,36 +117,65 @@ class ScoringAgent:
         scored_count = 0
         batch_latencies: list[float] = []
 
+        # db writes are serialized with a lock.
+        # SQLite WAL mode allows concurrent reads but still serializes writes —
+        # without this lock, parallel threads racing to commit will raise
+        # "database is locked" on the second writer.
+        db_lock = threading.Lock()
+
         t_score_start = time.perf_counter()
 
-        for batch_num, chunk in enumerate(chunks, 1):
+        # Fire each batch as an independent future. The system prompt is
+        # byte-identical across all batches (num_jobs is in the user message
+        # only) so all concurrent calls share the same Anthropic prompt cache key.
+        def _run_batch(batch_num: int, chunk: list) -> tuple[int, list, list[float]]:
+            """Scores one chunk and returns (batch_num, chunk, scores_list, latency_s)."""
             if on_progress:
                 on_progress(batch_num, total_batches, chunk)
+            t0 = time.perf_counter()
+            scores_list = self._score_chunk(chunk, profile)
+            latency_s = time.perf_counter() - t0
+            logger.debug("Batch %d/%d latency: %.2fs", batch_num, total_batches, latency_s)
+            return batch_num, chunk, scores_list, latency_s
 
-            t_batch_start = time.perf_counter()
-            try:
-                scores_list = self._score_chunk(chunk, profile)
-                batch_latency = time.perf_counter() - t_batch_start
-                batch_latencies.append(batch_latency)
-                logger.debug("Batch %d/%d latency: %.2fs", batch_num, total_batches, batch_latency)
+        with ThreadPoolExecutor(max_workers=MAX_PARALLEL_BATCHES) as pool:
+            futures = {
+                pool.submit(_run_batch, batch_num, chunk): batch_num
+                for batch_num, chunk in enumerate(chunks, 1)
+            }
 
-                for job, track_scores in zip(chunk, scores_list):
-                    if track_scores is not None:
-                        job.scores = track_scores
-                        job.status = ApplicationStatus.SCORED
-                        if db:
-                            db.update_job(job)
-                        scored_count += 1
-                        logger.info(
-                            "Scored: %s at %s | ic=%s | arch=%s | mgmt=%s",
-                            job.title,
-                            job.company,
-                            track_scores.ic.score if track_scores.ic else "n/a",
-                            track_scores.architect.score if track_scores.architect else "n/a",
-                            track_scores.management.score if track_scores.management else "n/a",
-                        )
-            except Exception as e:
-                logger.error("Batch %d/%d failed: %s", batch_num, total_batches, e)
+            for future in as_completed(futures):
+                batch_num = futures[future]
+                try:
+                    _, chunk, scores_list, latency_s = future.result()
+                    batch_latencies.append(latency_s)
+
+                    # Serialize DB writes — one thread at a time
+                    with db_lock:
+                        for job, track_scores in zip(chunk, scores_list):
+                            if track_scores is not None:
+                                job.scores = track_scores
+                                job.status = ApplicationStatus.SCORED
+                                if db:
+                                    db.update_job(job)
+                                scored_count += 1
+                                logger.info(
+                                    "Scored: %s at %s | ic=%s | arch=%s | mgmt=%s",
+                                    job.title,
+                                    job.company,
+                                    track_scores.ic.score if track_scores.ic else "n/a",
+                                    track_scores.architect.score if track_scores.architect else "n/a",
+                                    track_scores.management.score if track_scores.management else "n/a",
+                                )
+
+                except Exception as e:
+                    # One batch failing does not cancel the others — already-submitted
+                    # futures continue running. Jobs in this batch stay as NEW so
+                    # they are retried on the next run.
+                    logger.error(
+                        "Batch %d/%d failed after retries — jobs will remain NEW for next run: %s",
+                        batch_num, total_batches, e,
+                    )
 
         elapsed_score_s = time.perf_counter() - t_score_start
         avg_batch_latency_s = sum(batch_latencies) / len(batch_latencies) if batch_latencies else 0.0
@@ -151,13 +188,15 @@ class ScoringAgent:
         }
 
         logger.info(
-            "Scoring complete: scored=%d skipped=%d failed=%d elapsed=%.1fs avg_batch=%.1fs throughput=%.2f jobs/s",
+            "Scoring complete: scored=%d skipped=%d failed=%d elapsed=%.1fs "
+            "avg_batch=%.1fs throughput=%.2f jobs/s parallel_workers=%d",
             scored_count,
             skipped,
             len(valid) - scored_count,
             elapsed_score_s,
             avg_batch_latency_s,
             jobs_per_second,
+            MAX_PARALLEL_BATCHES,
         )
         return jobs
 
