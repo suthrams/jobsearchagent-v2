@@ -172,13 +172,8 @@ class Job(BaseModel):
     work_mode: Optional[WorkMode] = Field(None, description="Remote / hybrid / onsite")
 
     # --- Content ---
-    # description is the clean text fed to Claude for scoring
-    # raw_html is kept for debugging and re-parsing if needed
     description: Optional[str] = Field(
         None, description="Full job description text, stripped of HTML"
-    )
-    raw_html: Optional[str] = Field(
-        None, description="Raw HTML of the posting, kept for debugging"
     )
 
     # --- Salary (optional) ---

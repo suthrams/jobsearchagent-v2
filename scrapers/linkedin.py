@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -111,6 +112,10 @@ class LinkedInScraper(BaseScraper):
         self.inbox_path.write_text("# Paste LinkedIn job URLs here, one per line\n")
         logger.debug("LinkedIn inbox cleared")
 
+    # Permitted hostnames for LinkedIn job URLs.
+    # Any URL in the inbox that does not match is skipped without a network request.
+    _ALLOWED_HOSTS = {"www.linkedin.com", "linkedin.com"}
+
     @retry(
         wait=wait_exponential(multiplier=1, min=2, max=8),
         stop=stop_after_attempt(3),
@@ -119,12 +124,20 @@ class LinkedInScraper(BaseScraper):
         """
         Fetches a single LinkedIn job URL and parses it into a Job object.
 
+        Validates that the URL belongs to linkedin.com before making any
+        network request — prevents fetching arbitrary URLs placed in the inbox.
+
         Args:
             url: The LinkedIn job posting URL.
 
         Returns:
             A Job object if parsing succeeds, None if the page is unrecognisable.
         """
+        parsed = urlparse(url)
+        if parsed.scheme not in {"https"} or parsed.netloc not in self._ALLOWED_HOSTS:
+            logger.warning("Skipping non-LinkedIn URL (not trusted): %s", url)
+            return None
+
         logger.debug("Fetching LinkedIn URL: %s", url)
 
         with httpx.Client(headers=HEADERS, follow_redirects=True, timeout=15) as client:
@@ -151,7 +164,6 @@ class LinkedInScraper(BaseScraper):
             company=company,
             location=location,
             description=description,
-            raw_html=response.text,
         )
 
     @staticmethod
