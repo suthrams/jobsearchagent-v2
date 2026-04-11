@@ -2,48 +2,48 @@
 
 ---
 
-> **Publishing note:** Diagrams are in Mermaid format — export as PNG before posting to LinkedIn. Use mermaid.live → Download PNG. Use the same theme block from the v1 article for visual consistency.
+> **Publishing note:** Diagrams are in Mermaid format. Export as PNG before posting to LinkedIn. Use mermaid.live and download as PNG. Use the same theme block from the v1 article for visual consistency.
 
-> **Content disclosure:** Portions of this article were drafted and edited with the assistance of Claude (Anthropic). The project, the code, the architecture decisions, and the lessons learned are entirely my own — Claude helped me articulate them clearly.
+> **Content disclosure:** Portions of this article were drafted and edited with the assistance of Claude (Anthropic). The project, the code, the architecture decisions, and the lessons learned are entirely my own. Claude helped me articulate them clearly. I reviewed and revised every section to make sure it accurately reflects my experience.
 
 ---
 
-## HEADLINE (options)
+## HEADLINE OPTIONS
 
-**Option A:** I ran my AI job search agent in production. Here are 4 things that broke and what I learned.
+**Option A:** I ran my AI job search agent in production. Here are 4 things that broke and what I actually learned.
 
-**Option B:** 4 production lessons from running an AI agent for real — the patterns your course didn't teach you.
+**Option B:** 4 production lessons from running an AI agent for real. The patterns your course probably skipped.
 
-**Option C:** Beyond the 8 patterns: what running an AI agent in production actually teaches you.
+**Option C:** Beyond the 8 patterns. What running an AI agent in production actually teaches you.
 
 ---
 
 ## TL;DR
 
 - My first article covered 8 agentic AI patterns I used to build a job search agent
-- This is the follow-up: what happened when I actually ran it, hit bugs, and evolved the system
-- 4 new production lessons — each one maps to a deeper agentic AI pattern
-- The theme: the difference between a prototype and a production agent is observability, precision, and knowing where humans belong in the loop
+- This is the follow-up: what happened when I actually ran it, hit real bugs, and had to evolve the design
+- 4 new production lessons, each one grounded in a deeper agentic AI pattern
+- The underlying theme: the gap between a prototype and a production agent comes down to observability, precision, and knowing exactly where humans should sit in the loop
 
 ---
 
 ## OPENING HOOK
 
-In my last article I shared 8 agentic AI patterns I used to build a job search agent. The response was encouraging — and several people asked: what happened next?
+In my last article I shared 8 agentic AI patterns I used while building a personal job search agent. The response was genuinely encouraging, and several people asked the same question: what happened next?
 
-Here's what happened. I ran it. Real job postings. Real API bills. Real bugs.
+Here is what happened. I ran it. Real job postings. Real API bills. Real bugs that only showed up when actual data started flowing through.
 
-Three things that looked fine in testing broke silently in production. One architectural decision I thought was obvious turned out to be wrong in a subtle way. And I added a capability I hadn't planned for — one that turned out to be the most practically useful thing in the system.
+Three things that looked perfectly fine in testing broke quietly in production. One design decision I thought was straightforward turned out to be subtly wrong. And I ended up adding a capability I had not planned for at all, one that turned out to be the most practically useful thing in the entire system.
 
-This article covers 4 production lessons that extended the original 8 patterns. Each one maps to a concept in agentic AI design that I didn't fully appreciate until I saw it go wrong.
+This article covers the 4 production lessons that came out of that experience. Each one maps to a concept in agentic AI design that I did not fully appreciate until I saw it fail.
 
 ---
 
-## HOW THESE PATTERNS FIT INTO THE AGENTIC AI LANDSCAPE
+## HOW THESE PATTERNS FIT THE AGENTIC AI LANDSCAPE
 
-Before the patterns: a quick map of where these fit.
+Before getting into the patterns, here is a quick map of where they sit.
 
-The agentic AI pattern space can be roughly grouped into four layers:
+The agentic AI pattern space can be grouped into four layers:
 
 | Layer | What it covers |
 |---|---|
@@ -52,7 +52,7 @@ The agentic AI pattern space can be roughly grouped into four layers:
 | **Action** | What the agent does: tool use, batched fan-out, retry with backoff |
 | **Control** | Who controls the agent: human-in-the-loop, pipeline state machine, approval gates |
 
-The 8 patterns from v1 covered all four layers. The 4 new patterns deepen the **Memory** and **Control** layers — the ones that matter most when you move from prototype to production.
+The 8 patterns from the first article touched all four layers. The 4 new patterns go deeper into **Memory** and **Control**, which happen to be the two layers that matter most once you move from a working prototype to something you run every day.
 
 ```mermaid
 mindmap
@@ -60,7 +60,7 @@ mindmap
     Reasoning
       Structured Output v1
       Multi-Track Scoring v1
-      Prompt-as-Template v1
+      Prompt as Template v1
     Memory
       Cache-Aside v1
       Prompt Cache Alignment NEW
@@ -79,19 +79,19 @@ mindmap
 
 ## PATTERN 9: Prompt Cache Alignment
 
-### What it is
+### The setup
 
-Anthropic's API supports server-side **prompt caching**: mark your system prompt with `cache_control: {"type": "ephemeral"}` and the API caches the processed token embeddings for up to 5 minutes. Cached input tokens cost 10% of normal — a 90% reduction for repeated calls.
+Anthropic's API supports server-side prompt caching. You mark your system prompt with `cache_control: {"type": "ephemeral"}` and the API caches the processed token embeddings for up to 5 minutes. Cached input tokens cost 10% of the normal rate, which is a 90% reduction for repeated calls with the same system prompt.
 
-This is different from the Cache-Aside pattern in v1. Cache-Aside avoids calling the API entirely by storing the *output*. Prompt caching is about reducing the cost of the *input* processing when the API is called.
+This is worth distinguishing from the Cache-Aside pattern in the first article. Cache-Aside avoids calling the API at all by storing the output. Prompt caching is about reducing the cost of processing the input each time the API is called.
 
-### The bug
+### What went wrong
 
-My scoring agent batches up to 10 jobs per API call. With 50 unscored jobs, that's 5 batches. I expected the prompt cache to hit on batches 2–5 and only miss on batch 1.
+My scoring agent sends up to 10 jobs per API call. With 50 unscored jobs that means 5 batches. I expected the prompt cache to miss on batch 1 and hit on batches 2 through 5.
 
-But batch 5 (the last, partial batch with 7 jobs instead of 10) was always a cache miss. I was paying full input token price on the last batch of every run.
+But the last batch, the partial one with 7 jobs instead of 10, was always a cache miss. I was paying full input token price on the final batch of every single run.
 
-The root cause: my system prompt template contained `{{num_jobs}}`. The system prompt for the first four batches read *"Score each of the 10 job postings provided"* — identical bytes, cache hits. The last batch read *"Score each of the 7 job postings provided"* — different bytes, cache miss.
+The root cause was a single template variable. My system prompt contained `{{num_jobs}}`, so batches 1 through 4 produced identical system prompt bytes ("Score each of the 10 job postings provided") and hit the cache. Batch 5 produced different bytes ("Score each of the 7 job postings provided") and missed every time.
 
 ```mermaid
 sequenceDiagram
@@ -99,77 +99,79 @@ sequenceDiagram
     participant API as Anthropic API
     participant C as Prompt Cache
 
-    Note over SA,C: ❌ Before — num_jobs in system prompt
+    Note over SA,C: Before fix. num_jobs variable in system prompt.
 
-    SA->>API: Batch 1 — system contains "10 jobs"
-    API->>C: Miss — first call, cache written
+    SA->>API: Batch 1. System contains "10 jobs"
+    API->>C: Miss. First call. Cache written.
     API-->>SA: Full input cost
 
-    SA->>API: Batch 2 — system contains "10 jobs"
-    API->>C: Hit ✅ — same bytes
+    SA->>API: Batch 2. System contains "10 jobs"
+    API->>C: Hit. Same bytes.
     API-->>SA: 10% input cost
 
-    SA->>API: Batch 5 — system contains "7 jobs"
-    API->>C: Miss ❌ — different bytes!
+    SA->>API: Batch 5. System contains "7 jobs"
+    API->>C: Miss. Different bytes.
     API-->>SA: Full input cost again
 
-    Note over SA,C: ✅ After — count only in user message
+    Note over SA,C: After fix. Job count moved to user message only.
 
-    SA->>API: Batch 1 — system "Score each job" / user "Score these 10"
-    API->>C: Miss — first call, cache written
+    SA->>API: Batch 1. System "Score each job". User "Score these 10"
+    API->>C: Miss. First call. Cache written.
     API-->>SA: Full input cost
 
-    SA->>API: Batch 2 — system "Score each job" / user "Score these 10"
-    API->>C: Hit ✅
+    SA->>API: Batch 2. System "Score each job". User "Score these 10"
+    API->>C: Hit.
     API-->>SA: 10% input cost
 
-    SA->>API: Batch 5 — system "Score each job" / user "Score these 7"
-    API->>C: Hit ✅ — system prompt unchanged!
+    SA->>API: Batch 5. System "Score each job". User "Score these 7"
+    API->>C: Hit. System prompt unchanged.
     API-->>SA: 10% input cost
 ```
 
 ### The fix
 
-Remove `{{num_jobs}}` from the system prompt template. Pass the count only in the user message, which is not cached. The system prompt is now byte-identical across every batch in a run.
+Remove `{{num_jobs}}` from the system prompt template entirely. Pass the job count only in the user message, which is not part of the cache key. The system prompt is now byte-identical across every batch in a run.
 
 ### The agentic AI principle
 
-**Cache keys are exact.** Any variable in a cached prompt that changes between calls destroys cache effectiveness for that call. The discipline is to put everything *stable* (instructions, schema, persona, examples) in the system prompt and everything *variable* (the actual data, counts, run-specific context) in the user message.
+Cache keys are exact. Any variable in a cached prompt that changes between calls breaks the cache for that call. The discipline is to put everything stable in the system prompt: instructions, schema, persona, examples. Everything variable goes in the user message: the actual data, counts, run-specific context.
 
-This is a specific instance of the broader **Context Window Management** pattern: deliberately partitioning your prompt into stable and variable sections so you can optimise each independently.
+This is a specific instance of the broader **Context Window Management** pattern. Deliberately partition your prompt into stable and variable sections so you can optimize each one independently. Stable context belongs in the system prompt. Dynamic context belongs in the user turn.
 
 ---
 
 ## PATTERN 10: Human-in-the-Loop Curation
 
-### What it is
+### The problem with filter tuning
 
-After scoring, the dashboard showed 120 jobs. The AI had pre-filtered aggressively, but a meaningful fraction were still noise — roles I'd already rejected, companies I'd applied to elsewhere, or postings that looked right on title but wrong on reading. Every subsequent run these jobs reappeared.
+After a few runs the dashboard was showing around 120 jobs. The AI had pre-filtered aggressively, but a meaningful portion were still noise: roles I had already looked at and dismissed, companies I had spoken to, postings that looked right on title but wrong after reading the full description.
 
-The instinct was to tune the filters — add more keywords, tighten the exclusion list. But that's the wrong instinct. Filters operate on patterns; human judgment operates on context. No keyword list can encode "I spoke to this recruiter last week and it's not a fit."
+My first instinct was to tune the filters. Add more exclusion keywords. Tighten the title list. But that instinct is wrong, and it took a few iterations to see why.
 
-The right answer: let the human curate directly.
+Filters operate on patterns. Human judgment operates on context. No keyword list can encode the fact that I had a call with that recruiter last week and the role is not what it looks like on paper.
+
+The right answer was not better filters. It was giving myself a direct way to curate.
 
 ### How it works
 
-I added multi-row selection to every dashboard table. Select one or more jobs, pick a reason (Not a good fit / Applied elsewhere / Rejected / Not interested), click Exclude. The jobs are flagged in the database and filtered out of every query permanently — they never reappear across runs.
+I added multi-row selection to every table in the dashboard. You select one or more jobs, pick a reason from a dropdown (Not a good fit, Applied elsewhere, Rejected, Not interested), and click Exclude. The jobs get flagged in the database and disappear from every view permanently. They do not reappear on subsequent runs.
 
 ```mermaid
 flowchart TD
-    SCRAPE["Scrapers\nAdzuna · LinkedIn · Ladders"]
+    SCRAPE["Scrapers<br/>Adzuna, LinkedIn, Ladders"]
 
-    subgraph AI["AI Layer — automated, runs at scale"]
-        PRE["Pre-Filter Gate\ntitle keywords · tech description · staleness"]
-        CLAUDE["Claude Scoring\n3 career tracks · batch of 10"]
+    subgraph AI["AI Layer: automated, runs at scale"]
+        PRE["Pre-Filter Gate<br/>title keywords, tech description, staleness"]
+        CLAUDE["Claude Scoring<br/>3 career tracks, batch of 10"]
     end
 
-    subgraph HUMAN["Human Layer — judgment at the margin"]
-        REVIEW["Review dashboard\nScore >= threshold"]
-        EXCLUDE["Multi-select exclude\nnot a fit · applied · rejected"]
-        ACT["Apply for role\nmark APPLIED → REJECTED/OFFER"]
+    subgraph HUMAN["Human Layer: judgment at the margin"]
+        REVIEW["Review dashboard<br/>Score above threshold"]
+        EXCLUDE["Multi-select exclude<br/>not a fit, applied, rejected"]
+        ACT["Apply for role<br/>mark APPLIED"]
     end
 
-    DB[("SQLite\nexcluded = 1 persisted")]
+    DB[("SQLite<br/>excluded flag persisted")]
 
     SCRAPE --> PRE
     PRE -->|"~50% dropped cheaply"| CLAUDE
@@ -186,52 +188,54 @@ flowchart TD
 
 ### The agentic AI principle
 
-This is the **Human-in-the-Loop** pattern — but the specific variant matters. There are three common HITL positions:
+This is the **Human-in-the-Loop** pattern, but the specific variant matters more than the label. There are three common positions for human oversight in an agentic system:
 
-| Position | When the human acts | Tradeoff |
+| Position | When the human acts | Trade-off |
 |---|---|---|
-| **Approval gate** | Before every agent action | Safe but slow |
-| **Exception handling** | When the agent is uncertain | Efficient but requires confidence scoring |
-| **Curation loop** | After results are produced | Scales well; improves signal over time |
+| **Approval gate** | Before every agent action | Safe but slow, often impractical |
+| **Exception handling** | When the agent is uncertain | Efficient but requires reliable confidence scoring |
+| **Curation loop** | After results are produced | Scales well, improves signal quality over time |
 
-A job search agent doesn't need an approval gate — it's low-stakes. But curation is high value: each exclusion permanently improves the signal-to-noise ratio. The human does what humans are good at (contextual judgment), and the AI does what AI is good at (processing 50 postings cheaply before the human sees any of them).
+A job search tool does not need an approval gate. The stakes are low and the volume is high. But curation is genuinely valuable here: each exclusion permanently improves the signal-to-noise ratio for every future run. The AI handles broad relevance filtering at scale. The human handles the contextual judgment calls the AI cannot make. Neither is trying to do the other's job.
 
 ---
 
 ## PATTERN 11: Observability-First Design
 
-### What it is
+### What was missing
 
-The first version tracked estimated cost only. I knew roughly what each run would cost before it started — but I didn't know what it actually cost, which operations were most expensive, or how costs were trending over time.
+The first version of the agent tracked estimated cost only. Before each scoring run it would print a rough estimate and ask for confirmation. That was useful for budgeting but it told me nothing useful after the run.
 
-Without that data, optimisation is guesswork. With it, you can see immediately when a change (like doubling BATCH_SIZE from 5 to 10) cuts costs, and by how much.
+I did not know what the run actually cost. I did not know which operations were most expensive. I had no way to see whether changes I made actually reduced costs or whether I was just hoping they did.
+
+Without actual data, optimization is guesswork dressed up as engineering.
 
 ### How it works
 
-Every API call goes through a central `ClaudeClient`. I added a `_usage` dict keyed by operation name (`"resume_parsing"`, `"job_scoring"`, `"resume_tailoring"`). The Anthropic SDK returns actual token counts in the response metadata — these accumulate during the run. At the end, the totals are persisted to a `runs` table alongside the estimated cost for comparison.
+Every API call in the system goes through a single `ClaudeClient` class. I added a usage dictionary keyed by operation name: `"resume_parsing"`, `"job_scoring"`, `"resume_tailoring"`. The Anthropic SDK returns actual token counts in the response metadata. Those accumulate during the run. At the end of the run the totals are written to a `runs` table in the database, alongside the pre-run estimate for comparison.
 
 ```mermaid
 flowchart LR
     subgraph OPS["Named Operations"]
-        O1["resume_parsing\ninput + output tokens"]
-        O2["job_scoring\ninput + output tokens\nper batch accumulated"]
-        O3["resume_tailoring\ninput + output tokens"]
+        O1["resume_parsing<br/>input and output tokens"]
+        O2["job_scoring<br/>input and output tokens<br/>accumulated per batch"]
+        O3["resume_tailoring<br/>input and output tokens"]
     end
 
     subgraph CLIENT["ClaudeClient"]
-        ACC["_usage dict\naccumulated per operation"]
-        RESET["reset_usage\nat run start"]
-        GET["get_usage\nat run end"]
+        ACC["usage dict<br/>accumulated per operation"]
+        RESET["reset_usage<br/>at run start"]
+        GET["get_usage<br/>at run end"]
     end
 
-    subgraph STORE["SQLite — runs table"]
-        ROW["One row per run\nest_cost vs actual_cost\ntokens per operation\njobs scored · batches"]
+    subgraph STORE["SQLite runs table"]
+        ROW["One row per run<br/>estimated vs actual cost<br/>tokens per operation<br/>jobs scored and batches"]
     end
 
-    subgraph DASH["Dashboard — Run History"]
-        C1["Cost per Run\nactual vs estimated bar chart"]
-        C2["Token Breakdown\nstacked by operation"]
-        C3["Cumulative Spend\nover all runs"]
+    subgraph DASH["Dashboard: Run History"]
+        C1["Cost per Run<br/>actual vs estimated"]
+        C2["Token Breakdown<br/>stacked by operation"]
+        C3["Cumulative Spend<br/>over all runs"]
     end
 
     O1 & O2 & O3 --> ACC
@@ -241,31 +245,27 @@ flowchart LR
     ROW --> C1 & C2 & C3
 ```
 
-### What the data revealed
+### What the data actually revealed
 
-Two things showed up immediately:
+Two things became visible immediately.
 
-1. **Doubling batch size from 5 to 10 cut scoring cost by ~45%** — not 50%, because larger batches slightly increase output tokens per call, but close. Without actual token data I would have estimated 50% and never known the difference.
+Doubling the batch size from 5 to 10 cut scoring cost by roughly 45%, not the 50% I had estimated. Larger batches modestly increase output tokens per call, so the saving is real but not symmetric. Without per-run token data I would have assumed 50% and never known the real number.
 
-2. **The last batch cache miss** (Pattern 9) showed up as a spike in `tokens_input_scoring` on the last batch of multi-batch runs. The data pointed directly at the bug.
+The last-batch cache miss from Pattern 9 showed up as a consistent spike in `tokens_input_scoring` on the final batch of any multi-batch run. The data pointed directly at the bug. I would not have found it otherwise.
 
 ### The agentic AI principle
 
-**Observability is not optional in production agents.** Every agent action that calls an external API should be:
-- Named (so costs are attributable by operation)
-- Counted (tokens in, tokens out)
-- Persisted (so you have a time-series, not just a snapshot)
-- Displayed (so the human can act on the data)
+Observability is not an optional add-on in production agents. Every agent action that calls an external API should be named (so cost is attributable by operation), counted (tokens in and out), persisted (so you have a history, not just a snapshot), and surfaced (so a human can act on the data).
 
-This is the **Agent Monitoring** pattern. It sits alongside the Evaluator pattern in the agentic AI literature — the difference is that Evaluator judges output quality, while Agent Monitoring tracks resource consumption. Both are necessary in production.
+This is the **Agent Monitoring** pattern. It sits alongside the Evaluator pattern in the agentic AI literature. The difference is that Evaluator judges output quality, while Agent Monitoring tracks resource consumption. In production you need both.
 
 ---
 
 ## PATTERN 12: Timestamp Precision in Event-Sourced Pipelines
 
-### What it is
+### The bug
 
-The dashboard had a "New Jobs" view that was supposed to show every job found in the most recent run. After every run it showed zero jobs. The data was there — the query was wrong.
+The dashboard had a "New Jobs" view that was supposed to show every job found in the most recent run. After every run it showed zero results. The data was definitely there. The query was just wrong.
 
 ```mermaid
 sequenceDiagram
@@ -274,7 +274,7 @@ sequenceDiagram
     participant DB as SQLite
     participant D as Dashboard
 
-    Note over M,D: ❌ Bug — run_at captured AFTER scraping
+    Note over M,D: Bug. run_at captured AFTER scraping.
 
     M->>S: scrape()
     S-->>DB: INSERT job (found_at = 09:00:05)
@@ -282,58 +282,53 @@ sequenceDiagram
     M->>DB: insert_run(run_at = 09:00:12)
 
     D->>DB: SELECT WHERE found_at >= run_at
-    Note over DB: 09:00:05 >= 09:00:12 ? NO
-    DB-->>D: 0 rows ❌
+    Note over DB: 09:00:05 >= 09:00:12? No.
+    DB-->>D: 0 rows
 
-    Note over M,D: ✅ Fix — run_at captured BEFORE scraping
+    Note over M,D: Fix. run_started_at captured BEFORE scraping.
 
-    M->>M: run_started_at = 09:00:00 ← first line of run
+    M->>M: run_started_at = 09:00:00
     M->>S: scrape()
     S-->>DB: INSERT job (found_at = 09:00:05)
     S-->>DB: INSERT job (found_at = 09:00:08)
     M->>DB: insert_run(run_at = 09:00:00)
 
     D->>DB: SELECT WHERE found_at >= run_at
-    Note over DB: 09:00:05 >= 09:00:00 ? YES ✓
-    DB-->>D: 12 rows ✅
+    Note over DB: 09:00:05 >= 09:00:00? Yes.
+    DB-->>D: 12 rows
 ```
 
 ### The root cause
 
-`insert_run()` was calling `datetime.utcnow()` internally — at the moment it was called, which was after all scraping and scoring had completed. Every job's `found_at` timestamp was earlier than the run's `run_at` timestamp, so `WHERE found_at >= run_at` returned nothing.
+`insert_run()` was calling `datetime.utcnow()` internally, at the moment it was called, which was after all scraping and scoring had already finished. Every job's `found_at` timestamp was earlier than the run's `run_at` timestamp. So `WHERE found_at >= run_at` returned nothing.
 
-The fix: capture `run_started_at = datetime.utcnow()` as the very first line of the run, before any scraping, and pass it explicitly to `insert_run()`.
+The fix was a single line: capture `run_started_at = datetime.utcnow()` as the very first statement of the run, before any scraping begins, and pass it explicitly into `insert_run()`.
 
 ### The agentic AI principle
 
-**In event-sourced pipelines, when you record state matters as much as what you record.**
+In event-sourced pipelines, when you record state matters as much as what you record.
 
-This is a specific case of the **Pipeline State Machine** pattern from v1 — but it highlights a precision requirement that the pattern description doesn't make explicit. When your pipeline has multiple stages that each produce timestamped records, the anchor timestamp (the run start) must be captured before any records are produced, not after.
+This extends the **Pipeline State Machine** pattern from the first article. The pattern tells you to track explicit states with intentional transitions. What it does not spell out is that the anchor timestamp for a run is a boundary, not a summary. It must be captured before any work begins, not after the work completes.
 
-The general rule: **a run's start timestamp is a boundary, not a summary.** Record it before the work begins, not when the work ends.
-
-This same principle applies anywhere an agent manages time-bounded state:
-- A processing window that must capture all events within it
-- A cache invalidation timestamp that must predate the data it protects
-- A retry window that must start before the first attempt
+The same class of bug appears in many forms. A cache invalidation timestamp that is set after data is written rather than before. A processing window anchor that is captured at the end of a job rather than the start. A retry window that begins after the first attempt instead of before it. The fix is always the same: record the boundary before you cross it.
 
 ---
 
-## HOW THE 4 PATTERNS FIT TOGETHER
+## HOW THE 4 PATTERNS CONNECT
 
-Individually, each pattern solves a specific problem. Together, they represent a more mature approach to production agent design:
+Each pattern solves a distinct problem. Together they describe a more mature approach to production agent design.
 
 ```mermaid
 flowchart TD
-    P9["Pattern 9\nPrompt Cache Alignment\nMemory layer — keep system prompt\nbyte-identical across all batches"]
-    P10["Pattern 10\nHuman-in-the-Loop Curation\nControl layer — let humans curate\nwhat AI filters cannot"]
-    P11["Pattern 11\nObservability-First\nMemory layer — measure every action\nto know what to optimise"]
-    P12["Pattern 12\nTimestamp Precision\nControl layer — state boundaries\nmust be captured before the work"]
+    P9["Pattern 9<br/>Prompt Cache Alignment<br/>Memory layer<br/>Byte-identical system prompt<br/>Cache hits on every batch"]
+    P10["Pattern 10<br/>Human-in-the-Loop Curation<br/>Control layer<br/>Human exclusion improves<br/>signal quality over time"]
+    P11["Pattern 11<br/>Observability-First<br/>Memory layer<br/>Measure every action<br/>so you know what to optimize"]
+    P12["Pattern 12<br/>Timestamp Precision<br/>Control layer<br/>State boundaries captured<br/>before the work begins"]
 
-    COST["Lower API cost\nper run"]
-    SIGNAL["Higher signal quality\nover time"]
-    VISIBILITY["Visibility into\nwhat the agent costs"]
-    CORRECT["Correct state\nacross all views"]
+    COST["Lower API cost per run"]
+    SIGNAL["Higher signal quality over time"]
+    VISIBILITY["Visibility into what the agent costs"]
+    CORRECT["Correct state across all views"]
 
     P9 --> COST
     P10 --> SIGNAL
@@ -351,53 +346,98 @@ flowchart TD
 
 ## WHAT SURPRISED ME
 
-Three things I didn't expect:
+Three things I did not see coming.
 
-**1. The prompt cache bug was invisible without cost data.** The cache was hitting on most batches, so the system worked correctly — just slightly more expensively than it should have. Without per-batch token tracking I would never have found it. Observability and the cache bug are not independent patterns — one revealed the other.
+**The prompt cache bug was invisible without cost data.** The cache was hitting on most batches, so the system was producing correct results. It was just slightly more expensive than it needed to be on every run. Without per-batch token tracking I would never have spotted it. Patterns 9 and 11 are not independent. One found the other.
 
-**2. Human curation is underrated in the agentic AI literature.** Most writing about HITL focuses on approval gates — should the agent be allowed to take this action? But for information-processing agents, curation is more valuable: letting the human continuously improve the quality of the data the agent operates on. The exclusion feature took an afternoon to build and immediately became the most-used feature in the dashboard.
+**Human curation is underrated in the agentic AI literature.** Most content about human-in-the-loop focuses on approval gates: should the agent be allowed to take this action? For information-processing agents, curation is often more valuable. Giving the human a way to continuously improve the quality of what the agent operates on compounds over time. The exclusion feature took about an afternoon to build and became the most-used part of the dashboard within a week.
 
-**3. Timestamp bugs are timestamp ordering bugs.** Every timestamp bug I've seen in production systems comes down to the same thing: code that assumes the order in which events are recorded matches the order in which they occurred. `run_at captured after scraping` is the same class of bug as `updated_at not updated on partial save` or `created_at set to now() at the ORM layer instead of the application layer`. The fix is always: record the boundary before you cross it.
+**Timestamp bugs are always ordering bugs.** Every timestamp issue I have run into in production systems comes down to the same assumption: that events are recorded in the same order they occurred. Capturing `run_at` after scraping is the same class of mistake as setting `updated_at` at the ORM layer instead of the application layer, or recording a cache expiry after the data is populated instead of before. The fix is always the same. Record the boundary before you cross it.
 
 ---
 
-## THE UPDATED PATTERN MAP — ALL 12
+## THE FULL PATTERN MAP: ALL 12
 
 | # | Pattern | Layer | What it does |
 |---|---|---|---|
-| 1 | Structured Output | Reasoning | Enforce JSON + Pydantic at every agent boundary |
-| 2 | Prompt-as-Template | Reasoning | Prompts as files — editable without touching code |
-| 3 | Cache-Aside | Memory | Resume parsed once, cached, re-used across runs |
+| 1 | Structured Output | Reasoning | Enforce JSON and Pydantic at every agent boundary |
+| 2 | Prompt-as-Template | Reasoning | Prompts as files, editable without touching code |
+| 3 | Cache-Aside | Memory | Resume parsed once, cached, reused across runs |
 | 4 | Pre-Filter Gate | Action | Cheap filters before expensive LLM calls |
-| 5 | Batched Fan-Out | Action | 10 jobs per Claude call — 10x fewer API calls |
+| 5 | Batched Fan-Out | Action | 10 jobs per Claude call, 10x fewer API calls |
 | 6 | Pipeline State Machine | Control | Explicit job states with intentional transitions |
 | 7 | Retry with Backoff | Action | Exponential backoff on transient API failures |
 | 8 | Multi-Track Scoring | Reasoning | One call scores IC, Architect, and Management |
-| **9** | **Prompt Cache Alignment** | **Memory** | **Byte-identical system prompt = cache hit every batch** |
-| **10** | **Human-in-the-Loop Curation** | **Control** | **Human exclusion improves signal quality over time** |
-| **11** | **Observability-First** | **Memory** | **Token + cost tracking per operation, persisted to DB** |
-| **12** | **Timestamp Precision** | **Control** | **Run boundary captured before work begins, not after** |
+| **9** | **Prompt Cache Alignment** | **Memory** | **Byte-identical system prompt gives cache hits on every batch** |
+| **10** | **Human-in-the-Loop Curation** | **Control** | **Human exclusion improves signal quality across runs** |
+| **11** | **Observability-First** | **Memory** | **Token and cost tracking per operation, persisted to the database** |
+| **12** | **Timestamp Precision** | **Control** | **Run boundary captured before the work begins, not after** |
 
 ---
 
 ## CLOSING
 
-The first article was about patterns I knew I was using. This one is about patterns I discovered by running the system.
+The first article was about patterns I deliberately chose while building the system. This one is about patterns I discovered by running it.
 
-That distinction matters. Most agentic AI content is written before the author has run the thing in production. The patterns look clean in a diagram. They look different when you're looking at an API bill or debugging why a dashboard is always empty.
+That distinction matters more than it sounds. Most writing about agentic AI is produced before the author has run the thing against real data with real API costs. The patterns look clean in a diagram. They look different when you are staring at a token bill or trying to figure out why a dashboard view is always empty.
 
-The 4 new patterns aren't exotic. None of them require a new framework or a new model. They require attention to the places where agentic systems are different from ordinary software: cost is a runtime variable, not a constant; human judgment belongs in the loop at specific points, not everywhere; and the order in which you record state is as important as the state itself.
+None of these 4 patterns require a new framework or a new model. They require attention to the specific ways agentic systems differ from ordinary software. Cost is a runtime variable, not a constant. Human judgment belongs in the loop at specific points, not everywhere and not nowhere. The order in which you record state is as important as the state itself.
 
-v2 is running. More to come.
+The system is running. More to come.
 
 ---
 
 ## CALL TO ACTION
 
-Are you building something similar — a personal AI agent that solves a real problem you have? What patterns have you found that the courses didn't teach? Drop a comment or connect — I'd like to compare notes.
+Are you building a personal AI agent to solve a real problem you have? What patterns have you found that the courses did not cover? Drop a comment or connect. I would genuinely like to compare notes.
+
+---
+
+## REFERENCES
+
+The following are authoritative sources on agentic AI patterns referenced in this article and the first article in this series.
+
+**Agentic AI Design**
+
+1. Anthropic. *Building effective agents.* December 2024.
+   anthropic.com/research/building-effective-agents
+   The clearest practical guide to agent design patterns published by the team that builds Claude. Covers orchestrators, subagents, parallelization, and the tradeoffs between autonomous and human-in-the-loop designs.
+
+2. Weng, Lilian. *LLM Powered Autonomous Agents.* June 2023.
+   lilianweng.github.io/posts/2023-06-23-agent/
+   The foundational technical survey of agentic AI components: planning, memory, tool use, and action. Widely cited in both research and engineering contexts.
+
+3. Yan, Eugene. *Patterns for Building LLM-based Systems and Products.* August 2023.
+   eugeneyan.com/writing/llm-patterns/
+   A practical engineering-focused catalog of LLM system patterns including evals, guardrails, caching, and structured output. Highly recommended for practitioners.
+
+4. OpenAI. *A Practical Guide to Building Agents.* 2025.
+   Available at openai.com/index/practical-guide-to-building-agents
+   A practitioner-oriented guide covering agent workflows, tool use, handoffs, and guardrails from the perspective of production deployment.
+
+**Prompt Caching**
+
+5. Anthropic. *Prompt caching.* Anthropic Developer Documentation.
+   docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+   The technical reference for Anthropic's server-side KV cache. Covers cache control headers, eligible content types, pricing, and cache lifetime.
+
+**Event Sourcing and State Management**
+
+6. Fowler, Martin. *Event Sourcing.* martinfowler.com/eaaDev/EventSourcing.html
+   The canonical description of the event sourcing pattern. The timestamp precision issue in Pattern 12 is a direct instance of the event ordering requirements described here.
+
+**Human-in-the-Loop**
+
+7. Amershi, Saleema et al. *Guidelines for Human-AI Interaction.* CHI 2019.
+   Microsoft Research. The 18 guidelines cover how and when humans should be involved in AI system decisions, including curation and correction workflows.
+
+**Cost and Observability**
+
+8. Huyen, Chip. *AI Engineering.* O'Reilly Media, 2025.
+   The most comprehensive current treatment of building AI applications in production, including model evaluation, cost management, and latency tradeoffs.
 
 ---
 
 ## HASHTAGS
 
-#AgenticAI #AIEngineering #MachineLearning #SoftwareEngineering #Claude #Anthropic #JobSearch #CareerDevelopment #ProductionAI #LLM
+#AgenticAI #AIEngineering #MachineLearning #SoftwareEngineering #Claude #Anthropic #JobSearch #CareerDevelopment #ProductionAI #LLM #PromptEngineering #HumanInTheLoop
