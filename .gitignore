@@ -64,6 +64,11 @@ env/
 # ─── Obsidian ─────────────────────────────────────────────────────────────────
 docs/.obsidian/
 
+# ─── Local content (architecture diagrams, publish package, blog drafts) ──────
+architecture/
+publish_package/
+docs/blog_draft_linkedin_optimized.md
+
 # ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
 .DS_Store?
