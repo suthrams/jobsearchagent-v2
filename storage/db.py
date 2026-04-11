@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS jobs (
     score_ic         INTEGER,                   -- IC engineer track score (0-100)
     score_architect  INTEGER,                   -- Architect track score (0-100)
     score_management INTEGER,                   -- Management/Director track score (0-100)
-    score_best       INTEGER                    -- Max across all active tracks
+    score_best       INTEGER,                   -- Max across all active tracks
+    excluded         INTEGER NOT NULL DEFAULT 0, -- 1 = hidden from all views
+    excluded_reason  TEXT                        -- Why the job was excluded
 );
 """
 
@@ -49,6 +51,8 @@ _MIGRATIONS = [
     ("score_architect",  "ALTER TABLE jobs ADD COLUMN score_architect  INTEGER"),
     ("score_management", "ALTER TABLE jobs ADD COLUMN score_management INTEGER"),
     ("score_best",       "ALTER TABLE jobs ADD COLUMN score_best       INTEGER"),
+    ("excluded",         "ALTER TABLE jobs ADD COLUMN excluded         INTEGER NOT NULL DEFAULT 0"),
+    ("excluded_reason",  "ALTER TABLE jobs ADD COLUMN excluded_reason  TEXT"),
 ]
 
 # Run history table — one row per main.py execution
@@ -475,6 +479,21 @@ class Database:
             "SELECT * FROM runs ORDER BY run_at DESC"
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def exclude_jobs(self, job_ids: list[int], reason: str) -> None:
+        """
+        Marks one or more jobs as excluded so they are hidden from all dashboard views.
+
+        Args:
+            job_ids: List of job IDs to exclude.
+            reason:  Human-readable label stored for reference (e.g. "Not a good fit").
+        """
+        self._conn.executemany(
+            "UPDATE jobs SET excluded = 1, excluded_reason = ? WHERE id = ?",
+            [(reason, jid) for jid in job_ids],
+        )
+        self._conn.commit()
+        logger.debug("Excluded %d job(s): reason=%r", len(job_ids), reason)
 
     def close(self) -> None:
         """Closes the database connection. Call this on clean shutdown."""

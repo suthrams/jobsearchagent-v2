@@ -103,6 +103,18 @@ def mark_job_applied(job_id: int) -> None:
     conn.close()
     st.cache_data.clear()
 
+
+def exclude_jobs_db(job_ids: list[int], reason: str) -> None:
+    """Marks jobs as excluded so they are hidden from all dashboard views."""
+    conn = sqlite3.connect(str(DB_PATH))
+    conn.executemany(
+        "UPDATE jobs SET excluded = 1, excluded_reason = ? WHERE id = ?",
+        [(reason, jid) for jid in job_ids],
+    )
+    conn.commit()
+    conn.close()
+    st.cache_data.clear()
+
 # ─── Data loading ─────────────────────────────────────────────────────────────
 
 
@@ -141,7 +153,7 @@ def load_new_jobs() -> pd.DataFrame:
             score_ic, score_architect, score_management, score_best,
             url, scores_json, salary_json, posted_at, found_at
         FROM jobs
-        WHERE found_at >= ?
+        WHERE found_at >= ? AND (excluded = 0 OR excluded IS NULL)
         ORDER BY found_at DESC
         """,
         conn,
@@ -168,7 +180,7 @@ def load_jobs() -> pd.DataFrame:
             score_ic, score_architect, score_management, score_best,
             url, scores_json, salary_json, posted_at, found_at
         FROM jobs
-        WHERE status = 'scored'
+        WHERE status = 'scored' AND (excluded = 0 OR excluded IS NULL)
         ORDER BY score_best DESC
         """,
         conn,
@@ -368,8 +380,36 @@ def render_job_card(row: pd.Series, highlight_track: str = "architect") -> None:
                 else:
                     st.info("Marked as APPLIED ✓")
 
+        # ── Exclude UI ───────────────────────────────────────────────────────
+        st.markdown("---")
+        excl_reason = st.selectbox(
+            "Exclude reason",
+            ["Not a good fit", "Applied elsewhere", "Rejected", "Not interested"],
+            key=f"excl_reason_{job_id}",
+        )
+        if st.button("Exclude this job", key=f"btn_excl_{job_id}"):
+            exclude_jobs_db([job_id], excl_reason)
+            st.success("Job excluded — refresh to update the list.")
 
-def render_track_table(df: pd.DataFrame, score_col: str, min_score: int) -> None:
+
+def _render_exclude_panel(display: pd.DataFrame, event, key_suffix: str) -> None:
+    """Shows reason dropdown + Exclude button when rows are selected in a dataframe."""
+    selected_rows = event.selection.rows if event and event.selection else []
+    if not selected_rows:
+        return
+    selected_ids = display.iloc[selected_rows]["id"].astype(int).tolist()
+    col_r, col_b = st.columns([3, 1])
+    reason = col_r.selectbox(
+        "Exclude reason",
+        ["Not a good fit", "Applied elsewhere", "Rejected", "Not interested"],
+        key=f"excl_reason_{key_suffix}",
+    )
+    if col_b.button(f"Exclude {len(selected_ids)} job(s)", key=f"excl_btn_{key_suffix}"):
+        exclude_jobs_db(selected_ids, reason)
+        st.rerun()
+
+
+def render_track_table(df: pd.DataFrame, score_col: str, min_score: int, table_key: str = "track_table") -> None:
     """Renders a sortable summary table for a single track."""
     track = score_col.replace("score_", "")
     filtered = df[df[score_col] >= min_score].copy()
@@ -391,10 +431,14 @@ def render_track_table(df: pd.DataFrame, score_col: str, min_score: int) -> None
         "url": "URL",
     })
 
-    st.dataframe(
+    display = display.reset_index(drop=True)
+    event = st.dataframe(
         display,
         width="stretch",
         hide_index=True,
+        selection_mode="multi-row",
+        on_select="rerun",
+        key=table_key,
         column_config={
             "id": st.column_config.NumberColumn("ID", width="small"),
             "title": st.column_config.TextColumn("Title", width="large"),
@@ -411,6 +455,7 @@ def render_track_table(df: pd.DataFrame, score_col: str, min_score: int) -> None
     )
 
     st.caption(f"{len(filtered)} jobs with {track} score >= {min_score}")
+    _render_exclude_panel(display, event, key_suffix=table_key)
 
 
 # ─── Sidebar ──────────────────────────────────────────────────────────────────
@@ -578,10 +623,14 @@ elif view == "Top Matches":
         "url": "URL",
     })
 
-    st.dataframe(
+    display = display.reset_index(drop=True)
+    top_event = st.dataframe(
         display,
         width="stretch",
         hide_index=True,
+        selection_mode="multi-row",
+        on_select="rerun",
+        key="top_matches_table",
         column_config={
             "id": st.column_config.NumberColumn("ID", width="small"),
             "title": st.column_config.TextColumn("Title", width="large"),
@@ -596,6 +645,7 @@ elif view == "Top Matches":
             "URL": st.column_config.LinkColumn("Link", width="small"),
         },
     )
+    _render_exclude_panel(display, top_event, key_suffix="top_matches")
 
     st.markdown("---")
     st.subheader("Job Details")
@@ -605,7 +655,7 @@ elif view == "Top Matches":
 elif view == "IC Track":
     st.header("IC Engineering Track")
     st.caption("Senior / Staff / Principal Engineer roles, ranked by IC score")
-    render_track_table(df, "score_ic", min_score)
+    render_track_table(df, "score_ic", min_score, table_key="ic_table")
 
     st.markdown("---")
     st.subheader("Job Details")
@@ -616,7 +666,7 @@ elif view == "IC Track":
 elif view == "Architect Track":
     st.header("Architect Track")
     st.caption("Solutions / Principal / Enterprise Architect roles, ranked by architect score")
-    render_track_table(df, "score_architect", min_score)
+    render_track_table(df, "score_architect", min_score, table_key="arch_table")
 
     st.markdown("---")
     st.subheader("Job Details")
@@ -627,7 +677,7 @@ elif view == "Architect Track":
 elif view == "Management Track":
     st.header("Management / Director Track")
     st.caption("Senior Manager / Director / VP roles, ranked by management score")
-    render_track_table(df, "score_management", min_score)
+    render_track_table(df, "score_management", min_score, table_key="mgmt_table")
 
     st.markdown("---")
     st.subheader("Job Details")
