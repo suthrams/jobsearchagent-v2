@@ -73,7 +73,13 @@ CREATE TABLE IF NOT EXISTS runs (
     tokens_output_parsing   INTEGER NOT NULL DEFAULT 0,
     tokens_input_tailoring  INTEGER NOT NULL DEFAULT 0,
     tokens_output_tailoring INTEGER NOT NULL DEFAULT 0,
-    actual_cost_usd         REAL    NOT NULL DEFAULT 0.0  -- cost from real token counts
+    actual_cost_usd         REAL    NOT NULL DEFAULT 0.0, -- cost from real token counts
+    -- Phase latency (wall-clock seconds measured with time.perf_counter)
+    elapsed_scrape_s        REAL    NOT NULL DEFAULT 0.0, -- scraping phase duration
+    elapsed_score_s         REAL    NOT NULL DEFAULT 0.0, -- scoring phase duration (filter + Claude calls)
+    elapsed_total_s         REAL    NOT NULL DEFAULT 0.0, -- end-to-end run duration
+    avg_batch_latency_s     REAL    NOT NULL DEFAULT 0.0, -- mean seconds per Claude batch call
+    jobs_per_second         REAL    NOT NULL DEFAULT 0.0  -- scoring throughput
 );
 """
 
@@ -86,6 +92,11 @@ _RUNS_MIGRATIONS = [
     ("tokens_input_tailoring",  "ALTER TABLE runs ADD COLUMN tokens_input_tailoring  INTEGER NOT NULL DEFAULT 0"),
     ("tokens_output_tailoring", "ALTER TABLE runs ADD COLUMN tokens_output_tailoring INTEGER NOT NULL DEFAULT 0"),
     ("actual_cost_usd",         "ALTER TABLE runs ADD COLUMN actual_cost_usd         REAL    NOT NULL DEFAULT 0.0"),
+    ("elapsed_scrape_s",        "ALTER TABLE runs ADD COLUMN elapsed_scrape_s        REAL    NOT NULL DEFAULT 0.0"),
+    ("elapsed_score_s",         "ALTER TABLE runs ADD COLUMN elapsed_score_s         REAL    NOT NULL DEFAULT 0.0"),
+    ("elapsed_total_s",         "ALTER TABLE runs ADD COLUMN elapsed_total_s         REAL    NOT NULL DEFAULT 0.0"),
+    ("avg_batch_latency_s",     "ALTER TABLE runs ADD COLUMN avg_batch_latency_s     REAL    NOT NULL DEFAULT 0.0"),
+    ("jobs_per_second",         "ALTER TABLE runs ADD COLUMN jobs_per_second         REAL    NOT NULL DEFAULT 0.0"),
 ]
 
 
@@ -418,6 +429,11 @@ class Database:
         tokens_input_tailoring: int = 0,
         tokens_output_tailoring: int = 0,
         actual_cost_usd: float = 0.0,
+        elapsed_scrape_s: float = 0.0,
+        elapsed_score_s: float = 0.0,
+        elapsed_total_s: float = 0.0,
+        avg_batch_latency_s: float = 0.0,
+        jobs_per_second: float = 0.0,
     ) -> int:
         """
         Records one agent execution in the runs table.
@@ -449,9 +465,11 @@ class Database:
                 tokens_input_scoring, tokens_output_scoring,
                 tokens_input_parsing, tokens_output_parsing,
                 tokens_input_tailoring, tokens_output_tailoring,
-                actual_cost_usd
+                actual_cost_usd,
+                elapsed_scrape_s, elapsed_score_s, elapsed_total_s,
+                avg_batch_latency_s, jobs_per_second
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 (run_at or datetime.utcnow()).isoformat(),
@@ -461,6 +479,8 @@ class Database:
                 tokens_input_parsing, tokens_output_parsing,
                 tokens_input_tailoring, tokens_output_tailoring,
                 round(actual_cost_usd, 6),
+                round(elapsed_scrape_s, 3), round(elapsed_score_s, 3), round(elapsed_total_s, 3),
+                round(avg_batch_latency_s, 3), round(jobs_per_second, 3),
             ),
         )
         self._conn.commit()

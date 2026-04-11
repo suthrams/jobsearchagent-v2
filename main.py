@@ -16,6 +16,7 @@ import argparse
 import logging
 import math
 import sys
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -401,9 +402,12 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
     """
     client.reset_usage()  # clear any tokens from previous operations this session
     run_started_at = datetime.utcnow()  # capture before scraping so dashboard query works
+    t_total_start = time.perf_counter()
 
     console.print("[bold]Scraping jobs...[/bold]")
+    t_scrape_start = time.perf_counter()
     raw_jobs = run_scrapers(config)
+    elapsed_scrape_s = time.perf_counter() - t_scrape_start
 
     # Per-source breakdown
     from collections import Counter
@@ -443,6 +447,7 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
     jobs_skipped = 0
     actual_batches = 0
     actual_cost = 0.0
+    score_stats: dict = {"elapsed_score_s": 0.0, "avg_batch_latency_s": 0.0, "jobs_per_second": 0.0}
 
     if not unscored:
         console.print("[yellow]No unscored jobs in database.[/yellow]")
@@ -473,6 +478,7 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
                     )
 
             agents["scoring"].score_batch(unscored, profile, db=db, on_progress=on_progress)
+            score_stats = agents["scoring"].last_run_stats
 
             # Count outcomes for run record
             jobs_scored = sum(1 for j in unscored if j.status == ApplicationStatus.SCORED)
@@ -509,6 +515,8 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
         total_input, total_output, total_cache_write, total_cache_read
     )
 
+    elapsed_total_s = time.perf_counter() - t_total_start
+
     # Post-run summary — surfaces what happened without requiring the user to read run.log
     if jobs_scored > 0 or jobs_skipped > 0:
         cost_display = (
@@ -524,6 +532,14 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
                 f"[green]{total_cache_read:,}[/green] cache read\n"
                 f"  Tokens — output: [dim]{total_output:,}[/dim]\n"
             )
+        latency_lines = (
+            f"  Scrape time   : [dim]{elapsed_scrape_s:.1f}s[/dim]\n"
+            f"  Score time    : [dim]{score_stats.get('elapsed_score_s', 0):.1f}s[/dim]"
+            + (f"  (avg {score_stats.get('avg_batch_latency_s', 0):.1f}s/batch, "
+               f"{score_stats.get('jobs_per_second', 0):.2f} jobs/s)\n"
+               if score_stats.get("avg_batch_latency_s", 0) > 0 else "\n")
+            + f"  Total time    : [dim]{elapsed_total_s:.1f}s[/dim]\n"
+        )
         console.print(
             f"\n[bold]Run summary[/bold]\n"
             f"  Scraped       : [cyan]{len(raw_jobs)}[/cyan] jobs across all sources\n"
@@ -534,6 +550,7 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
             f"(stale / no description / excluded title / non-tech)\n"
             f"{token_lines}"
             f"  API cost      : {cost_display}\n"
+            f"{latency_lines}"
             f"  Full log      : [dim]output/logs/run.log[/dim]"
         )
 
@@ -555,6 +572,11 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
         tokens_input_tailoring=tailoring["input"],
         tokens_output_tailoring=tailoring["output"],
         actual_cost_usd=actual_cost_from_tokens,
+        elapsed_scrape_s=elapsed_scrape_s,
+        elapsed_score_s=score_stats.get("elapsed_score_s", 0.0),
+        elapsed_total_s=elapsed_total_s,
+        avg_batch_latency_s=score_stats.get("avg_batch_latency_s", 0.0),
+        jobs_per_second=score_stats.get("jobs_per_second", 0.0),
     )
 
     # Print all scored jobs

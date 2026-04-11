@@ -980,6 +980,92 @@ elif view == "Run History":
 
     st.markdown("---")
 
+    # ── Performance & Latency ─────────────────────────────────────────────────
+    has_latency_data = (
+        "elapsed_total_s" in runs_df.columns
+        and runs_df["elapsed_total_s"].sum() > 0
+    )
+
+    if has_latency_data:
+        st.subheader("Performance and Latency")
+        st.caption("Wall-clock time measured with time.perf_counter — scraping, scoring, and total per run")
+
+        # Summary metrics for latest run
+        last_run = runs_df.sort_values("run_at").iloc[-1]
+        p1, p2, p3, p4, p5 = st.columns(5)
+        p1.metric("Scrape Time", f"{last_run.get('elapsed_scrape_s', 0):.1f}s", help="Latest run — time spent calling all scrapers")
+        p2.metric("Score Time",  f"{last_run.get('elapsed_score_s',  0):.1f}s", help="Latest run — filter + all Claude batch calls")
+        p3.metric("Total Time",  f"{last_run.get('elapsed_total_s',  0):.1f}s", help="Latest run — end-to-end wall-clock duration")
+        p4.metric("Avg Batch Latency", f"{last_run.get('avg_batch_latency_s', 0):.1f}s", help="Latest run — mean seconds per Claude API call")
+        p5.metric("Throughput", f"{last_run.get('jobs_per_second', 0):.2f} jobs/s", help="Latest run — scored jobs per second of score time")
+
+        st.markdown("---")
+
+        # Phase breakdown chart — scrape vs score vs overhead per run
+        runs_df["elapsed_overhead_s"] = (
+            runs_df.get("elapsed_total_s", 0)
+            - runs_df.get("elapsed_scrape_s", 0)
+            - runs_df.get("elapsed_score_s", 0)
+        ).clip(lower=0)
+
+        lat_col1, lat_col2 = st.columns(2)
+
+        with lat_col1:
+            fig_phases = px.bar(
+                runs_df,
+                x="run_at",
+                y=["elapsed_scrape_s", "elapsed_score_s", "elapsed_overhead_s"],
+                labels={"run_at": "Run Time", "value": "Seconds", "variable": "Phase"},
+                title="Time per Phase per Run",
+                barmode="stack",
+                color_discrete_map={
+                    "elapsed_scrape_s":   "#60a5fa",
+                    "elapsed_score_s":    "#34d399",
+                    "elapsed_overhead_s": "#d1d5db",
+                },
+            )
+            phase_names = {
+                "elapsed_scrape_s":   "Scraping",
+                "elapsed_score_s":    "Scoring (filter + Claude)",
+                "elapsed_overhead_s": "Overhead (DB, display)",
+            }
+            fig_phases.for_each_trace(lambda t: t.update(name=phase_names.get(t.name, t.name)))
+            fig_phases.update_layout(xaxis_title=None, legend=dict(
+                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1, title=None
+            ))
+            st.plotly_chart(fig_phases, use_container_width=True)
+
+        with lat_col2:
+            fig_batch = px.line(
+                runs_df[runs_df["avg_batch_latency_s"] > 0],
+                x="run_at",
+                y="avg_batch_latency_s",
+                labels={"run_at": "Run Time", "avg_batch_latency_s": "Avg Batch Latency (s)"},
+                title="Avg Claude Batch Latency per Run",
+                markers=True,
+            )
+            fig_batch.update_layout(xaxis_title=None)
+            st.plotly_chart(fig_batch, use_container_width=True)
+
+        # Throughput over time
+        tput_df = runs_df[runs_df["jobs_per_second"] > 0]
+        if not tput_df.empty:
+            fig_tput = px.bar(
+                tput_df,
+                x="run_at",
+                y="jobs_per_second",
+                labels={"run_at": "Run Time", "jobs_per_second": "Jobs / Second"},
+                title="Scoring Throughput per Run",
+                color="jobs_per_second",
+                color_continuous_scale="teal",
+                text=tput_df["jobs_per_second"].apply(lambda v: f"{v:.2f}"),
+            )
+            fig_tput.update_layout(coloraxis_showscale=False, xaxis_title=None)
+            fig_tput.update_traces(textposition="outside")
+            st.plotly_chart(fig_tput, use_container_width=True)
+
+        st.markdown("---")
+
     # ── Run table ─────────────────────────────────────────────────────────────
     st.subheader("All Runs")
 
@@ -1004,6 +1090,13 @@ elif view == "Run History":
         rename_map["total_input_tokens"]  = "Input Tok"
         rename_map["total_output_tokens"] = "Output Tok"
 
+    if has_latency_data:
+        table_cols += ["elapsed_scrape_s", "elapsed_score_s", "elapsed_total_s", "jobs_per_second"]
+        rename_map["elapsed_scrape_s"] = "Scrape (s)"
+        rename_map["elapsed_score_s"]  = "Score (s)"
+        rename_map["elapsed_total_s"]  = "Total (s)"
+        rename_map["jobs_per_second"]  = "Jobs/s"
+
     table_cols += ["cost_fmt", "cum_cost_fmt"]
     rename_map["cost_fmt"]     = "Cost"
     rename_map["cum_cost_fmt"] = "Cumulative"
@@ -1016,10 +1109,14 @@ elif view == "Run History":
         "Scored":     st.column_config.NumberColumn("Scored",    width="small"),
         "Skipped":    st.column_config.NumberColumn("Skipped",   width="small"),
         "Batches":    st.column_config.NumberColumn("Batches",   width="small"),
-        "Input Tok":  st.column_config.NumberColumn("Input Tok", width="small"),
-        "Output Tok": st.column_config.NumberColumn("Output Tok",width="small"),
-        "Cost":       st.column_config.TextColumn("Cost",        width="small"),
-        "Cumulative": st.column_config.TextColumn("Cumulative",  width="small"),
+        "Input Tok":  st.column_config.NumberColumn("Input Tok",  width="small"),
+        "Output Tok": st.column_config.NumberColumn("Output Tok", width="small"),
+        "Scrape (s)": st.column_config.NumberColumn("Scrape (s)", width="small", format="%.1f"),
+        "Score (s)":  st.column_config.NumberColumn("Score (s)",  width="small", format="%.1f"),
+        "Total (s)":  st.column_config.NumberColumn("Total (s)",  width="small", format="%.1f"),
+        "Jobs/s":     st.column_config.NumberColumn("Jobs/s",     width="small", format="%.2f"),
+        "Cost":       st.column_config.TextColumn("Cost",         width="small"),
+        "Cumulative": st.column_config.TextColumn("Cumulative",   width="small"),
     }
 
     st.dataframe(

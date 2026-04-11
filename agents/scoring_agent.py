@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from typing import Callable
 
 from claude.client import ClaudeClient
@@ -51,6 +52,12 @@ class ScoringAgent:
         self.parser = parser
         self.tracks_config = tracks_config
         self.salary_config = salary_config
+        # Populated after each score_batch() call — read by main.py for run stats
+        self.last_run_stats: dict = {
+            "elapsed_score_s": 0.0,
+            "avg_batch_latency_s": 0.0,
+            "jobs_per_second": 0.0,
+        }
 
     def score_batch(
         self,
@@ -100,13 +107,21 @@ class ScoringAgent:
         chunks = [valid[i : i + BATCH_SIZE] for i in range(0, len(valid), BATCH_SIZE)]
         total_batches = len(chunks)
         scored_count = 0
+        batch_latencies: list[float] = []
+
+        t_score_start = time.perf_counter()
 
         for batch_num, chunk in enumerate(chunks, 1):
             if on_progress:
                 on_progress(batch_num, total_batches, chunk)
 
+            t_batch_start = time.perf_counter()
             try:
                 scores_list = self._score_chunk(chunk, profile)
+                batch_latency = time.perf_counter() - t_batch_start
+                batch_latencies.append(batch_latency)
+                logger.debug("Batch %d/%d latency: %.2fs", batch_num, total_batches, batch_latency)
+
                 for job, track_scores in zip(chunk, scores_list):
                     if track_scores is not None:
                         job.scores = track_scores
@@ -125,11 +140,24 @@ class ScoringAgent:
             except Exception as e:
                 logger.error("Batch %d/%d failed: %s", batch_num, total_batches, e)
 
+        elapsed_score_s = time.perf_counter() - t_score_start
+        avg_batch_latency_s = sum(batch_latencies) / len(batch_latencies) if batch_latencies else 0.0
+        jobs_per_second = scored_count / elapsed_score_s if elapsed_score_s > 0 else 0.0
+
+        self.last_run_stats = {
+            "elapsed_score_s": elapsed_score_s,
+            "avg_batch_latency_s": avg_batch_latency_s,
+            "jobs_per_second": jobs_per_second,
+        }
+
         logger.info(
-            "Scoring complete — scored: %d | skipped: %d | failed: %d",
+            "Scoring complete: scored=%d skipped=%d failed=%d elapsed=%.1fs avg_batch=%.1fs throughput=%.2f jobs/s",
             scored_count,
             skipped,
             len(valid) - scored_count,
+            elapsed_score_s,
+            avg_batch_latency_s,
+            jobs_per_second,
         )
         return jobs
 
