@@ -1,13 +1,3 @@
-# LinkedIn Article Draft — Part 2
-
----
-
-> **Publishing note:** Diagrams are in Mermaid format. Export as PNG before posting to LinkedIn. Use mermaid.live and download as PNG. Use the same theme block from the v1 article for visual consistency.
-
-> **Content disclosure:** Portions of this article were drafted and edited with the assistance of Claude (Anthropic). The project, the code, the architecture decisions, and the lessons learned are entirely my own. Claude helped me articulate them clearly. I reviewed and revised every section to make sure it accurately reflects my experience.
-
----
-
 ## HEADLINE
 
 I designed and built an AI agent from scratch to support my job search. Here are 15 patterns I could only have learned by shipping it.
@@ -18,21 +8,19 @@ I designed and built an AI agent from scratch to support my job search. Here are
 
 - My [first article](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) covered 8 agentic AI patterns I used to build a job search agent
 - This is the follow-up: what happened when I actually ran it, hit real bugs, and had to evolve the design
-- 6 new production patterns across Memory, Control, and Security — a layer most agentic AI content skips entirely
+- 7 new production patterns across Memory, Control, Security, and Cost — layers most agentic AI content skips entirely
 - The underlying theme: the gap between a prototype and a production agent comes down to observability, precision, security, and knowing exactly where humans should sit in the loop
 - Each pattern includes further reading so you can go deeper on the concepts that matter to you
 
 ---
 
-## OPENING HOOK
-
-In my [last article](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) I shared 8 agentic AI patterns I used while building a personal job search agent. The response was genuinely encouraging, and several people asked the same question: what happened next?
+In my [last article](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) I shared 8 agentic AI patterns I used while building a personal job search agent to support my job search. The response was genuinely encouraging, and several people asked the same question: what happened next?
 
 Here is what happened. I ran it. Real job postings. Real API bills. Real bugs that only showed up when actual data started flowing through.
 
-Three things that looked perfectly fine in testing broke quietly in production. One design decision I thought was straightforward turned out to be subtly wrong. And I ended up adding a capability I had not planned for at all, one that turned out to be the most practically useful thing in the entire system.
+Some things that looked perfectly fine in testing broke quietly in production. Design decisions I thought were straightforward turned out to be subtly wrong. And I ended up adding capabilities I had not planned for at all — ones that turned out to be the most practically useful parts of the entire system.
 
-This article covers the 4 production lessons that came out of that experience. Each one maps to a concept in agentic AI design that I did not fully appreciate until I saw it fail.
+This article covers 7 new patterns that came out of that experience. Each one maps to a concept in agentic AI design that I did not fully appreciate until I saw it fail or saw the data that only a running system produces.
 
 ---
 
@@ -49,8 +37,9 @@ The agentic AI pattern space can be grouped into four layers:
 | **Action** | What the agent does: tool use, batched fan-out, retry with backoff |
 | **Control** | Who controls the agent: human-in-the-loop, pipeline state machine, approval gates |
 | **Security** | What the agent protects: prompt injection defense, data minimization, input validation |
+| **Cost** | What the agent spends: per-operation model routing, token observability, batch sizing |
 
-The [8 patterns from the first article](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) touched the first four layers. The 6 new patterns in this article go deeper into **Memory**, **Control**, and add a layer that most agentic AI content ignores entirely: **Security**. That last layer matters the moment your agent starts processing content from sources you do not control.
+The [8 patterns from the first article](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) touched the first four layers. The 7 new patterns in this article go deeper into **Memory**, **Control**, and add two layers that most agentic AI content ignores entirely: **Security** and **Cost**. Both matter the moment your agent is running against real data and a real API bill.
 
 ```mermaid
 mindmap
@@ -74,6 +63,8 @@ mindmap
     Security
       Prompt Injection Defense NEW
       Data Minimization NEW
+    Cost
+      Per-Operation Model Routing NEW
 ```
 
 ---
@@ -510,7 +501,7 @@ The same class of bug appears in many forms. A cache invalidation timestamp that
 
 ---
 
-## HOW THE 4 PATTERNS CONNECT
+## How Patterns 9-12 Connect
 
 Each pattern solves a distinct problem. Together they describe a more mature approach to production agent design.
 
@@ -549,8 +540,6 @@ Three things I did not see coming.
 **Human curation is underrated in the agentic AI literature.** Most content about human-in-the-loop focuses on approval gates: should the agent be allowed to take this action? For information-processing agents, curation is often more valuable. Giving the human a way to continuously improve the quality of what the agent operates on compounds over time. The exclusion feature took about an afternoon to build and became the most-used part of the dashboard within a week.
 
 **Timestamp bugs are always ordering bugs.** Every timestamp issue I have run into in production systems comes down to the same assumption: that events are recorded in the same order they occurred. Capturing `run_at` after scraping is the same class of mistake as setting `updated_at` at the ORM layer instead of the application layer, or recording a cache expiry after the data is populated instead of before. The fix is always the same. Record the boundary before you cross it.
-
----
 
 ---
 
@@ -1024,45 +1013,27 @@ The routing mechanism should be configuration, not code. When your cost profile 
 
 ## THE DASHBOARD: WHAT IT LOOKS LIKE IN PRACTICE
 
-> **Publishing note:** Replace the placeholders below with actual screenshots before posting.
-> Suggested tool: Windows Snipping Tool or ShareX. Crop to the relevant UI area only — no browser chrome needed.
-
 The patterns above are all code and diagrams. Here is what they produce when you run the system.
 
 ### Job list with multi-track scores
 
-> 📸 **[SCREENSHOT PLACEHOLDER]**
-> **File:** `screenshot_job_list.png`
-> **What to capture:** The main scored jobs table — show all three track score columns (IC, Architect, Management), a spread of scores, and at least one row selected with the exclude panel visible below.
-> **Why:** Shows Pattern 8 (Multi-Track Scoring) and Pattern 10 (Human-in-the-Loop Curation) working together in a single view.
+*(screenshot: scored jobs table — IC, Architect, Management scores, with exclude panel visible)*
 
 ### Run history and cost tracking
 
-> 📸 **[SCREENSHOT PLACEHOLDER]**
-> **File:** `screenshot_run_history.png`
-> **What to capture:** The Run History tab — show the cost-per-run chart or the token breakdown table with at least 3–4 runs visible. Ideally show both estimated and actual cost columns side by side.
-> **Why:** Shows Pattern 11 (Observability-First) in practice — real numbers from real runs, not just a diagram.
+*(screenshot: Run History tab — cost per run chart, estimated vs actual, token breakdown by operation)*
 
 ### Resume tailoring output
 
-> 📸 **[SCREENSHOT PLACEHOLDER]**
-> **File:** `screenshot_tailoring.png`
-> **What to capture:** The tailoring panel — job title at top, tailored resume sections below. Redact any personal content if needed.
-> **Why:** Shows the end-to-end value — from job posting to employer-ready resume — that Pattern 15 (Model Routing) underpins by using Sonnet for this step.
+*(screenshot: tailoring panel — job title, tailored resume sections)*
 
 ### New jobs from last run
 
-> 📸 **[SCREENSHOT PLACEHOLDER]**
-> **File:** `screenshot_new_jobs.png`
-> **What to capture:** The "New Jobs" tab immediately after a run — jobs found in the most recent scrape, with `found_at` timestamps visible.
-> **Why:** This is the view that Pattern 12 (Timestamp Precision) fixed. Before the fix this tab was always empty.
+*(screenshot: New Jobs tab immediately after a run — jobs with timestamps, scored and awaiting scoring)*
 
 ### Top target companies
 
-> 📸 **[SCREENSHOT PLACEHOLDER]**
-> **File:** `screenshot_companies.png`
-> **What to capture:** The "Companies" view — the employer list with job counts and score distribution. Select one company to show the per-role breakdown beneath it.
-> **Why:** This view has no equivalent in any off-the-shelf job board. It emerges purely from running the agent across many scrapes — the same employers keep posting, and the score spread tells you whether they're worth tracking. No extra code needed; it falls out of the data the other patterns produce.
+*(screenshot: Companies view — employer list with job counts and score distribution, one company expanded)*
 
 ---
 
@@ -1072,7 +1043,7 @@ The [first article](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-
 
 That distinction matters more than it sounds. Most writing about agentic AI is produced before the author has run the thing against real data with real API costs. The patterns look clean in a diagram. They look different when you are staring at a token bill, trying to figure out why a dashboard view is always empty, or realising that third-party job descriptions could be actively trying to manipulate your agent.
 
-None of these 6 patterns require a new framework or a new model. They require attention to the specific ways agentic systems differ from ordinary software. Cost is a runtime variable, not a constant. Human judgment belongs in the loop at specific points, not everywhere and not nowhere. The order in which you record state is as important as the state itself. And any agent that processes external content is running with an open door unless it is explicitly told to close it.
+None of these 7 patterns require a new framework or a new model. They require attention to the specific ways agentic systems differ from ordinary software. Cost is a runtime variable, not a constant. Human judgment belongs in the loop at specific points, not everywhere and not nowhere. The order in which you record state is as important as the state itself. And any agent that processes external content is running with an open door unless it is explicitly told to close it.
 
 The system is running on my laptop, supporting my job search, and teaching me things I could not have learned any other way. More to come.
 
