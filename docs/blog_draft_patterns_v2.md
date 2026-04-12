@@ -1017,23 +1017,23 @@ The patterns above are all code and diagrams. Here is what they produce when you
 
 ### Job list with multi-track scores
 
-*(screenshot: scored jobs table — IC, Architect, Management scores, with exclude panel visible)*
+![Job list with multi-track scores](blog_images/screenshot_job_list.png)
 
 ### Run history and cost tracking
 
-*(screenshot: Run History tab — cost per run chart, estimated vs actual, token breakdown by operation)*
+![Run history and cost tracking](blog_images/screenshot_run_history.png)
 
 ### Resume tailoring output
 
-*(screenshot: tailoring panel — job title, tailored resume sections)*
+![Resume tailoring output](blog_images/screenshot_tailoring.png)
 
 ### New jobs from last run
 
-*(screenshot: New Jobs tab immediately after a run — jobs with timestamps, scored and awaiting scoring)*
+![New jobs from last run](blog_images/screenshot_new_jobs.png)
 
 ### Top target companies
 
-*(screenshot: Companies view — employer list with job counts and score distribution, one company expanded)*
+![Top target companies](blog_images/screenshot_companies.png)
 
 ---
 
