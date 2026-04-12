@@ -8,13 +8,9 @@
 
 ---
 
-## HEADLINE OPTIONS
+## HEADLINE
 
-**Option A:** I designed and built an AI agent from scratch to support my job search. Here are 15 patterns I could only have learned by shipping it.
-
-**Option B:** 15 production patterns from building an agentic AI system end-to-end. What breaks, what it costs, and what the courses skip.
-
-**Option C:** I built an AI agent to support my job search — on my own laptop, against real data, at real cost. Here is what I learned.
+I designed and built an AI agent from scratch to support my job search. Here are 15 patterns I could only have learned by shipping it.
 
 ---
 
