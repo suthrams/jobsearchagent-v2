@@ -15,6 +15,7 @@
 
 from __future__ import annotations
 
+import datetime
 import json
 import sqlite3
 from pathlib import Path
@@ -456,13 +457,16 @@ def render_track_table(df: pd.DataFrame, score_col: str, min_score: int, table_k
     )
 
     state_col = ["state"] if "state" in filtered.columns else []
+    found_col = ["found_at"] if "found_at" in filtered.columns else []
     display = filtered[
-        ["id", "title", "company", "location"] + state_col + [score_col, "rec", "salary", "url", "summary"]
+        ["id", "title", "company", "location"] + state_col + [score_col, "rec", "source"] + found_col + ["salary", "url", "summary"]
     ].rename(columns={
         score_col: "Score",
         "rec": "Rec",
         "summary": "Claude Summary",
         "url": "URL",
+        "source": "Source",
+        "found_at": "Found",
     })
 
     display = display.reset_index(drop=True)
@@ -483,6 +487,8 @@ def render_track_table(df: pd.DataFrame, score_col: str, min_score: int, table_k
                 "Score", min_value=0, max_value=100, format="%d"
             ),
             "Rec": st.column_config.TextColumn("Rec", width="small"),
+            "Source": st.column_config.TextColumn("Source", width="small"),
+            "Found": st.column_config.DateColumn("Found", format="MMM D, YYYY", width="small"),
             "salary": st.column_config.TextColumn("Salary", width="medium"),
             "URL": st.column_config.LinkColumn("Link", width="small"),
             "Claude Summary": st.column_config.TextColumn("Claude Summary", width="large"),
@@ -526,6 +532,14 @@ with st.sidebar:
     )
 
     st.markdown("---")
+    found_after: datetime.date | None = st.date_input(
+        "Found on or after",
+        value=None,
+        max_value=datetime.date.today(),
+        help="Only show jobs discovered on or after this date. Leave blank to show all.",
+    )
+
+    st.markdown("---")
     if st.button("Refresh data"):
         st.cache_data.clear()
         st.rerun()
@@ -553,6 +567,10 @@ if search and not df.empty:
 # Apply state filter (jobs views only)
 if selected_states and not df.empty and "state" in df.columns:
     df = df[df["state"].isin(selected_states)]
+
+# Apply found-on-or-after filter (jobs views only)
+if found_after is not None and not df.empty and "found_at" in df.columns:
+    df = df[df["found_at"] >= found_after]
 
 # ─── Views ────────────────────────────────────────────────────────────────────
 
@@ -600,11 +618,12 @@ if view == "New Jobs":
             display_scored = scored_new[
                 ["id", "title", "company", "location"] + _new_state_col + [
                     "score_ic", "score_architect", "score_management", "score_best",
-                    "salary", "url",
+                    "source", "salary", "found_at", "url",
                 ]
             ].rename(columns={
                 "score_ic": "IC", "score_architect": "Arch",
-                "score_management": "Mgmt", "score_best": "Best", "url": "URL",
+                "score_management": "Mgmt", "score_best": "Best",
+                "source": "Source", "found_at": "Found", "url": "URL",
             })
             # Apply state filter if active
             if selected_states and "state" in display_scored.columns:
@@ -621,7 +640,9 @@ if view == "New Jobs":
                     "Arch": st.column_config.ProgressColumn("Arch", min_value=0, max_value=100, format="%d"),
                     "Mgmt": st.column_config.ProgressColumn("Mgmt", min_value=0, max_value=100, format="%d"),
                     "Best": st.column_config.ProgressColumn("Best", min_value=0, max_value=100, format="%d"),
+                    "Source": st.column_config.TextColumn("Source", width="small"),
                     "salary": st.column_config.TextColumn("Salary", width="medium"),
+                    "Found": st.column_config.DatetimeColumn("Found", format="MMM D, HH:mm", width="small"),
                     "URL":  st.column_config.LinkColumn("Link",    width="small"),
                 },
             )
@@ -640,8 +661,8 @@ if view == "New Jobs":
             st.caption("These jobs were scraped this run but haven't been scored yet (run cancelled or first-time batch).")
             _uns_state_col = ["state"] if "state" in unscored_new.columns else []
             display_unscored = unscored_new[
-                ["id", "title", "company", "location"] + _uns_state_col + ["source", "work_mode", "url"]
-            ].rename(columns={"url": "URL"})
+                ["id", "title", "company", "location"] + _uns_state_col + ["source", "work_mode", "found_at", "url"]
+            ].rename(columns={"url": "URL", "found_at": "Found"})
             st.dataframe(
                 display_unscored, hide_index=True, use_container_width=True,
                 column_config={
@@ -652,6 +673,7 @@ if view == "New Jobs":
                     "state":     st.column_config.TextColumn("State",      width="small"),
                     "source":    st.column_config.TextColumn("Source",     width="small"),
                     "work_mode": st.column_config.TextColumn("Mode",       width="small"),
+                    "Found":     st.column_config.DatetimeColumn("Found",  format="MMM D, HH:mm", width="small"),
                     "URL":       st.column_config.LinkColumn("Link",       width="small"),
                 },
             )
@@ -673,18 +695,19 @@ elif view == "Top Matches":
 
     st.markdown("---")
 
-    # Full table — include found_at so user can see when each job was discovered
+    # Full table — include source and found_at so user can see origin and discovery date
     _top_state_col = ["state"] if "state" in filtered.columns else []
     display = filtered[
         ["id", "title", "company", "location"] + _top_state_col + [
             "score_ic", "score_architect", "score_management", "score_best",
-            "salary", "found_at", "url",
+            "source", "salary", "found_at", "url",
         ]
     ].rename(columns={
         "score_ic": "IC",
         "score_architect": "Arch",
         "score_management": "Mgmt",
         "score_best": "Best",
+        "source": "Source",
         "found_at": "Found",
         "url": "URL",
     })
@@ -707,8 +730,9 @@ elif view == "Top Matches":
             "Arch": st.column_config.ProgressColumn("Arch", min_value=0, max_value=100, format="%d"),
             "Mgmt": st.column_config.ProgressColumn("Mgmt", min_value=0, max_value=100, format="%d"),
             "Best": st.column_config.ProgressColumn("Best", min_value=0, max_value=100, format="%d"),
+            "Source": st.column_config.TextColumn("Source", width="small"),
             "salary": st.column_config.TextColumn("Salary", width="medium"),
-            "Found": st.column_config.DatetimeColumn("Found", format="MMM D, HH:mm", width="medium"),
+            "Found": st.column_config.DateColumn("Found", format="MMM D, YYYY", width="small"),
             "URL": st.column_config.LinkColumn("Link", width="small"),
         },
     )
