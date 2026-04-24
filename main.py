@@ -5,9 +5,11 @@
 # and print a summary to the terminal.
 #
 # Usage:
-#   python main.py                  # scrape + score all new jobs
-#   python main.py --tailor <id>    # tailor resume for a specific job ID
-#   python main.py --list           # show all scored jobs in the database
+#   python main.py                        # scrape + score all new jobs
+#   python main.py --tailor <id>          # tailor resume for a specific job ID
+#   python main.py --list                 # show all scored jobs in the database
+#   python main.py --purge                # delete scored jobs with best score < 75
+#   python main.py --purge --threshold 80 # use a custom cutoff
 # ─────────────────────────────────────────────────────────────────────────────
 
 from __future__ import annotations
@@ -217,6 +219,7 @@ def print_scored_jobs(jobs: list) -> None:
     table.add_column("ID", style="dim", width=5)
     table.add_column("Title", width=35)
     table.add_column("Company", width=22)
+    table.add_column("State", justify="center", width=5)
     table.add_column("IC", justify="center", width=5)
     table.add_column("Arch", justify="center", width=5)
     table.add_column("Mgmt", justify="center", width=5)
@@ -248,6 +251,7 @@ def print_scored_jobs(jobs: list) -> None:
             str(job.id or ""),
             job.title[:33],
             job.company[:20],
+            job.state or "",
             ic_s,
             arch_s,
             mgmt_s,
@@ -651,6 +655,41 @@ def cmd_list(db: Database) -> None:
     print_scored_jobs(all_jobs)
 
 
+def cmd_purge(db: Database, threshold: int) -> None:
+    """
+    Hard-deletes all scored jobs whose best score is below threshold.
+    Applied and offer jobs are always protected.
+    """
+    to_delete = db.delete_below_threshold(threshold, dry_run=True)
+    total = db.count()
+
+    if to_delete == 0:
+        console.print(
+            f"[green]Nothing to purge — no scored jobs below {threshold}.[/green]"
+        )
+        return
+
+    console.print(
+        f"\n[bold yellow]Purge preview[/bold yellow]\n"
+        f"  Total jobs in DB : [cyan]{total}[/cyan]\n"
+        f"  To be deleted    : [red]{to_delete}[/red] (score_best < {threshold}, "
+        f"status not applied/offer)\n"
+        f"  Will remain      : [cyan]{total - to_delete}[/cyan]\n"
+    )
+    confirm = input(
+        f"Permanently delete {to_delete} job(s)? This cannot be undone. [y/N]: "
+    ).strip().lower()
+
+    if confirm != "y":
+        console.print("[yellow]Purge cancelled.[/yellow]")
+        return
+
+    deleted = db.delete_below_threshold(threshold)
+    console.print(
+        f"[green]Deleted {deleted} job(s) with score_best < {threshold}.[/green]"
+    )
+
+
 # ─── Entry point ──────────────────────────────────────────────────────────────
 
 
@@ -673,6 +712,18 @@ def main() -> None:
         action="store_true",
         help="Launch Streamlit dashboard immediately without scraping or scoring",
     )
+    parser.add_argument(
+        "--purge",
+        action="store_true",
+        help="Delete all scored jobs below the score threshold (default 75)",
+    )
+    parser.add_argument(
+        "--threshold",
+        type=int,
+        default=75,
+        metavar="N",
+        help="Score cutoff for --purge (default: 75)",
+    )
     args = parser.parse_args()
 
     # Load config and set up logging
@@ -684,6 +735,7 @@ def main() -> None:
 
     # Initialise shared components
     db = Database(config.storage.database)
+    db.backfill_states()  # populate state column for any jobs missing it
     client = ClaudeClient(config.claude)
     loader = PromptLoader()
     rparser = ResponseParser()
@@ -708,7 +760,9 @@ def main() -> None:
         return
 
     try:
-        if args.tailor:
+        if args.purge:
+            cmd_purge(db, args.threshold)
+        elif args.tailor:
             cmd_tailor(config, db, agents, args.tailor)
         elif args.list:
             cmd_list(db)

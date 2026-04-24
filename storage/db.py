@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     title            TEXT    NOT NULL,
     company          TEXT    NOT NULL,
     location         TEXT,
+    state            TEXT,                      -- US state abbreviation (e.g. 'GA', 'TX')
     work_mode        TEXT,
     description      TEXT,
     salary_json      TEXT,                      -- SalaryRange serialised as JSON
@@ -53,6 +54,7 @@ _MIGRATIONS = [
     ("score_best",       "ALTER TABLE jobs ADD COLUMN score_best       INTEGER"),
     ("excluded",         "ALTER TABLE jobs ADD COLUMN excluded         INTEGER NOT NULL DEFAULT 0"),
     ("excluded_reason",  "ALTER TABLE jobs ADD COLUMN excluded_reason  TEXT"),
+    ("state",            "ALTER TABLE jobs ADD COLUMN state            TEXT"),
 ]
 
 # Run history table — one row per main.py execution
@@ -179,11 +181,11 @@ class Database:
         cursor = self._conn.execute(
             """
             INSERT OR IGNORE INTO jobs
-                (url, source, title, company, location, work_mode, description,
+                (url, source, title, company, location, state, work_mode, description,
                  salary_json, scores_json, status, posted_at, expires_at, found_at, applied_at,
                  score_ic, score_architect, score_management, score_best)
             VALUES
-                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
             """,
             self._to_row(job),
         )
@@ -220,6 +222,7 @@ class Database:
                 salary_json      = ?,
                 applied_at       = ?,
                 location         = ?,
+                state            = ?,
                 work_mode        = ?,
                 description      = ?,
                 posted_at        = ?,
@@ -236,6 +239,7 @@ class Database:
                 job.salary.model_dump_json() if job.salary else None,
                 job.applied_at.isoformat() if job.applied_at else None,
                 job.location,
+                job.state,
                 job.work_mode,
                 job.description,
                 job.posted_at.isoformat() if job.posted_at else None,
@@ -367,6 +371,7 @@ class Database:
             job.title,
             job.company,
             job.location,
+            job.state,
             job.work_mode.value if job.work_mode and hasattr(job.work_mode, "value") else job.work_mode,
             job.description,
             job.salary.model_dump_json() if job.salary else None,
@@ -400,6 +405,7 @@ class Database:
             title=row["title"],
             company=row["company"],
             location=row["location"],
+            state=row["state"] if "state" in row.keys() else None,
             work_mode=WorkMode(row["work_mode"]) if row["work_mode"] else None,
             description=row["description"],
             salary=salary,
@@ -514,6 +520,72 @@ class Database:
         )
         self._conn.commit()
         logger.debug("Excluded %d job(s): reason=%r", len(job_ids), reason)
+
+    def backfill_states(self) -> int:
+        """
+        Populates the state column for existing rows where state IS NULL but location IS NOT NULL.
+        Safe to call on every startup — skips rows that already have a state or have no location.
+
+        Returns:
+            Number of rows updated.
+        """
+        from models.filters import extract_us_state
+
+        rows = self._conn.execute(
+            "SELECT id, location FROM jobs WHERE state IS NULL AND location IS NOT NULL"
+        ).fetchall()
+
+        updates = [
+            (extract_us_state(row[1]), row[0])
+            for row in rows
+            if extract_us_state(row[1]) is not None
+        ]
+
+        if updates:
+            self._conn.executemany("UPDATE jobs SET state = ? WHERE id = ?", updates)
+            self._conn.commit()
+            logger.info("Backfilled state for %d job(s)", len(updates))
+
+        return len(updates)
+
+    def delete_below_threshold(self, threshold: int, dry_run: bool = False) -> int:
+        """
+        Hard-deletes scored jobs whose best score across all tracks is below threshold.
+        Jobs with status 'applied' or 'offer' are never deleted regardless of score.
+        Unscored jobs (score_best IS NULL / status NEW) are also left untouched.
+
+        Args:
+            threshold: Minimum score to keep (exclusive lower bound). Jobs with
+                       score_best < threshold are deleted.
+            dry_run:   If True, returns the count without deleting anything.
+
+        Returns:
+            Number of rows deleted (or that would be deleted if dry_run=True).
+        """
+        count = self._conn.execute(
+            """
+            SELECT COUNT(*) FROM jobs
+            WHERE score_best IS NOT NULL
+              AND score_best < ?
+              AND status NOT IN ('applied', 'offer')
+            """,
+            (threshold,),
+        ).fetchone()[0]
+
+        if not dry_run:
+            self._conn.execute(
+                """
+                DELETE FROM jobs
+                WHERE score_best IS NOT NULL
+                  AND score_best < ?
+                  AND status NOT IN ('applied', 'offer')
+                """,
+                (threshold,),
+            )
+            self._conn.commit()
+            logger.info("Deleted %d job(s) with score_best < %d", count, threshold)
+
+        return count
 
     def close(self) -> None:
         """Closes the database connection. Call this on clean shutdown."""

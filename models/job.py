@@ -11,7 +11,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 # ─── Enums ────────────────────────────────────────────────────────────────────
@@ -169,6 +169,9 @@ class Job(BaseModel):
     location: Optional[str] = Field(
         None, description="Location string from the posting"
     )
+    state: Optional[str] = Field(
+        None, description="US state abbreviation extracted from location (e.g. 'GA', 'TX')"
+    )
     work_mode: Optional[WorkMode] = Field(None, description="Remote / hybrid / onsite")
 
     # --- Content ---
@@ -215,6 +218,13 @@ class Job(BaseModel):
     applied_at: Optional[datetime] = Field(
         None, description="When you submitted the application"
     )
+
+    @model_validator(mode="after")
+    def _fill_state(self) -> "Job":
+        if self.state is None and self.location:
+            from models.filters import extract_us_state
+            self.state = extract_us_state(self.location)
+        return self
 
     @property
     def is_stale(self) -> bool:

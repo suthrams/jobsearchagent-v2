@@ -146,19 +146,36 @@ def load_new_jobs() -> pd.DataFrame:
         return pd.DataFrame()
 
     conn = sqlite3.connect(str(DB_PATH))
-    df = pd.read_sql_query(
-        """
-        SELECT
-            id, title, company, location, source, status, work_mode,
-            score_ic, score_architect, score_management, score_best,
-            url, scores_json, salary_json, posted_at, found_at
-        FROM jobs
-        WHERE found_at >= ? AND (excluded = 0 OR excluded IS NULL)
-        ORDER BY found_at DESC
-        """,
-        conn,
-        params=(last,),
-    )
+    try:
+        df = pd.read_sql_query(
+            """
+            SELECT
+                id, title, company, location, state, source, status, work_mode,
+                score_ic, score_architect, score_management, score_best,
+                url, scores_json, salary_json, posted_at, found_at
+            FROM jobs
+            WHERE found_at >= ? AND (excluded = 0 OR excluded IS NULL)
+            ORDER BY found_at DESC
+            """,
+            conn,
+            params=(last,),
+        )
+    except Exception:
+        df = pd.read_sql_query(
+            """
+            SELECT
+                id, title, company, location, source, status, work_mode,
+                score_ic, score_architect, score_management, score_best,
+                url, scores_json, salary_json, posted_at, found_at
+            FROM jobs
+            WHERE found_at >= ? AND (excluded = 0 OR excluded IS NULL)
+            ORDER BY found_at DESC
+            """,
+            conn,
+            params=(last,),
+        )
+        from models.filters import extract_us_state
+        df["state"] = df["location"].apply(extract_us_state)
     conn.close()
     if not df.empty:
         df["found_at"] = pd.to_datetime(df["found_at"], errors="coerce")
@@ -173,18 +190,34 @@ def load_jobs() -> pd.DataFrame:
         return pd.DataFrame()
 
     conn = sqlite3.connect(str(DB_PATH))
-    df = pd.read_sql_query(
-        """
-        SELECT
-            id, title, company, location, source, status,
-            score_ic, score_architect, score_management, score_best,
-            url, scores_json, salary_json, posted_at, found_at
-        FROM jobs
-        WHERE status = 'scored' AND (excluded = 0 OR excluded IS NULL)
-        ORDER BY score_best DESC
-        """,
-        conn,
-    )
+    try:
+        df = pd.read_sql_query(
+            """
+            SELECT
+                id, title, company, location, state, source, status,
+                score_ic, score_architect, score_management, score_best,
+                url, scores_json, salary_json, posted_at, found_at
+            FROM jobs
+            WHERE status = 'scored' AND (excluded = 0 OR excluded IS NULL)
+            ORDER BY score_best DESC
+            """,
+            conn,
+        )
+    except Exception:
+        df = pd.read_sql_query(
+            """
+            SELECT
+                id, title, company, location, source, status,
+                score_ic, score_architect, score_management, score_best,
+                url, scores_json, salary_json, posted_at, found_at
+            FROM jobs
+            WHERE status = 'scored' AND (excluded = 0 OR excluded IS NULL)
+            ORDER BY score_best DESC
+            """,
+            conn,
+        )
+        from models.filters import extract_us_state
+        df["state"] = df["location"].apply(extract_us_state)
     conn.close()
 
     # Parse salary range
@@ -422,9 +455,10 @@ def render_track_table(df: pd.DataFrame, score_col: str, min_score: int, table_k
         lambda x: "Yes" if get_recommended(x, track) else ""
     )
 
-    display = filtered[[
-        "id", "title", "company", "location", score_col, "rec", "salary", "url", "summary"
-    ]].rename(columns={
+    state_col = ["state"] if "state" in filtered.columns else []
+    display = filtered[
+        ["id", "title", "company", "location"] + state_col + [score_col, "rec", "salary", "url", "summary"]
+    ].rename(columns={
         score_col: "Score",
         "rec": "Rec",
         "summary": "Claude Summary",
@@ -444,6 +478,7 @@ def render_track_table(df: pd.DataFrame, score_col: str, min_score: int, table_k
             "title": st.column_config.TextColumn("Title", width="large"),
             "company": st.column_config.TextColumn("Company", width="medium"),
             "location": st.column_config.TextColumn("Location", width="medium"),
+            "state": st.column_config.TextColumn("State", width="small"),
             "Score": st.column_config.ProgressColumn(
                 "Score", min_value=0, max_value=100, format="%d"
             ),
@@ -477,6 +512,20 @@ with st.sidebar:
     search = st.text_input("Search title / company", placeholder="e.g. Maximus, architect")
 
     st.markdown("---")
+    _all_jobs = load_jobs()
+    _state_options: list[str] = []
+    if not _all_jobs.empty and "state" in _all_jobs.columns:
+        _state_options = sorted(
+            s for s in _all_jobs["state"].dropna().unique() if s
+        )
+    selected_states: list[str] = st.multiselect(
+        "Filter by state",
+        options=_state_options,
+        default=[],
+        placeholder="All states",
+    )
+
+    st.markdown("---")
     if st.button("Refresh data"):
         st.cache_data.clear()
         st.rerun()
@@ -500,6 +549,10 @@ if search and not df.empty:
         | df["company"].str.contains(search, case=False, na=False)
     )
     df = df[mask]
+
+# Apply state filter (jobs views only)
+if selected_states and not df.empty and "state" in df.columns:
+    df = df[df["state"].isin(selected_states)]
 
 # ─── Views ────────────────────────────────────────────────────────────────────
 
@@ -543,14 +596,19 @@ if view == "New Jobs":
                     pass
                 return ""
             scored_new["salary"] = scored_new["salary_json"].apply(_fmt_sal)
-            display_scored = scored_new[[
-                "id", "title", "company", "location",
-                "score_ic", "score_architect", "score_management", "score_best",
-                "salary", "url",
-            ]].rename(columns={
+            _new_state_col = ["state"] if "state" in scored_new.columns else []
+            display_scored = scored_new[
+                ["id", "title", "company", "location"] + _new_state_col + [
+                    "score_ic", "score_architect", "score_management", "score_best",
+                    "salary", "url",
+                ]
+            ].rename(columns={
                 "score_ic": "IC", "score_architect": "Arch",
                 "score_management": "Mgmt", "score_best": "Best", "url": "URL",
             })
+            # Apply state filter if active
+            if selected_states and "state" in display_scored.columns:
+                display_scored = display_scored[display_scored["state"].isin(selected_states)]
             st.dataframe(
                 display_scored, hide_index=True, use_container_width=True,
                 column_config={
@@ -558,6 +616,7 @@ if view == "New Jobs":
                     "title": st.column_config.TextColumn("Title",  width="large"),
                     "company": st.column_config.TextColumn("Company", width="medium"),
                     "location": st.column_config.TextColumn("Location", width="medium"),
+                    "state": st.column_config.TextColumn("State", width="small"),
                     "IC":   st.column_config.ProgressColumn("IC",   min_value=0, max_value=100, format="%d"),
                     "Arch": st.column_config.ProgressColumn("Arch", min_value=0, max_value=100, format="%d"),
                     "Mgmt": st.column_config.ProgressColumn("Mgmt", min_value=0, max_value=100, format="%d"),
@@ -568,7 +627,10 @@ if view == "New Jobs":
             )
             st.markdown("---")
             st.subheader("Job Details")
-            for _, row in scored_new.sort_values("score_best", ascending=False).iterrows():
+            _cards_new = scored_new.copy()
+            if selected_states and "state" in _cards_new.columns:
+                _cards_new = _cards_new[_cards_new["state"].isin(selected_states)]
+            for _, row in _cards_new.sort_values("score_best", ascending=False).iterrows():
                 render_job_card(row, highlight_track="architect")
 
         # Unscored jobs — show as a plain list so user knows what came in
@@ -576,9 +638,10 @@ if view == "New Jobs":
         if not unscored_new.empty:
             st.subheader(f"Awaiting Scoring ({len(unscored_new)})")
             st.caption("These jobs were scraped this run but haven't been scored yet (run cancelled or first-time batch).")
-            display_unscored = unscored_new[[
-                "id", "title", "company", "location", "source", "work_mode", "url"
-            ]].rename(columns={"url": "URL"})
+            _uns_state_col = ["state"] if "state" in unscored_new.columns else []
+            display_unscored = unscored_new[
+                ["id", "title", "company", "location"] + _uns_state_col + ["source", "work_mode", "url"]
+            ].rename(columns={"url": "URL"})
             st.dataframe(
                 display_unscored, hide_index=True, use_container_width=True,
                 column_config={
@@ -586,6 +649,7 @@ if view == "New Jobs":
                     "title":     st.column_config.TextColumn("Title",      width="large"),
                     "company":   st.column_config.TextColumn("Company",    width="medium"),
                     "location":  st.column_config.TextColumn("Location",   width="medium"),
+                    "state":     st.column_config.TextColumn("State",      width="small"),
                     "source":    st.column_config.TextColumn("Source",     width="small"),
                     "work_mode": st.column_config.TextColumn("Mode",       width="small"),
                     "URL":       st.column_config.LinkColumn("Link",       width="small"),
@@ -610,11 +674,13 @@ elif view == "Top Matches":
     st.markdown("---")
 
     # Full table — include found_at so user can see when each job was discovered
-    display = filtered[[
-        "id", "title", "company", "location",
-        "score_ic", "score_architect", "score_management", "score_best",
-        "salary", "found_at", "url",
-    ]].rename(columns={
+    _top_state_col = ["state"] if "state" in filtered.columns else []
+    display = filtered[
+        ["id", "title", "company", "location"] + _top_state_col + [
+            "score_ic", "score_architect", "score_management", "score_best",
+            "salary", "found_at", "url",
+        ]
+    ].rename(columns={
         "score_ic": "IC",
         "score_architect": "Arch",
         "score_management": "Mgmt",
@@ -636,6 +702,7 @@ elif view == "Top Matches":
             "title": st.column_config.TextColumn("Title", width="large"),
             "company": st.column_config.TextColumn("Company", width="medium"),
             "location": st.column_config.TextColumn("Location", width="medium"),
+            "state": st.column_config.TextColumn("State", width="small"),
             "IC": st.column_config.ProgressColumn("IC", min_value=0, max_value=100, format="%d"),
             "Arch": st.column_config.ProgressColumn("Arch", min_value=0, max_value=100, format="%d"),
             "Mgmt": st.column_config.ProgressColumn("Mgmt", min_value=0, max_value=100, format="%d"),

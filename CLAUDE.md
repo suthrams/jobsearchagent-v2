@@ -15,11 +15,13 @@ Python tool that scores jobs against your profile across three career tracks:
 
 ## Running the agent
 ```bash
-python main.py                  # scrape + score all new jobs
-python main.py --list           # show all scored jobs
-python main.py --tailor 42      # tailor resume for job ID 42
-python main.py --dashboard      # scrape + score, then launch dashboard
-python main.py --dashboard-only # launch dashboard immediately (no scraping)
+python main.py                        # scrape + score all new jobs
+python main.py --list                 # show all scored jobs
+python main.py --tailor 42            # tailor resume for job ID 42
+python main.py --dashboard            # scrape + score, then launch dashboard
+python main.py --dashboard-only       # launch dashboard immediately (no scraping)
+python main.py --purge                # delete scored jobs with best score < 75
+python main.py --purge --threshold 80 # delete with a custom cutoff
 ```
 
 ## File structure
