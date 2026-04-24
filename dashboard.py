@@ -534,9 +534,9 @@ with st.sidebar:
     st.markdown("---")
     found_after: datetime.date | None = st.date_input(
         "Found on or after",
-        value=None,
+        value=datetime.date.today() - datetime.timedelta(days=14),
         max_value=datetime.date.today(),
-        help="Only show jobs discovered on or after this date. Leave blank to show all.",
+        help="Only show jobs discovered on or after this date. Default is last 14 days.",
     )
 
     st.markdown("---")
