@@ -521,6 +521,16 @@ class Database:
         self._conn.commit()
         logger.debug("Excluded %d job(s): reason=%r", len(job_ids), reason)
 
+    def delete_job(self, job_id: int) -> None:
+        """
+        Hard-deletes a single job by primary key.
+        Used immediately after scoring to discard jobs that fall below the
+        minimum persist threshold, so they never occupy space in the database.
+        """
+        self._conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        self._conn.commit()
+        logger.debug("Deleted job id=%d (below score threshold)", job_id)
+
     def backfill_states(self) -> int:
         """
         Populates the state column for existing rows where state IS NULL but location IS NOT NULL.

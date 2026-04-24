@@ -34,6 +34,11 @@ BATCH_SIZE = 10
 # Raise to 5 on paid tiers with higher RPM allowances.
 MAX_PARALLEL_BATCHES = 3
 
+# Minimum best-track score required to keep a job in the database.
+# Jobs scored below this threshold across ALL active tracks are deleted
+# immediately after scoring — they never persist to status=SCORED.
+MIN_PERSIST_SCORE = 75
+
 
 class ScoringAgent:
     """
@@ -115,6 +120,7 @@ class ScoringAgent:
         chunks = [valid[i : i + BATCH_SIZE] for i in range(0, len(valid), BATCH_SIZE)]
         total_batches = len(chunks)
         scored_count = 0
+        discarded_count = 0
         batch_latencies: list[float] = []
 
         # db writes are serialized with a lock.
@@ -155,18 +161,31 @@ class ScoringAgent:
                         for job, track_scores in zip(chunk, scores_list):
                             if track_scores is not None:
                                 job.scores = track_scores
-                                job.status = ApplicationStatus.SCORED
-                                if db:
-                                    db.update_job(job)
-                                scored_count += 1
-                                logger.info(
-                                    "Scored: %s at %s | ic=%s | arch=%s | mgmt=%s",
-                                    job.title,
-                                    job.company,
-                                    track_scores.ic.score if track_scores.ic else "n/a",
-                                    track_scores.architect.score if track_scores.architect else "n/a",
-                                    track_scores.management.score if track_scores.management else "n/a",
-                                )
+                                _raw = [s.score for s in [track_scores.ic, track_scores.architect, track_scores.management] if s is not None]
+                                best_score = max(_raw) if _raw else 0
+
+                                if best_score < MIN_PERSIST_SCORE:
+                                    # Below threshold — delete immediately, never reaches SCORED
+                                    if db and job.id is not None:
+                                        db.delete_job(job.id)
+                                    discarded_count += 1
+                                    logger.info(
+                                        "Discarded (score %d < %d): %s at %s",
+                                        best_score, MIN_PERSIST_SCORE, job.title, job.company,
+                                    )
+                                else:
+                                    job.status = ApplicationStatus.SCORED
+                                    if db:
+                                        db.update_job(job)
+                                    scored_count += 1
+                                    logger.info(
+                                        "Scored: %s at %s | ic=%s | arch=%s | mgmt=%s",
+                                        job.title,
+                                        job.company,
+                                        track_scores.ic.score if track_scores.ic else "n/a",
+                                        track_scores.architect.score if track_scores.architect else "n/a",
+                                        track_scores.management.score if track_scores.management else "n/a",
+                                    )
 
                 except Exception as e:
                     # One batch failing does not cancel the others — already-submitted
@@ -185,14 +204,16 @@ class ScoringAgent:
             "elapsed_score_s": elapsed_score_s,
             "avg_batch_latency_s": avg_batch_latency_s,
             "jobs_per_second": jobs_per_second,
+            "jobs_discarded": discarded_count,
         }
 
         logger.info(
-            "Scoring complete: scored=%d skipped=%d failed=%d elapsed=%.1fs "
-            "avg_batch=%.1fs throughput=%.2f jobs/s parallel_workers=%d",
+            "Scoring complete: kept=%d discarded=%d pre-filtered=%d failed=%d "
+            "elapsed=%.1fs avg_batch=%.1fs throughput=%.2f jobs/s parallel_workers=%d",
             scored_count,
+            discarded_count,
             skipped,
-            len(valid) - scored_count,
+            len(valid) - scored_count - discarded_count,
             elapsed_score_s,
             avg_batch_latency_s,
             jobs_per_second,

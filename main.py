@@ -32,7 +32,7 @@ from claude.client import ClaudeClient
 from claude.prompt_loader import PromptLoader
 from claude.response_parser import ResponseParser
 from agents.profile_agent import ProfileAgent
-from agents.scoring_agent import ScoringAgent, BATCH_SIZE
+from agents.scoring_agent import ScoringAgent, BATCH_SIZE, MIN_PERSIST_SCORE
 from agents.tailoring_agent import TailoringAgent
 from models.config_schema import AppConfig
 from models.job import ApplicationStatus, CareerTrack
@@ -485,8 +485,9 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
             score_stats = agents["scoring"].last_run_stats
 
             # Count outcomes for run record
+            jobs_discarded = agents["scoring"].last_run_stats.get("jobs_discarded", 0)
             jobs_scored = sum(1 for j in unscored if j.status == ApplicationStatus.SCORED)
-            jobs_skipped = len(unscored) - jobs_scored
+            jobs_skipped = len(unscored) - jobs_scored - jobs_discarded
             actual_batches = math.ceil(jobs_scored / BATCH_SIZE) if jobs_scored else 0
             actual_cost, _ = estimate_scoring_cost(jobs_scored, BATCH_SIZE)
 
@@ -548,8 +549,10 @@ def cmd_scrape_and_score(config: AppConfig, db: Database, agents: dict, client: 
             f"\n[bold]Run summary[/bold]\n"
             f"  Scraped       : [cyan]{len(raw_jobs)}[/cyan] jobs across all sources\n"
             f"  New this run  : [cyan]{new_count}[/cyan]\n"
-            f"  Sent to Claude: [cyan]{jobs_scored + jobs_skipped}[/cyan]\n"
-            f"  Scored        : [green]{jobs_scored}[/green]\n"
+            f"  Sent to Claude: [cyan]{jobs_scored + jobs_skipped + jobs_discarded}[/cyan]\n"
+            f"  Kept (>= {MIN_PERSIST_SCORE}) : [green]{jobs_scored}[/green]\n"
+            f"  Discarded     : [yellow]{jobs_discarded}[/yellow] "
+            f"(score < {MIN_PERSIST_SCORE} on all tracks — deleted)\n"
             f"  Pre-filtered  : [dim]{jobs_skipped}[/dim] "
             f"(stale / no description / excluded title / non-tech)\n"
             f"{token_lines}"
