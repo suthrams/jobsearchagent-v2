@@ -49,6 +49,32 @@ The scraper filter is an early optimisation. The scoring agent filter is the aut
 | Leadership (scoped) | `engineering team`, `software engineer`, `software development`, `digital transformation` |
 | IoT / edge | `iot`, `internet of things`, `mqtt`, `edge computing`, `embedded`, `connected devices`, `iiot`, `device management`, `telemetry`, `firmware` |
 
+## US State Extraction
+
+`models/filters.py` also exports a utility function used across the entire pipeline:
+
+### `extract_us_state(location: str | None) -> str | None`
+
+Extracts a 2-letter US state abbreviation from an unstructured location string. Returns `None` if no US state can be identified.
+
+**Strategy (tried in order):**
+1. `, XX` pattern — matches common scraper formats like `"Atlanta, GA"` and `"Seattle, WA, United States"`
+2. Full state name word-boundary match — handles `"Austin, Texas"` and `"New York, New York"`. Names are matched longest-first so `"west virginia"` is never shadowed by `"virginia"`.
+3. Standalone 2-letter uppercase token at end of string — fallback for unusual formats.
+
+**Examples:**
+| Input | Output |
+|---|---|
+| `"Atlanta, GA"` | `"GA"` |
+| `"Austin, Texas"` | `"TX"` |
+| `"Washington, DC"` | `"DC"` |
+| `"New York, NY, United States"` | `"NY"` |
+| `"Remote"` | `None` |
+| `"United States"` | `None` |
+| `None` | `None` |
+
+This function is called by the `Job._fill_state` model validator, which means state extraction happens automatically when any scraper creates a `Job` object — no scraper-level code changes are required. `Database.backfill_states()` uses it to populate the `state` column for rows that pre-date this feature.
+
 ## How to Add or Remove a Filter
 
 Edit `models/filters.py` only. Both the scraper and scoring agent will pick up the change automatically on next run. Extend the test cases in `tests/test_filters.py` with the new title or description to prevent future regressions.

@@ -43,6 +43,8 @@ Opens or creates the database file. Creates the jobs table if it doesn't exist. 
 | `upsert_job(job) → Job` | Inserts if new (by URL), updates if exists. Convenience wrapper. |
 | `insert_run(run_at, ...) → int` | Records one agent execution in the `runs` table. `run_at` must be captured **before scraping begins** so the dashboard `New Jobs` query (`WHERE found_at >= run_at`) correctly returns all jobs from that run. Returns the new run id. |
 | `exclude_jobs(job_ids, reason)` | Marks a list of job IDs as excluded, recording the reason string. Uses `executemany` for efficiency. Excluded jobs are filtered out of all dashboard queries. |
+| `backfill_states() → int` | Populates the `state` column for all rows where `state IS NULL AND location IS NOT NULL`. Called on every `main.py` startup — idempotent, skips rows that already have a state. Returns the count of rows updated. Uses `extract_us_state()` from `models/filters.py`. |
+| `delete_below_threshold(threshold, dry_run=False) → int` | Hard-deletes scored jobs where `score_best < threshold`. Jobs with `status IN ('applied', 'offer')` are always protected. Unscored (`score_best IS NULL`) rows are left untouched. `dry_run=True` returns the count without deleting. Used by `--purge` CLI command. |
 
 ### Read Operations
 
@@ -71,6 +73,7 @@ CREATE TABLE jobs (
     title            TEXT    NOT NULL,
     company          TEXT    NOT NULL,
     location         TEXT,
+    state            TEXT,                      -- US state abbreviation (e.g. 'GA', 'TX')
     work_mode        TEXT,
     description      TEXT,
     salary_json      TEXT,                      -- SalaryRange as JSON
@@ -89,7 +92,7 @@ CREATE TABLE jobs (
 )
 ```
 
-`excluded` and `excluded_reason` are added via `_MIGRATIONS` on first startup after the schema upgrade. All dashboard queries filter these rows out with `WHERE excluded = 0 OR excluded IS NULL`.
+`excluded`, `excluded_reason`, and `state` are added via `_MIGRATIONS` on first startup after the schema upgrade. All dashboard queries filter excluded rows out with `WHERE excluded = 0 OR excluded IS NULL`. The `state` column is populated at insert time (via `Job._fill_state` validator) and backfilled for existing rows by `backfill_states()` on startup.
 
 ### `runs` table
 

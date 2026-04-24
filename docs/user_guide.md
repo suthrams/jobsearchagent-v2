@@ -241,6 +241,7 @@ This opens a browser window at `http://localhost:8501`.
 
 - **Minimum score slider** — hide jobs below a threshold (default 60)
 - **Search box** — filter by job title or company name
+- **Filter by state** — multiselect to narrow results to specific US states (e.g. GA, TX). Only states that appear in your scored jobs are listed. Leave empty to show all.
 - **Refresh button** — force a data reload (auto-refreshes every 30 seconds)
 
 ### Job cards
@@ -340,6 +341,28 @@ Shows all jobs in the database with a status breakdown:
 Total jobs in database: 89
 Status breakdown: {'new': 3, 'scored': 81, 'applied': 5}
 ```
+
+### Pruning low-quality matches
+
+After several runs, the database accumulates jobs that scored too low to be worth pursuing. Use `--purge` to remove them and keep the database focused:
+
+```bash
+python main.py --purge                # removes all scored jobs with best score < 75
+python main.py --purge --threshold 80 # stricter cutoff — only keep 80+
+```
+
+The command shows a preview before asking for confirmation:
+
+```
+Purge preview
+  Total jobs in DB : 312
+  To be deleted    : 241  (score_best < 75, status not applied/offer)
+  Will remain      : 71
+
+Permanently delete 241 job(s)? This cannot be undone. [y/N]:
+```
+
+Jobs you've applied to (status `applied`) or received an offer for (status `offer`) are **never** deleted regardless of score.
 
 ### Re-running without scraping new jobs
 

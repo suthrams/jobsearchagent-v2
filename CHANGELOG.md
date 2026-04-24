@@ -4,6 +4,37 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-04-24
+
+### Added
+
+#### US State Extraction and Filtering
+- `extract_us_state(location)` added to `models/filters.py` — parses a 2-letter US state abbreviation from any unstructured location string. Handles `"Atlanta, GA"`, `"Austin, Texas"`, `"Washington, DC"`, multi-word states (longest-match-first), and returns `None` for `"Remote"` or non-US locations.
+- `state: Optional[str]` field added to `Job` model with a `@model_validator(mode="after")` that auto-fills from `location` on construction — all three scrapers get state extraction for free with no code changes.
+- `state TEXT` column added to the `jobs` table via `_MIGRATIONS` — populated on insert for new jobs; `backfill_states()` fills existing rows on startup.
+- `Database.backfill_states()` — idempotent method that runs on every `main.py` startup to populate `state` for rows where it is `NULL`.
+- **Dashboard state filter** — "Filter by state" multiselect in the sidebar. Applies to Top Matches, IC Track, Architect Track, Management Track views, and the scored-jobs table and job cards in the New Jobs view.
+- **State column** in all job listing tables (Top Matches, IC/Architect/Management track tables, New Jobs scored, New Jobs unscored).
+- **State column** in the Rich terminal table printed after each scoring run.
+
+#### Low-Score Purge
+- `Database.delete_below_threshold(threshold, dry_run=False)` — hard-deletes scored jobs where `score_best < threshold`. `status = 'applied'` and `status = 'offer'` rows are always protected. `dry_run=True` returns the count without deleting.
+- `--purge` CLI flag — shows a count preview, requires explicit `y` confirmation, then calls `delete_below_threshold`. Default cutoff is 75.
+- `--threshold N` CLI flag — override the purge cutoff (e.g. `--threshold 80`).
+
+### Updated
+- `docs/architecture.md` — updated dashboard data-flow diagram (state filter in sidebar), main-run flow (backfill step), component diagram (`extract_us_state` link), and mindmap (two new patterns: Location Normalisation, Focused Pipeline Management).
+- `docs/features.md` — new CLI commands table, state filter in sidebar controls, three new rows in Feature Summary.
+- `docs/dashboard.md` — sidebar controls table, data loading section, job cards section.
+- `docs/main.md` — commands table, startup sequence, new `cmd_purge` in key functions, Purge command section.
+- `docs/storage/db.md` — `state` column in schema, two new write-operations (`backfill_states`, `delete_below_threshold`).
+- `docs/models/job.md` — `state` field in Metadata Fields table, `_fill_state` validator section.
+- `docs/models/filters.md` — new US State Extraction section with examples and design notes.
+- `docs/user_guide.md` — state filter in sidebar controls, new "Pruning low-quality matches" section.
+- `CLAUDE.md` — updated Running the Agent command reference.
+
+---
+
 ## 2026-04-17
 
 ### Fixed

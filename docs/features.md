@@ -111,6 +111,7 @@ streamlit run dashboard.py
 ### Sidebar controls
 - **Minimum score slider** — hide jobs below a threshold (default 60)
 - **Search box** — filter any view by job title or company name
+- **State multiselect** — filter any view to one or more US states (e.g. GA, TX). Only states present in the current scored jobs are shown as options. Empty selection means show all states.
 - **Refresh button** — force a data reload (auto-refreshes every 30 seconds)
 
 ### Job card expander
@@ -217,11 +218,13 @@ The cache is automatically invalidated when the resume PDF is modified (checked 
 ## 9. CLI Commands
 
 ```bash
-python main.py                    # scrape new jobs + score all unscored jobs
-python main.py --list             # show all jobs in the database with status breakdown
-python main.py --tailor <ID>      # tailor resume for job ID (ID from --list or results table)
-python main.py --dashboard        # scrape + score, then launch the Streamlit dashboard
-python main.py --dashboard-only   # launch dashboard immediately without scraping
+python main.py                        # scrape new jobs + score all unscored jobs
+python main.py --list                 # show all jobs in the database with status breakdown
+python main.py --tailor <ID>          # tailor resume for job ID (ID from --list or results table)
+python main.py --dashboard            # scrape + score, then launch the Streamlit dashboard
+python main.py --dashboard-only       # launch dashboard immediately without scraping
+python main.py --purge                # delete scored jobs with best score < 75 (with confirmation)
+python main.py --purge --threshold 80 # same, but with a custom cutoff
 ```
 
 ```bash
@@ -274,7 +277,10 @@ ADZUNA_APP_KEY=your_api_key
 | Parallel batched scoring (3 concurrent Claude calls) | ✅ |
 | Prompt caching for cost reduction (~90% on cache reads) | ✅ |
 | Browser dashboard with 7 views | ✅ |
+| Filter by US state across all dashboard views | ✅ |
 | Multi-select job exclusion from dashboard | ✅ |
+| Low-score purge (`--purge`) to keep DB laser-focused | ✅ |
+| US state extraction from location string (all scrapers) | ✅ |
 | Resume tailoring (CLI + dashboard) | ✅ |
 | Run history with token + cost + latency tracking | ✅ |
 | Phase timing and throughput metrics | ✅ |

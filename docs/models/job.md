@@ -101,6 +101,7 @@ Used to parse Claude's batch scoring response. `job_index` matches the `<job ind
 | `title` | `str` | Job title as listed |
 | `company` | `str` | Company name |
 | `location` | `str?` | Location string from the posting |
+| `state` | `str?` | US state abbreviation auto-extracted from `location` (e.g. `"GA"`, `"TX"`). Set by `_fill_state` validator — no scraper changes required. `None` for remote or non-US jobs. |
 | `work_mode` | `WorkMode?` | Inferred from title/description text |
 
 ### Content Fields
@@ -123,6 +124,10 @@ Used to parse Claude's batch scoring response. `job_index` matches the `<job ind
 | `expires_at` | Application deadline (rarely provided) |
 | `found_at` | When our scraper picked it up — always set automatically |
 | `applied_at` | When you submitted — set when status → APPLIED |
+
+### Validator: `_fill_state`
+
+A `@model_validator(mode="after")` that automatically calls `extract_us_state(self.location)` when a `Job` is constructed and `state` is not already set. This means all three scrapers get state extraction for free — they only need to populate `location`, and the model fills `state` automatically.
 
 ### Computed Property: `is_stale`
 

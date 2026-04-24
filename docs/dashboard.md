@@ -24,10 +24,13 @@ streamlit run dashboard.py
 
 | Control | Purpose |
 |---|---|
-| View selector | Radio buttons to switch between the 5 views |
+| View selector | Radio buttons to switch between the 7 views |
 | Minimum score slider | Filters out jobs below the threshold (default: 60) |
 | Search box | Filters by job title or company name (case-insensitive) |
+| State multiselect | Filters all job views to one or more US states (e.g. GA, TX). Only states present in scored jobs appear as options. Empty = show all. |
 | Refresh button | Clears the 30-second data cache and forces a database re-read |
+
+The state filter applies to the `df` DataFrame before it is passed to any view, so it affects Top Matches, IC Track, Architect Track, Management Track, and also the scored-jobs table and job cards in the New Jobs view.
 
 ## Data Loading
 
@@ -43,7 +46,7 @@ def load_runs() -> pd.DataFrame:
 
 Both loaders are cached for 30 seconds. A `python main.py` run that finishes will be reflected within 30 seconds without a manual refresh. Both use pandas + direct SQLite connections — they do not go through the `Database` class.
 
-`load_jobs()` reads only `status = 'scored'` jobs where `excluded = 0 OR excluded IS NULL`, using the denormalised `score_ic`, `score_architect`, `score_management`, and `score_best` columns directly (avoiding JSON parsing in SQL).
+`load_jobs()` reads only `status = 'scored'` jobs where `excluded = 0 OR excluded IS NULL`, using the denormalised `score_ic`, `score_architect`, `score_management`, and `score_best` columns directly (avoiding JSON parsing in SQL). The `state` column is also selected. If the `state` column does not yet exist (e.g. the dashboard is opened before `main.py` has run the migration), the query falls back to the pre-state SELECT and computes `state` from `location` in Python using `extract_us_state()`.
 
 `load_new_jobs()` powers the **New Jobs** view. It reads `last_run_at()` from the `runs` table, then queries `WHERE found_at >= run_at`. This relies on `run_at` being captured at the **start** of the run (before scraping). If `run_at` were recorded at the end of the run, all jobs would have `found_at < run_at` and this view would show empty. See `main.py` and `storage/db.md` for the fix.
 
@@ -73,6 +76,8 @@ Each job is rendered as a `st.expander` with:
 - Claude's per-track one-sentence summary
 - **Tailoring section** — track selector, Tailor Resume button, and results display (see below)
 - **Exclusion section** — reason dropdown and Exclude this job button
+
+All job tables (Top Matches, IC Track, Architect Track, Management Track, New Jobs scored, New Jobs unscored) include a **State** column showing the 2-letter US state abbreviation extracted from the job's location. The column is always present in the DataFrame; it is `None`/blank for remote or non-US roles.
 
 ## Resume Tailoring
 

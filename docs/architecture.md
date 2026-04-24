@@ -117,6 +117,7 @@ graph TB
 
     FILTERS -->|"EXCLUDED_TITLE_KEYWORDS"| AZ
     FILTERS -->|"EXCLUDED_TITLE_KEYWORDS\nTECH_DESCRIPTION_KEYWORDS"| SA
+    FILTERS -->|"extract_us_state()"| DB
 
     SA --> DB
     TA --> DB
@@ -145,8 +146,8 @@ flowchart TD
 
     NDF --> V0["New Jobs View\nlatest run only\nscored + unscored"]
 
-    DF --> SIDEBAR["Sidebar Controls\nmin score slider\nsearch filter\nview selector"]
-    SIDEBAR --> FILTER["Filtered DataFrame"]
+    DF --> SIDEBAR["Sidebar Controls\nmin score slider\nsearch filter\nstate multiselect\nview selector"]
+    SIDEBAR --> FILTER["Filtered DataFrame\n(score + search + state)"]
 
     FILTER --> V1["Top Matches View\nall tracks ranked by best score\nscore metrics + job cards"]
     FILTER --> V2["IC Track View\nSenior Staff Principal Engineer\nranked by IC score"]
@@ -187,7 +188,8 @@ End-to-end flow for `python main.py` (the default scrape + score command).
 flowchart TD
     START([python main.py]) --> CONFIG[Load and validate config.yaml]
     CONFIG --> BOOT[Bootstrap DB, ClaudeClient, Agents]
-    BOOT --> TIMESTAMP["run_started_at = datetime.now(tz=timezone.utc)\ncaptured BEFORE scraping\nused as run_at in DB so dashboard\nWHERE found_at >= run_at works"]
+    BOOT --> BACKFILL["db.backfill_states()\nfill state column for existing rows\nidempotent — skips rows already populated"]
+    BACKFILL --> TIMESTAMP["run_started_at = datetime.now(tz=timezone.utc)\ncaptured BEFORE scraping\nused as run_at in DB so dashboard\nWHERE found_at >= run_at works"]
     TIMESTAMP --> SCRAPE
 
     subgraph SCRAPE["Scrape Phase"]
@@ -572,4 +574,16 @@ mindmap
       run_started_at before scraping
       New Jobs view uses WHERE found_at >= run_at
       Capture order is invariant
+    Location Normalisation
+      extract_us_state in models/filters.py
+      Job model_validator fills state on construct
+      All scrapers get state for free
+      backfill_states for existing rows
+      state column queryable and filterable
+    Focused Pipeline Management
+      delete_below_threshold hard-deletes low scores
+      Applied and offer rows always protected
+      dry_run preview before destructive action
+      CLI confirmation gate prevents accidents
+      Threshold configurable via --threshold flag
 ```
