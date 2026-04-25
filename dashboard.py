@@ -22,6 +22,22 @@ from pathlib import Path
 
 import pandas as pd
 import plotly.express as px
+
+
+def _parse_utc(series: pd.Series) -> pd.Series:
+    """Parse a Series of ISO-8601 UTC timestamps to naive datetime64.
+
+    Handles both formats produced by the two datetime conventions in the codebase:
+      '2026-04-15T21:09:45.775540'        (utcnow() — naive, pre-2026-04-15)
+      '2026-04-17T12:19:10.051058+00:00'  (now(tz=UTC) — tz-aware, post-2026-04-15)
+
+    pd.to_datetime(..., utc=True) coerces the naive format to NaT in some pandas
+    versions, so we strip the +00:00 suffix first so both formats parse identically.
+    """
+    return pd.to_datetime(
+        series.str.replace(r"\+00:00$", "", regex=True),
+        errors="coerce",
+    )
 import streamlit as st
 from dotenv import load_dotenv
 
@@ -179,8 +195,8 @@ def load_new_jobs() -> pd.DataFrame:
         df["state"] = df["location"].apply(extract_us_state)
     conn.close()
     if not df.empty:
-        df["found_at"] = pd.to_datetime(df["found_at"], errors="coerce", utc=True).dt.tz_convert(None)
-        df["posted_at"] = pd.to_datetime(df["posted_at"], errors="coerce", utc=True).dt.tz_convert(None).dt.date
+        df["found_at"] = _parse_utc(df["found_at"])
+        df["posted_at"] = _parse_utc(df["posted_at"]).dt.date
     return df
 
 
@@ -241,8 +257,8 @@ def load_jobs() -> pd.DataFrame:
         return ""
 
     df["salary"] = df["salary_json"].apply(fmt_salary)
-    df["posted_at"] = pd.to_datetime(df["posted_at"], errors="coerce", utc=True).dt.tz_convert(None).dt.date
-    df["found_at"] = pd.to_datetime(df["found_at"], errors="coerce", utc=True).dt.tz_convert(None).dt.date
+    df["posted_at"] = _parse_utc(df["posted_at"]).dt.date
+    df["found_at"] = _parse_utc(df["found_at"]).dt.date
 
     return df
 
@@ -268,7 +284,7 @@ def load_runs() -> pd.DataFrame:
     if df.empty:
         return df
 
-    df["run_at"] = pd.to_datetime(df["run_at"], errors="coerce", utc=True).dt.tz_convert(None)
+    df["run_at"] = _parse_utc(df["run_at"])
     df["cumulative_cost"] = df["est_cost_usd"].cumsum()
     return df
 
