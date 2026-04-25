@@ -242,6 +242,7 @@ This opens a browser window at `http://localhost:8501`.
 - **Minimum score slider** — hide jobs below a threshold (default 60)
 - **Search box** — filter by job title or company name
 - **Filter by state** — multiselect to narrow results to specific US states (e.g. GA, TX). Only states that appear in your scored jobs are listed. Leave empty to show all.
+- **Found on or after** — date picker to show only jobs discovered on or after a chosen date. Defaults to 14 days ago on every page load. Move the date back to reveal older results.
 - **Refresh button** — force a data reload (auto-refreshes every 30 seconds)
 
 ### Job cards

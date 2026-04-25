@@ -61,17 +61,28 @@ Extracts a 2-letter US state abbreviation from an unstructured location string. 
 1. `, XX` pattern — matches common scraper formats like `"Atlanta, GA"` and `"Seattle, WA, United States"`
 2. Full state name word-boundary match — handles `"Austin, Texas"` and `"New York, New York"`. Names are matched longest-first so `"west virginia"` is never shadowed by `"virginia"`.
 3. Standalone 2-letter uppercase token at end of string — fallback for unusual formats.
+4. **County/Parish/Borough lookup** — regex-matches `"[Name] County"`, `"[Name] Parish"`, or `"[Name] Borough"` substrings and looks up the base name in `_COUNTY_STATE` (~100 unambiguous entries). Handles the dominant Ladders format: `"Atlanta, Fulton County"` → `GA`, `"Seattle, King County"` → `WA`, `"Jersey City, Hudson County"` → `NJ`.
+5. **City/borough lookup** — splits on commas and checks each segment against `_CITY_STATE` (~200 entries). Handles borough-as-location patterns: `"Grand Central, Manhattan"` → `NY`, `"Nob Hill, San Francisco"` → `CA`.
+
+**Data structures:**
+- `_COUNTY_STATE: dict[str, str]` — county base name (lower-case) → 2-letter state. Only includes unambiguous names; counties shared by 3+ states are omitted to avoid false positives.
+- `_CITY_STATE: dict[str, str]` — city/borough name (lower-case) → 2-letter state. Covers all major US metros, tech hubs, and all five NYC boroughs.
 
 **Examples:**
-| Input | Output |
-|---|---|
-| `"Atlanta, GA"` | `"GA"` |
-| `"Austin, Texas"` | `"TX"` |
-| `"Washington, DC"` | `"DC"` |
-| `"New York, NY, United States"` | `"NY"` |
-| `"Remote"` | `None` |
-| `"United States"` | `None` |
-| `None` | `None` |
+| Input | Output | Step |
+|---|---|---|
+| `"Atlanta, GA"` | `"GA"` | 1 |
+| `"Austin, Texas"` | `"TX"` | 2 |
+| `"Washington, DC"` | `"DC"` | 1 |
+| `"New York, NY, United States"` | `"NY"` | 1 |
+| `"Atlanta, Fulton County"` | `"GA"` | 4 |
+| `"Seattle, King County"` | `"WA"` | 4 |
+| `"Jersey City, Hudson County"` | `"NJ"` | 4 |
+| `"Grand Central, Manhattan"` | `"NY"` | 5 |
+| `"Nob Hill, San Francisco"` | `"CA"` | 5 |
+| `"Remote"` | `None` | — |
+| `"US"` | `None` | — |
+| `None` | `None` | — |
 
 This function is called by the `Job._fill_state` model validator, which means state extraction happens automatically when any scraper creates a `Job` object — no scraper-level code changes are required. `Database.backfill_states()` uses it to populate the `state` column for rows that pre-date this feature.
 

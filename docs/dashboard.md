@@ -28,9 +28,10 @@ streamlit run dashboard.py
 | Minimum score slider | Filters out jobs below the threshold (default: 60) |
 | Search box | Filters by job title or company name (case-insensitive) |
 | State multiselect | Filters all job views to one or more US states (e.g. GA, TX). Only states present in scored jobs appear as options. Empty = show all. |
+| Found on or after | Date picker — only show jobs discovered on or after this date. **Defaults to 14 days ago** on every page load. Move the date further back to see older jobs. |
 | Refresh button | Clears the 30-second data cache and forces a database re-read |
 
-The state filter applies to the `df` DataFrame before it is passed to any view, so it affects Top Matches, IC Track, Architect Track, Management Track, and also the scored-jobs table and job cards in the New Jobs view.
+The state filter and date filter both apply to the main `df` DataFrame before it is passed to any view, so they affect Top Matches, IC Track, Architect Track, Management Track, and the scored-jobs table and job cards in the New Jobs view.
 
 ## Data Loading
 
@@ -51,6 +52,8 @@ Both loaders are cached for 30 seconds. A `python main.py` run that finishes wil
 `load_new_jobs()` powers the **New Jobs** view. It reads `last_run_at()` from the `runs` table, then queries `WHERE found_at >= run_at`. This relies on `run_at` being captured at the **start** of the run (before scraping). If `run_at` were recorded at the end of the run, all jobs would have `found_at < run_at` and this view would show empty. See `main.py` and `storage/db.md` for the fix.
 
 `load_runs()` reads all rows from the `runs` table ordered by `run_at ASC`, adds a `cumulative_cost` column, and returns an empty DataFrame if the table doesn't exist yet (first launch before any run). It also derives `display_cost` — preferring `actual_cost_usd` over `est_cost_usd` when real token data is available.
+
+**Timestamp normalisation — `_parse_utc(series)`:** All three loaders use this helper to parse `run_at`, `found_at`, and `posted_at`. The codebase has two timestamp formats — naive ISO strings from `utcnow()` (written before 2026-04-15) and timezone-aware `+00:00` strings from `now(tz=UTC)` (written after). `pd.to_datetime(..., utc=True)` coerces naive strings to NaT in some pandas versions, causing run rows to silently disappear. `_parse_utc` strips the `+00:00` suffix before parsing so both formats produce identical naive UTC `datetime64` values compatible with `dt.strftime` and sorting.
 
 ## Job Exclusion
 
@@ -77,7 +80,15 @@ Each job is rendered as a `st.expander` with:
 - **Tailoring section** — track selector, Tailor Resume button, and results display (see below)
 - **Exclusion section** — reason dropdown and Exclude this job button
 
-All job tables (Top Matches, IC Track, Architect Track, Management Track, New Jobs scored, New Jobs unscored) include a **State** column showing the 2-letter US state abbreviation extracted from the job's location. The column is always present in the DataFrame; it is `None`/blank for remote or non-US roles.
+All job tables include a consistent set of columns:
+
+| Column | Top Matches | IC / Arch / Mgmt | New Jobs Scored | New Jobs Unscored |
+|---|---|---|---|---|
+| State | ✅ | ✅ | ✅ | ✅ |
+| Source | ✅ | ✅ | ✅ | ✅ |
+| Found | ✅ | ✅ | ✅ | ✅ |
+
+**State** shows the 2-letter US state abbreviation extracted from the job's location; blank for remote or non-US roles. **Source** shows the scraper that found the job (adzuna / linkedin / ladders). **Found** shows the date the job was discovered (`found_at`).
 
 ## Resume Tailoring
 

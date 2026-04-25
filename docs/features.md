@@ -112,6 +112,7 @@ streamlit run dashboard.py
 - **Minimum score slider** — hide jobs below a threshold (default 60)
 - **Search box** — filter any view by job title or company name
 - **State multiselect** — filter any view to one or more US states (e.g. GA, TX). Only states present in the current scored jobs are shown as options. Empty selection means show all states.
+- **Found on or after** — date picker to show only jobs discovered on or after a chosen date. Defaults to 14 days ago on every page load. Move the date back to see older jobs.
 - **Refresh button** — force a data reload (auto-refreshes every 30 seconds)
 
 ### Job card expander
@@ -278,6 +279,7 @@ ADZUNA_APP_KEY=your_api_key
 | Prompt caching for cost reduction (~90% on cache reads) | ✅ |
 | Browser dashboard with 7 views | ✅ |
 | Filter by US state across all dashboard views | ✅ |
+| Found-date filter (14-day default) across all dashboard views | ✅ |
 | Multi-select job exclusion from dashboard | ✅ |
 | Low-score purge (`--purge`) to keep DB laser-focused | ✅ |
 | US state extraction from location string (all scrapers) | ✅ |
