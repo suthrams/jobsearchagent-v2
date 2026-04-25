@@ -6,6 +6,17 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-04-24
 
+### Fixed
+
+#### Dashboard Timestamp Parsing (mixed naive / tz-aware formats)
+- `pd.to_datetime(..., utc=True)` coerces naive ISO timestamps (written by `utcnow()` before 2026-04-15) to NaT in this pandas version, while tz-aware `+00:00` strings (written by `now(tz=UTC)` after 2026-04-15) parsed correctly. This caused:
+  - Run History: all timestamps for runs 1–14 displayed as blank / None
+  - Run History: runs 15–18 were invisible entirely (NaT rows sorted away)
+  - Top Matches / track tables: `Found` column blank for older jobs
+- Fixed by extracting `_parse_utc(series)` helper in `dashboard.py` that strips the `+00:00` suffix before calling `pd.to_datetime`, so both timestamp formats land as identical naive UTC strings. Applied to `run_at` in `load_runs()` and `found_at` / `posted_at` in `load_jobs()` and `load_new_jobs()`.
+
+---
+
 ### Added
 
 #### US State Extraction and Filtering
