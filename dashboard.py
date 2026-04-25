@@ -179,8 +179,8 @@ def load_new_jobs() -> pd.DataFrame:
         df["state"] = df["location"].apply(extract_us_state)
     conn.close()
     if not df.empty:
-        df["found_at"] = pd.to_datetime(df["found_at"], errors="coerce", utc=True)
-        df["posted_at"] = pd.to_datetime(df["posted_at"], errors="coerce", utc=True).dt.date
+        df["found_at"] = pd.to_datetime(df["found_at"], errors="coerce", utc=True).dt.tz_convert(None)
+        df["posted_at"] = pd.to_datetime(df["posted_at"], errors="coerce", utc=True).dt.tz_convert(None).dt.date
     return df
 
 
@@ -241,8 +241,8 @@ def load_jobs() -> pd.DataFrame:
         return ""
 
     df["salary"] = df["salary_json"].apply(fmt_salary)
-    df["posted_at"] = pd.to_datetime(df["posted_at"], errors="coerce", utc=True).dt.date
-    df["found_at"] = pd.to_datetime(df["found_at"], errors="coerce", utc=True).dt.date
+    df["posted_at"] = pd.to_datetime(df["posted_at"], errors="coerce", utc=True).dt.tz_convert(None).dt.date
+    df["found_at"] = pd.to_datetime(df["found_at"], errors="coerce", utc=True).dt.tz_convert(None).dt.date
 
     return df
 
@@ -268,7 +268,7 @@ def load_runs() -> pd.DataFrame:
     if df.empty:
         return df
 
-    df["run_at"] = pd.to_datetime(df["run_at"], errors="coerce", utc=True)
+    df["run_at"] = pd.to_datetime(df["run_at"], errors="coerce", utc=True).dt.tz_convert(None)
     df["cumulative_cost"] = df["est_cost_usd"].cumsum()
     return df
 
