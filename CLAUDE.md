@@ -7,8 +7,17 @@ Python tool that scores jobs against your profile across three career tracks:
 - `management` — Senior Manager / Director / Head of Engineering / VP
 
 ## Key design decisions
-- Direct Anthropic SDK only — no LangChain
-- All Claude responses are JSON validated by Pydantic
+
+### v2 (active refactor — work here)
+- **Stack**: LangChain + LangGraph (orchestration) · FastAPI (backend API) · Streamlit (UI) · SQLite (persistence)
+- All agent outputs are JSON validated by Pydantic schemas
+- Prompts live in `app/prompts/` with shared guardrails injected into every agent prompt
+- LangGraph owns workflow state, branching, HITL pauses, and reflection loops
+- FastAPI exposes workflow services to Streamlit — UI never calls workflow internals directly
+- SQLAlchemy, Celery, and Redis are excluded from v2 scope
+
+### v1 (stable — do not modify)
+- Direct Anthropic SDK only · raw sqlite3 · Streamlit
 - Prompts live in `prompts/*.md` as XML-tagged templates
 - LinkedIn handled manually via `inbox/linkedin.txt`
 - Models: `claude-sonnet-4-6` (parsing, tailoring) · `claude-haiku-4-5-20251001` (scoring) — configurable per operation in `config.yaml` under `claude.model`
