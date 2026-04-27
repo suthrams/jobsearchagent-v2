@@ -65,9 +65,10 @@ env/
 docs/.obsidian/
 
 # ─── Local content (architecture diagrams, publish package, blog drafts) ──────
-architecture/
+/architecture/
 publish_package/
 docs/blog_draft_linkedin_optimized.md
+docs/architecture/temp_docx/
 
 # ─── OS ───────────────────────────────────────────────────────────────────────
 .DS_Store
@@ -81,3 +82,6 @@ tmp_*.py
 
 # ─── Blog drafts and personal writing (keep local only) ──────────────────────
 docs/blog_draft.md
+
+# Tailored resumes and run logs — contain personal content
+scripts/
