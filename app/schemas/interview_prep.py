@@ -1,3 +1,9 @@
+"""InterviewPrep — structured output schema for the Interview Coach Agent.
+
+Only produced when overall_score >= interview_prep_threshold or explicitly
+requested by the user. Never invents stories — all content is grounded in
+the resume and job description provided.
+"""
 from pydantic import BaseModel, Field
 
 

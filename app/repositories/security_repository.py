@@ -1,9 +1,16 @@
+"""Repository for the security_events table — append-only audit log.
+
+Records prompt injection detections, PII redactions, tool access blocks,
+and unsupported claim detections. Retention window is longer than observability
+data (180 days vs 30) because security events may be needed for audit review.
+"""
 from pathlib import Path
 
 from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class SecurityRepository:
+    """Reads and writes security_events. Append-only — no update or delete methods."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

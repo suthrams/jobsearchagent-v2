@@ -1,3 +1,4 @@
+"""Repository for the reports table — final assembled reports per workflow run."""
 import json
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class ReportRepository:
+    """Reads and writes reports. A run typically produces one report; report_file_path
+    points to the exported file on disk (Markdown or DOCX)."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

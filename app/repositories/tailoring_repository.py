@@ -1,3 +1,4 @@
+"""Repository for the tailored_resumes table — Tailoring Agent drafts awaiting approval."""
 import json
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class TailoringRepository:
+    """Reads and writes tailored_resumes. approved defaults to 0; approve() sets it to 1
+    only after the user has reviewed and accepted the draft via HITL."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

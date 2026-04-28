@@ -1,9 +1,13 @@
+"""Repository for agent_events, llm_calls, and run_metrics observability tables."""
 from pathlib import Path
 
 from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class ObservabilityRepository:
+    """Reads and writes agent_events, llm_calls, and run_metrics.
+    run_metrics is a single rolled-up row per run; create_run_metrics() initialises it
+    at run start and update_run_metrics() is called incrementally as agents complete."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

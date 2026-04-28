@@ -1,3 +1,4 @@
+"""Repository for the job_scores table — Scoring Agent output per job per run."""
 import json
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class ScoreRepository:
+    """Reads and writes job_scores. overall_score is stored as a top-level column
+    (not only inside score_json) to allow efficient ORDER BY and threshold filtering."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

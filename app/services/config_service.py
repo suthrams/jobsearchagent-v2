@@ -1,3 +1,10 @@
+"""ConfigService — merges YAML defaults with per-user DB overrides at runtime.
+
+Resolution order: user DB overrides → config/config.yaml defaults → hardcoded fallbacks.
+Keys in _PROTECTED_KEYS are silently ignored if a user attempts to override them —
+users must never be able to change LLM models, execution limits, safety thresholds,
+or retention windows regardless of what they store in user_config.
+"""
 import json
 from pathlib import Path
 

@@ -1,3 +1,10 @@
+"""SQLite database connection, schema initialisation, and retention purge utilities.
+
+All timestamps in this system are produced exclusively by utcnow_iso() defined
+here. No repository or service may generate timestamps by any other means —
+this is the only way to guarantee consistent ISO 8601 UTC format across all
+18 tables, which is required for correct string-sort ordering and purge queries.
+"""
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone

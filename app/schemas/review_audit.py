@@ -1,3 +1,9 @@
+"""ReviewAudit — structured output schema for the Review Auditor Agent.
+
+Evaluates critique quality each reflection loop round. stop_recommendation
+is the auditor's signal to the orchestrator that the loop should end —
+either quality is sufficient or further iteration is unlikely to improve it.
+"""
 from pydantic import BaseModel, Field
 
 

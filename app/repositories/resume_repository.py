@@ -1,3 +1,4 @@
+"""Repository for the resumes table — uploaded resumes and their parsed profiles."""
 import json
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class ResumeRepository:
+    """Reads and writes resumes. create() marks all previous resumes inactive so
+    get_active() always returns exactly one resume."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

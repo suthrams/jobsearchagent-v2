@@ -1,3 +1,4 @@
+"""Repository for the workflow_runs table — the central execution record."""
 import json
 from pathlib import Path
 
@@ -5,6 +6,7 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class WorkflowRepository:
+    """Reads and writes workflow_runs. Stores the full WorkflowState snapshot in state_json."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

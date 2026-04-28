@@ -1,3 +1,4 @@
+"""Repository for the human_decisions table — every user decision at a HITL checkpoint."""
 import json
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class DecisionRepository:
+    """Reads and writes human_decisions. presented_at and decided_at are both required —
+    their difference measures user decision latency and detects abandoned workflows."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

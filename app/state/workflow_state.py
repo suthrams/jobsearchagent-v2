@@ -1,3 +1,8 @@
+"""Workflow state types — the single source of truth for a running workflow execution.
+
+Only the orchestrator reads and writes WorkflowState. Agents receive selected
+portions as input and return structured outputs; they never mutate state directly.
+"""
 from enum import Enum
 
 from pydantic import BaseModel, Field

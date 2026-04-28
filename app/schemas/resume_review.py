@@ -1,3 +1,10 @@
+"""ResumeReview — structured output schema for the Resume Critic Agent.
+
+The resume_only_gaps / career_gaps_observed distinction is a core invariant:
+resume_only_gaps = experience exists but is poorly expressed (fixable by rewriting).
+career_gaps_observed = capability is genuinely missing (not fixable by rewriting).
+These must never be conflated.
+"""
 from typing import Literal
 
 from pydantic import BaseModel, Field

@@ -1,3 +1,4 @@
+"""Repository for the jobs table — normalised job postings from all scrapers."""
 import json
 from pathlib import Path
 
@@ -5,6 +6,7 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class JobRepository:
+    """Reads and writes jobs. Upserts on id so re-fetching the same job is idempotent."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

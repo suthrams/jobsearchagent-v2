@@ -1,3 +1,8 @@
+"""Repository for review_rounds and resume_reviews tables.
+
+review_rounds: one row per Critic/Auditor iteration — traces reflection loop progress.
+resume_reviews: the final critique output after the loop ends.
+"""
 import json
 from pathlib import Path
 
@@ -5,6 +10,7 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class ReviewRepository:
+    """Reads and writes review_rounds and resume_reviews."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

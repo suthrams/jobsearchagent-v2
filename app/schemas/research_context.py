@@ -1,3 +1,8 @@
+"""ResearchContext — structured output schema for the Research Agent.
+
+Captures company and role signals gathered via bounded ReAct (max 2 steps).
+research_steps stores observation summaries only — never raw chain-of-thought.
+"""
 from pydantic import BaseModel, Field
 
 

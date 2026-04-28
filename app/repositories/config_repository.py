@@ -1,3 +1,8 @@
+"""Repository for the user_config table — per-user preference overrides.
+
+Stores only overrides, not full config. Merged with YAML defaults at runtime
+by ConfigService. Protected keys are never written here; they live in config.yaml only.
+"""
 import json
 from pathlib import Path
 
@@ -5,6 +10,7 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class ConfigRepository:
+    """Reads and writes user_config. Upserts on id so repeated saves are idempotent."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

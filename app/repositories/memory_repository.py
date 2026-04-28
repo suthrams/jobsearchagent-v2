@@ -1,3 +1,9 @@
+"""Repository for the memory_items table — structured long-term learning across runs.
+
+Memory is not free-form chat history. It stores typed, keyed entries with a
+confidence score. The orchestrator retrieves only the memory types relevant to
+the current agent — never all memory for all agents.
+"""
 import json
 from pathlib import Path
 
@@ -5,6 +11,8 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class MemoryRepository:
+    """Reads and writes memory_items. Upserts on id so confidence updates
+    replace rather than duplicate existing entries."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

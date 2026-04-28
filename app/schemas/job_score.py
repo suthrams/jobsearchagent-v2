@@ -1,3 +1,8 @@
+"""JobScore — structured output schema for the Scoring Agent.
+
+Scores a single resume/job pair across five dimensions (0–100). The orchestrator
+uses overall_score to rank jobs and decide which qualify for deep review.
+"""
 from pydantic import BaseModel, Field
 
 

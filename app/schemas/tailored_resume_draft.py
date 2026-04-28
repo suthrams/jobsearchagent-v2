@@ -1,3 +1,10 @@
+"""TailoredResumeDraft — structured output schema for the Tailoring Agent.
+
+Every TailoredBullet must carry supporting_evidence referencing the original
+resume. claim_type="gap" means the experience does not exist and must be
+labelled as a gap — never rewritten as if present. The FidelityReview agent
+validates this output before it is shown to the user.
+"""
 from typing import Literal
 
 from pydantic import BaseModel, Field

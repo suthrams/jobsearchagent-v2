@@ -1,9 +1,17 @@
+"""Repository for the step_executions table — timestamped record of every workflow step.
+
+Distinct from agent_events: step_executions tracks workflow-level step transitions;
+agent_events tracks individual LLM agent calls within a step. A single step may
+trigger multiple agent calls. Both levels are needed for the observability timeline.
+"""
 from pathlib import Path
 
 from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class StepRepository:
+    """Reads and writes step_executions. duration_ms is computed via SQLite julianday()
+    arithmetic at complete/fail time so it is always consistent with started_at."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

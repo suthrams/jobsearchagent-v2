@@ -1,3 +1,4 @@
+"""Repository for career_advice and interview_prep tables — post-review agent outputs."""
 import json
 from pathlib import Path
 
@@ -5,6 +6,8 @@ from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
 
 
 class AdviceRepository:
+    """Reads and writes career_advice and interview_prep. Both are keyed by
+    workflow_run_id + job_id, matching the per-job deep review structure."""
     def __init__(self, db_path: Path = DEFAULT_DB_PATH):
         self.db_path = db_path
 

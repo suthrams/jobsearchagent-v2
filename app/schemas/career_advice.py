@@ -1,3 +1,9 @@
+"""CareerAdvice — structured output schema for the Career Advisor Agent.
+
+Separates resume_gaps (expression problems) from career_gaps (real development
+gaps). This distinction drives whether the Tailoring Agent can act or whether
+the user needs to build new experience.
+"""
 from pydantic import BaseModel, Field
 
 

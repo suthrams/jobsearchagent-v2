@@ -1,3 +1,9 @@
+"""FidelityReview — structured output schema for the Fidelity Reviewer Agent.
+
+Final safety gate before tailored content reaches the user. approval_recommendation
+drives the HITL decision: "reject" means the draft must not be presented regardless
+of what the user requests.
+"""
 from typing import Literal
 
 from pydantic import BaseModel, Field
