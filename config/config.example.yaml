@@ -121,3 +121,52 @@ storage:
 # ─── Staleness ────────────────────────────────────────────────────────────────
 staleness:
   max_days: 30 # jobs posted more than this many days ago are skipped
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# v2 Configuration — jobsearchagent-v2
+# These settings are read by the v2 ConfigService. v1 ignores this section.
+# ═══════════════════════════════════════════════════════════════════════════════
+
+# ─── v2 LLM Settings ─────────────────────────────────────────────────────────
+# PROTECTED — never overridden by user_config DB entries
+llm:
+  default_model: claude-sonnet-4-6
+  scoring_model: claude-haiku-4-5-20251001
+  provider: anthropic
+
+# ─── v2 Search Limits ────────────────────────────────────────────────────────
+# max_jobs can be lowered by user preference but never raised above 20
+search:
+  max_jobs: 20
+  roles: []       # override with your target titles, e.g. ["Principal Engineer"]
+  locations: []   # override with your preferred locations
+
+# ─── v2 Execution Limits ─────────────────────────────────────────────────────
+# PROTECTED — never overridden by user_config DB entries
+limits:
+  max_selected_jobs: 3
+  max_research_steps: 2
+  max_review_rounds: 3
+  max_llm_calls_per_job: 10
+  max_llm_calls_per_run: 50
+
+# ─── v2 Scoring Thresholds ───────────────────────────────────────────────────
+# PROTECTED — never overridden by user_config DB entries
+scoring:
+  deep_review_threshold: 70       # minimum overall_score to qualify for deep review
+  interview_prep_threshold: 75    # minimum overall_score to qualify for interview prep
+
+# ─── v2 Tailoring Preferences ────────────────────────────────────────────────
+# User-adjustable via settings screen
+tailoring:
+  style: conservative             # conservative | standard
+
+# ─── v2 Data Retention ───────────────────────────────────────────────────────
+# PROTECTED — controls how long data is kept before purge
+# Purge is always explicit — triggered manually, never automatic
+retention:
+  workflow_runs_days: 90          # workflow run state and all outputs
+  observability_days: 30          # agent_events, llm_calls, step_executions
+  security_events_days: 180       # security audit log — longer window
+  memory_items_days: 365          # long-term learning — keep for a year
+  jobs_days: 90                   # job postings

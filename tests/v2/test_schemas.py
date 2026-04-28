@@ -1,0 +1,321 @@
+import pytest
+from pydantic import ValidationError
+
+from app.schemas.career_advice import CareerAdvice
+from app.schemas.fidelity_review import FidelityReview
+from app.schemas.interview_prep import InterviewPrep
+from app.schemas.job_score import JobScore
+from app.schemas.research_context import ResearchContext, ResearchStep
+from app.schemas.resume_review import ResumeReview, SectionReview
+from app.schemas.review_audit import ReviewAudit
+from app.schemas.tailored_resume_draft import TailoredBullet, TailoredResumeDraft
+from app.state.workflow_state import (
+    HumanDecision,
+    RunMetrics,
+    StepExecution,
+    WorkflowError,
+    WorkflowState,
+    WorkflowStatus,
+    WorkflowStep,
+)
+
+
+# ─── WorkflowStatus ──────────────────────────────────────────────────────────
+
+def test_workflow_status_valid_values():
+    assert WorkflowStatus.INITIALIZED == "initialized"
+    assert WorkflowStatus.RUNNING == "running"
+    assert WorkflowStatus.WAITING_FOR_USER == "waiting_for_user"
+    assert WorkflowStatus.COMPLETED == "completed"
+    assert WorkflowStatus.FAILED == "failed"
+    assert WorkflowStatus.CANCELLED == "cancelled"
+
+
+def test_workflow_step_valid_values():
+    assert WorkflowStep.JOB_DISCOVERY == "job_discovery"
+    assert WorkflowStep.SCORING == "scoring"
+    assert WorkflowStep.TAILORING == "tailoring"
+
+
+# ─── StepExecution ───────────────────────────────────────────────────────────
+
+def test_step_execution_valid():
+    s = StepExecution(
+        step=WorkflowStep.SCORING,
+        status="started",
+        started_at="2026-04-28T10:00:00.000Z",
+    )
+    assert s.completed_at is None
+    assert s.duration_ms is None
+
+
+def test_step_execution_completed():
+    s = StepExecution(
+        step=WorkflowStep.SCORING,
+        status="completed",
+        started_at="2026-04-28T10:00:00.000Z",
+        completed_at="2026-04-28T10:00:02.500Z",
+        duration_ms=2500,
+    )
+    assert s.duration_ms == 2500
+
+
+def test_step_execution_requires_step_and_started_at():
+    with pytest.raises(ValidationError):
+        StepExecution(status="started", started_at="2026-04-28T10:00:00.000Z")
+    with pytest.raises(ValidationError):
+        StepExecution(step=WorkflowStep.SCORING, status="started")
+
+
+# ─── RunMetrics ──────────────────────────────────────────────────────────────
+
+def test_run_metrics_defaults():
+    m = RunMetrics()
+    assert m.llm_calls == 0
+    assert m.estimated_cost_usd == 0.0
+    assert m.started_at is None
+    assert m.completed_at is None
+
+
+def test_run_metrics_with_timestamps():
+    m = RunMetrics(
+        started_at="2026-04-28T10:00:00.000Z",
+        completed_at="2026-04-28T10:05:00.000Z",
+        total_duration_ms=300000,
+    )
+    assert m.started_at == "2026-04-28T10:00:00.000Z"
+    assert m.total_duration_ms == 300000
+
+
+# ─── WorkflowError ───────────────────────────────────────────────────────────
+
+def test_workflow_error_requires_occurred_at():
+    with pytest.raises(ValidationError):
+        WorkflowError(step="scoring", error_type="llm_failure",
+                      message="timeout", recoverable=True)
+
+
+def test_workflow_error_valid():
+    e = WorkflowError(
+        step="scoring",
+        error_type="llm_failure",
+        message="timeout",
+        recoverable=True,
+        occurred_at="2026-04-28T10:00:00.000Z",
+    )
+    assert e.recoverable is True
+    assert e.suggested_action is None
+
+
+# ─── HumanDecision ───────────────────────────────────────────────────────────
+
+def test_human_decision_requires_both_timestamps():
+    with pytest.raises(ValidationError):
+        HumanDecision(decision_type="select_jobs", decision_value="approve",
+                      presented_at="2026-04-28T10:00:00.000Z")
+    with pytest.raises(ValidationError):
+        HumanDecision(decision_type="select_jobs", decision_value="approve",
+                      decided_at="2026-04-28T10:01:00.000Z")
+
+
+def test_human_decision_valid():
+    d = HumanDecision(
+        decision_type="select_jobs_for_deep_review",
+        decision_value="approve",
+        presented_at="2026-04-28T10:00:00.000Z",
+        decided_at="2026-04-28T10:01:30.000Z",
+    )
+    assert d.payload == {}
+
+
+# ─── WorkflowState ───────────────────────────────────────────────────────────
+
+def _make_state(**kwargs) -> dict:
+    base = dict(
+        workflow_id="wf_001",
+        workflow_type="full_career_review",
+        status=WorkflowStatus.INITIALIZED,
+        current_step=WorkflowStep.INITIALIZED,
+        created_at="2026-04-28T10:00:00.000Z",
+        updated_at="2026-04-28T10:00:00.000Z",
+    )
+    base.update(kwargs)
+    return base
+
+
+def test_workflow_state_valid():
+    state = WorkflowState(**_make_state())
+    assert state.workflow_id == "wf_001"
+    assert state.step_history == []
+    assert state.errors == []
+    assert state.run_metrics.llm_calls == 0
+
+
+def test_workflow_state_requires_workflow_id():
+    data = _make_state()
+    del data["workflow_id"]
+    with pytest.raises(ValidationError):
+        WorkflowState(**data)
+
+
+def test_workflow_state_invalid_status():
+    with pytest.raises(ValidationError):
+        WorkflowState(**_make_state(status="not_a_status"))
+
+
+def test_workflow_state_step_history_append():
+    state = WorkflowState(**_make_state())
+    step = StepExecution(
+        step=WorkflowStep.SCORING,
+        status="started",
+        started_at="2026-04-28T10:00:00.000Z",
+    )
+    state.step_history.append(step)
+    assert len(state.step_history) == 1
+    assert state.step_history[0].step == WorkflowStep.SCORING
+
+
+# ─── JobScore ────────────────────────────────────────────────────────────────
+
+def test_job_score_valid():
+    s = JobScore(
+        job_id="job_001", resume_id="res_001",
+        overall_score=85, technical_score=90, architecture_score=80,
+        leadership_score=75, domain_score=88,
+        match_summary="Strong match", strengths=["cloud"], gaps=["IoT"],
+        recommended_next_action="Apply", confidence=90,
+    )
+    assert s.overall_score == 85
+
+
+def test_job_score_rejects_out_of_range():
+    with pytest.raises(ValidationError):
+        JobScore(
+            job_id="j", resume_id="r",
+            overall_score=101, technical_score=80, architecture_score=80,
+            leadership_score=80, domain_score=80,
+            match_summary="x", strengths=[], gaps=[],
+            recommended_next_action="x", confidence=80,
+        )
+    with pytest.raises(ValidationError):
+        JobScore(
+            job_id="j", resume_id="r",
+            overall_score=80, technical_score=-1, architecture_score=80,
+            leadership_score=80, domain_score=80,
+            match_summary="x", strengths=[], gaps=[],
+            recommended_next_action="x", confidence=80,
+        )
+
+
+# ─── ResearchContext ─────────────────────────────────────────────────────────
+
+def test_research_context_valid():
+    ctx = ResearchContext(
+        job_id="job_001",
+        company_summary="Energy company",
+        role_context="Principal Architect",
+        technology_signals=["AWS", "Kubernetes"],
+        leadership_signals=["cross-functional"],
+        domain_signals=["utilities"],
+        risk_flags=[],
+        research_steps=[
+            ResearchStep(step_number=1, tool_used="job_fetcher",
+                         observation_summary="Fetched JD")
+        ],
+        confidence=75,
+    )
+    assert len(ctx.research_steps) == 1
+
+
+# ─── ResumeReview ────────────────────────────────────────────────────────────
+
+def test_resume_review_gap_separation():
+    review = ResumeReview(
+        job_id="job_001", resume_id="res_001",
+        overall_fit_summary="Good match",
+        section_reviews=[
+            SectionReview(
+                section_name="Experience",
+                current_issue="Weak cloud bullets",
+                why_it_matters="Job requires cloud",
+                improvement_opportunity="Reframe existing cloud work",
+                suggested_direction="Use cloud terminology",
+                evidence="Has AWS experience in role 2",
+                risk_level="medium",
+            )
+        ],
+        critical_gaps=["No Kubernetes mention"],
+        resume_only_gaps=["Cloud experience not expressed"],
+        career_gaps_observed=["No formal architecture certification"],
+        suggested_improvements=["Reframe AWS bullets"],
+        questions_for_user=["Which cloud projects were most impactful?"],
+        confidence=80,
+    )
+    assert "Cloud experience not expressed" in review.resume_only_gaps
+    assert "No formal architecture certification" in review.career_gaps_observed
+
+
+# ─── TailoredBullet ──────────────────────────────────────────────────────────
+
+def test_tailored_bullet_requires_supporting_evidence():
+    with pytest.raises(ValidationError):
+        TailoredBullet(
+            original_text="Led team",
+            suggested_text="Led team of 8",
+            claim_type="reword",
+            fidelity_risk="low",
+            # supporting_evidence missing
+        )
+
+
+def test_tailored_bullet_valid():
+    b = TailoredBullet(
+        original_text="Led team",
+        suggested_text="Led cross-functional team of 8 engineers",
+        supporting_evidence="Resume states 'led team of 8' in role at Acme",
+        claim_type="reword",
+        fidelity_risk="low",
+    )
+    assert b.unsupported_claims == []
+
+
+def test_tailored_bullet_gap_type():
+    b = TailoredBullet(
+        original_text="",
+        suggested_text="Experience with Kubernetes",
+        supporting_evidence="No Kubernetes experience found — this is a gap",
+        claim_type="gap",
+        fidelity_risk="high",
+        unsupported_claims=["Kubernetes not evidenced in resume"],
+    )
+    assert b.claim_type == "gap"
+
+
+# ─── FidelityReview ──────────────────────────────────────────────────────────
+
+def test_fidelity_review_valid():
+    fr = FidelityReview(
+        job_id="job_001", resume_id="res_001",
+        overall_fidelity_status="pass",
+        unsupported_claims=[], fabricated_metrics=[],
+        inflated_scope_flags=[], unsupported_technology_flags=[],
+        unsupported_certification_flags=[],
+        required_removals=[], required_revisions=[],
+        approval_recommendation="approve",
+        confidence=95,
+    )
+    assert fr.approval_recommendation == "approve"
+
+
+def test_fidelity_review_rejects_invalid_recommendation():
+    with pytest.raises(ValidationError):
+        FidelityReview(
+            job_id="j", resume_id="r",
+            overall_fidelity_status="pass",
+            unsupported_claims=[], fabricated_metrics=[],
+            inflated_scope_flags=[], unsupported_technology_flags=[],
+            unsupported_certification_flags=[],
+            required_removals=[], required_revisions=[],
+            approval_recommendation="maybe",  # invalid
+            confidence=80,
+        )
