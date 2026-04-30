@@ -92,6 +92,8 @@ app/services/config_service.py
 > Inspect all schemas and DB table definitions before any logic is written.
 > Confirm data contracts are complete and match the agent model and data model documents.
 
+**Status: complete** — 176 tests passing; committed `5e63017`.
+
 ---
 
 ## Phase 2 — Services (No LLM)
@@ -143,6 +145,8 @@ scrapers/          ← preserved from v1, wrapped by JobDiscoveryService
 
 > Inspect each service and its unit tests.
 > Confirm all deterministic logic is correct and fully tested before any agent depends on it.
+
+**Status: complete** — 176 tests passing (7 test files); `ResumeParser` uses hybrid heuristic + `enhance_fn` (injected in Phase 5); committed `02992f9`.
 
 ---
 

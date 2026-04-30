@@ -168,6 +168,7 @@ CREATE TABLE resumes (
     file_name TEXT,
 
     raw_text TEXT,
+    raw_text_hash TEXT,
     parsed_profile_json TEXT,
 
     version INTEGER,
@@ -183,6 +184,7 @@ CREATE TABLE resumes (
 
 * parsed profile is what agents should use
 * raw_text should not be widely exposed to agents
+* `raw_text_hash` is a SHA-256 digest of `raw_text` — used by `ResumeParser` to skip Claude enhancement when the resume has not changed (cache hit returns the existing `resume_id` and parsed profile)
 
 ---
 
