@@ -45,6 +45,12 @@ class PromptLoader:
     def assemble(self, agent_name: str, context: dict) -> list:
         """Build [SystemMessage, HumanMessage] for the given agent and context.
 
+        The system message uses Anthropic's ephemeral prompt caching. The content
+        (guardrails + agent prompt) is static per agent, so after the first call
+        within a 5-minute window it is served from cache at 10% of normal input cost.
+        Cache activates automatically once the content exceeds Anthropic's 1024-token
+        minimum — no error if the threshold is not yet met.
+
         Args:
             agent_name:  e.g. "scoring_agent" — must match a file in agents/.
             context:     Input variables serialized into the human message.
@@ -53,7 +59,11 @@ class PromptLoader:
             Two-element list: [SystemMessage, HumanMessage].
         """
         return [
-            SystemMessage(content=self._build_system_content(agent_name)),
+            SystemMessage(content=[{
+                "type": "text",
+                "text": self._build_system_content(agent_name),
+                "cache_control": {"type": "ephemeral"},
+            }]),
             HumanMessage(content=self._build_human_content(context)),
         ]
 

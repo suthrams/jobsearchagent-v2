@@ -51,6 +51,21 @@ def _write_prompts(tmp_path: Path, version: int = 1, agent_name: str = "test_age
     return tmp_path
 
 
+# ── PromptLoader helpers ──────────────────────────────────────────────────────
+
+def _system_text(messages: list) -> str:
+    """Extract the text string from a SystemMessage whose content may be a list.
+
+    With cache_control enabled, content is a list of dicts:
+      [{"type": "text", "text": "...", "cache_control": {"type": "ephemeral"}}]
+    This helper normalises both the plain-string and list-of-dicts formats.
+    """
+    content = messages[0].content
+    if isinstance(content, str):
+        return content
+    return " ".join(block.get("text", "") for block in content if isinstance(block, dict))
+
+
 # ── PromptLoader tests ────────────────────────────────────────────────────────
 
 def test_assemble_returns_two_messages(tmp_path):
@@ -65,16 +80,17 @@ def test_assemble_returns_two_messages(tmp_path):
 def test_guardrails_appear_in_system_message(tmp_path):
     prompts_dir = _write_prompts(tmp_path)
     loader = PromptLoader(prompts_dir)
-    system = loader.assemble("test_agent", {})
-    assert "ETHICS AND SAFETY GUARDRAILS" in system[0].content
-    assert "Never fabricate" in system[0].content
+    messages = loader.assemble("test_agent", {})
+    text = _system_text(messages)
+    assert "ETHICS AND SAFETY GUARDRAILS" in text
+    assert "Never fabricate" in text
 
 
 def test_agent_prompt_appears_in_system_message(tmp_path):
     prompts_dir = _write_prompts(tmp_path)
     loader = PromptLoader(prompts_dir)
-    system = loader.assemble("test_agent", {})
-    assert "You are the test agent" in system[0].content
+    messages = loader.assemble("test_agent", {})
+    assert "You are the test agent" in _system_text(messages)
 
 
 def test_injection_defense_sentinel_in_guardrails(tmp_path):
@@ -83,7 +99,18 @@ def test_injection_defense_sentinel_in_guardrails(tmp_path):
     prompts_dir = _write_prompts(tmp_path)
     loader = PromptLoader(prompts_dir)
     messages = loader.assemble("test_agent", {})
-    assert "ignore previous instructions" in messages[0].content
+    assert "ignore previous instructions" in _system_text(messages)
+
+
+def test_system_message_has_cache_control(tmp_path):
+    # Anthropic ephemeral caching must be requested on the system message so repeated
+    # calls to the same agent within a 5-minute window get a 90% cost reduction.
+    prompts_dir = _write_prompts(tmp_path)
+    loader = PromptLoader(prompts_dir)
+    messages = loader.assemble("test_agent", {})
+    content = messages[0].content
+    assert isinstance(content, list), "SystemMessage content must be a list for cache_control"
+    assert content[0].get("cache_control") == {"type": "ephemeral"}
 
 
 def test_context_serialized_in_human_message(tmp_path):
@@ -119,7 +146,7 @@ def test_version_line_stripped_from_system_message(tmp_path):
     loader = PromptLoader(prompts_dir)
     messages = loader.assemble("test_agent", {})
     # The "# version:" comment must not appear in the assembled prompt content
-    assert "# version:" not in messages[0].content
+    assert "# version:" not in _system_text(messages)
 
 
 def test_missing_prompt_file_raises_file_not_found(tmp_path):
