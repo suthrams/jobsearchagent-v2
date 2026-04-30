@@ -41,6 +41,13 @@ class JobRepository:
             ).fetchone()
         return dict(row) if row else None
 
+    def url_exists(self, url: str) -> bool:
+        with get_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM jobs WHERE url = ? LIMIT 1", (url,)
+            ).fetchone()
+        return row is not None
+
     def get_by_company(self, company: str) -> list[dict]:
         with get_connection(self.db_path) as conn:
             rows = conn.execute(

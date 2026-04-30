@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS resumes (
     id TEXT PRIMARY KEY,
     file_name TEXT,
     raw_text TEXT,
+    raw_text_hash TEXT,
     parsed_profile_json TEXT,
     version INTEGER,
     is_active INTEGER,
@@ -248,6 +249,11 @@ def get_connection(db_path: Path = DEFAULT_DB_PATH):
 def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
     with get_connection(db_path) as conn:
         conn.executescript(_SCHEMA_SQL)
+        # Migration: add raw_text_hash to resumes for existing DBs created before Phase 2
+        try:
+            conn.execute("ALTER TABLE resumes ADD COLUMN raw_text_hash TEXT")
+        except Exception:
+            pass  # column already exists
 
 
 def purge_old_data(db_path: Path = DEFAULT_DB_PATH, config: dict | None = None) -> dict[str, int]:

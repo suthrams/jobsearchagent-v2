@@ -17,8 +17,10 @@ python-dotenv>=1.0.0
 httpx>=0.27.0
 # Parses Indeed and Glassdoor RSS feeds without needing a browser
 feedparser>=6.0.0
-# Extracts text from your resume PDF
+# Extracts text from your resume PDF (v1)
 pdfplumber>=0.11.0
+# Direct pdfminer access for ResumeParser — better multi-column layout handling (v2)
+pdfminer.six>=20221105
 # Parses HTML from scraped job pages to extract description text
 beautifulsoup4>=4.12.0
 

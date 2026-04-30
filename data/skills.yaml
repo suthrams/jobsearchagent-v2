@@ -1,0 +1,139 @@
+# data/skills.yaml
+# Format: canonical_name → list of known aliases (case-insensitive match at runtime)
+# To add a skill: add a new top-level key with an aliases list.
+# To add an alias: append to the aliases list under the relevant canonical name.
+
+Python:
+  aliases: ["python", "python3", "python 3", "py", "Python3"]
+
+JavaScript:
+  aliases: ["javascript", "js", "java script", "Javascript"]
+
+TypeScript:
+  aliases: ["typescript", "ts", "Typescript"]
+
+Java:
+  aliases: ["java", "Java SE", "Java EE", "JVM"]
+
+Go:
+  aliases: ["go", "golang", "Go language"]
+
+Rust:
+  aliases: ["rust", "rust-lang"]
+
+C++:
+  aliases: ["c++", "cpp", "c plus plus"]
+
+SQL:
+  aliases: ["sql", "SQL language"]
+
+PostgreSQL:
+  aliases: ["postgresql", "postgres", "Postgres", "pg"]
+
+MySQL:
+  aliases: ["mysql", "MySQL Database"]
+
+SQLite:
+  aliases: ["sqlite", "SQLite3"]
+
+MongoDB:
+  aliases: ["mongodb", "mongo", "Mongo DB"]
+
+Redis:
+  aliases: ["redis", "Redis Cache"]
+
+Elasticsearch:
+  aliases: ["elasticsearch", "elastic search", "elastic", "ES"]
+
+Kubernetes:
+  aliases: ["kubernetes", "k8s", "K8s", "Kube"]
+
+Docker:
+  aliases: ["docker", "Docker container", "containerization"]
+
+Terraform:
+  aliases: ["terraform", "tf", "TF"]
+
+AWS:
+  aliases: ["aws", "amazon web services", "Amazon AWS"]
+
+GCP:
+  aliases: ["gcp", "google cloud", "google cloud platform", "Google GCP"]
+
+Azure:
+  aliases: ["azure", "microsoft azure", "Azure Cloud"]
+
+React:
+  aliases: ["react", "reactjs", "react.js", "React JS"]
+
+FastAPI:
+  aliases: ["fastapi", "fast api", "FastAPI framework"]
+
+Django:
+  aliases: ["django", "Django framework"]
+
+Flask:
+  aliases: ["flask", "Flask framework"]
+
+LangChain:
+  aliases: ["langchain", "lang chain", "LangChain AI"]
+
+LangGraph:
+  aliases: ["langgraph", "lang graph"]
+
+GraphQL:
+  aliases: ["graphql", "graph ql", "GraphQL API"]
+
+REST:
+  aliases: ["rest", "restful", "rest api", "REST API", "RESTful API"]
+
+gRPC:
+  aliases: ["grpc", "gRPC framework", "protobuf", "protocol buffers"]
+
+Kafka:
+  aliases: ["kafka", "apache kafka", "Apache Kafka"]
+
+Spark:
+  aliases: ["spark", "apache spark", "Apache Spark", "PySpark"]
+
+Airflow:
+  aliases: ["airflow", "apache airflow", "Apache Airflow"]
+
+CI/CD:
+  aliases: ["ci/cd", "cicd", "CI CD", "continuous integration", "continuous delivery", "continuous deployment"]
+
+GitHub Actions:
+  aliases: ["github actions", "gh actions", "GitHub CI"]
+
+Ansible:
+  aliases: ["ansible", "Ansible automation"]
+
+Linux:
+  aliases: ["linux", "ubuntu", "debian", "centos", "rhel", "Red Hat Linux", "unix"]
+
+Git:
+  aliases: ["git", "Git SCM", "version control"]
+
+Machine Learning:
+  aliases: ["ml", "machine learning", "Machine Learning (ML)"]
+
+Deep Learning:
+  aliases: ["dl", "deep learning", "Deep Learning (DL)"]
+
+PyTorch:
+  aliases: ["pytorch", "torch", "PyTorch framework"]
+
+TensorFlow:
+  aliases: ["tensorflow", "TensorFlow ML"]
+
+Agile:
+  aliases: ["agile", "agile methodology", "scrum", "Scrum", "Kanban", "kanban"]
+
+Microservices:
+  aliases: ["microservices", "micro services", "microservice architecture"]
+
+Event-Driven Architecture:
+  aliases: ["event-driven", "event driven architecture", "EDA", "event-driven architecture"]
+
+Domain-Driven Design:
+  aliases: ["ddd", "domain driven design", "domain-driven design"]
