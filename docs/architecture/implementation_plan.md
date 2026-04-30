@@ -1,3 +1,4 @@
+
 # Implementation Plan – jobsearchagent-v2
 
 ---
@@ -195,6 +196,8 @@ app/prompts/agents/
 > Inspect the provider abstraction and the prompt structure.
 > Confirm the guardrails template and prompt assembly pattern before it is replicated across all 8 agents.
 
+**Status: complete** — 206 tests passing (30 new Phase 3 tests); ephemeral prompt caching added; committed fb49784 + 0f74133.
+
 ---
 
 ## Phase 4 — Agents
@@ -270,10 +273,14 @@ app/agents/fidelity_reviewer.py
 > Inspect the Scoring Agent end-to-end: prompt file, schema, agent class, and tests.
 > Confirm the agent pattern is correct before it is replicated across the remaining 7 agents.
 
+**Status: complete** — ScoringAgent pattern established; BaseAgent abstraction validated.
+
 ### Review Gate 4b — After All Agents
 
 > Inspect the complete agent layer.
 > Confirm each agent is consistent in structure, constraints, and observability.
+
+**Status: complete** — All 8 agents implemented; 335 tests passing (63 new Phase 4 tests); notebooks/phase_4_validation.ipynb created.
 
 ---
 
