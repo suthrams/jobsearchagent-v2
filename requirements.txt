@@ -1,6 +1,11 @@
 # ─── AI ──────────────────────────────────────────────────────────────────────
-# Official Anthropic SDK — the only way we call Claude
+# Official Anthropic SDK — used transitively by langchain-anthropic
 anthropic>=0.40.0
+# LangChain core + Anthropic integration — agent framework (Phase 3+)
+langchain>=0.3.0
+langchain-anthropic>=0.3.0
+# LangGraph — stateful workflow orchestration with HITL checkpointing (Phase 5+)
+langgraph>=0.2.0
 
 # ─── Data validation ─────────────────────────────────────────────────────────
 # Pydantic v2 — enforces data shapes at every agent boundary
