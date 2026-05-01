@@ -6,8 +6,11 @@ from __future__ import annotations
 
 from contextlib import asynccontextmanager
 
+from dotenv import load_dotenv
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+
+load_dotenv()  # load .env before any os.environ reads (e.g. ANTHROPIC_API_KEY)
 
 from app.api.dependencies import build_and_cache_graph
 from app.api.routers.jobs import router as jobs_router

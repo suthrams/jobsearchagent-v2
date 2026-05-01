@@ -5,9 +5,11 @@ go through this module. Read-only browse views go through db_reader.py instead.
 """
 from __future__ import annotations
 
+import os
+
 import httpx
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 _TIMEOUT_GET = 5.0
 _TIMEOUT_POST = 10.0
 

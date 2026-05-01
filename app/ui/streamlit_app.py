@@ -14,6 +14,9 @@ from pathlib import Path
 import pandas as pd
 import plotly.express as px
 import streamlit as st
+from dotenv import load_dotenv
+
+load_dotenv()  # load .env so API_BASE_URL overrides and any future env vars are available
 
 import app.ui.api_client as api
 from app.ui.db_reader import (
