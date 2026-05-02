@@ -4,6 +4,43 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-05-02
+
+### Changed — Phase 9: Cost Optimization
+
+#### Model Tiering (75–85% cost reduction per run)
+- `ResearchAgent` moved from Sonnet → Haiku — runs every job; summarization does not require Sonnet-level reasoning
+- `ReviewAuditor` moved from Sonnet → Haiku — validation/checking task, not generative
+- `FidelityReviewer` moved from Sonnet → Haiku — validation/checking task, not generative
+- `ScoringAgent`, `ResumeCritic`, `CareerAdvisor`, `InterviewCoach`, `TailoringAgent` unchanged
+- `app/api/dependencies.py` — agent → provider assignment updated with inline rationale comments
+
+#### Volume Cap
+- `MAX_JOBS_PER_RUN` reduced from 20 → 10 in `app/workflows/limits.py` — halves research + scoring call volume per run
+
+### Added — Documentation Overhaul
+
+#### `docs/wiki.md` — new wiki landing page
+- 20-section wiki covering the full system: architecture, agents, data model, state, workflows, config, observability, security, HITL, patterns, principles, ADRs, phase history, testing, migration, dependencies, changelog
+- Each section has a prose summary and explicit links to the authoritative detail file
+
+#### `docs/architecture/implementation_plan.md` — phases 7, 8, 9 added
+- **Phase 7** (complete): live agent gate, `SqliteSaver`, real scrapers, `.env` loading, phase validation notebook
+- **Phase 8** (complete): concurrent scoring via `ThreadPoolExecutor` (75s → 20s), `ConcurrentAdzunaScraper`, `add_llm_calls_bulk`
+- **Phase 9** (in progress): model tiering table, volume cap, cost impact estimates, review gate
+- Review gate summary table extended to Gates 7–9
+- Execution limits table updated (`MAX_JOBS_PER_RUN = 10`)
+
+#### `README.md` — rewritten for v2
+- Updated architecture Mermaid diagram (8 agents, LangGraph, SqliteSaver, FastAPI/Streamlit split)
+- Agents table with model assignments and trigger conditions
+- Run instructions updated (`uvicorn` + `streamlit`, not `python main.py`)
+- Cost section replaced with v2 scenario table and execution limits
+- Patterns table updated with LangGraph-era patterns
+- Tech stack reflects actual v2 stack
+
+---
+
 ## 2026-04-24
 
 ### Fixed
