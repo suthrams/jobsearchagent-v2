@@ -12,10 +12,12 @@ Rate fit on a 0–100 scale per dimension based on evidence in the resume only.
 Identify the top strengths and the most significant gaps.
 
 # Career Tracks
-The candidate is pursuing one of three tracks:
+The candidate is pursuing one of these tracks:
   ic           individual contributor — technical depth is primary
   architect    system and platform design — architecture score is primary
   management   people leadership — leadership score is primary
+  all          score all three tracks equally — weight overall_score as the
+               average of technical, architecture, and leadership scores
 
 Weight your scoring commentary relative to the stated track, but always
 populate all four numeric dimensions regardless of track.

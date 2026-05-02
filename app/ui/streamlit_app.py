@@ -171,7 +171,6 @@ if view == "Start New Run":
                                   help="Enter 'resume.pdf' on first run. Subsequent runs use the cached parsed profile.")
         roles = st.text_input("Roles (comma-separated)", value=_default_roles or "Staff Engineer, Principal Engineer")
         locations = st.text_input("Locations (comma-separated)", value=_default_locations or "Remote")
-        track = st.radio("Career track", ["ic", "architect", "management"], horizontal=True)
         submitted = st.form_submit_button("Start Workflow")
 
     if submitted:
@@ -179,7 +178,7 @@ if view == "Start New Run":
             "roles": [r.strip() for r in roles.split(",") if r.strip()],
             "locations": [l.strip() for l in locations.split(",") if l.strip()],
         }
-        effective_config = {"scoring": {"career_track": track}}
+        effective_config = {"scoring": {"career_track": "all"}}
         try:
             resp = api.start_workflow(resume_id, search_criteria, effective_config=effective_config)
             st.session_state.workflow_id = resp["workflow_id"]

@@ -45,7 +45,7 @@ def make_score_jobs_node(
         resume_profile: dict = state.get("resume_profile") or {}
         normalized_jobs: list[dict] = state.get("normalized_jobs") or []
         effective_config: dict = state.get("effective_config") or {}
-        career_track: str = effective_config.get("scoring", {}).get("career_track", "ic")
+        career_track: str = effective_config.get("scoring", {}).get("career_track", "all")
 
         metrics = get_metrics(state)
         errors = list(state.get("errors") or [])
