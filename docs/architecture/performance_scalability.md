@@ -124,14 +124,14 @@ All workflows must enforce limits.
 ### Limits
 
 ```text
-MAX_JOBS_PER_RUN = 20
+MAX_JOBS_PER_RUN = 10   # reduced from 20 in Phase 9
 MAX_SELECTED_JOBS = 3
 
 MAX_RESEARCH_STEPS = 2
 MAX_REVIEW_ROUNDS = 3
 
 MAX_LLM_CALLS_PER_JOB = 10
-MAX_LLM_CALLS_PER_RUN = 50
+MAX_LLM_CALLS_PER_RUN = 100  # raised from 50 in Phase 9
 
 MAX_COST_PER_RUN = configurable
 ```
@@ -396,7 +396,7 @@ limit total LLM calls
 ### Example
 
 ```text
-20 jobs scored cheaply
+10 jobs scored cheaply
 2 jobs deeply analyzed
 ```
 

@@ -552,12 +552,12 @@ These limits are enforced by the orchestrator and cannot be overridden at runtim
 
 | Constant | Value | Enforced where |
 |----------|-------|----------------|
-| `MAX_JOBS_PER_RUN` | 20 | `discover_jobs` node — excess jobs are silently dropped |
+| `MAX_JOBS_PER_RUN` | 10 | `discover_jobs` node — excess jobs are silently dropped |
 | `MAX_SELECTED_JOBS` | 3 | Decision endpoint (422) + `JobSelectionDecision` schema |
 | `MAX_RESEARCH_STEPS` | 2 | ResearchAgent ReAct loop |
 | `MAX_REVIEW_ROUNDS` | 3 | `deep_review` reflection loop |
 | `MAX_LLM_CALLS_PER_JOB` | 10 | Per-job budget check in scoring loop |
-| `MAX_LLM_CALLS_PER_RUN` | 50 | `check_budget()` called before every agent invocation |
+| `MAX_LLM_CALLS_PER_RUN` | 100 | `check_budget()` called before every agent invocation |
 
 When `MAX_LLM_CALLS_PER_RUN` is hit, remaining unscored jobs are marked `"skipped"`
 and the workflow proceeds to `await_job_selection` with whatever jobs are already scored.
