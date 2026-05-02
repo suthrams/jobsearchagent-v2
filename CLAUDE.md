@@ -14,11 +14,28 @@ This is a ground-up v2 refactor. v1 (`main.py`, `agents/`, `scrapers/`, `storage
 
 ---
 
+## Build status
+
+Phases 1–7 complete. 389 tests passing.
+
+| Phase | Description | Status |
+|---|---|---|
+| 1 | Foundation — schemas, repos, providers | ✓ |
+| 2 | Job discovery — scrapers, JobDiscoveryService | ✓ |
+| 3 | LLM provider — ClaudeProvider, PromptLoader | ✓ |
+| 4 | All 8 agents | ✓ |
+| 5 | LangGraph workflow orchestrator | ✓ |
+| 6 | FastAPI backend + Streamlit UI | ✓ |
+| 7 | Live agents — real Claude calls, SqliteSaver, real scrapers | ✓ |
+| 8 | Performance — concurrent job scoring | ✓ |
+
+---
+
 ## v2 Stack
 
 | Layer | Technology |
 |---|---|
-| Orchestration | LangGraph (stateful workflow graphs) |
+| Orchestration | LangGraph (stateful workflow graphs) + SqliteSaver |
 | Agent framework | LangChain + LangChain-Anthropic |
 | LLM | Claude (`claude-sonnet-4-6` default, `claude-haiku-4-5-20251001` for scoring) |
 | Backend API | FastAPI + Uvicorn |
@@ -36,11 +53,12 @@ Explicitly excluded: SQLAlchemy · Celery · Redis · LangSmith (for now)
 
 ```
 app/
-  api/              ← FastAPI endpoints (workflow entry points)
+  api/              ← FastAPI endpoints + dependency wiring (Phase 7 gate)
   workflows/        ← LangGraph workflow graphs (orchestrator)
   agents/           ← 8 specialized agents
   services/         ← deterministic services (no LLM)
-  providers/        ← LLM provider abstraction
+    concurrent_adzuna_scraper.py  ← v2 wrapper: 5-worker concurrent Adzuna scraper
+  providers/        ← LLM provider abstraction (ClaudeProvider)
   state/            ← WorkflowState schema
   schemas/          ← Pydantic output schemas for all agents
   repositories/     ← SQLite data access
@@ -58,17 +76,25 @@ docs/architecture/
   patterns.md · principles.md · architecture_overview.md
 
 tests/              ← pytest suite (no real LLM calls in CI)
+notebooks/
+  phase_7_validation.ipynb  ← E2E live-agent validation notebook
 ```
 
 ---
 
-## Running v2 (once built)
+## Running v2
 
 ```bash
-uvicorn app.api.main:app --reload   # start FastAPI backend
+# Requires ANTHROPIC_API_KEY, ADZUNA_APP_ID, ADZUNA_APP_KEY in .env
+uvicorn app.api.main:app --reload   # start FastAPI backend (live-agent mode)
 streamlit run app/ui/streamlit_app.py  # start Streamlit UI
-python -m pytest tests/             # run test suite
+python -m pytest tests/             # run test suite (mock mode — no real API calls)
+python -m pytest tests/ -m integration  # run live-API smoke tests
 ```
+
+**Phase 7 gate** — `app/api/dependencies.py` checks `ANTHROPIC_API_KEY` at startup:
+- Set → `_build_real_deps()`: real ClaudeProvider agents + SqliteSaver + real scrapers
+- Not set → `_build_mocked_deps()`: all agents mocked + MemorySaver (Phase 6 behaviour)
 
 ---
 
@@ -117,6 +143,15 @@ python -m pytest tests/             # run test suite
 - Backend validates all decisions before resuming workflow
 - UI never auto-approves outputs or bypasses backend validation
 
+**Scraper rules**
+- `ConcurrentAdzunaScraper` wraps v1 `AdzunaScraper` — do not modify v1 scrapers directly
+- `JobDiscoveryService.discover()` enforces a 180s per-scraper safety timeout via `ThreadPoolExecutor` + `shutdown(wait=False)`
+- `_resolve_url` is patched to a no-op on the wrapped instance — Adzuna redirect URLs are stored as-is
+
+**Provider rules**
+- `ClaudeProvider.complete(schema=...)` must always receive a Pydantic `BaseModel` subclass — never a builtin like `dict`
+- `make_resume_enhance_fn` uses `_ResumeEnhancement(BaseModel)` defined in `app/providers/claude_provider.py`
+
 ---
 
 ## Architecture Reference
@@ -136,5 +171,5 @@ All design decisions are documented in `docs/architecture/`. Start here for any 
 
 v1 files are kept for migration reference only:
 - `main.py` · `agents/` · `scrapers/` · `storage/` · `dashboard.py` · `claude/` · `prompts/`
-- v1 scrapers will be wrapped by v2 `JobDiscoveryService` during Phase 2
-- v1 filters (`EXCLUDED_TITLE_KEYWORDS`, `TECH_DESCRIPTION_KEYWORDS`) in `models/filters.py` will be reused in v2
+- v1 scrapers are wrapped by v2 `JobDiscoveryService` + `ConcurrentAdzunaScraper` — not called directly
+- v1 filters (`EXCLUDED_TITLE_KEYWORDS`, `TECH_DESCRIPTION_KEYWORDS`) in `models/filters.py` are reused in v2

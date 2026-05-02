@@ -85,8 +85,17 @@ def _run_graph(graph, initial_state: dict, config: dict) -> None:
         graph.invoke(initial_state, config)
     except _GraphInterrupt:
         logger.debug("Graph paused at HITL interrupt for thread %s", config)
-    except Exception:
+    except Exception as exc:
         logger.exception("Unhandled error in graph thread for config %s", config)
+        try:
+            from app.repositories.database import utcnow_iso
+            graph.update_state(config, {
+                "status": "failed",
+                "errors": [{"stage": "graph", "error_type": type(exc).__name__, "message": str(exc), "recoverable": False}],
+                "updated_at": utcnow_iso(),
+            })
+        except Exception:
+            logger.exception("Failed to write failed status to graph state for %s", config)
 
 
 def _resume_graph(graph, decision_payload: dict, config: dict) -> None:
@@ -95,8 +104,17 @@ def _resume_graph(graph, decision_payload: dict, config: dict) -> None:
         graph.invoke(Command(resume=decision_payload), config)
     except _GraphInterrupt:
         logger.debug("Graph paused again at HITL interrupt for thread %s", config)
-    except Exception:
+    except Exception as exc:
         logger.exception("Unhandled error resuming graph for config %s", config)
+        try:
+            from app.repositories.database import utcnow_iso
+            graph.update_state(config, {
+                "status": "failed",
+                "errors": [{"stage": "graph_resume", "error_type": type(exc).__name__, "message": str(exc), "recoverable": False}],
+                "updated_at": utcnow_iso(),
+            })
+        except Exception:
+            logger.exception("Failed to write failed status to graph state for %s", config)
 
 
 def _read_status(graph, workflow_id: str) -> WorkflowStatusResponse | None:

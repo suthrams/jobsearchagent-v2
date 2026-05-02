@@ -8,8 +8,9 @@ observability logic out of concrete agents and makes testing straightforward:
 mock the provider, assert on the schema type, verify observability calls.
 """
 
-import time
 import logging
+import threading
+import time
 from abc import ABC, abstractmethod
 
 from app.providers.llm_client import LLMClient, LLMProviderError
@@ -30,6 +31,9 @@ class BaseAgent(ABC):
     def __init__(self, provider: LLMClient, observability: ObservabilityService) -> None:
         self._provider = provider
         self._observability = observability
+        # Thread-local storage so concurrent callers (e.g. score_jobs workers) each
+        # get their own last-call usage without racing on a shared instance variable.
+        self._tlocal = threading.local()
 
     # ── Infrastructure layer ──────────────────────────────────────────────────
 
@@ -46,6 +50,11 @@ class BaseAgent(ABC):
         )
         try:
             result = self._provider.complete(agent_name=self.AGENT_NAME, context=context, schema=schema)
+            try:
+                ti, to, cost = self._provider.last_call_usage()
+            except (AttributeError, TypeError, ValueError):
+                ti, to, cost = 0, 0, 0.0
+            self._tlocal.last_usage = (int(ti), int(to), float(cost))
             duration_ms = int((time.monotonic() - t0) * 1000)
             self._observability.log_agent_completed(
                 workflow_id, self.AGENT_NAME, event_id,
@@ -58,6 +67,14 @@ class BaseAgent(ABC):
                 workflow_id, self.AGENT_NAME, event_id, str(exc), duration_ms,
             )
             raise
+
+    def last_call_usage(self) -> tuple[int, int, float]:
+        """Return (tokens_in, tokens_out, cost_usd) for the most recent call in this thread.
+
+        Safe to call from concurrent threads — each thread has its own value.
+        Returns (0, 0, 0.0) if no call has been made yet in the current thread.
+        """
+        return getattr(self._tlocal, "last_usage", (0, 0, 0.0))
 
     # ── Summary helpers (override for richer log messages) ───────────────────
 

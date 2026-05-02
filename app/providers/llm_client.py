@@ -52,3 +52,12 @@ class LLMClient(ABC):
     def estimate_cost(self, tokens_in: int, tokens_out: int) -> float:
         """Return estimated cost in USD for a call with the given token counts."""
         ...
+
+    @abstractmethod
+    def last_call_usage(self) -> tuple[int, int, float]:
+        """Return (tokens_in, tokens_out, cost_usd) for the most recent call in this thread.
+
+        Thread-safe: each thread gets its own value. Returns (0, 0, 0.0) if no call
+        has been made yet in the current thread.
+        """
+        ...

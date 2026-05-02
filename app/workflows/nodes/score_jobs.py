@@ -1,8 +1,18 @@
-"""score_jobs node — runs ResearchAgent + ScoringAgent for every normalised job."""
+"""score_jobs node — runs ResearchAgent + ScoringAgent for every normalised job.
+
+Phase 8: jobs are scored concurrently (_SCORE_WORKERS parallel threads).
+Each worker is independent — no shared mutable state. ScoreRepository.create()
+opens its own SQLite connection per call (via get_connection) so concurrent
+writes are safe.
+
+LLM call counting mirrors the sequential version: only *successful* calls
+increment the budget counter (failed calls cost 0).
+"""
 from __future__ import annotations
 
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 from app.agents.research_agent import ResearchAgent
@@ -12,14 +22,15 @@ from app.repositories.database import utcnow_iso
 from app.repositories.score_repository import ScoreRepository
 from app.services.observability_service import ObservabilityService
 from app.workflows.limits import (
-    BudgetExceededError,
-    add_llm_call,
-    append_error,
-    check_budget,
+    MAX_LLM_CALLS_PER_RUN,
+    add_llm_calls_bulk,
     get_metrics,
+    safe_agent_usage,
 )
 
 logger = logging.getLogger(__name__)
+
+_SCORE_WORKERS = 5
 
 
 def make_score_jobs_node(
@@ -38,26 +49,31 @@ def make_score_jobs_node(
 
         metrics = get_metrics(state)
         errors = list(state.get("errors") or [])
-        scored_jobs: list[dict] = []
 
-        for job in normalized_jobs:
+        # Pre-flight budget check: cap jobs to what the remaining call budget allows.
+        # Each job costs at most 2 successful LLM calls (research + scoring).
+        calls_used = metrics.get("llm_calls", 0)
+        max_scoreable = (MAX_LLM_CALLS_PER_RUN - calls_used) // 2
+        jobs_to_score = normalized_jobs[:max_scoreable]
+        budget_skipped = normalized_jobs[max_scoreable:]
+
+        if budget_skipped:
+            logger.warning(
+                "score_jobs: budget cap — skipping %d jobs (%d/%d calls used)",
+                len(budget_skipped), calls_used, MAX_LLM_CALLS_PER_RUN,
+            )
+
+        def _score_one(job: dict) -> tuple[dict, int, list[dict], int, int, float]:
+            """Research + score one job.
+
+            Returns (entry, successful_llm_calls, errors, tokens_in, tokens_out, cost_usd).
+            Token/cost values accumulate only for successful calls.
+            """
             job_id = job.get("id", job.get("job_id", ""))
-            job_entry = {**job, "job_id": job_id}
-
-            # ── Budget check ──────────────────────────────────────────────────
-            try:
-                check_budget({"run_metrics": metrics})
-            except BudgetExceededError:
-                logger.warning("score_jobs: budget exhausted; marking remaining as budget_skipped")
-                job_entry["status"] = "budget_skipped"
-                scored_jobs.append(job_entry)
-                for remaining in normalized_jobs[normalized_jobs.index(job) + 1:]:
-                    rid = remaining.get("id", remaining.get("job_id", ""))
-                    scored_jobs.append({**remaining, "job_id": rid, "status": "budget_skipped"})
-                break
+            entry = {**job, "job_id": job_id}
+            total_ti, total_to, total_cost = 0, 0, 0.0
 
             # ── Research ──────────────────────────────────────────────────────
-            research = None
             try:
                 research = research_agent.run(workflow_id, {
                     "job_id": job_id,
@@ -66,26 +82,17 @@ def make_score_jobs_node(
                     "source_url": job.get("url", ""),
                     "job_description": job.get("job_description", ""),
                 })
-                metrics = add_llm_call(metrics)
+                ti, to, cost = safe_agent_usage(research_agent)
+                total_ti += ti; total_to += to; total_cost += cost
             except LLMProviderError as exc:
                 logger.warning("score_jobs: research failed for %s: %s", job_id, exc)
-                errors = append_error({"errors": errors}, "scoring", "research_failed", str(exc),
-                                      recoverable=True)
-                job_entry["status"] = "research_failed"
-                scored_jobs.append(job_entry)
-                continue
+                return {**entry, "status": "research_failed"}, 0, [{
+                    "step": "scoring", "error_type": "research_failed",
+                    "message": str(exc), "recoverable": True,
+                    "occurred_at": utcnow_iso(), "suggested_action": None,
+                }], 0, 0, 0.0
 
             # ── Scoring ───────────────────────────────────────────────────────
-            try:
-                check_budget({"run_metrics": metrics})
-            except BudgetExceededError:
-                job_entry["status"] = "budget_skipped"
-                scored_jobs.append(job_entry)
-                for remaining in normalized_jobs[normalized_jobs.index(job) + 1:]:
-                    rid = remaining.get("id", remaining.get("job_id", ""))
-                    scored_jobs.append({**remaining, "job_id": rid, "status": "budget_skipped"})
-                break
-
             try:
                 score = scoring_agent.run(workflow_id, {
                     "job_id": job_id,
@@ -97,24 +104,70 @@ def make_score_jobs_node(
                     "career_track": career_track,
                     "research_context": research.model_dump(),
                 })
-                metrics = add_llm_call(metrics)
+                ti, to, cost = safe_agent_usage(scoring_agent)
+                total_ti += ti; total_to += to; total_cost += cost
             except LLMProviderError as exc:
                 logger.warning("score_jobs: scoring failed for %s: %s", job_id, exc)
-                errors = append_error({"errors": errors}, "scoring", "scoring_failed", str(exc),
-                                      recoverable=True)
-                job_entry["status"] = "scoring_failed"
-                scored_jobs.append(job_entry)
-                continue
+                return {**entry, "status": "scoring_failed"}, 1, [{
+                    "step": "scoring", "error_type": "scoring_failed",
+                    "message": str(exc), "recoverable": True,
+                    "occurred_at": utcnow_iso(), "suggested_action": None,
+                }], total_ti, total_to, total_cost
 
-            # ── Persist and add to state ──────────────────────────────────────
-            score_dict = score.model_dump()
+            # ── Persist ───────────────────────────────────────────────────────
             try:
-                score_repo.create(str(uuid.uuid4()), workflow_id, job_id, resume_id, score_dict)
+                score_repo.create(
+                    str(uuid.uuid4()), workflow_id, job_id, resume_id, score.model_dump()
+                )
             except Exception as exc:
                 logger.warning("score_jobs: persist failed for %s: %s", job_id, exc)
 
-            job_entry = {**job_entry, **score_dict, "status": "scored"}
-            scored_jobs.append(job_entry)
+            return {**entry, **score.model_dump(), "status": "scored"}, 2, [], total_ti, total_to, total_cost
+
+        # ── Fan out across _SCORE_WORKERS threads ─────────────────────────────
+        scored_jobs: list[dict] = []
+        total_llm_calls = 0
+        total_tokens_in = 0
+        total_tokens_out = 0
+        total_cost_usd = 0.0
+
+        with ThreadPoolExecutor(max_workers=_SCORE_WORKERS) as executor:
+            future_to_job = {
+                executor.submit(_score_one, job): job for job in jobs_to_score
+            }
+            for future in as_completed(future_to_job):
+                try:
+                    entry, llm_calls, job_errors, ti, to, cost = future.result()
+                except Exception as exc:
+                    job = future_to_job[future]
+                    job_id = job.get("id", job.get("job_id", ""))
+                    logger.warning("score_jobs: worker crashed for %s: %s", job_id, exc)
+                    entry = {**job, "job_id": job_id, "status": "scoring_failed"}
+                    llm_calls, ti, to, cost = 0, 0, 0, 0.0
+                    job_errors = [{
+                        "step": "scoring", "error_type": "worker_crash",
+                        "message": str(exc), "recoverable": True,
+                        "occurred_at": utcnow_iso(), "suggested_action": None,
+                    }]
+
+                scored_jobs.append(entry)
+                total_llm_calls += llm_calls
+                total_tokens_in += ti
+                total_tokens_out += to
+                total_cost_usd += cost
+                errors.extend(job_errors)
+
+        # Append budget-skipped jobs after the scored ones
+        for job in budget_skipped:
+            job_id = job.get("id", job.get("job_id", ""))
+            scored_jobs.append({**job, "job_id": job_id, "status": "budget_skipped"})
+
+        metrics = add_llm_calls_bulk(
+            metrics, total_llm_calls,
+            tokens_in=total_tokens_in,
+            tokens_out=total_tokens_out,
+            cost_usd=total_cost_usd,
+        )
 
         return {
             "scored_jobs": scored_jobs,

@@ -19,6 +19,7 @@ from app.workflows.limits import (
     append_error,
     check_budget,
     get_metrics,
+    safe_agent_usage,
     BudgetExceededError,
 )
 
@@ -81,7 +82,8 @@ def make_deep_review_node(
                         "prior_audit_feedback": prior_feedback,
                         "review_round": round_num,
                     })
-                    metrics = add_llm_call(metrics)
+                    _ti, _to, _cost = safe_agent_usage(resume_critic)
+                    metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
                 except LLMProviderError as exc:
                     logger.warning("deep_review: critic failed for %s round %d: %s", job_id, round_num, exc)
                     errors = append_error({"errors": errors}, "deep_review", "critic_failed",
@@ -107,7 +109,8 @@ def make_deep_review_node(
                         "review_round": round_num,
                         "max_rounds": MAX_REVIEW_ROUNDS,
                     })
-                    metrics = add_llm_call(metrics)
+                    _ti, _to, _cost = safe_agent_usage(review_auditor)
+                    metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
                 except LLMProviderError as exc:
                     logger.warning("deep_review: auditor failed for %s round %d: %s", job_id, round_num, exc)
                     errors = append_error({"errors": errors}, "deep_review", "auditor_failed",
@@ -117,10 +120,13 @@ def make_deep_review_node(
 
                 # ── Persist round ─────────────────────────────────────────
                 try:
-                    review_repo.create(str(uuid.uuid4()), workflow_id, job_id,
-                                       round_num, review.model_dump())
+                    review_repo.create_round(
+                        str(uuid.uuid4()), workflow_id, job_id,
+                        round_num, review.model_dump(), audit.model_dump(),
+                        stop_reason=audit.stop_reason,
+                    )
                 except Exception as exc:
-                    logger.warning("deep_review: persist failed: %s", exc)
+                    logger.warning("deep_review: persist round failed: %s", exc)
 
                 round_entry = {
                     "round_number": round_num,
@@ -160,6 +166,13 @@ def make_deep_review_node(
 
             if best_review is not None:
                 final_review = best_review
+                try:
+                    review_repo.create_review(
+                        str(uuid.uuid4()), workflow_id, job_id,
+                        resume_id, best_review,
+                    )
+                except Exception as exc:
+                    logger.warning("deep_review: persist final review failed: %s", exc)
 
         return {
             "review_rounds": all_rounds,

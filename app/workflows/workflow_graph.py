@@ -24,6 +24,7 @@ from app.repositories.job_repository import JobRepository
 from app.repositories.review_repository import ReviewRepository
 from app.repositories.score_repository import ScoreRepository
 from app.repositories.tailoring_repository import TailoringRepository
+from app.repositories.resume_repository import ResumeRepository
 from app.repositories.workflow_repository import WorkflowRepository
 from app.services.job_discovery_service import JobDiscoveryService
 from app.services.observability_service import ObservabilityService
@@ -66,6 +67,7 @@ class WorkflowDependencies:
     review_repo: ReviewRepository
     tailoring_repo: TailoringRepository
     workflow_repo: WorkflowRepository
+    resume_repo: ResumeRepository
     # Cross-cutting
     observability: ObservabilityService
     checkpointer: SqliteSaver
@@ -85,7 +87,7 @@ def build_graph(deps: WorkflowDependencies):
         deps.discovery_service, deps.job_repo, deps.observability))
 
     graph.add_node("load_resume", make_load_resume_node(
-        deps.resume_parser, deps.observability))
+        deps.resume_parser, deps.observability, deps.resume_repo))
 
     graph.add_node("score_jobs", make_score_jobs_node(
         deps.research_agent, deps.scoring_agent, deps.score_repo, deps.observability))

@@ -29,6 +29,7 @@ from app.repositories.job_repository import JobRepository
 from app.repositories.review_repository import ReviewRepository
 from app.repositories.score_repository import ScoreRepository
 from app.repositories.tailoring_repository import TailoringRepository
+from app.repositories.resume_repository import ResumeRepository
 from app.repositories.workflow_repository import WorkflowRepository
 from app.schemas.career_advice import CareerAdvice
 from app.schemas.fidelity_review import FidelityReview
@@ -52,6 +53,12 @@ def _obs() -> MagicMock:
     obs = MagicMock(spec=ObservabilityService)
     obs.log_agent_started.return_value = "evt-001"
     return obs
+
+
+def _mock_resume_repo() -> MagicMock:
+    m = MagicMock(spec=ResumeRepository)
+    m.get_by_id.return_value = None
+    return m
 
 
 def _make_deps(checkpointer=None) -> WorkflowDependencies:
@@ -172,6 +179,7 @@ def _make_deps(checkpointer=None) -> WorkflowDependencies:
         review_repo=MagicMock(spec=ReviewRepository),
         tailoring_repo=MagicMock(spec=TailoringRepository),
         workflow_repo=MagicMock(spec=WorkflowRepository),
+        resume_repo=_mock_resume_repo(),
         observability=_obs(),
         checkpointer=checkpointer or MemorySaver(),
     )

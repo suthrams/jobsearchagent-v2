@@ -14,7 +14,7 @@ MAX_SELECTED_JOBS = 3
 MAX_RESEARCH_STEPS = 2
 MAX_REVIEW_ROUNDS = 3
 MAX_LLM_CALLS_PER_JOB = 10
-MAX_LLM_CALLS_PER_RUN = 50
+MAX_LLM_CALLS_PER_RUN = 100
 
 # ── Quality thresholds ────────────────────────────────────────────────────────
 
@@ -57,6 +57,42 @@ def add_llm_call(
     """Return a new metrics dict with one LLM call incremented."""
     return {
         "llm_calls": metrics.get("llm_calls", 0) + 1,
+        "tokens_input": metrics.get("tokens_input", 0) + tokens_in,
+        "tokens_output": metrics.get("tokens_output", 0) + tokens_out,
+        "estimated_cost_usd": metrics.get("estimated_cost_usd", 0.0) + cost_usd,
+        "total_duration_ms": metrics.get("total_duration_ms", 0),
+        "started_at": metrics.get("started_at"),
+        "completed_at": metrics.get("completed_at"),
+    }
+
+
+def safe_agent_usage(agent) -> tuple[int, int, float]:
+    """Read last_call_usage() from an agent with a (0, 0, 0.0) fallback.
+
+    Guards against mock objects that return non-tuple values — test doubles never
+    need to configure last_call_usage; real providers always return (int, int, float).
+    """
+    try:
+        ti, to, cost = agent.last_call_usage()
+        return int(ti), int(to), float(cost)
+    except Exception:
+        return 0, 0, 0.0
+
+
+def add_llm_calls_bulk(
+    metrics: dict,
+    count: int,
+    tokens_in: int = 0,
+    tokens_out: int = 0,
+    cost_usd: float = 0.0,
+) -> dict:
+    """Return a new metrics dict with multiple LLM calls added at once.
+
+    Used by concurrent nodes (e.g. score_jobs) where calls are accumulated
+    across threads before being flushed to the metrics dict.
+    """
+    return {
+        "llm_calls": metrics.get("llm_calls", 0) + count,
         "tokens_input": metrics.get("tokens_input", 0) + tokens_in,
         "tokens_output": metrics.get("tokens_output", 0) + tokens_out,
         "estimated_cost_usd": metrics.get("estimated_cost_usd", 0.0) + cost_usd,

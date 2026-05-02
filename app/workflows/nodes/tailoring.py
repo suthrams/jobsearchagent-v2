@@ -11,7 +11,7 @@ from app.providers.llm_client import LLMProviderError
 from app.repositories.database import utcnow_iso
 from app.repositories.tailoring_repository import TailoringRepository
 from app.services.observability_service import ObservabilityService
-from app.workflows.limits import add_llm_call, append_error, get_metrics
+from app.workflows.limits import add_llm_call, append_error, get_metrics, safe_agent_usage
 
 logger = logging.getLogger(__name__)
 
@@ -55,7 +55,8 @@ def make_tailoring_node(
                 "final_review": final_review or {},
                 "career_advice": career_advice or {},
             })
-            metrics = add_llm_call(metrics)
+            _ti, _to, _cost = safe_agent_usage(tailoring_agent)
+            metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
         except LLMProviderError as exc:
             logger.warning("tailoring: TailoringAgent failed for %s: %s", job_id, exc)
             errors = append_error({"errors": errors}, "tailoring", "tailoring_failed",
@@ -80,7 +81,8 @@ def make_tailoring_node(
                 "resume_profile": resume_profile,
                 "tailored_draft": draft_dict,
             })
-            metrics = add_llm_call(metrics)
+            _ti, _to, _cost = safe_agent_usage(fidelity_reviewer)
+            metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
         except LLMProviderError as exc:
             logger.warning("tailoring: FidelityReviewer failed for %s: %s", job_id, exc)
             errors = append_error({"errors": errors}, "tailoring", "fidelity_failed",

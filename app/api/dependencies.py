@@ -1,12 +1,13 @@
-"""FastAPI dependency providers — graph singleton and mocked agents for Phase 6.
+"""FastAPI dependency providers — graph singleton, real agents (Phase 7) and mocked fallback.
 
-Phase 6 uses mocked agents (Phase 7 replaces with real ones). All agents are set up
-with side_effect so they return correct Pydantic schema instances based on job_id
-from the context passed to agent.run().
+Phase 7 gate: if ANTHROPIC_API_KEY is set, _build_real_deps() wires ClaudeProvider,
+all 8 live agents, real scrapers, and SqliteSaver. Otherwise _build_mocked_deps()
+is used (all agents mocked — same as Phase 6, tests still pass).
 """
 from __future__ import annotations
 
 import logging
+import os
 from unittest.mock import MagicMock
 
 from app.agents.career_advisor import CareerAdvisor
@@ -18,10 +19,16 @@ from app.agents.review_auditor import ReviewAuditor
 from app.agents.scoring_agent import ScoringAgent
 from app.agents.tailoring_agent import TailoringAgent
 from app.repositories.advice_repository import AdviceRepository
-from app.repositories.database import utcnow_iso
+from app.repositories.database import DEFAULT_DB_PATH, utcnow_iso
+from app.repositories.decision_repository import DecisionRepository
 from app.repositories.job_repository import JobRepository
+from app.repositories.observability_repository import ObservabilityRepository
+from app.repositories.report_repository import ReportRepository
+from app.repositories.resume_repository import ResumeRepository  # noqa: F401 (used in _build_mocked_deps + real)
 from app.repositories.review_repository import ReviewRepository
 from app.repositories.score_repository import ScoreRepository
+from app.repositories.security_repository import SecurityRepository
+from app.repositories.step_repository import StepRepository
 from app.repositories.tailoring_repository import TailoringRepository
 from app.repositories.workflow_repository import WorkflowRepository
 from app.schemas.career_advice import CareerAdvice
@@ -33,6 +40,7 @@ from app.schemas.research_context import ResearchContext
 from app.schemas.resume_review import ResumeReview
 from app.schemas.review_audit import ReviewAudit
 from app.schemas.tailored_resume_draft import TailoredResumeDraft
+from app.services.config_service import ConfigService
 from app.services.job_discovery_service import JobDiscoveryService
 from app.services.observability_service import ObservabilityService
 from app.services.report_generator import ReportGenerator
@@ -42,7 +50,10 @@ from app.workflows.workflow_graph import WorkflowDependencies, build_graph
 logger = logging.getLogger(__name__)
 
 _graph = None
+_cleanup_fn = None  # called by cleanup_graph() in lifespan teardown
 
+
+# ── mock side-effects (Phase 6 / test mode) ──────────────────────────────────
 
 def _make_research_side_effect(workflow_id: str, context: dict) -> ResearchContext:
     job_id = context.get("job_id", "job-unknown")
@@ -177,8 +188,17 @@ def _make_fidelity_side_effect(workflow_id: str, context: dict) -> FidelityRevie
     )
 
 
+# ── mocked deps (Phase 6 / no ANTHROPIC_API_KEY) ─────────────────────────────
+
+def _mock_resume_repo() -> MagicMock:
+    """Resume repo mock that returns None from get_by_id, keeping tests on the parse_pdf path."""
+    m = MagicMock(spec=ResumeRepository)
+    m.get_by_id.return_value = None
+    return m
+
+
 def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
-    """Build WorkflowDependencies with all 8 agents mocked via side_effect."""
+    """WorkflowDependencies with all 8 agents mocked via side_effect."""
     obs = MagicMock(spec=ObservabilityService)
     obs.log_agent_started.return_value = "evt-001"
 
@@ -243,21 +263,177 @@ def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
         review_repo=MagicMock(spec=ReviewRepository),
         tailoring_repo=MagicMock(spec=TailoringRepository),
         workflow_repo=MagicMock(spec=WorkflowRepository),
+        resume_repo=_mock_resume_repo(),
         observability=obs,
         checkpointer=checkpointer,
     )
 
 
-def build_and_cache_graph() -> None:
-    """Build the workflow graph once at startup and store in module-level singleton.
+# ── real deps (Phase 7 / ANTHROPIC_API_KEY set) ───────────────────────────────
 
-    Phase 6 uses MemorySaver (all agents mocked). Phase 7 will switch to SqliteSaver.
+def _build_real_deps(checkpointer) -> WorkflowDependencies:
+    """Build WorkflowDependencies wired to real Claude agents and SQLite repos."""
+    from pathlib import Path
+
+    from app.providers.claude_provider import ClaudeProvider, make_resume_enhance_fn
+    from app.providers.prompt_loader import PromptLoader
+
+    # Anchor all paths to the project root (two levels up from app/api/dependencies.py)
+    # so this works regardless of CWD (server, notebook, or test runner).
+    _project_root = Path(__file__).resolve().parents[2]
+    db_path = _project_root / "data" / "v2.db"
+
+    # Ensure schema exists (CREATE TABLE IF NOT EXISTS — safe to call repeatedly)
+    from app.repositories.database import init_db
+    init_db(db_path)
+
+    # Repositories — each manages its own connection via get_connection()
+    job_repo = JobRepository(db_path)
+    score_repo = ScoreRepository(db_path)
+    advice_repo = AdviceRepository(db_path)
+    review_repo = ReviewRepository(db_path)
+    tailoring_repo = TailoringRepository(db_path)
+    workflow_repo = WorkflowRepository(db_path)
+    resume_repo = ResumeRepository(db_path)
+    obs_repo = ObservabilityRepository(db_path)
+    step_repo = StepRepository(db_path)
+    decision_repo = DecisionRepository(db_path)
+    security_repo = SecurityRepository(db_path)
+    report_repo = ReportRepository(db_path)
+
+    # Providers — sonnet for reasoning-heavy agents, haiku for high-volume scoring
+    loader = PromptLoader()
+    sonnet_provider = ClaudeProvider(loader, model_name="claude-sonnet-4-6")
+    haiku_provider = ClaudeProvider(loader, model_name="claude-haiku-4-5-20251001")
+
+    # Observability service
+    obs = ObservabilityService(obs_repo, step_repo, decision_repo, security_repo)
+
+    # Agents
+    research = ResearchAgent(sonnet_provider, obs)
+    scoring = ScoringAgent(haiku_provider, obs)
+    critic = ResumeCritic(sonnet_provider, obs)
+    auditor = ReviewAuditor(sonnet_provider, obs)
+    advisor = CareerAdvisor(sonnet_provider, obs)
+    coach = InterviewCoach(sonnet_provider, obs)
+    tailoring = TailoringAgent(sonnet_provider, obs)
+    fidelity = FidelityReviewer(sonnet_provider, obs)
+
+    # ResumeParser with Claude enhance_fn
+    enhance_fn = make_resume_enhance_fn(sonnet_provider)
+    resume_parser = ResumeParser(resume_repo, enhance_fn=enhance_fn)
+
+    # ConfigService — loads config.yaml and DB overrides (absolute paths, CWD-independent)
+    config_svc = ConfigService(
+        config_path=_project_root / "config" / "config.yaml",
+        db_path=db_path,
+    )
+    config_dict = config_svc.get_effective_config()
+
+    # JobDiscoveryService with real scrapers (only include scrapers whose creds are present)
+    scrapers = _build_scrapers(config_dict)
+    discovery_svc = JobDiscoveryService(job_repo, config_dict, scrapers=scrapers)
+
+    # ReportGenerator
+    report_gen = ReportGenerator(score_repo, review_repo, advice_repo, tailoring_repo, report_repo, job_repo)
+
+    return WorkflowDependencies(
+        research_agent=research,
+        scoring_agent=scoring,
+        resume_critic=critic,
+        review_auditor=auditor,
+        career_advisor=advisor,
+        interview_coach=coach,
+        tailoring_agent=tailoring,
+        fidelity_reviewer=fidelity,
+        discovery_service=discovery_svc,
+        resume_parser=resume_parser,
+        report_generator=report_gen,
+        job_repo=job_repo,
+        score_repo=score_repo,
+        advice_repo=advice_repo,
+        review_repo=review_repo,
+        tailoring_repo=tailoring_repo,
+        workflow_repo=workflow_repo,
+        resume_repo=resume_repo,
+        observability=obs,
+        checkpointer=checkpointer,
+    )
+
+
+def _build_scrapers(config_dict: dict) -> list:
+    """Instantiate v1 scrapers that have their required credentials present."""
+    scrapers = []
+
+    # LinkedIn: requires a populated inbox file (one URL per line)
+    try:
+        from pathlib import Path as _Path
+        from scrapers.linkedin import LinkedInScraper
+        _root = _Path(__file__).resolve().parents[2]
+        inbox = _root / "data" / "linkedin_inbox.txt"
+        inbox.parent.mkdir(parents=True, exist_ok=True)
+        if not inbox.exists():
+            inbox.write_text("")
+        scrapers.append(LinkedInScraper(str(inbox)))
+        logger.info("LinkedInScraper registered (inbox: %s)", inbox)
+    except Exception as exc:
+        logger.warning("LinkedInScraper skipped: %s", exc)
+
+    # Adzuna: requires ADZUNA_APP_ID + ADZUNA_APP_KEY
+    if os.getenv("ADZUNA_APP_ID") and os.getenv("ADZUNA_APP_KEY"):
+        try:
+            from models.config_schema import AdzunaConfig
+            from app.services.concurrent_adzuna_scraper import ConcurrentAdzunaScraper
+            adzuna_raw = config_dict.get("scrapers", {}).get("adzuna", {})
+            adzuna_cfg = AdzunaConfig(**adzuna_raw)
+            titles = config_dict.get("search", {}).get("titles", [])
+            scraper = ConcurrentAdzunaScraper.make(adzuna_cfg, titles)
+            if scraper:
+                scrapers.append(scraper)
+                logger.info("ConcurrentAdzunaScraper registered (%d titles, 5 workers)", len(titles))
+        except Exception as exc:
+            logger.warning("AdzunaScraper skipped: %s", exc)
+    else:
+        logger.info("AdzunaScraper skipped: ADZUNA_APP_ID/ADZUNA_APP_KEY not set")
+
+    return scrapers
+
+
+# ── startup / teardown ────────────────────────────────────────────────────────
+
+def build_and_cache_graph() -> None:
+    """Build the workflow graph once at startup; store graph and cleanup fn in module singletons.
+
+    Phase 7 gate: ANTHROPIC_API_KEY present → real agents + SqliteSaver.
+                  Not set → mocked agents + MemorySaver (Phase 6 behaviour, tests pass).
     """
-    global _graph
-    from langgraph.checkpoint.memory import MemorySaver
-    deps = _build_mocked_deps(MemorySaver())
+    global _graph, _cleanup_fn
+
+    if os.getenv("ANTHROPIC_API_KEY"):
+        logger.info("ANTHROPIC_API_KEY detected — starting in live-agent mode (Phase 7)")
+        from pathlib import Path as _Path
+        from langgraph.checkpoint.sqlite import SqliteSaver
+        _db = _Path(__file__).resolve().parents[2] / "data" / "v2.db"
+        checkpointer_cm = SqliteSaver.from_conn_string(str(_db))
+        checkpointer = checkpointer_cm.__enter__()
+        deps = _build_real_deps(checkpointer)
+        _cleanup_fn = lambda: checkpointer_cm.__exit__(None, None, None)
+    else:
+        logger.info("ANTHROPIC_API_KEY not set — starting in mock mode (Phase 6)")
+        from langgraph.checkpoint.memory import MemorySaver
+        deps = _build_mocked_deps(MemorySaver())
+        _cleanup_fn = None
+
     _graph = build_graph(deps)
     logger.info("Workflow graph built and cached.")
+
+
+def cleanup_graph() -> None:
+    """Release SqliteSaver and any other resources opened at startup."""
+    global _cleanup_fn
+    if _cleanup_fn:
+        _cleanup_fn()
+        _cleanup_fn = None
 
 
 def get_graph():

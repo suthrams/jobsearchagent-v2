@@ -15,6 +15,7 @@ from app.workflows.limits import (
     add_llm_call,
     append_error,
     get_metrics,
+    safe_agent_usage,
 )
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,8 @@ def make_interview_prep_node(
                 "career_advice": career_advice or {},
                 "final_review": final_review or {},
             })
-            metrics = add_llm_call(metrics)
+            _ti, _to, _cost = safe_agent_usage(interview_coach)
+            metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
         except LLMProviderError as exc:
             logger.warning("interview_prep: failed for %s: %s", job_id, exc)
             errors = append_error({"errors": errors}, "interview_prep", "coach_failed",

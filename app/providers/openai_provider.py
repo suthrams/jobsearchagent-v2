@@ -32,3 +32,8 @@ class OpenAIProvider(LLMClient):
         raise NotImplementedError(
             "OpenAIProvider is not implemented. Use ClaudeProvider."
         )
+
+    def last_call_usage(self) -> tuple[int, int, float]:
+        raise NotImplementedError(
+            "OpenAIProvider is not implemented. Use ClaudeProvider."
+        )

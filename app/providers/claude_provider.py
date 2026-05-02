@@ -13,14 +13,17 @@ via the orchestrator, which has access to workflow_id and ObservabilityService.
 """
 
 import logging
+import threading
 import time
 from typing import Any, Callable
 
 import anthropic
 import tenacity
+from pydantic import BaseModel
 
 from app.providers.llm_client import LLMClient, LLMProviderError
 from app.providers.prompt_loader import PromptLoader
+from app.schemas.resume_profile import CertificationEntry, EducationEntry, ExperienceEntry
 
 logger = logging.getLogger(__name__)
 
@@ -71,6 +74,8 @@ class ClaudeProvider(LLMClient):
         # _build_chat_model is only imported when _model is not injected,
         # so tests never need langchain_anthropic installed if they inject a mock.
         self._model = _model if _model is not None else self._build_chat_model(model_name)
+        # Thread-local storage for last-call token usage — safe for concurrent callers.
+        self._tlocal = threading.local()
 
     # ── Public interface (LLMClient contract) ─────────────────────────────────
 
@@ -199,15 +204,15 @@ class ClaudeProvider(LLMClient):
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
-    def _log_call(self, agent_name: str, raw_result: dict, elapsed_ms: int) -> None:
-        """Log token usage and prompt version to the Python logger.
+    def last_call_usage(self) -> tuple[int, int, float]:
+        """Return (tokens_in, tokens_out, cost_usd) for the most recent call in this thread."""
+        return getattr(self._tlocal, "last_usage", (0, 0, 0.0))
 
-        This satisfies Phase 3 observability requirements. Full DB logging
-        (llm_calls table via ObservabilityService) is wired in Phase 5 where
-        the orchestrator has access to workflow_id.
-        """
+    def _log_call(self, agent_name: str, raw_result: dict, elapsed_ms: int) -> None:
+        """Log token usage and prompt version to the Python logger, and save to thread-local."""
         tokens_in, tokens_out = self._extract_usage(raw_result)
         cost = self.estimate_cost(tokens_in, tokens_out)
+        self._tlocal.last_usage = (tokens_in, tokens_out, cost)
         version = self._prompt_loader.get_version(agent_name)
         logger.info(
             "llm_call agent=%s model=%s prompt_version=%s "
@@ -218,6 +223,19 @@ class ClaudeProvider(LLMClient):
 
 
 # ── enhance_fn factory ────────────────────────────────────────────────────────
+
+class _ResumeEnhancement(BaseModel):
+    """Structured output schema for the resume_parser LLM enhancement pass."""
+    name: str | None = None
+    headline: str | None = None
+    email: str | None = None
+    location: str | None = None
+    summary: str | None = None
+    experience: list[ExperienceEntry] = []
+    skills: list[str] = []
+    education: list[EducationEntry] = []
+    certifications: list[CertificationEntry] = []
+
 
 def make_resume_enhance_fn(provider: LLMClient) -> Callable[[str, dict], dict]:
     """Return a bound callable compatible with ResumeParser.enhance_fn.
@@ -243,6 +261,6 @@ def make_resume_enhance_fn(provider: LLMClient) -> Callable[[str, dict], dict]:
         return provider.complete(
             agent_name="resume_parser",
             context={"raw_text": raw_text, "heuristic_fields": heuristic_fields},
-            schema=dict,  # resume_parser returns a flexible field dict
+            schema=_ResumeEnhancement,
         )
     return enhance

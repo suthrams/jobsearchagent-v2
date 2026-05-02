@@ -5,6 +5,8 @@ The orchestrator writes results via JobRepository.
 """
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
 
 from app.repositories.database import utcnow_iso
@@ -13,6 +15,10 @@ from app.schemas.job_posting import JobPosting, JobSource, SalaryInfo, WorkMode
 from models.filters import EXCLUDED_TITLE_KEYWORDS
 
 logger = logging.getLogger(__name__)
+
+# Hard cap: no single scraper may block the workflow longer than this.
+# With ConcurrentAdzunaScraper (5 workers, ~7s/task), 62 calls ≈ 90s typical.
+_SCRAPER_TIMEOUT_S = 180
 
 _SOURCE_MAP: dict[str, JobSource] = {
     "linkedin": JobSource.LINKEDIN,
@@ -53,12 +59,22 @@ class JobDiscoveryService:
         """Run all scrapers, normalise, filter, deduplicate, cap, and return."""
         raw_jobs: list[Any] = []
         for scraper in self._scrapers:
+            pool = ThreadPoolExecutor(max_workers=1)
             try:
-                results = scraper.scrape()
-                logger.info("Scraper %s returned %d jobs", type(scraper).__name__, len(results))
-                raw_jobs.extend(results)
-            except Exception as exc:
-                logger.error("Scraper %s failed — continuing: %s", type(scraper).__name__, exc)
+                future = pool.submit(scraper.scrape)
+                try:
+                    results = future.result(timeout=_SCRAPER_TIMEOUT_S)
+                    logger.info("Scraper %s returned %d jobs", type(scraper).__name__, len(results))
+                    raw_jobs.extend(results)
+                except FuturesTimeoutError:
+                    logger.warning(
+                        "Scraper %s cancelled — exceeded %ds safety timeout",
+                        type(scraper).__name__, _SCRAPER_TIMEOUT_S,
+                    )
+                except Exception as exc:
+                    logger.error("Scraper %s failed — continuing: %s", type(scraper).__name__, exc)
+            finally:
+                pool.shutdown(wait=False)  # don't block — timed-out threads run to completion in bg
 
         postings = [self.normalize(job, workflow_id) for job in raw_jobs]
         postings = [p for p in postings if not self._is_excluded_title(p.title)]
