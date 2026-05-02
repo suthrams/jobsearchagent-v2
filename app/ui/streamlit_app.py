@@ -18,6 +18,7 @@ from dotenv import load_dotenv
 
 load_dotenv()  # load .env so API_BASE_URL overrides and any future env vars are available
 
+import yaml
 import app.ui.api_client as api
 from app.ui.db_reader import (
     load_deep_review_results,
@@ -25,6 +26,16 @@ from app.ui.db_reader import (
     load_scored_jobs,
     load_workflow_runs,
 )
+
+# ── Config loader ─────────────────────────────────────────────────────────────
+
+@st.cache_data
+def _load_config() -> dict:
+    try:
+        with open("config/config.yaml", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        return {}
 
 # ── Page config ───────────────────────────────────────────────────────────────
 
@@ -151,10 +162,15 @@ if view.startswith("───"):
 if view == "Start New Run":
     st.header("Start New Run")
 
+    _cfg = _load_config()
+    _default_roles = ", ".join(_cfg.get("search", {}).get("titles", []))
+    _default_locations = ", ".join(_cfg.get("search", {}).get("locations", []))
+
     with st.form("start_run"):
-        resume_id = st.text_input("Resume ID", value="res-001")
-        roles = st.text_input("Roles (comma-separated)", value="Staff Engineer, Principal Engineer")
-        locations = st.text_input("Locations (comma-separated)", value="Remote")
+        resume_id = st.text_input("Resume ID", value="resume.pdf",
+                                  help="Enter 'resume.pdf' on first run. Subsequent runs use the cached parsed profile.")
+        roles = st.text_input("Roles (comma-separated)", value=_default_roles or "Staff Engineer, Principal Engineer")
+        locations = st.text_input("Locations (comma-separated)", value=_default_locations or "Remote")
         track = st.radio("Career track", ["ic", "architect", "management"], horizontal=True)
         submitted = st.form_submit_button("Start Workflow")
 
