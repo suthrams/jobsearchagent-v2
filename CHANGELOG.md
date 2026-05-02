@@ -6,6 +6,24 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-02
 
+### Fixed — Stale limit constants
+
+- `app/ui/streamlit_app.py` — LLM calls metric display updated from `/ 50` → `/ 100` to match `MAX_LLM_CALLS_PER_RUN = 100` set in Phase 9
+- `config/config.example.yaml` — `max_llm_calls_per_run` updated from 50 → 100 to match actual enforcement constant
+
+### Added — v2 User Guide
+
+- `docs/user_guide.md` — rewritten from scratch against the actual implemented v2 UI
+  - Accurate sidebar navigation (13 items in 3 groups: Active Run, Browse Results, Analytics)
+  - **Start New Run** form: Resume ID text field, comma-separated roles/locations, career track radio — corrects prior version that described a nonexistent file upload
+  - **Monitor / HITL** view: status indicators, metrics (LLM calls / 100, cost, errors), job selection checkboxes, tailoring approval (Approve / Request Revision / Reject)
+  - **Browse Results**: min score slider, search, per-track score columns, track tables with progress bar scores and URL links
+  - **Deep Review Results** and **Interview Prep**: workflow-scoped views showing resume/career gaps, 7-day prep plan, weak areas
+  - **Companies** and **Run History** analytics views
+  - Session state note: browser session state resets on reload; historical data always available via Browse views
+
+---
+
 ### Changed — Phase 9: Cost Optimization
 
 #### Model Tiering (75–85% cost reduction per run)

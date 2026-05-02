@@ -1,6 +1,6 @@
 # Job Search Agent v2 — User Guide
 
-End-to-end walkthrough: setup, first run, daily workflow, reading results, and troubleshooting.
+End-to-end walkthrough: setup, starting the system, running a workflow, and reading results.
 
 ---
 
@@ -12,14 +12,15 @@ End-to-end walkthrough: setup, first run, daily workflow, reading results, and t
 4. [Add Your Resume](#4-add-your-resume)
 5. [Add LinkedIn Jobs (optional)](#5-add-linkedin-jobs-optional)
 6. [Start the System](#6-start-the-system)
-7. [Start a Workflow Run](#7-start-a-workflow-run)
-8. [HITL: Select Jobs for Deep Review](#8-hitl-select-jobs-for-deep-review)
-9. [Read the Deep Review](#9-read-the-deep-review)
-10. [Career Advice](#10-career-advice)
-11. [Interview Prep](#11-interview-prep)
-12. [Tailor Your Resume](#12-tailor-your-resume)
-13. [Daily Workflow](#13-daily-workflow)
-14. [Troubleshooting](#14-troubleshooting)
+7. [UI Navigation](#7-ui-navigation)
+8. [Start a Workflow Run](#8-start-a-workflow-run)
+9. [Monitor Progress and Handle HITL Checkpoints](#9-monitor-progress-and-handle-hitl-checkpoints)
+10. [Read the Run Report](#10-read-the-run-report)
+11. [Browse Results](#11-browse-results)
+12. [Deep Review Results and Interview Prep](#12-deep-review-results-and-interview-prep)
+13. [Analytics: Companies and Run History](#13-analytics-companies-and-run-history)
+14. [Daily Workflow](#14-daily-workflow)
+15. [Troubleshooting](#15-troubleshooting)
 
 ---
 
@@ -28,6 +29,8 @@ End-to-end walkthrough: setup, first run, daily workflow, reading results, and t
 - Python 3.11+
 - Anthropic API key — [console.anthropic.com](https://console.anthropic.com)
 - Adzuna API credentials (free) — [developer.adzuna.com](https://developer.adzuna.com)
+
+The backend will start in **mock mode** if `ANTHROPIC_API_KEY` is missing — all agents are stubbed and no real LLM calls are made. Adzuna credentials are required only for automatic job discovery.
 
 ---
 
@@ -47,25 +50,22 @@ pip install -r requirements.txt
 ## 3. Configure
 
 **Copy the example config:**
+
 ```bash
 cp config/config.example.yaml config/config.yaml
 ```
 
-Edit `config/config.yaml` — key settings:
+`config/config.yaml` is gitignored. Key settings to edit:
 
 ```yaml
 search:
   titles:
-    - software architect
-    - principal engineer
-    - Director of Engineering
+    - Staff Engineer
+    - Principal Engineer
+    - Solutions Architect
   locations:
     - Atlanta, GA
     - Remote
-  work_mode: [remote, hybrid]
-
-salary:
-  min_desired: 130000
 
 tracks:
   ic: true
@@ -85,7 +85,9 @@ ADZUNA_APP_KEY=your_api_key
 
 ## 4. Add Your Resume
 
-Place your resume PDF at `resume.pdf` in the project root. The resume is parsed by Claude on first use and cached by SHA-256 hash — subsequent runs with the same PDF use the cache at no API cost.
+Place your resume PDF at `resume.pdf` in the project root. The resume is parsed by Claude on first use and cached by SHA-256 hash — re-running with the same file incurs no additional API cost.
+
+The parsed resume is stored with the ID `res-001` in `data/v2.db`. Use this ID in the **Start New Run** form. If you update your resume file, the hash changes and the resume is re-parsed automatically.
 
 ---
 
@@ -93,31 +95,33 @@ Place your resume PDF at `resume.pdf` in the project root. The resume is parsed 
 
 LinkedIn does not allow automated scraping. To include LinkedIn roles:
 
-1. Browse LinkedIn and copy job URLs you want evaluated
-2. Paste them into `data/linkedin_inbox.txt`, one per line
+1. Browse LinkedIn and copy job posting URLs
+2. Paste them into `inbox/linkedin.txt`, one per line
 3. The agent processes and clears this file on the next run
 
 ---
 
 ## 6. Start the System
 
-The system has two processes. Open two terminal windows.
+The system requires two processes running simultaneously. Open two terminal windows.
 
 **Terminal 1 — FastAPI backend:**
+
 ```bash
 uvicorn app.api.main:app --reload
 ```
 
-You should see:
+Expected output:
 ```
 ANTHROPIC_API_KEY detected — starting in live-agent mode (Phase 7)
 Workflow graph built and cached.
 INFO: Uvicorn running on http://127.0.0.1:8000
 ```
 
-If you see `starting in mock mode` instead, your `ANTHROPIC_API_KEY` is not set or not loaded from `.env`.
+If you see `starting in mock mode`, check that `ANTHROPIC_API_KEY` is set in `.env`.
 
 **Terminal 2 — Streamlit UI:**
+
 ```bash
 streamlit run app/ui/streamlit_app.py
 ```
@@ -126,121 +130,197 @@ Open `http://localhost:8501` in your browser.
 
 ---
 
-## 7. Start a Workflow Run
+## 7. UI Navigation
 
-In the Streamlit UI:
+The sidebar has a radio navigation with 13 items in three groups:
 
-1. Go to the **Start** page
-2. Upload your resume PDF (or select the cached version if uploaded before)
-3. Review or adjust your search preferences
-4. Click **Start Run**
+**Active Run**
+- **Start New Run** — configure and launch a workflow
+- **Monitor / HITL** — track progress, respond to HITL checkpoints
+- **Run Report** — view the final report when the workflow completes
 
-The backend begins the workflow:
-- Discovers jobs from Adzuna and LinkedIn
-- Applies the pre-filter gate
-- Researches each company (Research Agent — Haiku)
-- Scores each job across your enabled tracks (Scoring Agent — Haiku, concurrent)
+**Browse Results** *(read directly from `data/v2.db`)*
+- **Top Matches** — all scored jobs by overall score
+- **IC Track** — jobs sorted by technical score
+- **Architect Track** — jobs sorted by architecture score
+- **Management Track** — jobs sorted by leadership score
+- **Deep Review Results** — per-job resume gap analysis and fit summary
+- **Interview Prep** — per-job 7-day prep plan and likely interview topics
 
-Monitor progress on the **Run Status** page. The run pauses at the job selection checkpoint once scoring completes.
+**Analytics**
+- **Companies** — bar chart of top target companies by best match score
+- **Run History** — log of all workflow runs with cost totals
 
----
-
-## 8. HITL: Select Jobs for Deep Review
-
-After scoring, the workflow pauses and asks you to select up to 3 jobs for deep review.
-
-The UI shows:
-- All scored jobs ranked by best score across tracks
-- Per-track scores and match summary
-- Company, location, salary, posting date
-
-**Select 1–3 jobs** and click **Confirm Selection**. Only selected jobs incur deep review costs — unselected jobs are stored but receive no further LLM calls.
+**Sidebar controls** (apply to all Browse views):
+- **Minimum score** slider — 0–100, default 60, step 5
+- **Search** — filter by title or company name
+- **Refresh data** — clears the data cache and reloads from `data/v2.db`
 
 ---
 
-## 9. Read the Deep Review
+## 8. Start a Workflow Run
 
-For each selected job, the workflow runs:
+Select **Start New Run** in the sidebar. Fill in the form:
+
+| Field | What to enter |
+|---|---|
+| **Resume ID** | `res-001` (default) — the ID the parser stored your resume under |
+| **Roles** | Comma-separated job titles to search for, e.g. `Staff Engineer, Principal Engineer` |
+| **Locations** | Comma-separated locations, e.g. `Remote` or `Atlanta, GA, Remote` |
+| **Career track** | `ic`, `architect`, or `management` — sets which score column to optimize for |
+
+Click **Start Workflow**.
+
+On success the UI shows the `workflow_id` UUID and prompts you to switch to **Monitor / HITL**. The backend immediately begins:
+
+1. Discovering jobs from Adzuna (up to 10 jobs per run)
+2. Researching each company (Research Agent — Haiku)
+3. Scoring each job against the selected career track (Scoring Agent — Haiku, concurrent)
+
+---
+
+## 9. Monitor Progress and Handle HITL Checkpoints
+
+Select **Monitor / HITL** in the sidebar. Click **Refresh** to poll the backend for the latest status.
+
+### Status indicators
+
+| Symbol | Status | Meaning |
+|---|---|---|
+| 🔵 | `running` | Workflow is executing |
+| 🟡 | `waiting_for_user` | Paused — action required (see below) |
+| 🟢 | `completed` | Finished — report is available |
+| 🔴 | `failed` | Unrecoverable error — check Errors section |
+
+The view also shows the **current step** name (e.g. `score_jobs`, `await_job_selection`) and a metrics row: LLM calls used out of 100, estimated cost so far, and any error count.
+
+### HITL Checkpoint 1 — Job Selection
+
+When status is 🟡 `waiting_for_user` and the step is `await_job_selection`:
+
+- A list of scored jobs appears, each showing title, company, and overall score
+- Check the boxes next to **1–3 jobs** you want to deep-review
+- Click **Submit Selection**
+
+Only selected jobs proceed to deep review. Unselected jobs are stored in the database but receive no further LLM calls.
+
+After submitting, the workflow resumes and runs for each selected job:
 
 1. **Resume Critic** (Sonnet) — section-by-section gap analysis
-2. **Review Auditor** (Haiku) — quality check on the critic's review
+2. **Review Auditor** (Haiku) — quality check on the critic's output
 3. Reflection loop repeats until quality threshold met (up to 3 rounds)
+4. **Career Advisor** (Sonnet) — cross-job career positioning synthesis
+5. **Interview Coach** (Sonnet) — if match score ≥ 75
+6. **Tailoring Agent** (Sonnet) — if you requested tailoring
 
-The deep review output shows:
-- Overall fit summary
-- Per-section resume analysis
-- **Resume gaps** — experience you have but haven't documented clearly
-- **Career gaps** — experience requirements you genuinely don't meet
-- Suggested improvements
-- Questions the agent couldn't resolve from your resume
+### HITL Checkpoint 2 — Tailoring Approval
 
-At the **Deep Review Approval** checkpoint you can accept the review or request another round.
+When status is 🟡 `waiting_for_user` and the step is `await_tailoring_approval`:
 
----
+- The view shows **Fidelity Status** and **Recommendation** from the Fidelity Reviewer
+- Click **View tailored draft** to inspect the full draft
+- Choose one of three actions:
 
-## 10. Career Advice
+| Button | Effect |
+|---|---|
+| **Approve** | Accept the draft; workflow proceeds to report generation |
+| **Request Revision** | Triggers another tailoring pass (within the 3-round limit) |
+| **Reject** | Discard the draft; workflow proceeds to report without a tailored version |
 
-After all deep reviews complete, the Career Advisor (Sonnet) synthesizes findings across all selected jobs and produces:
-
-- Track recommendation (which of IC / Architect / Management is your strongest fit right now)
-- Positioning strategy per track
-- Prioritized skill gaps to address
-- Suggested application timeline
-
-Runs once per workflow run, not per job.
+After the final checkpoint, the workflow runs **Fidelity Review** and then **generates the report**.
 
 ---
 
-## 11. Interview Prep
+## 10. Read the Run Report
 
-If a job's match score is ≥ 75 (or you request it at the checkpoint), the Interview Coach (Sonnet) prepares:
+Select **Run Report** in the sidebar. This view is only available when the workflow status is 🟢 `completed`.
 
-- Likely interview questions for this role
-- Suggested answer frameworks drawing on your resume
-- Topics to research before the interview
-- Red flags or gaps to be ready to address
+The report renders as Markdown and includes:
+- Summary of all selected jobs
+- Deep review findings per job
+- Career advice across tracks
+- Interview prep highlights
+- Any tailored resume sections (if approved)
 
-At the **Interview Prep Decision** checkpoint you can skip this step for any job to save cost.
-
----
-
-## 12. Tailor Your Resume
-
-At the **Tailoring** checkpoint, select a job and track and click **Tailor Resume**.
-
-The Tailoring Agent (Sonnet) produces:
-- Professional summary rewritten for this role and track
-- Experience bullets selected and reworded for relevance
-- ATS keywords from the job posting that match your background
-- Identified gaps — labeled honestly, never fabricated
-
-The **Fidelity Reviewer** (Haiku) validates every claim against your original resume before the draft is shown to you. Any unsupported claim is flagged.
-
-At the **Tailoring Approval** checkpoint:
-- **Accept** — draft is saved to `output/resumes/`
-- **Reject** — draft is discarded; you can request a new one
+Click **Download Markdown** to save a copy locally.
 
 ---
 
-## 13. Daily Workflow
+## 11. Browse Results
 
-Once set up, the typical daily routine:
+All Browse views read `data/v2.db` directly — they are available at any time, including during a run or between runs. Use the **Refresh data** button in the sidebar to reload after a run completes.
+
+The sidebar **Minimum score** slider and **Search** box apply to all track views.
+
+### Top Matches
+
+Shows all scored jobs filtered by overall score ≥ minimum. Displays a summary row with total scored jobs, jobs above the threshold, and unique company count.
+
+### IC / Architect / Management Track
+
+Each track view shows jobs sorted by the track-specific score column:
+
+| View | Score column |
+|---|---|
+| IC Track | `technical_score` |
+| Architect Track | `architecture_score` |
+| Management Track | `leadership_score` |
+
+All track tables include: Job ID, Title, Company, Location, Score (progress bar), Summary, Recommended Next Action, and a direct link to the job posting.
+
+---
+
+## 12. Deep Review Results and Interview Prep
+
+These views load results for a specific workflow run. If a workflow is active in your session, they load it automatically. Otherwise, enter a workflow ID manually.
+
+### Deep Review Results
+
+For each deep-reviewed job, an expandable section shows:
+- **Fit Summary** — overall fit assessment
+- **Positioning** — how to position yourself for this role
+- **Recommended Action** — apply / hold / skip
+- **Resume Gaps** — experience you have but haven't documented — can be addressed through tailoring
+- **Career Gaps** — requirements you genuinely don't meet — labeled honestly, never fabricated
+
+### Interview Prep
+
+For each job where Interview Coach ran (match score ≥ 75), an expandable section shows:
+- **Likely Topics** — subject areas likely to appear in interviews
+- **7-Day Prep Plan** — day-by-day study and practice tasks
+- **Areas to Defend** — resume weak points the interviewer may probe
+
+---
+
+## 13. Analytics: Companies and Run History
+
+### Companies
+
+Horizontal bar chart of the top 20 companies by best overall match score, filtered by the sidebar minimum score. The table below shows per-company job count and best score per track (Technical, Architecture, Leadership).
+
+### Run History
+
+Shows total workflow runs and cumulative estimated API cost across all runs. The full runs table below includes per-run status, job counts, LLM call counts, and cost.
+
+---
+
+## 14. Daily Workflow
+
+Once configured, a typical session looks like:
 
 ```
-Morning:
-  1. Add any interesting LinkedIn URLs to data/linkedin_inbox.txt
-  2. Start backend + UI (if not already running)
-  3. Click Start Run
-  4. ~5 min: scoring completes → select 1–3 jobs for deep review
-  5. ~3 min: deep review completes → review and accept
-  6. Read career advice and interview prep for new roles
-
-As needed:
-  7. Tailor resume for roles you decide to apply to
-  8. Mark applied jobs at the Application Status Update checkpoint
+1. (Optional) Add LinkedIn URLs to inbox/linkedin.txt
+2. Start backend + Streamlit UI if not running
+3. Start New Run — fill form, click Start Workflow
+4. Switch to Monitor / HITL — refresh until scoring completes (~2–5 min)
+5. HITL #1: select 1–3 jobs for deep review, click Submit Selection
+6. Wait for deep review to finish (~3–5 min) — refresh periodically
+7. HITL #2 (if tailoring was requested): review draft, approve or request revision
+8. Switch to Run Report — read findings and download markdown
+9. Browse Results for history across all runs
 ```
 
-**Cost estimate per run (10 jobs, typical):**
+**Estimated cost per run (10 jobs):**
 
 | Scenario | Estimated cost |
 |---|---|
@@ -250,33 +330,42 @@ As needed:
 
 ---
 
-## 14. Troubleshooting
+## 15. Troubleshooting
 
 **Backend starts in mock mode**
-- Check that `ANTHROPIC_API_KEY` is in your `.env` file in the project root
-- Verify: `python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(bool(os.getenv('ANTHROPIC_API_KEY')))"`
+- Verify `.env` exists in the project root with `ANTHROPIC_API_KEY=sk-ant-...`
+- Check: `python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(bool(os.getenv('ANTHROPIC_API_KEY')))"`
 
 **No jobs discovered**
 - Check `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env`
-- Verify `config.yaml` has entries in `search.titles` and `scrapers.adzuna.locations`
-- Adzuna free-tier quota: `(titles × locations) + remote_keywords` must be < 100/day
-
-**LinkedIn jobs not appearing**
-- Ensure URLs are in `data/linkedin_inbox.txt`
-- Check backend logs for network errors on the LinkedIn fetch
+- Verify `config/config.yaml` has entries in `search.titles` and `scrapers.adzuna.location`
 
 **Workflow stuck at `waiting_for_user`**
-- The workflow is paused at a HITL checkpoint — open the Streamlit UI and check the Run Status page for the pending decision
+- This is expected — the workflow has paused at a HITL checkpoint waiting for your input
+- Open **Monitor / HITL**, click **Refresh**, and submit the pending decision
 
-**Resume parse error**
-- Ensure `resume.pdf` is in the project root
-- To force a re-parse, delete the cached resume row from `data/v2.db`: `DELETE FROM resumes WHERE ...`
+**Monitor / HITL shows "No active workflow"**
+- The session state is in-browser only; it resets on page reload or if Streamlit restarts
+- You can still use Browse views — all historical data is in `data/v2.db`
 
-**Running the test suite**
+**Resume parse error or wrong resume being used**
+- Confirm `resume.pdf` is in the project root
+- To force a re-parse, delete the cached row: `sqlite3 data/v2.db "DELETE FROM resumes WHERE id='res-001'"`
+
+**No deep review results or interview prep data**
+- These views require a workflow that completed a full deep review pass
+- Check that status reached `completed` in **Monitor / HITL**
+
+**API error in the UI (red banner)**
+- Confirm the backend is running: `curl http://localhost:8000/docs`
+- Check the uvicorn terminal for stack traces
+
+**Running tests**
 ```bash
 python -m pytest tests/                   # full suite, mock mode (no API calls)
 python -m pytest tests/ -m integration   # live smoke tests (requires .env)
 ```
 
-**API reference**
-The full REST API reference is at `http://localhost:8000/docs` (Swagger UI) when the backend is running.
+**API reference (Swagger UI)**
+
+Available at `http://localhost:8000/docs` while the backend is running.

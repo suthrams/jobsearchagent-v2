@@ -212,7 +212,7 @@ elif view == "Monitor / HITL":
     if metrics:
         m1, m2, m3 = st.columns(3)
         llm = metrics.get("llm_calls", 0)
-        m1.metric("LLM calls", f"{llm} / 50")
+        m1.metric("LLM calls", f"{llm} / 100")
         m2.metric("Est. cost", f"${metrics.get('estimated_cost_usd', 0):.4f}")
         m3.metric("Errors", len(resp.get("errors") or []))
 
