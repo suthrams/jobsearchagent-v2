@@ -2,7 +2,7 @@
 
 Pattern: Structured output — no tools, no reflection, no loop.
 Runs once per job in the batch. Uses haiku model by default (cheapest call
-in the system — up to MAX_JOBS_PER_RUN = 20 calls per run).
+in the system — up to MAX_JOBS_PER_RUN = 10 calls per run).
 
 Context keys passed to provider.complete:
   job_id, resume_id, job_title, company, job_description,

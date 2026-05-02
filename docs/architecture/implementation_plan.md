@@ -24,6 +24,9 @@ Phase 3: LLM Provider      → abstraction + prompt assembly
 Phase 4: Agents            → one at a time, scoring first
 Phase 5: Orchestrator      → wire agents into workflows
 Phase 6: UI                → thin layer on existing Streamlit
+Phase 7: Live Agents       → real Claude, SqliteSaver, real scrapers
+Phase 8: Performance       → concurrent scoring + concurrent scraping
+Phase 9: Cost & Hardening  → model tiering, volume caps, hardening
 ```
 
 ---
@@ -309,12 +312,12 @@ Wire agents, services, and state into complete, runnable workflows.
 **Execution Limits Enforced**
 
 ```text
-MAX_JOBS_PER_RUN = 20
+MAX_JOBS_PER_RUN = 10   (reduced from 20 in Phase 9)
 MAX_SELECTED_JOBS = 3
 MAX_RESEARCH_STEPS = 2
 MAX_REVIEW_ROUNDS = 3
 MAX_LLM_CALLS_PER_JOB = 10
-MAX_LLM_CALLS_PER_RUN = 50
+MAX_LLM_CALLS_PER_RUN = 100
 ```
 
 **HITL State Transitions**
@@ -431,6 +434,9 @@ app/ui/pages/
 | Gate 4b | All Agents | Complete agent layer consistency |
 | Gate 5 | Orchestrator | Full workflow wiring with fixture data |
 | Gate 6 | UI | Complete end-to-end user journey |
+| Gate 7 | Live Agents | E2E run with real API keys + SqliteSaver |
+| Gate 8 | Performance | Concurrent scoring wall-clock times + correctness |
+| Gate 9 | Cost | Cost per run before/after model tiering |
 
 ---
 
@@ -449,6 +455,166 @@ Per ADR-044, migration is feature-by-feature:
 | `prompts/` | Replaced by v2 prompt system with shared guardrails |
 
 v1 remains stable and runnable throughout. v2 is developed in parallel.
+
+---
+
+---
+
+## Phase 7 — Live Agents
+
+### Goal
+
+Replace all mocked components with real Claude calls, real scrapers, and durable LangGraph checkpointing.
+
+### Deliverables
+
+**Phase 7 Gate (`app/api/dependencies.py`)**
+
+- `ANTHROPIC_API_KEY` present → `_build_real_deps()`: live `ClaudeProvider`, `SqliteSaver`, real scrapers
+- Not set → `_build_mocked_deps()`: all agents mocked + `MemorySaver` (Phase 6 behaviour preserved)
+
+**Real Wiring**
+
+| Component | Real Implementation |
+| --- | --- |
+| All 8 agents | `ClaudeProvider` with `ChatAnthropic` |
+| Checkpointer | `SqliteSaver` → `data/v2.db` |
+| Scrapers | `ConcurrentAdzunaScraper` + `LinkedInScraper` |
+| Resume parser | `make_resume_enhance_fn(sonnet_provider)` |
+| Config | `ConfigService` loading `config/config.yaml` |
+
+**`.env` Loading**
+
+- `python-dotenv` loaded at startup so `ANTHROPIC_API_KEY`, `ADZUNA_APP_ID`, `ADZUNA_APP_KEY` are available without shell export
+
+**Code Locations**
+
+```text
+app/api/dependencies.py          ← _build_real_deps / _build_mocked_deps
+app/api/main.py                  ← lifespan startup/teardown
+app/providers/claude_provider.py ← ChatAnthropic + make_resume_enhance_fn
+notebooks/phase_7_validation.ipynb
+```
+
+### Tests
+
+- `ANTHROPIC_API_KEY` set → real deps built; not set → mocked deps built
+- `SqliteSaver` checkpoints workflow state between pause and resume
+- E2E validation notebook runs a complete workflow with real API keys
+
+### Review Gate 7
+
+> Run the phase_7_validation.ipynb end-to-end.
+> Confirm real Claude responses, SqliteSaver checkpoint persistence, and correct state across a HITL pause/resume.
+
+**Status: complete** — 389 tests passing; committed `625503a`, `26c3767`.
+
+---
+
+## Phase 8 — Performance
+
+### Goal
+
+Eliminate the serial bottlenecks identified in Phase 7: sequential job scoring and sequential Adzuna scraping.
+
+### Deliverables
+
+**Concurrent Job Scoring**
+
+- `score_jobs` node uses `ThreadPoolExecutor` (5 workers) to run Research + Scoring per job in parallel
+- `add_llm_calls_bulk()` helper accumulates metrics atomically across threads
+- Wall-clock time for 10 jobs: ~75s → ~20s
+
+**Concurrent Adzuna Scraping**
+
+- `ConcurrentAdzunaScraper` wraps v1 `AdzunaScraper` with `ThreadPoolExecutor` (5 workers)
+- One worker per `(title, location)` search pair
+- `_resolve_url` patched to no-op — Adzuna redirect URLs stored as-is to avoid extra HTTP calls
+- `JobDiscoveryService` enforces a 180s per-scraper safety timeout via `shutdown(wait=False)`
+
+**Code Locations**
+
+```text
+app/workflows/nodes/score_jobs.py             ← concurrent scoring node
+app/services/concurrent_adzuna_scraper.py     ← concurrent scraper wrapper
+app/workflows/limits.py                       ← add_llm_calls_bulk
+```
+
+### Tests
+
+- Concurrent scoring produces the same results as sequential scoring
+- Thread safety: metrics are accumulated correctly across concurrent workers
+- `ConcurrentAdzunaScraper` deduplicates results from parallel workers
+- Safety timeout prevents a hung scraper blocking the workflow indefinitely
+
+### Review Gate 8
+
+> Compare wall-clock times for a 10-job scoring run before and after concurrent execution.
+> Confirm no race conditions in metrics accumulation or state updates.
+
+**Status: complete** — concurrent scoring + scraping implemented; committed `26c3767`.
+
+---
+
+## Phase 9 — Cost Optimization & Hardening
+
+### Goal
+
+Reduce per-run API cost without degrading output quality, and harden the operational limits.
+
+### Deliverables
+
+**Model Tiering**
+
+Agents reassigned to the lowest-cost model that meets their quality requirement:
+
+| Agent | Before | After | Rationale |
+| --- | --- | --- | --- |
+| Research Agent | Sonnet | Haiku | High-volume (every job); summarization not reasoning |
+| Scoring Agent | Haiku | Haiku | No change |
+| Resume Critic | Sonnet | Sonnet | Deep analysis; quality-sensitive |
+| Review Auditor | Sonnet | Haiku | Validation/checking task |
+| Career Advisor | Sonnet | Sonnet | Generative; quality-sensitive |
+| Interview Coach | Sonnet | Sonnet | Generative; quality-sensitive |
+| Tailoring Agent | Sonnet | Sonnet | Evidence-bound generation; quality-sensitive |
+| Fidelity Reviewer | Sonnet | Haiku | Validation/checking task |
+
+**Volume Cap**
+
+- `MAX_JOBS_PER_RUN` reduced from 20 → 10 (halves research + scoring call volume)
+
+**Prompt Caching** (already live since Phase 3)
+
+- System messages marked `cache_control: ephemeral` in `PromptLoader`
+- 90% cost reduction on repeated agent calls within a 5-minute window
+
+**Estimated Cost Impact**
+
+| Scenario | Before Phase 9 | After Phase 9 |
+| --- | --- | --- |
+| Discovery + research + scoring (10 jobs) | ~$0.10–0.20 | ~$0.02–0.05 |
+| Full run with deep review (3 jobs) | ~$0.20–0.50 | ~$0.05–0.15 |
+
+**Code Locations**
+
+```text
+app/api/dependencies.py      ← agent → provider assignment
+app/workflows/limits.py      ← MAX_JOBS_PER_RUN = 10
+app/providers/prompt_loader.py  ← cache_control: ephemeral
+```
+
+### Tests
+
+- Agent provider assignments are correct (haiku for research/auditor/fidelity/scoring, sonnet for others)
+- `MAX_JOBS_PER_RUN = 10` enforced in `discover_jobs` node
+- Prompt caching: system message includes `cache_control` block
+
+### Review Gate 9
+
+> Run a full workflow with real API keys before and after model tiering.
+> Confirm cost reduction in the `llm_calls` observability table and no quality regression in scored outputs.
+
+**Status: in progress** — model tiering + volume cap implemented; prompt caching live since Phase 3.
 
 ---
 

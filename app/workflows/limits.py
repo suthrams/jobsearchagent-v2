@@ -9,7 +9,7 @@ from app.repositories.database import utcnow_iso
 
 # ── Execution limits ──────────────────────────────────────────────────────────
 
-MAX_JOBS_PER_RUN = 20
+MAX_JOBS_PER_RUN = 10
 MAX_SELECTED_JOBS = 3
 MAX_RESEARCH_STEPS = 2
 MAX_REVIEW_ROUNDS = 3

@@ -1,65 +1,70 @@
-# Job Search Agent
+# Job Search Agent v2
 
-An agentic AI application that scrapes job postings, scores them against your resume across three career tracks, and tailors your resume for jobs you want to apply to — all powered by Claude (Anthropic).
+A multi-agent career intelligence system that discovers jobs, scores fit across three career tracks, identifies resume gaps, prepares you for interviews, and tailors your resume — all powered by Claude (Anthropic) and orchestrated with LangGraph.
 
-Built as a real-world exploration of **agentic AI application patterns**: structured output, prompt-as-template, cache-aside, batched fan-out, and pipeline state machines.
+Built as a real-world exploration of **production agentic AI patterns**: stateful workflow graphs, structured output, bounded ReAct loops, critique-reflection cycles, evidence-bound generation, and human-in-the-loop checkpointing.
 
 ## What It Does
 
-1. **Scrapes** jobs from Adzuna API (aggregates Indeed, Glassdoor, etc.) and LinkedIn (manual URL intake)
+1. **Discovers** jobs from Adzuna (aggregates Indeed, Glassdoor, etc.) and LinkedIn (manual URL intake) — concurrently
 2. **Filters** noise with keyword gates before spending any API tokens
-3. **Scores** each job against your resume across three career tracks simultaneously using Claude
-4. **Ranks** results in a terminal table and a Streamlit dashboard
-5. **Tailors** your resume for any job you decide to apply to
+3. **Researches** each company with a bounded ReAct agent — culture, tech signals, risk flags
+4. **Scores** each job against your resume across three career tracks concurrently
+5. **Reviews** high-match jobs with a critic → auditor reflection loop
+6. **Advises** on career positioning after the scoring pass
+7. **Coaches** interview prep for roles above the match threshold
+8. **Tailors** your resume with evidence-bound generation + fidelity guardrail
+9. **Tracks** every decision, reasoning step, and cost in SQLite
 
-## Solution Architecture
+## Architecture
 
 ```mermaid
 flowchart TD
     subgraph YOU["What You Bring"]
-        R["Your Resume PDF"]
-        PREFS["Your Preferences\nlocations, salary, tracks"]
+        R["Resume PDF"]
+        PREFS["Preferences\nlocations · salary · tracks"]
     end
 
     subgraph SOURCES["Job Sources"]
-        AZ["Adzuna API\nIncludes Indeed and Glassdoor"]
-        LI["LinkedIn URLs\nmanual copy-paste intake"]
+        AZ["Adzuna API\n(concurrent, 5 workers)"]
+        LI["LinkedIn URLs\nmanual intake"]
     end
 
-    subgraph PIPELINE["Job Search Agent Pipeline"]
-        SCRAPE["Scrape\ncollect raw listings"]
-        FILTER["Pre-Filter Gate\nremove irrelevant roles cheaply"]
-        SCORE["Claude AI — Scoring\nrate each job across 3 career tracks"]
-        DB[("SQLite Database\nall jobs and scores")]
-        TAILOR["Claude AI — Tailoring\nrewrite resume for chosen role"]
+    subgraph WORKFLOW["LangGraph Workflow"]
+        DISC["Discover Jobs"]
+        RES["Research Agent\ncompany + role context"]
+        SCORE["Scoring Agent\n3 tracks concurrently"]
+        CRITIC["Resume Critic\nhigh-match jobs only"]
+        AUDIT["Review Auditor\nreflection loop"]
+        ADVISOR["Career Advisor"]
+        COACH["Interview Coach\n≥ threshold only"]
+        TAILOR["Tailoring Agent\nevidence-bound"]
+        FIDELITY["Fidelity Reviewer\nguardrail"]
+        CP[("SqliteSaver\ncheckpoints")]
     end
 
-    subgraph OUTPUTS["Your Results"]
-        TERM["Terminal Table\nranked results with scores"]
-        DASH["Streamlit Dashboard\nbrowse, filter, and trigger tailoring"]
-        FILE["Tailored Resume\ntext file ready to customise"]
+    subgraph OUTPUTS["Results"]
+        API["FastAPI Backend"]
+        UI["Streamlit UI"]
+        DB[("SQLite\njobs · scores · reviews")]
     end
 
-    R --> SCORE
-    R --> TAILOR
-    PREFS --> SCRAPE
-    PREFS --> SCORE
-    AZ --> SCRAPE
-    LI --> SCRAPE
-    SCRAPE --> FILTER
-    FILTER --> SCORE
-    SCORE --> DB
-    DB --> TERM
-    DB --> DASH
-    DB --> TAILOR
-    DASH --> TAILOR
-    TAILOR --> FILE
+    R --> DISC
+    PREFS --> DISC
+    AZ --> DISC
+    LI --> DISC
+    DISC --> RES --> SCORE --> CRITIC --> AUDIT --> ADVISOR --> COACH
+    COACH --> TAILOR --> FIDELITY
+    WORKFLOW <--> CP
+    FIDELITY --> API --> UI
+    WORKFLOW --> DB
 
     style SCORE fill:#dbeafe,stroke:#3b82f6
     style TAILOR fill:#dbeafe,stroke:#3b82f6
+    style CRITIC fill:#dbeafe,stroke:#3b82f6
+    style FIDELITY fill:#fee2e2,stroke:#dc2626
+    style CP fill:#fef9c3,stroke:#eab308
     style DB fill:#fef9c3,stroke:#eab308
-    style FILTER fill:#fee2e2,stroke:#dc2626
-    style FILE fill:#dcfce7,stroke:#16a34a
 ```
 
 ---
@@ -72,7 +77,9 @@ flowchart TD
 | `architect` | Solutions / Principal / Enterprise Architect |
 | `management` | Senior Manager / Director / Head of Engineering / VP |
 
-Each job gets a score (0–100) per track with a one-sentence Claude summary and a `recommended` flag.
+Each job receives a score (0–100) per active track, a match summary, identified strengths and gaps, and a recommended next action.
+
+---
 
 ## Quick Start
 
@@ -85,8 +92,8 @@ Each job gets a score (0–100) per track with a one-sentence Claude summary and
 ### 2. Install
 
 ```bash
-git clone https://github.com/<your-username>/jobsearchagent.git
-cd jobsearchagent
+git clone https://github.com/<your-username>/jobsearchagent-v2.git
+cd jobsearchagent-v2
 python -m venv .venv
 .venv\Scripts\activate       # Windows
 # source .venv/bin/activate  # macOS/Linux
@@ -99,7 +106,7 @@ pip install -r requirements.txt
 cp config/config.example.yaml config/config.yaml
 ```
 
-Edit `config/config.yaml` with your preferences (location, salary target, search keywords).
+Edit `config/config.yaml` — set your search titles, locations, salary target, and career tracks.
 
 Create a `.env` file in the project root:
 
@@ -114,155 +121,152 @@ Place your resume PDF at `resume.pdf` in the project root.
 ### 4. Run
 
 ```bash
-# Scrape new jobs, score them, and print ranked results
-python main.py
+# Start the FastAPI backend (live-agent mode when ANTHROPIC_API_KEY is set)
+uvicorn app.api.main:app --reload
 
-# Browse results in a Streamlit dashboard
-streamlit run dashboard.py
-
-# Show all scored jobs in the terminal
-python main.py --list
-
-# Tailor your resume for a specific job (by ID from the results table)
-python main.py --tailor 42
+# Start the Streamlit UI (separate terminal)
+streamlit run app/ui/streamlit_app.py
 ```
+
+Open `http://localhost:8501` to use the UI.
+
+**Mock mode** — if `ANTHROPIC_API_KEY` is not set, the backend starts with all agents mocked (no API calls, useful for UI development and testing).
+
+### 5. Tests
+
+```bash
+python -m pytest tests/                   # full suite — mock mode, no real API calls
+python -m pytest tests/ -m integration   # live-API smoke tests (requires .env)
+```
+
+---
 
 ## Project Structure
 
 ```
-jobsearchagent/
-├── main.py               # CLI entry point
-├── dashboard.py          # Streamlit results dashboard
-├── resume.pdf            # Your resume (not committed)
-├── config/
-│   └── config.yaml       # Your settings (not committed)
-├── agents/
-│   ├── profile_agent.py  # PDF resume → structured Profile (cached)
-│   ├── scoring_agent.py  # Batch-scores jobs via Claude
-│   └── tailoring_agent.py# Rewrites resume sections for a job
-├── claude/
-│   ├── client.py         # Anthropic SDK wrapper (all API calls here)
-│   ├── prompt_loader.py  # Loads prompts/*.md templates
-│   └── response_parser.py# Extracts + validates JSON from Claude responses
-├── models/
-│   ├── job.py            # Job data model and lifecycle enums
-│   ├── profile.py        # Candidate profile model
-│   └── config_schema.py  # Pydantic schema for config.yaml
-├── scrapers/
-│   ├── base.py           # Abstract base scraper
-│   ├── adzuna.py         # Adzuna REST API scraper
-│   ├── linkedin.py       # LinkedIn manual URL intake
-│   └── ladders.py        # Ladders.com HTML scraper
-├── storage/
-│   └── db.py             # SQLite persistence layer
+app/
+├── api/              FastAPI endpoints and dependency wiring
+├── workflows/        LangGraph workflow graph and node implementations
+├── agents/           8 specialized agents
+├── services/         Deterministic services (no LLM)
+│   └── concurrent_adzuna_scraper.py
+├── providers/        ClaudeProvider + PromptLoader
+├── state/            WorkflowState schema
+├── schemas/          Pydantic output schemas for all agents
+├── repositories/     SQLite data access (raw sqlite3)
+├── memory/           MemoryService (long-term learning)
 ├── prompts/
-│   ├── parse_resume.md   # Resume extraction prompt
-│   ├── score_job.md      # Batch job scoring prompt
-│   └── tailor_resume.md  # Resume tailoring prompt
-├── inbox/
-│   └── linkedin.txt      # Paste LinkedIn URLs here
-└── docs/                 # Per-file documentation
-    └── README.md         # Documentation index
+│   ├── shared/       guardrails.txt — injected into every agent
+│   └── agents/       one prompt file per agent
+└── ui/               Streamlit frontend
+
+config/
+├── config.example.yaml
+└── config.yaml       Your settings (gitignored)
+
+docs/architecture/
+├── adr/              46 Architecture Decision Records
+├── implementation_plan.md
+└── *.md              Agent, workflow, state, data, and security models
+
+tests/                pytest suite (389 tests, mock mode)
+notebooks/            Phase validation notebooks
 ```
+
+---
+
+## Agents
+
+| Agent | Model | Pattern | When |
+|---|---|---|---|
+| Research Agent | Haiku | Bounded ReAct | Every job |
+| Scoring Agent | Haiku | Structured output | Every job (concurrent) |
+| Resume Critic | Sonnet | Critique | High-match jobs only |
+| Review Auditor | Haiku | Evaluator / Reflection | High-match jobs only |
+| Career Advisor | Sonnet | Advisory | After reflection loop |
+| Interview Coach | Sonnet | Conditional | match_score ≥ threshold |
+| Tailoring Agent | Sonnet | Evidence-bound generation | On user request |
+| Fidelity Reviewer | Haiku | Validation / Guardrail | After every tailoring call |
+
+Haiku handles all high-volume and validation tasks. Sonnet handles generative and advisory tasks where quality matters most.
+
+---
+
+## API Cost
+
+Typical cost per run (10 jobs, mix of tracks):
+
+| Scenario | Estimate |
+|---|---|
+| Discovery + research + scoring only | ~$0.02–0.05 |
+| Full run with deep review (3 high-match jobs) | ~$0.05–0.15 |
+| With tailoring for one job | ~$0.10–0.25 |
+
+Cost is tracked per run in the `llm_calls` observability table and surfaced in the UI.
+
+**Execution limits** (hard-coded in `app/workflows/limits.py`):
+
+| Limit | Value |
+|---|---|
+| MAX_JOBS_PER_RUN | 10 |
+| MAX_SELECTED_JOBS | 3 |
+| MAX_RESEARCH_STEPS | 2 |
+| MAX_REVIEW_ROUNDS | 3 |
+| MAX_LLM_CALLS_PER_RUN | 100 |
+
+---
 
 ## LinkedIn Jobs
 
-LinkedIn doesn't allow automated scraping. Add jobs manually:
+LinkedIn does not allow automated scraping. To include LinkedIn roles:
 
-1. Browse LinkedIn and copy job URLs you're interested in
-2. Paste them into `inbox/linkedin.txt`, one per line
-3. Run `python main.py` — the scraper fetches and clears the inbox automatically
+1. Browse LinkedIn and copy job URLs you want evaluated
+2. Paste them into `data/linkedin_inbox.txt`, one per line
+3. Start a run — the scraper fetches and clears the inbox automatically
 
-## Configuration Reference
+---
 
-Key settings in `config/config.yaml`:
-
-```yaml
-search:
-  titles: [Software Engineer, Engineering Manager, Solutions Architect]
-  locations: [Atlanta, GA]
-  work_mode: [remote, hybrid]
-
-salary:
-  min_desired: 150000
-  currency: USD
-
-tracks:
-  ic: true
-  architect: true
-  management: true
-
-scrapers:
-  adzuna:
-    keywords: [software engineer, engineering manager]
-    location: Atlanta, GA
-    radius_km: 80
-    remote_keywords: [staff engineer, principal engineer]
-```
-
-Full reference: [docs/models/config_schema.md](docs/models/config_schema.md)
-
-## API Cost Estimate
-
-Before scoring, the app prints an estimate and asks for confirmation:
-
-```
-Scoring plan: 45 jobs in 9 batches of up to 5
-Estimated API cost: ~$0.02 (Sonnet 4.6)
-Continue? [y/N]:
-```
-
-Typical cost: **$0.01–0.05 per run** using Claude Sonnet 4.6.
-
-## Dashboard
-
-```bash
-streamlit run dashboard.py
-```
-
-Five views: Top Matches, IC Track, Architect Track, Management Track, Companies (with bar chart). Refreshes from the database every 30 seconds automatically.
-
-## Agentic AI Patterns Used
-
-This project was built as a learning exercise in agentic AI patterns. Patterns demonstrated:
+## Agentic AI Patterns
 
 | Pattern | Where |
 |---|---|
-| **Structured Output** | Every Claude response is JSON validated by Pydantic |
-| **Prompt-as-Template** | Prompts in `prompts/*.md`, loaded by `PromptLoader` |
-| **Cache-Aside** | Resume parsed once, cached in `data/profile.json` |
-| **Batched Fan-Out** | 5 jobs per Claude call with index-based result mapping |
-| **Pre-Filter Gate** | Cheap keyword filters before expensive API calls |
-| **Pipeline State Machine** | `Job.status`: NEW → SCORED → APPLIED → REJECTED/OFFER |
-| **Retry with Backoff** | `tenacity` on all Claude and HTTP calls |
-| **Multi-Track Scoring** | One Claude call scores IC, Architect, and Management simultaneously |
+| **Stateful Workflow Graph** | LangGraph orchestrator with SqliteSaver checkpointing |
+| **Structured Output** | Every agent response validated against a Pydantic schema |
+| **Bounded ReAct** | ResearchAgent — tool loop capped at MAX_RESEARCH_STEPS |
+| **Critique-Reflection Loop** | ResumeCritic → ReviewAuditor, up to MAX_REVIEW_ROUNDS |
+| **Evidence-Bound Generation** | TailoringAgent — every claim requires supporting_evidence from original resume |
+| **Guardrail Agent** | FidelityReviewer — blocks fabricated experience before persistence |
+| **Human-in-the-Loop** | Workflow pauses at `waiting_for_user` with a `pending_decision` before resuming |
+| **Concurrent Fan-Out** | Scoring and Adzuna scraping run across ThreadPoolExecutor workers |
+| **Pre-Filter Gate** | Keyword filters applied before any LLM call |
+| **Prompt Caching** | System messages marked `cache_control: ephemeral` — 90% cost reduction on repeated agent calls within a session |
+| **Cache-Aside** | Resume parsed once per unique PDF; result stored and retrieved by SHA-256 hash |
+| **Phase Gate (Mock/Live)** | API key absent → all agents mocked; present → real ClaudeProvider + SqliteSaver |
 
-## Documentation
-
-- [User Guide](docs/user_guide.md) — full walkthrough: setup, daily workflow, reading results, tailoring, troubleshooting
-- [Architecture Diagrams](docs/architecture.md) — block diagrams, sequence diagrams, state machines, agentic pattern maps
-- [Per-file Documentation](docs/README.md) — detailed docs for every module
+---
 
 ## Tech Stack
 
-- **AI**: Anthropic Claude (`claude-sonnet-4-6`) via official Python SDK
-- **Data validation**: Pydantic v2
-- **Job data**: Adzuna REST API
-- **HTTP**: httpx with tenacity retry
-- **Storage**: SQLite (standard library `sqlite3`)
-- **Dashboard**: Streamlit + Plotly
-- **PDF parsing**: pdfplumber
+| Layer | Technology |
+|---|---|
+| Orchestration | LangGraph + SqliteSaver |
+| Agent framework | LangChain + LangChain-Anthropic |
+| LLM | Claude Haiku (high-volume) + Claude Sonnet (generative) |
+| Backend API | FastAPI + Uvicorn |
+| UI | Streamlit |
+| Persistence | SQLite (raw `sqlite3`) |
+| Validation | Pydantic v2 |
+| PDF parsing | pdfplumber |
+| Testing | pytest + pytest-asyncio + pytest-mock |
+
+---
 
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE) for the full text.
 
-Key points: you are free to use, modify, and distribute this project, including commercially, provided you retain attribution and the licence notice. Contributors also grant you a patent licence for their contributions. If you sue anyone over patents related to this project, that patent licence terminates.
+Free to use, modify, and distribute including commercially, provided you retain attribution and the licence notice.
 
 ## Disclaimer
 
-This is a personal learning project. See [docs/disclaimer.md](docs/disclaimer.md) for full terms including data source policies, no-warranty statement, and API cost responsibility.
-
-## Dependencies
-
-All third-party libraries used by this project are listed in [docs/dependencies.md](docs/dependencies.md) with their versions and licence types.
+Personal learning project. See [docs/disclaimer.md](docs/disclaimer.md) for full terms including data source policies, no-warranty statement, and API cost responsibility.

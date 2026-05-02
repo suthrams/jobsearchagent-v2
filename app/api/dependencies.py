@@ -301,7 +301,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     security_repo = SecurityRepository(db_path)
     report_repo = ReportRepository(db_path)
 
-    # Providers — sonnet for reasoning-heavy agents, haiku for high-volume scoring
+    # Providers — sonnet for generative/advisory agents, haiku for high-volume + validation
     loader = PromptLoader()
     sonnet_provider = ClaudeProvider(loader, model_name="claude-sonnet-4-6")
     haiku_provider = ClaudeProvider(loader, model_name="claude-haiku-4-5-20251001")
@@ -310,14 +310,14 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     obs = ObservabilityService(obs_repo, step_repo, decision_repo, security_repo)
 
     # Agents
-    research = ResearchAgent(sonnet_provider, obs)
+    research = ResearchAgent(haiku_provider, obs)   # high-volume: runs every job
     scoring = ScoringAgent(haiku_provider, obs)
     critic = ResumeCritic(sonnet_provider, obs)
-    auditor = ReviewAuditor(sonnet_provider, obs)
+    auditor = ReviewAuditor(haiku_provider, obs)    # validation: checking, not generation
     advisor = CareerAdvisor(sonnet_provider, obs)
     coach = InterviewCoach(sonnet_provider, obs)
     tailoring = TailoringAgent(sonnet_provider, obs)
-    fidelity = FidelityReviewer(sonnet_provider, obs)
+    fidelity = FidelityReviewer(haiku_provider, obs)  # validation: checking, not generation
 
     # ResumeParser with Claude enhance_fn
     enhance_fn = make_resume_enhance_fn(sonnet_provider)
