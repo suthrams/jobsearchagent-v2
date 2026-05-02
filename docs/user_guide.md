@@ -1,39 +1,79 @@
-# User Guide
+# Job Search Agent v2 — User Guide
 
-This guide walks you through setting up and using the Job Search Agent from scratch — from first run to tailoring your resume for a job you want to apply to.
+End-to-end walkthrough: setup, first run, daily workflow, reading results, and troubleshooting.
 
 ---
 
 ## Table of Contents
 
-1. [First-Time Setup](#1-first-time-setup)
-2. [Configure Your Search](#2-configure-your-search)
-3. [Add Your Resume](#3-add-your-resume)
-4. [Add LinkedIn Jobs (Optional)](#4-add-linkedin-jobs-optional)
-5. [Run the Agent](#5-run-the-agent)
-6. [Read the Results](#6-read-the-results)
-7. [Browse the Dashboard](#7-browse-the-dashboard)
-8. [Tailor Your Resume for a Job](#8-tailor-your-resume-for-a-job)
-9. [Daily Workflow](#9-daily-workflow)
-10. [Troubleshooting](#10-troubleshooting)
+1. [Prerequisites](#1-prerequisites)
+2. [Install](#2-install)
+3. [Configure](#3-configure)
+4. [Add Your Resume](#4-add-your-resume)
+5. [Add LinkedIn Jobs (optional)](#5-add-linkedin-jobs-optional)
+6. [Start the System](#6-start-the-system)
+7. [Start a Workflow Run](#7-start-a-workflow-run)
+8. [HITL: Select Jobs for Deep Review](#8-hitl-select-jobs-for-deep-review)
+9. [Read the Deep Review](#9-read-the-deep-review)
+10. [Career Advice](#10-career-advice)
+11. [Interview Prep](#11-interview-prep)
+12. [Tailor Your Resume](#12-tailor-your-resume)
+13. [Daily Workflow](#13-daily-workflow)
+14. [Troubleshooting](#14-troubleshooting)
 
 ---
 
-## 1. First-Time Setup
+## 1. Prerequisites
 
-### Install dependencies
+- Python 3.11+
+- Anthropic API key — [console.anthropic.com](https://console.anthropic.com)
+- Adzuna API credentials (free) — [developer.adzuna.com](https://developer.adzuna.com)
+
+---
+
+## 2. Install
 
 ```bash
+git clone https://github.com/<your-username>/jobsearchagent-v2.git
+cd jobsearchagent-v2
 python -m venv .venv
 .venv\Scripts\activate        # Windows
-# source .venv/bin/activate   # macOS / Linux
-
+# source .venv/bin/activate   # macOS/Linux
 pip install -r requirements.txt
 ```
 
-### Create your `.env` file
+---
 
-Create a file named `.env` in the project root with your API keys:
+## 3. Configure
+
+**Copy the example config:**
+```bash
+cp config/config.example.yaml config/config.yaml
+```
+
+Edit `config/config.yaml` — key settings:
+
+```yaml
+search:
+  titles:
+    - software architect
+    - principal engineer
+    - Director of Engineering
+  locations:
+    - Atlanta, GA
+    - Remote
+  work_mode: [remote, hybrid]
+
+salary:
+  min_desired: 130000
+
+tracks:
+  ic: true
+  architect: true
+  management: true
+```
+
+**Create `.env` in the project root:**
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
@@ -41,365 +81,202 @@ ADZUNA_APP_ID=your_app_id
 ADZUNA_APP_KEY=your_api_key
 ```
 
-- **Anthropic API key** — get it at [console.anthropic.com](https://console.anthropic.com)
-- **Adzuna credentials** — free account at [developer.adzuna.com](https://developer.adzuna.com)
+---
 
-> The `.env` file is gitignored and will never be committed.
+## 4. Add Your Resume
+
+Place your resume PDF at `resume.pdf` in the project root. The resume is parsed by Claude on first use and cached by SHA-256 hash — subsequent runs with the same PDF use the cache at no API cost.
 
 ---
 
-## 2. Configure Your Search
+## 5. Add LinkedIn Jobs (optional)
 
-Copy the example config and edit it:
+LinkedIn does not allow automated scraping. To include LinkedIn roles:
 
+1. Browse LinkedIn and copy job URLs you want evaluated
+2. Paste them into `data/linkedin_inbox.txt`, one per line
+3. The agent processes and clears this file on the next run
+
+---
+
+## 6. Start the System
+
+The system has two processes. Open two terminal windows.
+
+**Terminal 1 — FastAPI backend:**
 ```bash
-cp config/config.example.yaml config/config.yaml
+uvicorn app.api.main:app --reload
 ```
 
-Open `config/config.yaml` and set the fields that matter most:
-
-### Location and work mode
-
-```yaml
-search:
-  locations:
-    - Atlanta, GA     # your city
-    - Remote
-  work_mode:
-    - remote
-    - hybrid
+You should see:
+```
+ANTHROPIC_API_KEY detected — starting in live-agent mode (Phase 7)
+Workflow graph built and cached.
+INFO: Uvicorn running on http://127.0.0.1:8000
 ```
 
-### Salary target
+If you see `starting in mock mode` instead, your `ANTHROPIC_API_KEY` is not set or not loaded from `.env`.
 
-```yaml
-salary:
-  min_desired: 150000   # Claude will flag jobs below this
-  currency: USD
-```
-
-### Career tracks
-
-Enable only the tracks you're actively pursuing. Disabled tracks are not scored — this saves API tokens.
-
-```yaml
-tracks:
-  ic: true          # Senior / Staff / Principal Engineer
-  architect: true   # Solutions / Principal Architect
-  management: false # turn off if not looking for management roles
-```
-
-### Adzuna search keywords
-
-These drive the job searches. Use titles you want to appear in results:
-
-```yaml
-scrapers:
-  adzuna:
-    keywords:
-      - software engineer
-      - solutions architect
-      - engineering manager
-    location: Atlanta, GA
-    radius_km: 80
-    remote_keywords:        # separate US-wide remote search
-      - staff engineer
-      - principal engineer
-```
-
-> **Tip:** `keywords` searches locally (within `radius_km` of `location`). `remote_keywords` searches US-wide with no location filter.
-
----
-
-## 3. Add Your Resume
-
-Place your resume PDF in the project root:
-
-```
-resume.pdf
-```
-
-The filename must be exactly `resume.pdf`. On the first run, Claude parses it into a structured profile and caches it at `data/profile.json`. On subsequent runs, the cache is used — no API call needed unless you update the PDF.
-
-> If you update your resume, simply overwrite `resume.pdf`. The cache will be detected as stale and re-parsed automatically.
-
----
-
-## 4. Add LinkedIn Jobs (Optional)
-
-LinkedIn can't be scraped automatically. To include LinkedIn jobs:
-
-1. Browse LinkedIn and find roles that interest you
-2. Copy the job posting URL (e.g. `https://www.linkedin.com/jobs/view/123456789`)
-3. Open `inbox/linkedin.txt` and paste the URL on a new line:
-
-```
-# Paste LinkedIn job URLs here, one per line
-https://www.linkedin.com/jobs/view/123456789
-https://www.linkedin.com/jobs/view/987654321
-```
-
-The scraper reads this file on each run, fetches the postings, and clears the file so the same URLs are not processed twice.
-
----
-
-## 5. Run the Agent
-
+**Terminal 2 — Streamlit UI:**
 ```bash
-python main.py
+streamlit run app/ui/streamlit_app.py
 ```
 
-The run has three phases:
-
-### Phase 1 — Scrape
-
-```
-Scraping jobs...
-Found 47 jobs across all sources
-12 new jobs added to database
-```
-
-Scrapers run in sequence. If one fails (network error, rate limit), the others continue. New jobs are deduplicated against the database by URL and by title+company.
-
-### Phase 2 — Cost estimate and confirmation
-
-```
-Scoring plan: 12 jobs in 2 batches of up to 10
-Estimated API cost: ~$0.01 (Sonnet 4.6)
-
-Continue? [y/N]:
-```
-
-Type `y` to proceed. This is the only point where API tokens are spent. The estimate is conservative — actual cost is usually lower.
-
-### Phase 3 — Scoring
-
-```
-  Scoring batch 1/3...
-  Scoring batch 2/3...
-  Scoring batch 3/3...
-```
-
-Each batch of up to 10 jobs is sent to Claude in one API call. Scores are saved to the database immediately after each batch — if the run is interrupted, already-scored jobs are preserved.
+Open `http://localhost:8501` in your browser.
 
 ---
 
-## 6. Read the Results
+## 7. Start a Workflow Run
 
-After scoring, a ranked table is printed:
+In the Streamlit UI:
 
-```
-╭──────────────────────────────────────────────────────────────────────╮
-│                          Top Jobs by Score                           │
-├────┬─────────────────────────────────┬──────────────────┬───┬────┬──┤
-│ ID │ Title                           │ Company          │ IC│Arch│Rec│
-├────┼─────────────────────────────────┼──────────────────┼───┼────┼──┤
-│ 14 │ Principal Solutions Architect   │ Acme Corp        │ 72│ 88 │ Y │
-│  9 │ Staff Software Engineer         │ TechCo           │ 85│ 61 │ Y │
-│ 22 │ Director of Engineering         │ StartupXYZ       │ 55│ 58 │   │
-╰────┴─────────────────────────────────┴──────────────────┴───┴────┴──╯
-```
+1. Go to the **Start** page
+2. Upload your resume PDF (or select the cached version if uploaded before)
+3. Review or adjust your search preferences
+4. Click **Start Run**
 
-**Column guide:**
-- **ID** — use this with `--tailor` to tailor your resume
-- **IC / Arch / Mgmt** — score 0–100 per track (only enabled tracks shown)
-- **Best** — highest score across all tracks
-- **Rec** — Claude recommends applying (score >= 65)
-- **Source** — which scraper found the job
+The backend begins the workflow:
+- Discovers jobs from Adzuna and LinkedIn
+- Applies the pre-filter gate
+- Researches each company (Research Agent — Haiku)
+- Scores each job across your enabled tracks (Scoring Agent — Haiku, concurrent)
 
-**Score colour coding:**
-- Green (75+) — strong fit
-- Yellow (60–74) — good fit
-- White (50–59) — partial fit
-- Jobs below 50 are filtered out of the table
-
-A full results file is also written to `output/logs/results.txt` with complete job details and Claude's summaries for each track.
+Monitor progress on the **Run Status** page. The run pauses at the job selection checkpoint once scoring completes.
 
 ---
 
-## 7. Browse the Dashboard
+## 8. HITL: Select Jobs for Deep Review
 
-For a richer view, open the Streamlit dashboard:
+After scoring, the workflow pauses and asks you to select up to 3 jobs for deep review.
 
-```bash
-streamlit run dashboard.py
+The UI shows:
+- All scored jobs ranked by best score across tracks
+- Per-track scores and match summary
+- Company, location, salary, posting date
+
+**Select 1–3 jobs** and click **Confirm Selection**. Only selected jobs incur deep review costs — unselected jobs are stored but receive no further LLM calls.
+
+---
+
+## 9. Read the Deep Review
+
+For each selected job, the workflow runs:
+
+1. **Resume Critic** (Sonnet) — section-by-section gap analysis
+2. **Review Auditor** (Haiku) — quality check on the critic's review
+3. Reflection loop repeats until quality threshold met (up to 3 rounds)
+
+The deep review output shows:
+- Overall fit summary
+- Per-section resume analysis
+- **Resume gaps** — experience you have but haven't documented clearly
+- **Career gaps** — experience requirements you genuinely don't meet
+- Suggested improvements
+- Questions the agent couldn't resolve from your resume
+
+At the **Deep Review Approval** checkpoint you can accept the review or request another round.
+
+---
+
+## 10. Career Advice
+
+After all deep reviews complete, the Career Advisor (Sonnet) synthesizes findings across all selected jobs and produces:
+
+- Track recommendation (which of IC / Architect / Management is your strongest fit right now)
+- Positioning strategy per track
+- Prioritized skill gaps to address
+- Suggested application timeline
+
+Runs once per workflow run, not per job.
+
+---
+
+## 11. Interview Prep
+
+If a job's match score is ≥ 75 (or you request it at the checkpoint), the Interview Coach (Sonnet) prepares:
+
+- Likely interview questions for this role
+- Suggested answer frameworks drawing on your resume
+- Topics to research before the interview
+- Red flags or gaps to be ready to address
+
+At the **Interview Prep Decision** checkpoint you can skip this step for any job to save cost.
+
+---
+
+## 12. Tailor Your Resume
+
+At the **Tailoring** checkpoint, select a job and track and click **Tailor Resume**.
+
+The Tailoring Agent (Sonnet) produces:
+- Professional summary rewritten for this role and track
+- Experience bullets selected and reworded for relevance
+- ATS keywords from the job posting that match your background
+- Identified gaps — labeled honestly, never fabricated
+
+The **Fidelity Reviewer** (Haiku) validates every claim against your original resume before the draft is shown to you. Any unsupported claim is flagged.
+
+At the **Tailoring Approval** checkpoint:
+- **Accept** — draft is saved to `output/resumes/`
+- **Reject** — draft is discarded; you can request a new one
+
+---
+
+## 13. Daily Workflow
+
+Once set up, the typical daily routine:
+
+```
+Morning:
+  1. Add any interesting LinkedIn URLs to data/linkedin_inbox.txt
+  2. Start backend + UI (if not already running)
+  3. Click Start Run
+  4. ~5 min: scoring completes → select 1–3 jobs for deep review
+  5. ~3 min: deep review completes → review and accept
+  6. Read career advice and interview prep for new roles
+
+As needed:
+  7. Tailor resume for roles you decide to apply to
+  8. Mark applied jobs at the Application Status Update checkpoint
 ```
 
-This opens a browser window at `http://localhost:8501`.
+**Cost estimate per run (10 jobs, typical):**
 
-### Dashboard views
-
-| View | What it shows |
+| Scenario | Estimated cost |
 |---|---|
-| **Top Matches** | All scored jobs ranked by best score, with score metrics |
-| **IC Track** | Senior/Staff/Principal Engineer roles, ranked by IC score |
-| **Architect Track** | Solutions/Principal Architect roles, ranked by architect score |
-| **Management Track** | Manager/Director/VP roles, ranked by management score |
-| **Companies** | Bar chart of top companies + drill-down table |
-
-### Sidebar controls
-
-- **Minimum score slider** — hide jobs below a threshold (default 60)
-- **Search box** — filter by job title or company name
-- **Filter by state** — multiselect to narrow results to specific US states (e.g. GA, TX). Only states that appear in your scored jobs are listed. Leave empty to show all.
-- **Found on or after** — date picker to show only jobs discovered on or after a chosen date. Defaults to 14 days ago on every page load. Move the date back to reveal older results.
-- **Refresh button** — force a data reload (auto-refreshes every 30 seconds)
-
-### Job cards
-
-Click any job row to expand its card and see:
-- All three track scores side by side
-- Company, location, salary (if available), posted date
-- Claude's one-sentence summary for each track
-- Link to the original job posting
+| Discovery + research + scoring only | ~$0.02–0.05 |
+| Full run with deep review (3 jobs) | ~$0.05–0.15 |
+| With tailoring for one job | ~$0.10–0.25 |
 
 ---
 
-## 8. Tailor Your Resume for a Job
+## 14. Troubleshooting
 
-Once you've identified a job you want to apply to, use the `--tailor` command with the job's ID from the results table:
+**Backend starts in mock mode**
+- Check that `ANTHROPIC_API_KEY` is in your `.env` file in the project root
+- Verify: `python -c "from dotenv import load_dotenv; import os; load_dotenv(); print(bool(os.getenv('ANTHROPIC_API_KEY')))"`
 
+**No jobs discovered**
+- Check `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env`
+- Verify `config.yaml` has entries in `search.titles` and `scrapers.adzuna.locations`
+- Adzuna free-tier quota: `(titles × locations) + remote_keywords` must be < 100/day
+
+**LinkedIn jobs not appearing**
+- Ensure URLs are in `data/linkedin_inbox.txt`
+- Check backend logs for network errors on the LinkedIn fetch
+
+**Workflow stuck at `waiting_for_user`**
+- The workflow is paused at a HITL checkpoint — open the Streamlit UI and check the Run Status page for the pending decision
+
+**Resume parse error**
+- Ensure `resume.pdf` is in the project root
+- To force a re-parse, delete the cached resume row from `data/v2.db`: `DELETE FROM resumes WHERE ...`
+
+**Running the test suite**
 ```bash
-python main.py --tailor 14
+python -m pytest tests/                   # full suite, mock mode (no API calls)
+python -m pytest tests/ -m integration   # live smoke tests (requires .env)
 ```
 
-You'll be asked which career track to optimise for:
-
-```
-Tailoring resume for: Principal Solutions Architect at Acme Corp
-Which track? [1] IC  [2] Architect  [3] Management
-> 2
-```
-
-Claude rewrites your resume sections for that specific job. The output is saved to `output/resumes/Acme_Corp_Principal_Solutions_Architect_architect.txt`:
-
-```
-TAILORED RESUME — Principal Solutions Architect at Acme Corp
-Track: ARCHITECT
-URL: https://...
-======================================================================
-
-PROFESSIONAL SUMMARY
-----------------------------------------
-Staff-level engineer with 14 years of experience designing distributed
-systems and cloud-native architectures at scale. Deep expertise in AWS,
-Kubernetes, and microservices with a track record of leading platform
-modernisation programmes across enterprise clients. Proven ability to
-align engineering strategy with business outcomes.
-
-HIGHLIGHTED EXPERIENCE
-----------------------------------------
-
-Staff Engineer @ Previous Company
-  • Designed a multi-region Kubernetes platform serving 200M requests/day
-  • Led migration of 40 legacy services to AWS ECS, reducing ops cost 35%
-
-ATS KEYWORDS
-----------------------------------------
-solutions architecture, AWS, Kubernetes, distributed systems, ...
-
-GAPS TO ADDRESS
-----------------------------------------
-  • Salesforce ecosystem experience (listed as preferred)
-  • Public sector / government client experience
-```
-
-Use this as your guide when updating your actual resume before submitting.
-
-### Mark as Applied
-
-After tailoring, you're asked:
-
-```
-Mark as APPLIED? (y/n):
-```
-
-Entering `y` records `applied_at` in the database and updates the job status to `APPLIED`. This lets you track which jobs you've actually submitted to.
-
----
-
-## 9. Daily Workflow
-
-Once the agent is set up, your daily workflow is:
-
-```
-1. Browse LinkedIn → paste interesting URLs into inbox/linkedin.txt
-2. python main.py                    → scrape, score, print results
-3. streamlit run dashboard.py        → browse and filter results visually
-4. python main.py --tailor <ID>      → tailor resume for top matches
-5. Submit application                → mark as APPLIED in the agent
-```
-
-### Checking what's in the database
-
-```bash
-python main.py --list
-```
-
-Shows all jobs in the database with a status breakdown:
-
-```
-Total jobs in database: 89
-Status breakdown: {'new': 3, 'scored': 81, 'applied': 5}
-```
-
-### Pruning low-quality matches
-
-After several runs, the database accumulates jobs that scored too low to be worth pursuing. Use `--purge` to remove them and keep the database focused:
-
-```bash
-python main.py --purge                # removes all scored jobs with best score < 75
-python main.py --purge --threshold 80 # stricter cutoff — only keep 80+
-```
-
-The command shows a preview before asking for confirmation:
-
-```
-Purge preview
-  Total jobs in DB : 312
-  To be deleted    : 241  (score_best < 75, status not applied/offer)
-  Will remain      : 71
-
-Permanently delete 241 job(s)? This cannot be undone. [y/N]:
-```
-
-Jobs you've applied to (status `applied`) or received an offer for (status `offer`) are **never** deleted regardless of score.
-
-### Re-running without scraping new jobs
-
-If you just want to re-score or review existing jobs without hitting the scraper APIs, run `--list` to see what's already in the database, then use `--tailor` on any job.
-
----
-
-## 10. Troubleshooting
-
-### "No jobs to score" after scraping
-
-- Check that `config.yaml` has valid `keywords` under `scrapers.adzuna`
-- Check that `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` are set in `.env`
-- Adzuna free tier allows 100 calls/day — you may have hit the limit
-
-### Scoring shows 0 jobs scored (all filtered)
-
-The pre-filter gates are removing everything. Check `output/logs/run.log` for lines like:
-```
-INFO  Skipping non-tech description: Hotel Manager at...
-INFO  Skipping excluded title: Sales Engineer at...
-```
-If legitimate jobs are being filtered, you may need to add keywords to `TECH_DESCRIPTION_KEYWORDS` in `agents/scoring_agent.py`.
-
-### LinkedIn jobs have no description
-
-LinkedIn's public HTML structure changes periodically. If `description` is consistently `None` for LinkedIn jobs, the CSS selectors in `scrapers/linkedin.py` may need updating. Check the selectors section in [scrapers/linkedin.md](scrapers/linkedin.md).
-
-### "Config validation error" on startup
-
-Your `config/config.yaml` has a missing or incorrectly typed field. The error message will name the exact field. Compare your file against `config/config.example.yaml`.
-
-### Profile is not updating after resume change
-
-Delete `data/profile.json` manually, then run `python main.py`. The agent checks file modification timestamps — if the timestamps are incorrect, delete the cache to force a re-parse.
-
-### Claude returns invalid JSON
-
-Rare, but possible. The run logs at `output/logs/run.log` include the raw response that failed to parse. This usually resolves on the next run. If it happens consistently, reduce the batch size (`BATCH_SIZE` in `agents/scoring_agent.py`) from 10 to 5.
+**API reference**
+The full REST API reference is at `http://localhost:8000/docs` (Swagger UI) when the backend is running.

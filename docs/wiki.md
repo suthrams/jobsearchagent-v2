@@ -427,7 +427,7 @@ The system implements 15 agentic AI patterns:
 
 ## 15. Architecture Decision Records
 
-46 ADRs covering every major design decision. All accepted.
+52 ADRs covering every major design decision. All accepted.
 
 | ADR | Decision |
 |---|---|
@@ -477,6 +477,12 @@ The system implements 15 agentic AI patterns:
 | ADR-044 | Define v1 to v2 migration strategy |
 | ADR-045 | Job intake supports automated discovery and manual input |
 | ADR-046 | Hybrid configuration model (YAML + DB overrides) |
+| ADR-047 | Use SqliteSaver for LangGraph workflow checkpoint persistence |
+| ADR-048 | API key presence as live/mock mode gate |
+| ADR-049 | Use ThreadPoolExecutor for concurrent job scoring |
+| ADR-050 | Wrap v1 AdzunaScraper with a concurrent adapter |
+| ADR-051 | Tiered model assignment — Haiku for volume/validation, Sonnet for generative |
+| ADR-052 | Reduce MAX_JOBS_PER_RUN as the primary volume cost control lever |
 
 **Reference:** [architecture/adr/ADR-000-index.md](architecture/adr/ADR-000-index.md) — full index with links to each individual ADR
 

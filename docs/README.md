@@ -1,101 +1,73 @@
-# Job Search Agent — Documentation Index
+# Job Search Agent v2 — Documentation Index
 
-This folder contains per-file documentation for every module in the project.
-Each doc covers purpose, public interface, data flow, and the agentic AI pattern it demonstrates (where applicable).
+> **Start at [wiki.md](wiki.md)** for the full system overview with links to every section.
+> This index maps topic areas to their authoritative detail files.
 
-## Table of Contents
+---
+
+## v2 Documentation
+
+### Getting Started
+| Document | Purpose |
+|---|---|
+| [../README.md](../README.md) | Project overview, quick start, architecture diagram, agent table |
+| [user_guide.md](user_guide.md) | End-to-end v2 walkthrough — setup, running the backend, using the UI, HITL workflow |
+| [features.md](features.md) | Complete v2 feature and capability reference |
+| [wiki.md](wiki.md) | Wiki landing page — all 20 topic areas with pointers to detail files |
+
+### Architecture
+| Document | Purpose |
+|---|---|
+| [architecture/architecture_overview.md](architecture/architecture_overview.md) | System boundary, 7 layers, core principles |
+| [architecture/agent_model.md](architecture/agent_model.md) | Per-agent input/output contracts, patterns, constraints, observability |
+| [architecture/workflow_model.md](architecture/workflow_model.md) | Complete workflow execution blueprint for all sub-workflows |
+| [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState schema, ownership rules, memory service |
+| [architecture/data_model.md](architecture/data_model.md) | All 17 SQLite table definitions, indexing, JSON conventions |
+| [architecture/config_model.md](architecture/config_model.md) | Hybrid config — YAML defaults + DB overrides, locked limits |
+| [architecture/observability.md](architecture/observability.md) | 6-layer observability stack, event types, cost tracking |
+| [architecture/hitl.md](architecture/hitl.md) | 7 HITL checkpoints, decision types, state transitions |
+| [architecture/security.model.md](architecture/security.model.md) | PII minimization, untrusted input handling, ethics guardrails |
+| [architecture/patterns.md](architecture/patterns.md) | 15 agentic AI patterns with implementation notes |
+| [architecture/principles.md](architecture/principles.md) | 15 core architecture principles |
+| [architecture/implementation_plan.md](architecture/implementation_plan.md) | Phased build plan — Phases 1–9, deliverables, tests, review gates |
+
+### Architecture Decision Records
+| Document | Purpose |
+|---|---|
+| [architecture/adr/ADR-000-index.md](architecture/adr/ADR-000-index.md) | Full index of all 52 ADRs |
+
+ADRs cover every major design decision from v1/v2 separation (ADR-001) through Phase 9 cost optimization (ADR-051, ADR-052).
 
 ### Legal and Dependencies
 | Document | Purpose |
 |---|---|
-| [Disclaimer and Usage Terms](disclaimer.md) | No-warranty statement, API cost responsibility, data source policies, personal data handling |
-| [Third-Party Dependencies](dependencies.md) | All open source libraries with versions and licence types |
+| [disclaimer.md](disclaimer.md) | No-warranty statement, API cost responsibility, data source policies |
+| [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types |
 
 ---
 
-### Feature Overview
-See [features.md](features.md) for a complete summary of every feature and capability — scraping, filtering, scoring, dashboard, exclusion, tailoring, cost tracking, and CLI commands.
+## v1 Reference Documentation
 
-### User Guide
-See [user_guide.md](user_guide.md) for the full end-to-end walkthrough — setup, daily workflow, reading results, tailoring, and troubleshooting.
+The following documents describe the **v1 codebase** (`main.py`, `agents/`, `scrapers/`, `storage/`, `dashboard.py`). v1 remains stable and runnable. These docs are accurate for v1 — they do not describe the v2 system.
 
----
-
-### Architecture Diagrams
-See [architecture.md](architecture.md) for all Mermaid diagrams — renders on GitHub.
-
-| Diagram | What it shows |
+| Document | v1 Component |
 |---|---|
-| [Solution Architecture Overview](architecture.md#0-solution-architecture--high-level-overview) | High-level: inputs → pipeline → outputs |
-| [System Architecture](architecture.md#1-system-architecture--component-overview) | 5-layer component block diagram |
-| [Main Run Control Flow](architecture.md#2-main-run--control-flow) | Scrape → filter → score → display |
-| [Cache-Aside Pattern](architecture.md#3-agentic-pattern-cache-aside-profileagent) | ProfileAgent sequence diagram |
-| [Batched Fan-Out Pattern](architecture.md#4-agentic-pattern-batched-fan-out-scoringagent) | ScoringAgent sequence diagram |
-| [Structured Output Pipeline](architecture.md#5-agentic-pattern-structured-output-pipeline) | Raw text → typed object |
-| [Job Lifecycle State Machine](architecture.md#6-job-lifecycle--pipeline-state-machine) | NEW → SCORED → APPLIED → OFFER |
-| [Resume Tailoring Flow](architecture.md#7-resume-tailoring--sequence-diagram) | --tailor command sequence |
-| [Prompt-as-Template Pattern](architecture.md#8-prompt-as-template-pattern) | Prompt file → Claude API |
-| [Pre-Filter Gate Pattern](architecture.md#9-pre-filter-gate-pattern) | 4-stage job filter before Claude |
-| [Agentic Patterns Summary](architecture.md#10-agentic-patterns-summary) | Mind map of all patterns |
-
----
-
-### Entry Points
-| File | Doc | Purpose |
-|---|---|---|
-| [main.py](../main.py) | [main.md](main.md) | CLI entry point — scrape, score, list, tailor |
-| [dashboard.py](../dashboard.py) | [dashboard.md](dashboard.md) | Streamlit browser dashboard |
-
-### Agents
-| File | Doc | Purpose |
-|---|---|---|
-| [agents/profile_agent.py](../agents/profile_agent.py) | [agents/profile_agent.md](agents/profile_agent.md) | PDF resume → structured Profile (with caching) |
-| [agents/scoring_agent.py](../agents/scoring_agent.py) | [agents/scoring_agent.md](agents/scoring_agent.md) | Batch-scores jobs against profile via Claude |
-| [agents/tailoring_agent.py](../agents/tailoring_agent.py) | [agents/tailoring_agent.md](agents/tailoring_agent.md) | Rewrites resume sections for a specific job |
-
-### Claude Layer
-| File | Doc | Purpose |
-|---|---|---|
-| [claude/client.py](../claude/client.py) | [claude/client.md](claude/client.md) | Anthropic SDK wrapper — all API calls go here |
-| [claude/prompt_loader.py](../claude/prompt_loader.py) | [claude/prompt_loader.md](claude/prompt_loader.md) | Loads and renders prompt templates |
-| [claude/response_parser.py](../claude/response_parser.py) | [claude/response_parser.md](claude/response_parser.md) | Extracts and validates JSON from Claude responses |
-
-### Models
-| File | Doc | Purpose |
-|---|---|---|
-| [models/job.py](../models/job.py) | [models/job.md](models/job.md) | Core Job data model and lifecycle enums |
-| [models/profile.py](../models/profile.py) | [models/profile.md](models/profile.md) | Candidate profile extracted from resume |
-| [models/config_schema.py](../models/config_schema.py) | [models/config_schema.md](models/config_schema.md) | Pydantic schema for config.yaml |
-
-### Scrapers
-| File | Doc | Purpose |
-|---|---|---|
-| [scrapers/base.py](../scrapers/base.py) | [scrapers/base.md](scrapers/base.md) | Abstract base class for all scrapers |
-| [scrapers/adzuna.py](../scrapers/adzuna.py) | [scrapers/adzuna.md](scrapers/adzuna.md) | Adzuna REST API scraper |
-| [scrapers/linkedin.py](../scrapers/linkedin.py) | [scrapers/linkedin.md](scrapers/linkedin.md) | LinkedIn manual URL intake scraper |
-| [scrapers/ladders.py](../scrapers/ladders.py) | [scrapers/ladders.md](scrapers/ladders.md) | Ladders.com HTML scraper |
-
-### Storage
-| File | Doc | Purpose |
-|---|---|---|
-| [storage/db.py](../storage/db.py) | [storage/db.md](storage/db.md) | SQLite persistence layer for Job objects |
-
-### Prompts
-| File | Doc |
-|---|---|
-| [prompts/](../prompts/) | [prompts/overview.md](prompts/overview.md) |
-
----
-
-## Agentic AI Patterns at a Glance
-
-| Pattern | Where |
-|---|---|
-| Structured Output (JSON + Pydantic) | `claude/response_parser.py` + every agent |
-| Cache-Aside | `agents/profile_agent.py` |
-| Batched Fan-Out | `agents/scoring_agent.py` |
-| Prompt-as-Template | `claude/prompt_loader.py` + `prompts/` |
-| Pre-Filter Gate | `agents/scoring_agent.py`, `scrapers/adzuna.py` |
-| Pipeline State Machine | `models/job.py` (ApplicationStatus) |
-| Retry with Exponential Backoff | `claude/client.py`, all scrapers |
-| Multi-Track Scoring | `agents/scoring_agent.py` + `prompts/score_job.md` |
+| [main.md](main.md) | `main.py` — v1 CLI entry point |
+| [dashboard.md](dashboard.md) | `dashboard.py` — v1 Streamlit dashboard |
+| [architecture.md](architecture.md) | v1 architecture diagrams (Mermaid) |
+| [agents/profile_agent.md](agents/profile_agent.md) | v1 `ProfileAgent` |
+| [agents/scoring_agent.md](agents/scoring_agent.md) | v1 `ScoringAgent` |
+| [agents/tailoring_agent.md](agents/tailoring_agent.md) | v1 `TailoringAgent` |
+| [claude/client.md](claude/client.md) | v1 `ClaudeClient` |
+| [claude/prompt_loader.md](claude/prompt_loader.md) | v1 `PromptLoader` |
+| [claude/response_parser.md](claude/response_parser.md) | v1 `ResponseParser` |
+| [models/job.md](models/job.md) | v1 `Job` data model |
+| [models/profile.md](models/profile.md) | v1 `Profile` model |
+| [models/config_schema.md](models/config_schema.md) | v1 config schema |
+| [models/filters.md](models/filters.md) | Shared filter keywords (used by both v1 and v2) |
+| [scrapers/adzuna.md](scrapers/adzuna.md) | v1 `AdzunaScraper` |
+| [scrapers/linkedin.md](scrapers/linkedin.md) | v1 `LinkedInScraper` |
+| [scrapers/ladders.md](scrapers/ladders.md) | v1 `LaddersScraper` |
+| [scrapers/base.md](scrapers/base.md) | v1 base scraper |
+| [storage/db.md](storage/db.md) | v1 SQLite schema |
+| [prompts/overview.md](prompts/overview.md) | v1 prompt system |

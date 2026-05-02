@@ -52,3 +52,9 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-044 | [Define v1 to v2 Migration Strategy](ADR-044-define-v1-to-v2-migration-strategy.md) | Accepted |
 | ADR-045 | [Job Intake Supports Automated Discovery and Manual Input](ADR-045-Job-Intake-Supports-Automated-Discovery-and-Manual-Input.md) | Accepted |
 | ADR-046 | [Hybrid Configuration Model (YAML + DB Overrides)](ADR-046-Hybrid_Configuration_Model_YAML_And_DB_Overrides.md) | Accepted |
+| ADR-047 | [Use SqliteSaver for LangGraph Workflow Checkpoint Persistence](ADR-047-use-sqlitesaver-for-workflow-checkpoint-persistence.md) | Accepted |
+| ADR-048 | [API Key Presence as Live/Mock Mode Gate](ADR-048-api-key-presence-as-live-mock-mode-gate.md) | Accepted |
+| ADR-049 | [Use ThreadPoolExecutor for Concurrent Job Scoring](ADR-049-use-threadpoolexecutor-for-concurrent-job-scoring.md) | Accepted |
+| ADR-050 | [Wrap v1 AdzunaScraper with a Concurrent Adapter](ADR-050-wrap-v1-adzuna-scraper-with-concurrent-adapter.md) | Accepted |
+| ADR-051 | [Tiered Model Assignment — Haiku for Volume/Validation, Sonnet for Generative](ADR-051-tiered-model-assignment-haiku-for-volume-sonnet-for-generative.md) | Accepted |
+| ADR-052 | [Reduce MAX_JOBS_PER_RUN as the Primary Volume Cost Control Lever](ADR-052-reduce-max-jobs-per-run-as-cost-control.md) | Accepted |

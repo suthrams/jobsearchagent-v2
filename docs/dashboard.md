@@ -1,5 +1,8 @@
 # dashboard.py — Streamlit Dashboard
 
+> **v1 reference document.** This describes the v1 `dashboard.py` Streamlit app (`streamlit run dashboard.py`).
+> The v2 UI is at `app/ui/streamlit_app.py` (`streamlit run app/ui/streamlit_app.py`). See [user_guide.md](user_guide.md).
+
 ## Purpose
 
 A browser-based dashboard for browsing scored job results and triggering resume tailoring. Reads directly from the SQLite database and renders scored jobs across five views. From any job card, you can tailor your resume and mark roles as Applied — all without leaving the browser. Run with:

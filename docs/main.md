@@ -1,5 +1,8 @@
 # main.py — CLI Entry Point
 
+> **v1 reference document.** This describes the v1 `main.py` CLI (`python main.py`).
+> The v2 system is started with `uvicorn app.api.main:app --reload`. See [user_guide.md](user_guide.md).
+
 ## Purpose
 
 `main.py` is the top-level entry point for the Job Search Agent. It wires together all components (scrapers, agents, database, config) and exposes commands via `argparse`:
