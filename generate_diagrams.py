@@ -567,6 +567,244 @@ def diag_full_table():
     save(f, "diag_full_pattern_table.png")
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# v2 ARTICLE DIAGRAMS  (blog_v2_article1.md)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+# ── DIAGRAM v2-1: Foundations week ───────────────────────────────────────────
+def diag_v2_foundations():
+    """5-day timeline: the foundations week before any v2 code was written."""
+    f, ax = fig(14, 5)
+    title_bar(ax, "v2 Foundations Week",
+              "Patterns + ADRs + Implementation Plan + Skills Inventory  -  before any v2 code")
+
+    stages = [
+        ("Day 1",     "Patterns +\nPrinciples",   "what we keep\nwhat we forbid",         BLUE,  BLUE_S),
+        ("Day 2-3",   "56 ADRs",                  "each decision with\nreasoning + tradeoff", BLUE,  BLUE_S),
+        ("Day 3-4",   "Implementation\nPlan",     "8 phases\nwith review gates",          BLUE,  BLUE_S),
+        ("Day 4",     "Skills\nInventory",        "which agentic skill\napplies where",   BLUE,  BLUE_S),
+        ("Day 5+",    "First v2 code",            "Phase 1 starts:\nschemas, repos,\nconfig", GREEN, GREEN_S),
+    ]
+
+    n = len(stages)
+    box_w = 0.16
+    gap = 0.025
+    total_w = n * box_w + (n - 1) * gap
+    start_x = (1.0 - total_w) / 2
+    box_y = 0.36
+    box_h = 0.40
+
+    for i, (day, headline, sub, fill, stroke) in enumerate(stages):
+        x = start_x + i * (box_w + gap)
+        # Day chip above the box
+        label(ax, x + box_w / 2, box_y + box_h + 0.05, day,
+              fontsize=10, color=ACCENT, bold=True)
+        # Box
+        box(ax, x, box_y, box_w, box_h,
+            f"{headline}\n\n{sub}",
+            fill=fill, stroke=stroke, fontsize=9.5, bold=True, color="#1e293b")
+        # Forward arrow
+        if i < n - 1:
+            x0 = x + box_w + 0.003
+            x1 = x + box_w + gap - 0.003
+            arrow(ax, x0, box_y + box_h / 2, x1, box_y + box_h / 2, color=ACCENT)
+
+    # Bottom narrative
+    label(ax, 0.5, 0.20,
+          "Four design artifacts produced in five days. Five documents that have informed every commit since.",
+          fontsize=10, color=TEXT)
+    label(ax, 0.5, 0.10,
+          "No working code at the end of the week. The first v2 file appeared on Day 5.",
+          fontsize=9, color=MUTED)
+
+    save(f, "diag_v2_foundations.png")
+
+
+# ── DIAGRAM v2-2: v2 architecture in 4 layers ────────────────────────────────
+def diag_v2_architecture():
+    """v2 high-level architecture: control surface, orchestration, execution, persistence."""
+    f, ax = fig(14, 8.5)
+    title_bar(ax, "v2 Architecture  -  Four Layers",
+              "Output of the foundations week: control surface, orchestration, execution, persistence")
+
+    # User chip (placed in clear space below subtitle)
+    box(ax, 0.43, 0.83, 0.14, 0.045, "User",
+        fill="#0369a1", stroke=ACCENT, fontsize=10, bold=True, color=TEXT)
+
+    # Control surface
+    section_bg(ax, 0.05, 0.65, 0.90, 0.13, GREEN, GREEN_S, "Control surface")
+    box(ax, 0.09, 0.68, 0.40, 0.08,
+        "Streamlit UI\nstart runs, browse, drill in\nreads direct from DB",
+        fill=GREEN, stroke=GREEN_S, fontsize=9, color="#1e293b")
+    box(ax, 0.51, 0.68, 0.40, 0.08,
+        "FastAPI\nvalidates every write\nstarts and resumes workflows",
+        fill=GREEN, stroke=GREEN_S, fontsize=9, color="#1e293b")
+
+    # Orchestration
+    section_bg(ax, 0.05, 0.46, 0.90, 0.13, YELLOW, YELLOW_S, "Orchestration")
+    box(ax, 0.09, 0.49, 0.40, 0.08,
+        "LangGraph\nowns WorkflowState\nonly the orchestrator mutates state",
+        fill=YELLOW, stroke=YELLOW_S, fontsize=9, color="#1e293b")
+    box(ax, 0.51, 0.49, 0.40, 0.08,
+        "ModelRegistry\nper-agent provider + model\nresolved at run start",
+        fill=YELLOW, stroke=YELLOW_S, fontsize=9, color="#1e293b")
+
+    # Execution
+    section_bg(ax, 0.05, 0.27, 0.90, 0.13, PINK, PINK_S, "Execution")
+    box(ax, 0.09, 0.30, 0.40, 0.08,
+        "8 Specialized Agents\nPydantic in, Pydantic out\nno DB or filesystem access",
+        fill=PINK, stroke=PINK_S, fontsize=9, color="#1e293b")
+    box(ax, 0.51, 0.30, 0.40, 0.08,
+        "On-demand Tailoring\nout-of-graph operation\nTailoring + Fidelity Reviewer",
+        fill=PINK, stroke=PINK_S, fontsize=9, color="#1e293b")
+
+    # Persistence
+    section_bg(ax, 0.05, 0.08, 0.90, 0.13, "#fde68a", "#d97706", "Persistence")
+    box(ax, 0.09, 0.11, 0.40, 0.08,
+        "v2.db\njobs, scores, reviews,\ntailorings, decisions",
+        fill="#fde68a", stroke="#d97706", fontsize=9, color="#1e293b")
+    box(ax, 0.51, 0.11, 0.40, 0.08,
+        "SqliteSaver\nworkflow checkpoints\nresumable on crash",
+        fill="#fde68a", stroke="#d97706", fontsize=9, color="#1e293b")
+
+    # Vertical flow arrows down the middle
+    arrow(ax, 0.50, 0.83, 0.50, 0.79, color=ACCENT)
+    arrow(ax, 0.50, 0.68, 0.50, 0.59, color=ACCENT)
+    arrow(ax, 0.50, 0.49, 0.50, 0.40, color=ACCENT)
+    arrow(ax, 0.50, 0.30, 0.50, 0.21, color=ACCENT)
+
+    save(f, "diag_v2_architecture.png")
+
+
+# ── DIAGRAM v2-3: HITL evolution before/after ────────────────────────────────
+def diag_v2_hitl_evolution():
+    """As-designed (two interrupts) vs as-shipped (auto-gate + out-of-graph tailoring)."""
+    f, ax = fig(14, 8)
+    title_bar(ax, "v2 HITL Evolution  -  As Designed vs As Shipped",
+              "Two human checkpoints inside the workflow graph were redesigned during the build")
+
+    # ── BEFORE panel ──────────────────────────────────────────────
+    section_bg(ax, 0.02, 0.08, 0.46, 0.76, RED, RED_S,
+               "AS DESIGNED  -  two interrupts inside the graph")
+    before = [
+        ("score_jobs",                       "scoring agent batch",            NAVY, ACCENT, False),
+        ("await_job_selection",              "HITL #1: user picks jobs",       RED,  RED_S,  True),
+        ("deep_review + advice + tailoring", "agent chain",                    NAVY, ACCENT, False),
+        ("await_tailoring_approval",         "HITL #2: user approves draft",   RED,  RED_S,  True),
+        ("generate_report",                  "final report",                   NAVY, ACCENT, False),
+    ]
+    bx, bw = 0.06, 0.38
+    top_y_b, bottom_y_b = 0.78, 0.12
+    nb = len(before)
+    gap_b = 0.026
+    bh = (top_y_b - bottom_y_b - (nb - 1) * gap_b) / nb
+    for i, (name, sub, fill, stroke, hitl) in enumerate(before):
+        y = top_y_b - bh - i * (bh + gap_b)
+        text = f"{name}\n{sub}"
+        box(ax, bx, y, bw, bh, text, fill=fill, stroke=stroke,
+            fontsize=8.5, bold=hitl, color=stroke if hitl else TEXT)
+        if i < nb - 1:
+            arrow(ax, bx + bw / 2, y, bx + bw / 2, y - gap_b + 0.005,
+                  color=ACCENT, lw=1.2)
+
+    # ── AFTER panel ───────────────────────────────────────────────
+    section_bg(ax, 0.52, 0.08, 0.46, 0.76, GREEN, GREEN_S,
+               "AS SHIPPED  -  one auto-gate, tailoring moved out-of-graph")
+    after = [
+        ("score_jobs",                            "scoring agent batch",         NAVY,  ACCENT,  False),
+        ("auto_select_jobs",                      "threshold-based gate",        GREEN, GREEN_S, True),
+        ("deep_review + advice + interview_prep", "agent chain",                 NAVY,  ACCENT,  False),
+        ("generate_report",                       "final report",                NAVY,  ACCENT,  False),
+    ]
+    ax_x, aw = 0.56, 0.38
+    top_y_a, bottom_y_a = 0.78, 0.34
+    na = len(after)
+    gap_a = 0.030
+    ah = (top_y_a - bottom_y_a - (na - 1) * gap_a) / na
+    for i, (name, sub, fill, stroke, gate) in enumerate(after):
+        y = top_y_a - ah - i * (ah + gap_a)
+        text = f"{name}\n{sub}"
+        box(ax, ax_x, y, aw, ah, text, fill=fill, stroke=stroke,
+            fontsize=8.5, bold=gate, color=stroke if gate else TEXT)
+        if i < na - 1:
+            arrow(ax, ax_x + aw / 2, y, ax_x + aw / 2, y - gap_a + 0.005,
+                  color=ACCENT, lw=1.2)
+
+    # Out-of-graph tailoring callout
+    box(ax, ax_x, 0.14, aw, 0.13,
+        "On-demand tailoring (out-of-graph)\nTailoring + Fidelity Reviewer\nuser decides via separate API endpoint",
+        fill=PINK, stroke=PINK_S, fontsize=8.5, color="#1e293b")
+    label(ax, ax_x + aw / 2, 0.30, "API trigger", fontsize=7.5, color=PINK_S, bold=True)
+
+    # Footer
+    label(ax, 0.5, 0.04,
+          "Job-selection HITL replaced by a scoring threshold. Tailoring moved out-of-graph. The interrupt-resume capability is still in the codebase.",
+          fontsize=8.5, color=MUTED)
+
+    save(f, "diag_v2_hitl_evolution.png")
+
+
+# ── DIAGRAM v2-4: Agent graph (banner image) ─────────────────────────────────
+def diag_v2_agent_graph():
+    """v2 workflow graph: 8 agents and how they connect. Used as the article banner."""
+    f, ax = fig(14, 6.5)
+    title_bar(ax, "v2 Workflow  -  8 Agents and How They Connect",
+              "Linear pipeline through scoring and deep review. Tailoring is on-demand and lives off the graph.")
+
+    # Tier color shorthands (reuse existing palette)
+    CHEAPER, CHEAPER_S = GREEN,  GREEN_S    # Haiku-tier agents
+    CAPABLE, CAPABLE_S = BLUE,   BLUE_S     # Sonnet-tier agents
+    GATE,    GATE_S    = YELLOW, YELLOW_S   # gate / router nodes (no LLM)
+
+    pipeline = [
+        ("discover_jobs",   "Adzuna +\ncustom URLs",          GATE,    GATE_S),
+        ("research",        "Research agent",                 CHEAPER, CHEAPER_S),
+        ("score_jobs",      "Scoring agent\n(concurrent x5)", CHEAPER, CHEAPER_S),
+        ("auto_select",     "threshold\ngate",                GATE,    GATE_S),
+        ("deep_review",     "Critic + Auditor\n(loop, max 3)", CAPABLE, CAPABLE_S),
+        ("career_advice",   "Career Advisor",                 CAPABLE, CAPABLE_S),
+        ("interview_prep",  "Interview Coach\n(conditional)", CAPABLE, CAPABLE_S),
+        ("generate_report", "Markdown report",                GATE,    GATE_S),
+    ]
+
+    n = len(pipeline)
+    bw, gap = 0.105, 0.012
+    total_w = n * bw + (n - 1) * gap
+    sx = (1.0 - total_w) / 2
+    by, bh = 0.54, 0.22
+
+    for i, (name, sub, fill, stroke) in enumerate(pipeline):
+        x = sx + i * (bw + gap)
+        text = f"{name}\n\n{sub}"
+        box(ax, x, by, bw, bh, text, fill=fill, stroke=stroke,
+            fontsize=8, bold=True, color="#1e293b")
+        if i < n - 1:
+            arrow(ax, x + bw, by + bh / 2, x + bw + gap, by + bh / 2,
+                  color=ACCENT, lw=1.0)
+
+    # Out-of-graph tailoring callout
+    box(ax, 0.20, 0.20, 0.60, 0.22,
+        "On-demand tailoring (out-of-graph)\n\n"
+        "User POSTs /workflows/{wf}/jobs/{job}/tailorings\n"
+        "Tailoring agent (capable)  ->  Fidelity Reviewer (cheaper)\n"
+        "User approves / revises / rejects via a separate endpoint",
+        fill=PINK, stroke=PINK_S, fontsize=9, color=PINK_S)
+
+    # Legend
+    ly = 0.05
+    box(ax, 0.10, ly, 0.16, 0.06, "cheaper tier",
+        fill=CHEAPER, stroke=CHEAPER_S, fontsize=8.5, bold=True, color=CHEAPER_S)
+    box(ax, 0.27, ly, 0.16, 0.06, "capable tier",
+        fill=CAPABLE, stroke=CAPABLE_S, fontsize=8.5, bold=True, color=CAPABLE_S)
+    box(ax, 0.44, ly, 0.16, 0.06, "gate / router",
+        fill=GATE, stroke=GATE_S, fontsize=8.5, bold=True, color=GATE_S)
+    box(ax, 0.61, ly, 0.24, 0.06, "out-of-graph operation",
+        fill=PINK, stroke=PINK_S, fontsize=8.5, bold=True, color=PINK_S)
+
+    save(f, "diag_v2_agent_graph.png")
+
+
 # ── Run all ───────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     diag_pattern_map()
@@ -580,4 +818,9 @@ if __name__ == "__main__":
     diag_p14_minimization()
     diag_p15_routing()
     diag_full_table()
+    # v2 article (blog_v2_article1.md)
+    diag_v2_agent_graph()       # banner
+    diag_v2_foundations()
+    diag_v2_architecture()
+    diag_v2_hitl_evolution()
     print("\nAll diagrams saved to docs/blog_images/")

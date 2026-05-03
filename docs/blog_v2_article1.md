@@ -1,274 +1,147 @@
 # HEADLINE
 
-How I built a multi-agent system as a deliberate way to learn advanced agentic AI patterns, and the methodology that shaped it.
+Before I rebuilt my AI agent, I closed the editor for a week.
+
+![v2 Workflow: 8 Agents and How They Connect](blog_images/diag_v2_agent_graph.png)
+
+*Note: this article was written and the underlying system was vibe coded with Claude Code. The architectural decisions, ADRs, and every commit are mine. Full disclosure at the end.*
 
 ---
 
-## Disclosure
+v1 of my AI job-search agent ran for less than a month. It taught me 15 agentic AI patterns, the contents of two earlier articles, and one habit I have not been able to break.
 
-Every line of v2 code was written with AI pair-programming via Claude Code. I made the architectural decisions, wrote the ADRs, set the invariants, picked the agents and their patterns, and approved every commit. The AI shaped velocity, not direction.
+The day I decided to rebuild it as v2, the obvious move was to fork the repo, swap in LangGraph, and see what broke. That would have given me a working v2 in a few days. I closed the editor instead. For a week.
 
-I'm telling you this up front because the field is moving fast and being honest about the assist matters. If you're building agentic systems, you should know the difference between using AI as a typing accelerator and using it as a decision-maker. I treat it as the former.
+The decision to design before I coded is the most useful thing I have learned about agentic AI so far. This article is about why, what that week of designing actually looked like, and what it produced.
 
----
-
-## TL;DR
-
-- [Article 1](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) and [Article 2](https://www.linkedin.com/pulse/what-building-ai-agent-from-scratch-actually-teaches-you-suthram-s8zqe/) covered 15 patterns I learned while building and running v1 of a personal job-search agent. v1 ran for less than a month. That was long enough to verify the patterns and not long enough to call it production.
-- v2 is a deliberate learning effort. I rebuilt the system to apply advanced agentic AI patterns (orchestration, stateful workflows, evidence-bound generation, bounded reflection, per-agent model assignment) to a use case I personally needed: a career transition.
-- The interesting part of v2 is not the architecture diagram. It's the **methodology** that produced it: a week of foundations work (patterns, principles, ADRs, an implementation plan, and a skills inventory) before any v2 code was written.
-- This article gives you four concrete things you can take away today: a build sequence, an architecture sketch, an agents-and-patterns map, and a candid view of where humans actually belong in the loop.
+If you have not seen the earlier ones, [Article 1](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) covered 8 patterns from building v1 and [Article 2](https://www.linkedin.com/pulse/what-building-ai-agent-from-scratch-actually-teaches-you-suthram-s8zqe/) covered 7 more from running it. Together they are the foundation. This piece picks up from there.
 
 ---
 
-## Why this article exists
+## Why a script-shaped rewrite would have failed
 
-I'm a solutions architect helping organizations adopt AI responsibly. I learn fastest when I build something I would actually use. v1 was a working prototype I ran briefly to verify three patterns I wanted to understand in depth. v2 is the deeper exercise.
+v2 was supposed to test the patterns v1 could not reach. Stateful orchestration. Bounded reflection. Evidence-bound generation. Multi-provider abstraction. I had run v1 long enough to know none of these retrofit onto a sequential script cleanly. They have to be designed before they exist.
 
-If you read Article 1 and Article 2, you saw the foundation. This article and the five that follow build on that foundation. They assume you have the basic patterns, and they go deep on the architectural patterns that production agentic systems eventually need.
+The script-shaped solution would get me to a running v2 in days and break in ways I would not see for weeks. The agentic-AI-shaped solution needed a different starting point.
 
-Articles 1 and 2 covered patterns at the **reasoning, action, memory, control, security, and cost** layers. The v2 series goes one layer up: **how to coordinate eight specialized agents around a stateful workflow**, where humans actually belong in the loop, and how to balance ambition against operational overhead.
-
----
-
-## What you will take away from this article
-
-By the end you should have:
-
-1. **A reusable methodology** for taking on a non-trivial agentic AI build: what to write before you write code.
-2. **A clear mental model of v2's architecture**, not as a target to copy but as one worked example.
-3. **An agents map** showing which reasoning pattern each agent uses and what model tier it runs on, with explicit references back to the patterns from Articles 1 and 2.
-4. **A specific point of view** on three things that the published agentic AI literature still under-treats: where humans actually belong in the loop, when per-agent model assignment is worth the complexity, and how ethical guardrails survive contact with production data.
-
-Pointers to dive deeper at the end.
+So I started somewhere different.
 
 ---
 
-## The deliberate setup: a week of foundations before any code
+## What a week of designing actually looked like
 
-Most personal agentic AI projects start with a notebook, a model, and a quick demo. I did the opposite for v2.
+![v2 Foundations Week](blog_images/diag_v2_foundations.png)
 
-Before any v2 file existed, I spent about a week producing the documents below. The order matters.
+Four artifacts, in order. Each one had a job.
 
-```mermaid
-flowchart LR
-    D1["Day 1<br/><b>Patterns + Principles</b><br/>what we keep<br/>what we forbid"]
-    D2["Day 2-3<br/><b>56 ADRs</b><br/>each decision with<br/>reasoning + tradeoff"]
-    D3["Day 3-4<br/><b>Implementation Plan</b><br/>8 phases<br/>with review gates"]
-    D4["Day 4<br/><b>Skills Inventory</b><br/>which agentic skill<br/>applies where"]
-    D5["Day 5+<br/><b>First v2 code</b><br/>Phase 1: schemas,<br/>repos, config"]
+The patterns and principles document gave me a list of invariants I would defend on every commit. The 56 ADRs forced me to sit with the tradeoffs before I committed to one side. The implementation plan made it impossible to skip a phase quietly. The skills inventory told me which review lens (code review, performance, API design, security) to apply against which file at which moment.
 
-    D1 --> D2 --> D3 --> D4 --> D5
+Here is one concrete moment where the discipline paid for itself.
 
-    style D1 fill:#eef2ff,stroke:#6366f1
-    style D2 fill:#eef2ff,stroke:#6366f1
-    style D3 fill:#eef2ff,stroke:#6366f1
-    style D4 fill:#eef2ff,stroke:#6366f1
-    style D5 fill:#dcfce7,stroke:#16a34a
-```
+ADR-002 is about who owns workflow state. The intuitive design, when you are coming from a script, is that each agent updates the database when it has results. The next agent reads what it needs. Simple. The first version of v2 I sketched looked exactly like that.
 
-This isn't bureaucracy. ADRs surface tradeoffs early. You can't write a good ADR without having confronted the alternatives. The implementation plan creates phase-level review gates, so you can't accidentally ship Phase 2 work without Phase 1 being stable. The patterns document forces you to choose your invariants and defend them every commit. The skills inventory tells you which agentic-engineering skill (code review, performance, API design, security, and so on) to invoke against which file at which moment.
+Writing the ADR forced the alternative onto the page. Only the orchestrator updates state. Agents return structured Pydantic outputs. They never touch the database or the filesystem. The reasoning on paper: testability (you can mock the orchestrator and test each agent in isolation), auditability (every state transition has a single owner), and resumability (the orchestrator's state can be checkpointed and recovered after a crash).
 
-For a learning project, this might look heavy. It isn't. A week of writing produced documents I have referenced literally daily, and they are why the codebase still feels coherent at 56 ADRs and 8 phases.
+By the time the ADR was finished, the agent contract was different from the script-shaped one I would have written first. That was a single afternoon of writing. It has shaped every commit since.
+
+The five documents I produced that week were slow to write. They have informed every commit in the four months since.
 
 ---
 
-## v2 in one picture
+## The architecture, as the output
 
-```mermaid
-flowchart TB
-    USER([User])
+![v2 Architecture in Four Layers](blog_images/diag_v2_architecture.png)
 
-    subgraph CTRL ["Control surface"]
-        UI["Streamlit UI<br/>thin: start runs,<br/>browse, drill in"]
-        API["FastAPI<br/>validates every write"]
-    end
+The orchestrator owns state. Agents return structured Pydantic outputs and never touch the database or the filesystem. Tailoring runs out-of-graph because it does not need to be inside the graph. Each of those constraints is written into an ADR. Each one is checked on every commit.
 
-    subgraph ORCH ["Orchestration layer"]
-        GRAPH["LangGraph<br/>owns WorkflowState<br/>only it mutates state"]
-        REG["ModelRegistry<br/>per-agent provider + model"]
-    end
+Eight agents do the work. Each one has a single job and a defined output schema:
 
-    subgraph EXEC ["Execution"]
-        AGENTS["8 Specialized Agents<br/>Pydantic in, Pydantic out<br/>no DB or filesystem access"]
-        TAILOR["On-demand Tailoring<br/>out-of-graph"]
-    end
+- **Research.** Surfaces company and role signals before scoring.
+- **Scoring.** Rates each job across five dimensions on a 0-to-100 scale.
+- **Resume Critic.** Identifies where your resume is weakly positioned for this specific job.
+- **Review Auditor.** Decides whether the critique is good enough to act on, or whether to loop.
+- **Career Advisor.** Separates "tailoring can fix this" from "you actually lack this experience."
+- **Interview Coach.** Produces a seven-day prep plan for high-value roles.
+- **Tailoring.** Drafts evidence-bound resume improvements, with every claim cited from your original resume.
+- **Fidelity Reviewer.** The safety gate. Reviews every tailoring draft before it reaches you.
 
-    subgraph PERSIST ["Persistence"]
-        DB[("v2.db<br/>jobs, scores, reviews,<br/>tailorings, decisions")]
-        CP[("SqliteSaver<br/>workflow checkpoints")]
-    end
-
-    USER --> UI
-    UI --> API
-    UI -.reads.-> DB
-    API --> GRAPH
-    API --> TAILOR
-    GRAPH --> AGENTS
-    TAILOR --> AGENTS
-    AGENTS -.uses.-> REG
-    GRAPH --> CP
-    GRAPH --> DB
-    TAILOR --> DB
-
-    style CTRL fill:#f0fdf4,stroke:#16a34a
-    style ORCH fill:#fefce8,stroke:#ca8a04
-    style EXEC fill:#fdf2f8,stroke:#a21caf
-    style PERSIST fill:#fef9c3,stroke:#ca8a04
-```
-
-A few things the diagram makes explicit:
-
-1. The UI writes through the API but reads directly from SQLite. Writes are validated, audited, resumable. Reads are fast and available even during a run.
-2. The orchestrator is the only thing that mutates workflow state. Agents return structured outputs; the orchestrator decides what to do with them.
-3. Tailoring lives outside the workflow graph. It's on-demand and bounded. Wrapping it in a graph interrupt added complexity without adding control.
-4. Every agent is wired through ModelRegistry. Moving an agent from one model or provider to another is a config change and a restart, not a code change.
-5. SqliteSaver makes the workflow durable. A crash mid-run is recoverable from the last checkpoint.
-
-Articles 4 through 8 each go inside one of those boxes.
+Article 4 in this series goes deep on each one, including the reasoning patterns they use and the model tier they run on.
 
 ---
 
-## The eight agents: what each one does and how
+## Two decisions that changed after the system started running
 
-Articles 1 and 2 introduced patterns like Structured Output, Multi-Track Scoring, Batched Fan-Out, Pre-Filter Gate, Pipeline State Machine, Per-Operation Model Routing, Prompt Injection Defense, and Data Minimization. v2 adds a focused set of new ones and combines them per agent. For each agent below, I describe its purpose in the system and the way it produces its output.
+![HITL Evolution: As Designed vs As Shipped](blog_images/diag_v2_hitl_evolution.png)
 
-**Research** *(Bounded ReAct, cheaper-tier model, runs before scoring)*
-Surfaces company, role, and technology signals so the scorer isn't reading the job description cold. Reads the description and any source URL hints, and emits a structured `ResearchContext` (technology, leadership, and domain signals; risk flags; confidence). Bounded at two reasoning steps so the agent cannot wander into open-ended browsing.
+The week of design did a lot. It did not anticipate everything. Two of the more interesting design changes happened after I had been using v2 for real.
 
-**Scoring** *(Structured Output (Article 1), cheaper-tier model, always, batched)*
-Rates each job against your resume across five dimensions (overall, technical, architecture, leadership, domain) on a 0 to 100 scale. One structured-output call per job: no tools, no loop. Receives the resume profile, the job description, the career track, and the Research Agent's context, and returns a `JobScore` with strengths, gaps, and a recommended next action.
+**Job-selection HITL came out.** v2 was originally designed with a human checkpoint right after scoring. The graph would pause, surface the eligible jobs, and wait for me to click which ones to deep-review. LangGraph makes that pattern easy to build, and it was the obvious thing to do.
 
-**Resume Critic** *(Critique, capable-tier model, per qualifying job)*
-Identifies where your resume is weakly positioned for *this specific* job. Not in general. For the role being scored. One critique pass per round of the reflection loop. Reads the job, your resume, the score, and (rounds 2 and 3) the auditor's prior feedback, and emits a `ResumeReview` with section-level critical gaps, resume-only gaps, career gaps observed, and suggested improvements.
+Running the system told me it was the wrong thing.
 
-**Review Auditor** *(Evaluator and Bounded Reflection, cheaper-tier model, after every Critic round)*
-Decides whether the critique is good enough to act on or deserves another round. Reads the critique against the resume and job, and emits an `audit_score`, specific quality concerns (generic feedback, unsupported claims, fidelity concerns), and a `stop_recommendation`. The orchestrator stops the loop on quality threshold met, stagnation (improvement under 5 points between rounds), or `MAX_REVIEW_ROUNDS = 3`.
+A clear scoring threshold did the same job without the round-trip. Fewer interruptions. More trust in the rubric. More time spent on the strong matches and less time clicking checkboxes. So I removed the HITL. Auto-selection took its place. The threshold is configurable per run. The interrupt-resume capability is still in the codebase. It is just not the path the system takes today.
 
-**Career Advisor** *(Advisory, capable-tier model, after the reflection loop)*
-Translates the final critique into actionable positioning advice. Crucially, it separates *"tailoring can fix this"* from *"you actually lack this experience."* Reads the final review, score, and resume, and emits a `CareerAdvice` with two distinct lists (`resume_gaps` and `career_gaps`), a positioning summary, a 30/60/90 day plan, and a recommended next action. The two-list separation is the load-bearing invariant.
+**Tailoring moved out of the graph.** Tailoring was originally the second human checkpoint inside the graph: ask for a draft, the workflow pauses, you approve or revise or reject. It worked. It also added complexity I could not justify. Tailoring is on-demand and bounded by definition. You ask for a draft on a specific job. You get one. You decide what to do with it. Wrapping that in a graph interrupt did not give me any control I did not already have through an API call.
 
-**Interview Coach** *(Conditional, capable-tier model, best track score at or above threshold)*
-Produces a seven-day interview prep plan tailored to your strengths, gaps, and the company. Runs only on high-value roles (best track score at or above `min_match_score`, or explicit user request). Reads everything upstream and emits an `InterviewPrep` with likely interview topics, weak areas to defend, leadership stories to prepare, and a day-by-day plan.
+So tailoring runs as a synchronous API operation today. The Tailoring Agent and Fidelity Reviewer run back-to-back. Your decision goes through a separate endpoint. The graph stays linear.
 
-**Tailoring** *(Evidence-Bound Generation, capable-tier model, on user request, out-of-graph)*
-Drafts resume improvements for a specific job, without inventing experience. Every suggestion is tagged with a `claim_type` and a `supporting_evidence` quote from your original resume. `claim_type="gap"` means the experience does not exist; those bullets are labeled as gaps and never rewritten as if present. The ethical guardrail lives in the prompt itself.
+The lesson, which I should have known going in: HITL is a tool, not a default. Reach for interrupt-resume only when the human's input genuinely changes downstream cost or branches. Otherwise the threshold or the API call is a better fit.
 
-**Fidelity Reviewer** *(Validation Guardrail, cheaper-tier model, always after Tailoring)*
-The safety gate. Reads the original resume and the tailored draft side by side, and emits a `FidelityReview` with required removals, required revisions, fabrication and inflation flags, unsupported-tech flags, and an `approval_recommendation`. `reject` means the draft must not be shown regardless of what the user requested. The orchestrator enforces this. The reviewer is never bypassed.
+There is one more decision worth flagging, because the temptation to oversell it is real.
 
-The pattern worth noticing: cheaper-tier models do classification, validation, and bounded loops. Capable-tier models do generation and advisory output. This is per-operation model routing from Article 2 applied at agent granularity. Article 4 goes deep on each pattern.
+**Per-agent model assignment is configurable, not a default.** v2 wires agents through a registry. Any agent can be moved between models or providers with a config edit. Research on Haiku. Career Advisor on Sonnet. Tailoring on a different vendor entirely. I built this seam because I wanted to learn the pattern.
+
+It is not the default I would recommend for a production team. Two providers in production means two sets of rate limits, two retry profiles, two cost dashboards, two incident playbooks on a bad day. The seam is worth building. Standing on it is something most teams should not do without a measurement that justifies the surface.
 
 ---
 
-## How we built it: 8 phases, each with a notebook gate
+## What I am most likely to keep
 
-```mermaid
-flowchart LR
-    subgraph BUILD ["8 phases (each gated by notebook validation, tests passing, and ADRs current)"]
-        direction LR
-        P1["Phase 1<br/>Foundation<br/>schemas, repos, config"]
-        P2["Phase 2<br/>Services<br/>discovery, parser"]
-        P3["Phase 3<br/>LLM provider<br/>caching, retries"]
-        P4["Phase 4<br/>8 specialized agents"]
-        P5["Phase 5<br/>LangGraph<br/>orchestrator"]
-        P6["Phase 6<br/>FastAPI + Streamlit"]
-        P7["Phase 7<br/>Live integration<br/>SqliteSaver, real Claude"]
-        P8["Phase 8<br/>Performance<br/>concurrent execution"]
+The interesting thing about agentic AI right now is not the frameworks. It is not the models. It is the discipline you bring to the design.
 
-        P1 --> P2 --> P3 --> P4 --> P5 --> P6 --> P7 --> P8
-    end
+v1 taught me that you can learn the patterns by shipping. v2 is teaching me something different. You can use the patterns by designing first.
 
-    style BUILD fill:#fffbeb,stroke:#f59e0b
-```
-
-Each phase had a Jupyter notebook validating it before the next phase started. Phase 7 (live-agent integration) has a notebook that walks through a real run with real Claude and SqliteSaver. The notebooks are not just demos. They are the gate I used to convince myself the phase was stable before adding the next layer.
-
-Tests followed the same discipline: mocked by default (the API key's absence triggers mock mode), with integration tests gated by a marker. 456 tests pass and 1 is skipped today. CI never spends a cent on real LLM calls.
-
-Skills were the multiplier. A separate write-up at `docs/article_agent_skills_summary.md` documents how six agentic-engineering skills shaped a single working day across 18 commits. Skills are forcing functions. They catch what a freeform read would miss.
+A week of writing beat every shortcut I would have taken. That is the pattern I am most likely to keep.
 
 ---
 
-## Where humans actually belong in the loop
+## What is next in this series
 
-v1 had human-in-the-loop via curation. You exclude jobs you've already dismissed and the system never shows them again. That pattern is Article 2's Pattern 10, and it remains valuable in v2.
-
-v2 began with two additional human checkpoints inside the workflow graph: select which jobs to deep-review, then approve tailored resume drafts. Both used LangGraph's interrupt-resume primitive. The graph pauses, persists full state to SQLite, and waits.
-
-Building the system honestly forced me to admit that not every decision belongs inside the graph.
-
-**Job selection became an auto-gate.** A clear scoring threshold did the same job as a click. Fewer interruptions, more trust in the rubric. Auto-selection took its place; the threshold is configurable per run. The HITL pause was removed.
-
-**Tailoring moved out-of-graph.** Tailoring is on-demand, bounded, and idempotent. You ask for a draft on a specific job, you get one, you decide what to do with it. Wrapping that in a graph interrupt added complexity without adding control. So tailoring runs as a synchronous API operation today: the agent and reviewer pair run, the draft and review get persisted, and your approve/revise/reject decision goes through a separate endpoint. The interrupt-resume capability is still wired up in code; it is gated on a flag the UI does not currently expose. Article 6 covers the full evolution.
-
-**The ethical guardrail lives in the prompt.** The most important rule for tailoring is not enforced by HITL. It is built into the system prompt: every tailored claim must cite supporting evidence from the original resume, and missing experience must be labeled as a gap rather than rewritten as if present. The Fidelity Reviewer runs after every Tailoring call and validates that constraint. If a draft fabricates experience, the reviewer flags the claim and the UI surfaces it before you approve. This is Pattern 13 (Prompt Injection Defense) inverted. Instead of defending against external content trying to override your instructions, you anchor the instructions hard enough that the agent cannot drift away from them. Article 7 goes deeper.
-
----
-
-## Per-agent model assignment: configurable, not always practical
-
-v2 supports per-agent provider and model selection through a registry. You can run Research on Haiku, Career Advisor on Sonnet, and Tailoring on a different provider entirely. Agents depend only on an LLMClient interface; they never see a concrete provider class.
-
-I built this for a reason: I wanted to learn the pattern. **It's not the default I would recommend for a real-world team.**
-
-The honest tradeoff is engineering surface. Each provider has different rate limits, different retry semantics, different failure modes, different cost dashboards, different observability quirks. Two providers in production means twice the integration testing and twice the on-call work on a bad day. Most production systems do not need that surface and will not benefit from optimizing it.
-
-If your agents have measurably different cost profiles and accuracy needs, per-agent assignment pays for itself. If you have not measured that yet, start with one provider and one or two model tiers. Article 8 will go deeper into the cost economics and where the breakeven actually is.
-
----
-
-## Reader takeaways
-
-Three things to leave with.
-
-**1. Foundations beat improvisation when you are learning.** A week of patterns, principles, ADRs, and an implementation plan saves you from rebuilding the architecture three times. Even if you change the ADRs later, the act of writing them surfaces the questions you would have answered badly under time pressure.
-
-**2. Not every decision belongs inside the workflow graph.** Auto-gates beat checkpoints when the rubric is clear. Out-of-graph operations beat interrupts when the work is on-demand and bounded. Reach for interrupt-resume only when the human's input genuinely changes downstream cost or branches.
-
-**3. Per-agent model assignment is a tool, not a default.** Make it configurable so you can learn the tradeoff. Don't assume your future self will appreciate the operational complexity.
-
----
-
-## What is in the rest of this series
-
-- **Article 4.** Designing 8 specialized agents. The 6 new reasoning patterns. Per-agent model assignment in detail.
-- **Article 5.** Stateful workflow orchestration with LangGraph. SqliteSaver. The interrupt-resume primitive (when to use it, when to skip it).
-- **Article 6.** The HITL evolution. From in-graph interrupts to auto-gates and out-of-graph operations. The ethical guardrail in the prompt.
-- **Article 7.** Bounded reflection loops. Stagnation detection. The Fidelity Reviewer as a runtime guardrail.
-- **Article 8.** Cost architecture at scale. Concurrent agent execution. When per-agent model assignment pays back.
-
-A note on cadence. **I'm not committing to a fixed publishing rhythm for this series.** Each article needs original thought, fresh diagrams, and a real reader takeaway. Posting twice a week is possible; doing each article justice is more important than hitting a cadence target. Agentic AI is evolving fast. It needs to evolve responsibly. That includes how we write about it.
+Five articles follow this one. Each one goes deep on one layer of the system: the eight agents and the patterns they use, stateful orchestration with LangGraph, the HITL evolution, the bounded reflection loop, and the cost architecture at scale. There is no fixed publishing rhythm. Each article will earn its place.
 
 ---
 
 ## Where to go in the repo
 
-If you want to dig in:
-
 - **[docs/wiki.md](https://github.com/suthrams/jobsearchagent-v2/blob/main/docs/wiki.md).** The documentation index. Every markdown file in the project is listed there exactly once. Start here.
-- **[docs/architecture/adr/](https://github.com/suthrams/jobsearchagent-v2/tree/main/docs/architecture/adr).** 56 ADRs. ADR-001 starts the trail.
+- **[docs/architecture/adr/](https://github.com/suthrams/jobsearchagent-v2/tree/main/docs/architecture/adr).** 56 ADRs. ADR-001 starts the trail. ADR-002 is the orchestrator-owns-state decision in this article.
 - **[docs/architecture/implementation_plan.md](https://github.com/suthrams/jobsearchagent-v2/blob/main/docs/architecture/implementation_plan.md).** The build plan with phase review gates.
 - **[notebooks/](https://github.com/suthrams/jobsearchagent-v2/tree/main/notebooks).** Seven phase validation notebooks. Phase 7 walks a live agent run end-to-end.
 - **[CHANGELOG.md](https://github.com/suthrams/jobsearchagent-v2/blob/main/CHANGELOG.md).** The running narrative of what changed and why, by date.
 
-The codebase is at a point where the documentation is the audit trail. If a section of the system isn't in the wiki, it isn't in the project.
+---
+
+## Disclosure
+
+This was vibe coded. Every line of v2 was written through AI pair-programming with Claude Code. The architectural decisions, the ADRs, the agent decomposition, the invariants, the choice of where to put humans in the loop and where not to: all mine. I read every diff before it landed and signed every commit.
+
+The AI was a force multiplier on typing speed and on catching small mistakes I would have caught eventually. It was not a force multiplier on judgment. The decisions that shape the system are decisions I made, and I made them slowly. A week of foundations work happened before the first line of code went into the project.
+
+I'm saying this because the field is moving fast, and the difference between using AI as a typing accelerator and using it as a decision-maker is worth being honest about. If you find yourself letting the AI pick your architecture, that's worth a pause.
 
 ---
 
 ## Call to action
 
-If you're working through your own agentic AI build, especially one that targets a use case that matters to you personally, drop a comment on what your foundations stage looked like. I'm collecting examples and they are interesting in aggregate.
-
-I'm a solutions architect with deep experience designing distributed systems and helping organizations adopt AI responsibly. The pattern of building real, useful tools to learn advanced patterns has worked well for me. If that's the way you also like to learn, follow along.
+If you are working on your own agentic AI build, drop a comment on what your foundations stage looked like. The interesting examples are usually the ones where someone closed the editor for a week.
 
 [Connect on LinkedIn](https://www.linkedin.com/in/sivakumar-suthram)
 
 ---
 
-## Further Reading
+## Further reading
 
-- Anthropic. *Building effective agents.* anthropic.com/research/building-effective-agents. The clearest practical treatment of multi-agent architecture from the team that builds Claude. The orchestrator/subagent distinction maps directly to the v2 design.
+- Anthropic. *Building effective agents.* anthropic.com/research/building-effective-agents. The clearest practical treatment of multi-agent architecture from the team that builds Claude.
 - LangChain. *LangGraph documentation.* langchain-ai.github.io/langgraph. The framework reference for stateful graph-based agent workflows, including checkpoint persistence and interrupt/resume.
 - Weng, Lilian. *LLM Powered Autonomous Agents.* lilianweng.github.io/posts/2023-06-23-agent/. The foundational survey of autonomous agent components: planning, memory, and tool use.
 - Yan, Eugene. *Patterns for Building LLM-based Systems and Products.* eugeneyan.com/writing/llm-patterns/. A practitioner-focused catalog of LLM system patterns including evals, guardrails, and routing.
@@ -277,4 +150,4 @@ I'm a solutions architect with deep experience designing distributed systems and
 
 ## Hashtags
 
-#AgenticAI #AIEngineering #LangGraph #MultiAgentSystems #Anthropic #Claude #SoftwareArchitecture #ResponsibleAI #LLM #SystemDesign
+#AgenticAI #AIEngineering #LangGraph #ResponsibleAI #SoftwareArchitecture
