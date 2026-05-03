@@ -673,6 +673,19 @@ Report generation is handled by a service, not the Tailoring Agent.
 
 ---
 
+### Trigger Surfaces
+
+Two paths invoke the Tailoring Agent. Both run the same agent with the same prompt and the same `TailoredResumeDraft` schema. Both are followed by a Fidelity Reviewer call without exception.
+
+| Path | When it runs | How it is triggered | Approval mechanism |
+|------|--------------|---------------------|--------------------|
+| In-graph node | During a workflow run, after `interview_prep` (or `career_advice` skip) | `state["user_requested_tailoring"] = True` set before run start | LangGraph `interrupt()` at `await_tailoring_approval` (ADR-011) |
+| Out-of-graph router | Post-workflow, per job, on demand | `POST /workflows/{wf}/jobs/{job}/tailor` (ADR-055) | `POST /tailorings/{id}/decision` writes `decision` column |
+
+The out-of-graph path reads `resume_profile` and the job from the LangGraph checkpoint, and reads per-job `final_review` and `career_advice` from the relational repos. It exists because tailoring intent is fundamentally per-job, post-hoc, and repeatable — properties that don't fit the single-shot graph lifecycle.
+
+---
+
 ## 13. Fidelity Reviewer Agent
 
 ### Purpose
@@ -739,6 +752,12 @@ None.
 * `fidelity_reviewer.completed`
 * `fidelity_reviewer.failed`
 * `fidelity_reviewer.unsupported_claim_detected`
+
+---
+
+### Trigger Surfaces
+
+The Fidelity Reviewer always runs after the Tailoring Agent — there is no path that bypasses it. It runs both inside the workflow graph (paired with the in-graph tailoring node) and inside the on-demand tailoring router (ADR-055), with the same prompt and the same `FidelityReview` output schema in both cases. The output is persisted alongside the draft in `tailored_resumes.fidelity_review_json`.
 
 ---
 

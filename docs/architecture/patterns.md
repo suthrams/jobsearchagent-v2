@@ -254,14 +254,14 @@ MAX_LLM_CALLS_PER_RUN  = 200  # global budget — raised in ADR-054
 **v1:** All scored jobs were shown in the terminal. Tailoring was a separate command. No conditional routing.
 
 **v2:** Execution is gated at multiple points:
-- Deep review runs **only for shortlisted jobs** (≤ 3, user-selected)
+- Deep review runs **only for jobs that meet `min_match_score`** on any track (≤ `MAX_SELECTED_JOBS`, auto-selected — ADR-054)
 - Interview Coach runs **only when match_score ≥ 75** or user requests it
-- Tailoring runs **only on user request**
-- Fidelity Reviewer runs **only after tailoring**
+- Tailoring runs **on user request only** — either pre-run via `user_requested_tailoring=True` (in-graph node) or post-hoc via the dedicated tailoring router (ADR-055)
+- Fidelity Reviewer runs **only after tailoring**, on both paths
 
 **Why it matters:** The most expensive agents (Sonnet for Critic, Coach, Tailoring) only run when there is a clear signal of value. Without conditional execution, a 10-job run would invoke all 8 agents for all 10 jobs.
 
-**Reference:** ADR-012 · ADR-014
+**Reference:** ADR-012 · ADR-014 · ADR-054 · ADR-055
 
 ---
 
@@ -392,7 +392,28 @@ v2: [job1] [job2] ... [job10]              ×5 parallel workers
 
 ---
 
-### 19. Live/Mock Mode Gate
+### 19. Out-of-Graph Operations
+
+**v1:** Tailoring was a separate CLI invocation (`--tailor`), independent of the scoring run. No coupling, but also no shared context.
+
+**v2:** Most agent work runs as nodes inside the LangGraph workflow, with state managed by `SqliteSaver`. But some operations are inherently post-hoc and per-job — the user wants to invoke them selectively after seeing earlier output, sometimes for multiple jobs from the same run, sometimes hours or days later. Forcing those into the graph would mean either re-entering a finished workflow (interrupts don't fit) or pre-declaring intent that the user doesn't yet have.
+
+The **out-of-graph operation** pattern: expose the same agents as a small REST surface that reads the workflow state from the LangGraph checkpoint and persists results to the relational tables, without going through the state machine. The agents, prompts, schemas, and fidelity invariants are identical to the in-graph version.
+
+```
+in-graph:    discover → score → ... → tailoring (gated by user_requested_tailoring)
+out-of-graph: POST /workflows/{wf}/jobs/{job}/tailor  → TailoringAgent → FidelityReviewer → tailored_resumes
+```
+
+Currently used for: on-demand resume tailoring (ADR-055). Decisions are recorded as a column on `tailored_resumes`, not as a graph interrupt — there is no graph paused for the decision.
+
+**Why it matters:** Workflow completion is a discrete event; user intent isn't. Tying every agent call to a graph run forces lifetimes that don't actually share. The out-of-graph pattern preserves the structural invariants (evidence binding, fidelity check) while decoupling trigger from workflow state.
+
+**Reference:** ADR-055
+
+---
+
+### 20. Live/Mock Mode Gate
 
 **v1:** Not present. All runs used real API keys; the test suite was structured to avoid agent calls.
 

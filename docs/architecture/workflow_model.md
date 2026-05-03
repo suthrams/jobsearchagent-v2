@@ -429,22 +429,37 @@ Generate targeted interview preparation.
 
 ### Purpose
 
-Generate improved resume suggestions aligned with the job.
+Generate improved resume suggestions aligned with a specific job.
+
+---
+
+### Trigger Paths
+
+Tailoring is reachable via two paths (ADR-055). Both run the same agents with the same fidelity contract.
+
+| Path | Trigger | When | Approval mechanism |
+|------|---------|------|--------------------|
+| In-graph node | `state["user_requested_tailoring"] = True` set before run start | During the workflow run, after `interview_prep` (or `career_advice` skip) | LangGraph `interrupt()` at `await_tailoring_approval` |
+| Out-of-graph router | `POST /workflows/{wf}/jobs/{job}/tailor` | Post-workflow, per job, on demand | `POST /tailorings/{id}/decision` writes the `decision` column |
+
+The out-of-graph path exists because tailoring intent is per-job, post-hoc, and repeatable — properties that don't fit a single-shot graph lifecycle.
 
 ---
 
 ### Inputs
 
-* original resume
+* original resume profile
 * job description
-* review output
-* career advice
+* `final_resume_review` (from `resume_reviews`, per job)
+* `career_advice` (from `career_advice`, per job)
 
 ---
 
 ### Outputs
 
-* tailored resume draft
+* `TailoredResumeDraft` persisted to `tailored_resumes`
+* `FidelityReview` persisted alongside the draft in `tailored_resumes.fidelity_review_json`
+* User decision persisted as `tailored_resumes.decision` ∈ {approve, revise, reject}
 
 ---
 
@@ -452,12 +467,11 @@ Generate improved resume suggestions aligned with the job.
 
 ```text
 1. Call Tailoring Agent
-2. Generate suggestions
-3. Call Fidelity Reviewer
-4. Validate output
-5. If invalid → revise or reject
-6. Request user approval (HITL)
-7. Persist approved version
+2. Generate suggestions (every claim carries supporting_evidence)
+3. Call Fidelity Reviewer (always — never skipped)
+4. Persist draft + fidelity review to tailored_resumes
+5. Surface to user (HITL — interrupt for in-graph, REST for out-of-graph)
+6. Record decision
 ```
 
 ---
@@ -473,6 +487,8 @@ Generate improved resume suggestions aligned with the job.
 
 * no fabricated content
 * must be evidence-bound
+* Fidelity Reviewer must run after every Tailoring Agent call on both paths
+* missing experience must be labelled as `claim_type="gap"`, never rewritten as if present
 
 ---
 

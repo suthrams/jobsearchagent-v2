@@ -60,3 +60,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-052 | [Reduce MAX_JOBS_PER_RUN as the Primary Volume Cost Control Lever](ADR-052-reduce-max-jobs-per-run-as-cost-control.md) | Accepted |
 | ADR-053 | [Pluggable Per-Agent Provider and Model Selection](ADR-053-pluggable-per-agent-provider-and-model-selection.md) | Accepted |
 | ADR-054 | [Allow Deep Review for All Qualifying Jobs](ADR-054-allow-deep-review-for-all-qualifying-jobs.md) | Accepted |
+| ADR-055 | [On-Demand Tailoring as an Out-of-Graph Operation](ADR-055-on-demand-tailoring-as-out-of-graph-operation.md) | Accepted |

@@ -337,7 +337,7 @@ CREATE TABLE interview_prep (
 
 ### Purpose
 
-Stores tailored resume drafts.
+Stores tailored resume drafts plus the fidelity review and the user's decision. One row per draft — repeated tailoring of the same `(workflow_run_id, job_id)` produces multiple rows, ordered by `created_at`.
 
 ---
 
@@ -350,13 +350,22 @@ CREATE TABLE tailored_resumes (
     job_id TEXT NOT NULL,
     resume_id TEXT NOT NULL,
 
-    tailored_json TEXT NOT NULL,
+    tailored_json TEXT NOT NULL,        -- TailoredResumeDraft JSON
+    fidelity_review_json TEXT,          -- FidelityReview JSON (NULL only if Fidelity Reviewer failed)
 
-    approved INTEGER DEFAULT 0,
+    decision TEXT,                      -- approve | revise | reject (NULL until user decides)
+    decided_at TEXT,                    -- ISO timestamp of the decision
+    approved INTEGER DEFAULT 0,         -- legacy boolean; flips to 1 only when decision="approve"
 
     created_at TEXT NOT NULL
 );
 ```
+
+### Notes
+
+- `fidelity_review_json`, `decision`, `decided_at` were added in ADR-055 when on-demand tailoring shipped. Migration uses try/except `ALTER TABLE` in `init_db()` so existing databases pick them up automatically.
+- `approved` is now derived from `decision`. New code should read `decision`; older readers continue to work via the `approved` column.
+- Both the in-graph tailoring node and the out-of-graph router (ADR-055) write to this table. The `decision` column is set by `TailoringRepository.set_decision()` from the on-demand decision endpoint; in-graph approvals additionally write a row to `human_decisions`.
 
 ---
 

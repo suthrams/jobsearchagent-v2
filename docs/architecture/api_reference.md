@@ -17,6 +17,11 @@
   - [POST /workflows/{workflow_id}/decisions](#post-workflowsworkflow_iddecisions)
   - [GET /workflows/{workflow_id}/jobs](#get-workflowsworkflow_idjobs)
   - [GET /workflows/{workflow_id}/report](#get-workflowsworkflow_idreport)
+- [On-Demand Tailoring](#on-demand-tailoring)
+  - [POST /workflows/{workflow_id}/jobs/{job_id}/tailor](#post-workflowsworkflow_idjobsjob_idtailor)
+  - [GET /workflows/{workflow_id}/tailorings](#get-workflowsworkflow_idtailorings)
+  - [GET /tailorings/{tailoring_id}](#get-tailoringstailoring_id)
+  - [POST /tailorings/{tailoring_id}/decision](#post-tailoringstailoring_iddecision)
 - [Schema Reference](#schema-reference)
   - [Request Bodies](#request-bodies)
   - [Response Bodies](#response-bodies)
@@ -350,6 +355,144 @@ GET /workflows/{workflow_id}/report
 **Response — 404** workflow not found.
 
 **Response — 409** `workflow_not_completed` — workflow status is not `"completed"`.
+
+---
+
+## On-Demand Tailoring
+
+Out-of-graph tailoring (ADR-055). The same `TailoringAgent` and `FidelityReviewer` that the workflow node would use, exposed as a small REST surface so tailoring can be triggered per job after the workflow completes — the typical case, since users decide which jobs deserve a tailored draft after seeing scoring + deep-review output.
+
+The flow:
+
+```
+┌─────────────────────────────────┐
+│ workflow already completed       │
+│ (selected_jobs in checkpoint)    │
+└────────────────┬─────────────────┘
+                 │ user clicks "Tailor for this job"
+                 ▼
+   POST /workflows/{wf}/jobs/{job}/tailor
+                 │ (synchronous, ~5-15s)
+                 ▼
+   TailoringAgent → FidelityReviewer → tailored_resumes row
+                 │
+                 ▼  returns { tailoring_id, tailored, fidelity_review }
+                 │
+                 ▼  user reviews diffs + evidence
+   POST /tailorings/{tailoring_id}/decision  { approval: approve|revise|reject }
+                 │
+                 ▼
+   tailored_resumes.decision = ..., approved = (decision == 'approve')
+```
+
+### POST /workflows/{workflow_id}/jobs/{job_id}/tailor
+
+Run the Tailoring Agent and the Fidelity Reviewer for one job. Synchronous — typically 5–15 s wall clock (~6 LLM calls). The resulting draft is persisted to `tailored_resumes`. Repeated calls for the same `(workflow_id, job_id)` produce additional rows; the caller decides whether to use the latest.
+
+**Request**
+
+```
+POST /workflows/{workflow_id}/jobs/{job_id}/tailor
+```
+
+No body. The router pulls everything it needs from the workflow's checkpoint (`resume_profile`, `selected_jobs`) and the relational repos (`final_resume_review`, `career_advice`).
+
+**Response — 200 OK**
+
+```json
+{
+  "tailoring_id": "uuid",
+  "workflow_id": "uuid",
+  "job_id": "string",
+  "resume_id": "string",
+  "tailored": {
+    "summary_suggestions": [
+      {
+        "original_text": "...",
+        "suggested_text": "...",
+        "supporting_evidence": "Resume line: '...'",
+        "claim_type": "reword | emphasize | gap",
+        "fidelity_risk": "low | medium | high",
+        "unsupported_claims": []
+      }
+    ],
+    "experience_bullet_suggestions": [...],
+    "skills_section_suggestions": ["..."],
+    "overall_tailoring_notes": "...",
+    "fidelity_risk_summary": "..."
+  },
+  "fidelity_review": {
+    "overall_fidelity_status": "pass | needs_revision | fail",
+    "approval_recommendation": "approve | revise | reject",
+    "unsupported_claims": [...],
+    "fabricated_metrics": [...],
+    "inflated_scope_flags": [...],
+    "unsupported_technology_flags": [...],
+    "unsupported_certification_flags": [...],
+    "required_removals": [...],
+    "required_revisions": [...],
+    "confidence": 92
+  },
+  "decision": null,
+  "approved": false,
+  "decided_at": null,
+  "created_at": "ISO-8601"
+}
+```
+
+**Response — 404** `workflow_not_found` or `job_not_found`.
+
+**Response — 409** `resume_profile_missing` — workflow has not yet reached `load_resume`.
+
+**Response — 502** `tailoring_failed` — the Tailoring Agent raised an `LLMProviderError` after retries.
+
+If the Fidelity Reviewer fails (rare), the draft is still persisted with `fidelity_review: null` so the user can see it; the UI surfaces this case explicitly.
+
+---
+
+### GET /workflows/{workflow_id}/tailorings
+
+List all tailoring drafts for a workflow, newest first. Returns an empty list when no drafts exist (never 404).
+
+**Response — 200 OK**
+
+```json
+{
+  "workflow_id": "uuid",
+  "tailorings": [
+    { "tailoring_id": "uuid", "job_id": "string", "decision": "approve", ... },
+    ...
+  ]
+}
+```
+
+---
+
+### GET /tailorings/{tailoring_id}
+
+Fetch a single draft by ID. Same shape as the trigger endpoint response.
+
+**Response — 404** `tailoring_not_found`.
+
+---
+
+### POST /tailorings/{tailoring_id}/decision
+
+Record the user's approve / revise / reject choice. Idempotent: re-submitting overwrites the previous decision and updates `decided_at`. Updates `tailored_resumes.decision`, `decided_at`, and the legacy `approved` flag (1 only when `approval == "approve"`).
+
+**Request**
+
+```json
+{
+  "approval": "approve | revise | reject"
+}
+```
+
+**Response — 200 OK** — the updated draft (same shape as the trigger response).
+
+**Response — 404** `tailoring_not_found`.
+
+**Response — 422** Pydantic validation — `approval` must be one of the three literals.
 
 ---
 
