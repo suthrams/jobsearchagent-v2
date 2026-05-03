@@ -6,17 +6,35 @@ swapping Claude for another model requires no changes to agent code.
 """
 
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
 
 
 class LLMProviderError(Exception):
     """Raised when the provider cannot return a valid response after all retries."""
 
 
+@dataclass(frozen=True)
+class LLMUsage:
+    """Token + cost accounting for a single LLM call.
+
+    Frozen so it can be cached / passed across thread boundaries safely.
+    Fields are all required; defaults exist only for the zero-usage case
+    (no call yet, or a failure path that didn't bill).
+    """
+    tokens_input: int = 0
+    tokens_output: int = 0
+    cost_usd: float = 0.0
+
+    def as_tuple(self) -> tuple[int, int, float]:
+        """Backward-compat shim for callers still using the legacy tuple shape."""
+        return (self.tokens_input, self.tokens_output, self.cost_usd)
+
+
 class LLMClient(ABC):
     """Abstract base class for all LLM provider implementations.
 
-    Concrete implementations: ClaudeProvider (production), OpenAIProvider (stub),
-    and test doubles injected via the _model constructor parameter.
+    Concrete implementations: ClaudeProvider (production), OpenAIProvider (real, ADR-053),
+    and test doubles injected via the _model / _client constructor parameter.
     """
 
     @abstractmethod
@@ -39,6 +57,17 @@ class LLMClient(ABC):
         """
         ...
 
+    def complete_with_usage(self, agent_name: str, context: dict, schema: type) -> tuple[dict, LLMUsage]:
+        """Call the LLM and return (validated_dict, usage) together — no side-channel race.
+
+        Default implementation calls complete() then last_call_usage() for backward
+        compat. Concrete providers MAY override for efficiency or to fix the implicit
+        ordering contract. New callers should prefer this over the two-step dance.
+        """
+        data = self.complete(agent_name, context, schema)
+        ti, to, cost = self.last_call_usage()
+        return data, LLMUsage(tokens_input=int(ti), tokens_output=int(to), cost_usd=float(cost))
+
     @abstractmethod
     def count_tokens(self, text: str) -> int:
         """Estimate token count for a text string.
@@ -59,5 +88,7 @@ class LLMClient(ABC):
 
         Thread-safe: each thread gets its own value. Returns (0, 0, 0.0) if no call
         has been made yet in the current thread.
+
+        DEPRECATED in favor of complete_with_usage(). Kept until all callers migrate.
         """
         ...

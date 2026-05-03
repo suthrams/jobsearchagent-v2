@@ -17,7 +17,7 @@ from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 from app.providers.claude_provider import ClaudeProvider, make_resume_enhance_fn
-from app.providers.llm_client import LLMClient, LLMProviderError
+from app.providers.llm_client import LLMClient, LLMProviderError, LLMUsage
 from app.providers.openai_provider import OpenAIProvider
 from app.providers.prompt_loader import PromptLoader
 
@@ -576,6 +576,71 @@ def test_openai_json_schema_enforces_no_additional_props(tmp_path):
 def test_llm_client_cannot_be_instantiated():
     with pytest.raises(TypeError):
         LLMClient()  # type: ignore[abstract]
+
+
+# ── LLMUsage dataclass ────────────────────────────────────────────────────────
+
+def test_llm_usage_defaults_are_zero():
+    """No-call default — used by failure paths that didn't bill."""
+    u = LLMUsage()
+    assert u.tokens_input == 0 and u.tokens_output == 0 and u.cost_usd == 0.0
+
+
+def test_llm_usage_is_frozen():
+    """Frozen so it can be cached / shared across thread boundaries safely."""
+    u = LLMUsage(tokens_input=100, tokens_output=50, cost_usd=0.001)
+    with pytest.raises(Exception):  # FrozenInstanceError, but the exact class is a Pydantic detail
+        u.tokens_input = 999  # type: ignore[misc]
+
+
+def test_llm_usage_as_tuple_matches_legacy_shape():
+    """Backward-compat shim — callers still on the tuple shape get the same ordering."""
+    u = LLMUsage(tokens_input=1000, tokens_output=500, cost_usd=0.0123)
+    assert u.as_tuple() == (1000, 500, 0.0123)
+
+
+# ── complete_with_usage default implementation ───────────────────────────────
+
+def test_complete_with_usage_returns_data_and_usage(tmp_path):
+    """The default impl on the ABC delegates to complete() then last_call_usage().
+    Any provider that doesn't override complete_with_usage() relies on this default."""
+    ai_msg = AIMessage(
+        content="",
+        usage_metadata={"input_tokens": 50, "output_tokens": 25, "total_tokens": 75},
+    )
+    parsed_result = {"raw": ai_msg, "parsed": _Score(result="ok", score=88), "parsing_error": None}
+    chain = MagicMock()
+    chain.invoke.return_value = parsed_result
+    mock_model = MagicMock()
+    mock_model.with_structured_output.return_value = chain
+
+    provider = _make_provider(tmp_path, model=mock_model)
+    data, usage = provider.complete_with_usage("test_agent", {"x": 1}, _Score)
+
+    assert data == {"result": "ok", "score": 88}
+    assert isinstance(usage, LLMUsage)
+    assert usage.tokens_input == 50
+    assert usage.tokens_output == 25
+    assert usage.cost_usd > 0  # ClaudeProvider's pricing yields a positive value
+
+
+def test_complete_with_usage_round_trips_through_legacy_method(tmp_path):
+    """Default impl reads last_call_usage() — invariant that values match across both APIs."""
+    ai_msg = AIMessage(
+        content="",
+        usage_metadata={"input_tokens": 100, "output_tokens": 40, "total_tokens": 140},
+    )
+    parsed = {"raw": ai_msg, "parsed": _Score(result="x", score=1), "parsing_error": None}
+    chain = MagicMock()
+    chain.invoke.return_value = parsed
+    mock_model = MagicMock()
+    mock_model.with_structured_output.return_value = chain
+
+    provider = _make_provider(tmp_path, model=mock_model)
+    _data, usage = provider.complete_with_usage("test_agent", {}, _Score)
+    legacy = provider.last_call_usage()
+
+    assert usage.as_tuple() == legacy
 
 
 # ── make_resume_enhance_fn ────────────────────────────────────────────────────
