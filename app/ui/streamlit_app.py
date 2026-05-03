@@ -56,6 +56,24 @@ def _load_yaml_config() -> dict:
         return {}
 
 
+# ── Cached HTTP wrappers ──────────────────────────────────────────────────────
+# Streamlit reruns the whole script on every interaction. Without caching, these
+# endpoints would fire on every keystroke / sidebar click. TTL keeps them fresh
+# enough to feel live; .clear() is called after any write that would invalidate.
+
+@st.cache_data(ttl=10)
+def _cached_list_tailorings(workflow_id: str) -> list[dict]:
+    return api.list_tailorings(workflow_id).get("tailorings") or []
+
+
+@st.cache_data(ttl=60)
+def _cached_get_providers() -> dict | None:
+    try:
+        return api.get_providers()
+    except Exception:
+        return None
+
+
 # ── Page config ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -800,7 +818,7 @@ elif view == "Workflow Detail":
                 "Lower the threshold or broaden the search to qualify more jobs.")
     else:
         try:
-            tail_index = api.list_tailorings(wf_id).get("tailorings") or []
+            tail_index = _cached_list_tailorings(wf_id)
         except Exception as exc:
             st.error(f"Could not load existing tailorings: {exc}")
             tail_index = []
@@ -812,6 +830,7 @@ elif view == "Workflow Detail":
         def _decide(tid: str, choice: str) -> None:
             try:
                 api.submit_tailoring_decision(tid, choice)
+                _cached_list_tailorings.clear()
                 st.success(f"Decision saved: {choice}")
                 st.rerun()
             except Exception as exc:
@@ -833,6 +852,7 @@ elif view == "Workflow Detail":
                     with st.spinner("Tailoring + fidelity review…"):
                         try:
                             api.trigger_tailoring(wf_id, jid)
+                            _cached_list_tailorings.clear()
                             st.rerun()
                         except Exception as exc:
                             st.error(f"Tailoring failed: {exc}")
@@ -1453,11 +1473,9 @@ elif view == "Settings":
         "their original assignment."
     )
 
-    try:
-        providers_payload = api.get_providers()
-    except Exception as exc:
-        st.warning(f"Couldn't reach `/config/providers`: {exc}")
-        providers_payload = None
+    providers_payload = _cached_get_providers()
+    if providers_payload is None:
+        st.warning("Couldn't reach `/config/providers` (backend may be down or restarting).")
 
     if providers_payload:
         catalog = providers_payload.get("providers", {}) or {}
@@ -1508,6 +1526,7 @@ elif view == "Settings":
                         api.put_config(f"agents.{agent_name}.provider", provider_choice)
                         api.put_config(f"agents.{agent_name}.model", model_choice)
                         st.session_state.config_cache = None
+                        _cached_get_providers.clear()
                         st.success(
                             f"Saved {agent_name} → {provider_choice}/{model_choice}. "
                             "Restart the backend for it to take effect."
