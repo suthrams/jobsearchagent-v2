@@ -6,6 +6,20 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-03
 
+### Changed — LLMClient typed-usage migration (5 stacked PRs)
+
+Surfaced by `/api-and-interface-design` applied to `app/providers/llm_client.py`. The legacy `last_call_usage() -> tuple[int, int, float]` side-channel was racy under concurrency (mitigated by thread-locals at every layer, but still fragile) and the positional-tuple shape blocked future-additive fields like latency. Replaced with a typed return-value usage object, migrated as 5 small independently-revertable PRs.
+
+| PR | Commit | Scope |
+|----|--------|-------|
+| 1/5 | `984cd9f` | Add `LLMUsage` frozen dataclass + `LLMClient.complete_with_usage(...)` ABC method with a default impl that calls `complete()` then `last_call_usage()`. Pure addition; 5 new tests. |
+| 2/5 | `0a37380` | `BaseAgent._run()` calls `complete_with_usage()` internally and stores the typed usage in thread-local. New `BaseAgent.last_call_usage_typed() -> LLMUsage` accessor. Legacy tuple accessor preserved for back-compat. |
+| 3/5 | `b11b1f0` | `score_jobs._score_one()` reads typed usage via new `safe_agent_usage_typed()` helper. Same numbers reach `add_llm_calls_bulk`. |
+| 4/5 | `5979672` | Remaining 4 nodes migrated: `career_advice`, `interview_prep`, in-graph `tailoring`, parallel `deep_review`. After this PR no production caller uses the legacy tuple helper. |
+| 5/5 | (this) | Remove the now-unused `safe_agent_usage()` tuple helper from `app/workflows/limits.py`. Provider-layer `last_call_usage()` is kept as a documented-deprecated implementation detail (removing it would require touching every provider test for marginal value). |
+
+Net result: every LLM call site reads usage as a typed `LLMUsage` instead of a positional tuple. Adding a future field (e.g. `latency_ms`) is now a one-line additive change instead of a breaking signature update.
+
 ### Changed — Tailoring REST surface aligned with project conventions
 
 Surfaced by the `/api-and-interface-design` skill applied to `app/api/routers/`. The on-demand tailoring router (ADR-055) had drifted from the conventions established by the existing routers — verb-vs-noun and singular-vs-plural inconsistencies that would compound as more endpoints were added. Fixed in one PR:

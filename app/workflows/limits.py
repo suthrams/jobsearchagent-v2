@@ -73,21 +73,6 @@ def add_llm_call(
     }
 
 
-def safe_agent_usage(agent) -> tuple[int, int, float]:
-    """Read last_call_usage() from an agent with a (0, 0, 0.0) fallback.
-
-    Guards against mock objects that return non-tuple values — test doubles never
-    need to configure last_call_usage; real providers always return (int, int, float).
-
-    DEPRECATED in favor of safe_agent_usage_typed(). Removed in the next PR.
-    """
-    try:
-        ti, to, cost = agent.last_call_usage()
-        return int(ti), int(to), float(cost)
-    except Exception:
-        return 0, 0, 0.0
-
-
 def safe_agent_usage_typed(agent):
     """Read last_call_usage_typed() from an agent with a zero-LLMUsage fallback.
 
