@@ -140,7 +140,10 @@ The sidebar opens to **Workflow History** (the default landing) and gives you th
 following views, top-down:
 
 **Workflow-centric**
-- **Workflow History** — all runs, click **Open** to drill into one
+- **Workflow History** — all runs, **click any row** to open its Workflow Detail.
+  The Run column shows the first role + first location (`+N` badges for the rest);
+  the ID column is truncated — full UUIDs and full criteria appear on the detail
+  screen.
 - **Workflow Detail** — unified per-run view: jobs, scores, deep review, advice,
   interview prep, **the settings used for that run**, and a "Limits & Constraints"
   section that flags where execution caps clipped results

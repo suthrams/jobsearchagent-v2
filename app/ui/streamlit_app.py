@@ -107,6 +107,11 @@ def _navigate(view_name: str, **state_updates) -> None:
     """
     for k, v in state_updates.items():
         st.session_state[k] = v
+    # When navigation explicitly changes the detail target, force the Detail
+    # view's text_input to re-sync. Without this, a user-typed value in that
+    # input would survive the next history row click and override the new target.
+    if "detail_workflow_id" in state_updates:
+        st.session_state.pop("_detail_wf_synced", None)
     st.session_state._pending_nav = view_name
     st.rerun()
 
@@ -592,11 +597,15 @@ if view == "Workflow History":
 
     rows_for_display: list[dict] = []
     for _, row in df.iterrows():
-        roles = _summarize_list(row.get("roles_json"))
-        locs = _summarize_list(row.get("locations_json"))
-        run_label = roles or "(no criteria snapshot)"
+        # Keep the table scannable: one role + a "+N" badge for the rest, same for locations.
+        # Full criteria are visible on the Workflow Detail screen.
+        roles = _summarize_list(row.get("roles_json"), max_items=1)
+        locs = _summarize_list(row.get("locations_json"), max_items=1)
+        run_label = roles or "(no criteria)"
         if locs:
-            run_label += f"  ·  📍 {locs}"
+            run_label += f"  ·  {locs}"
+
+        full_id = row.get("workflow_id", "") or ""
 
         rows_for_display.append({
             "Status":   _STATUS_DISPLAY.get(row.get("status", ""), str(row.get("status", "—"))),
@@ -609,7 +618,7 @@ if view == "Workflow History":
             "≥": int(row["threshold"]) if pd.notna(row.get("threshold")) else None,
             "URLs":     int(row["custom_url_count"]) if pd.notna(row.get("custom_url_count")) else 0,
             "Cost":     float(row["cost_usd"]) if pd.notna(row.get("cost_usd")) else 0.0,
-            "ID":       row.get("workflow_id", ""),
+            "ID":       (full_id[:8] + "…") if len(full_id) > 8 else full_id,
         })
     display_df = pd.DataFrame(rows_for_display)
 
@@ -621,9 +630,10 @@ if view == "Workflow History":
         selection_mode="single-row",
         column_config={
             "Status":   st.column_config.TextColumn("Status",   width="small"),
-            "Run":      st.column_config.TextColumn("Run",      width="large"),
-            "Stage":    st.column_config.TextColumn("Stage",    width="medium"),
-            "Progress": st.column_config.TextColumn("Progress", width="medium"),
+            "Run":      st.column_config.TextColumn("Run",      width="medium",
+                                                       help="Roles and locations searched (full list on the detail screen)"),
+            "Stage":    st.column_config.TextColumn("Stage",    width="small"),
+            "Progress": st.column_config.TextColumn("Progress", width="small"),
             "Started":  st.column_config.TextColumn("Started",  width="small"),
             "Updated":  st.column_config.TextColumn("Updated",  width="small"),
             "Best":     st.column_config.NumberColumn("Best",   format="%d", width="small"),
@@ -632,14 +642,16 @@ if view == "Workflow History":
             "URLs":     st.column_config.NumberColumn("URLs",   format="%d", width="small",
                                                        help="custom URLs supplied at run start"),
             "Cost":     st.column_config.NumberColumn("Cost",   format="$%.4f", width="small"),
-            "ID":       st.column_config.TextColumn("ID",       width="small"),
+            "ID":       st.column_config.TextColumn("ID",       width="small",
+                                                       help="Click the row to open this run's full detail"),
         },
     )
 
-    # Row click → drill into Workflow Detail
+    # Row click → drill into Workflow Detail. Use the source df (full UUID) since
+    # the displayed ID column is intentionally truncated.
     sel = (event.selection.rows if event and getattr(event, "selection", None) else []) or []
     if sel:
-        chosen = display_df.iloc[sel[0]]["ID"]
+        chosen = df.iloc[sel[0]].get("workflow_id", "")
         if chosen and chosen != st.session_state.get("detail_workflow_id"):
             _navigate("Workflow Detail", detail_workflow_id=chosen, detail_job_id=None)
 
@@ -658,8 +670,17 @@ if view == "Workflow History":
 elif view == "Workflow Detail":
     st.header("Workflow Detail")
 
-    wf_id = st.session_state.detail_workflow_id or st.session_state.workflow_id
-    wf_id = st.text_input("Workflow ID", value=wf_id or "",
+    # Sync the input widget to the navigation target on actual nav changes (row
+    # click in History or sidebar button) but preserve user typing across reruns.
+    # Why: st.text_input without a key holds onto its old widget value and ignores
+    # the new value= arg, so a fresh detail_workflow_id from _navigate would be
+    # clobbered back to whatever was in the input on the previous render.
+    nav_target = st.session_state.detail_workflow_id or st.session_state.workflow_id or ""
+    if nav_target and st.session_state.get("_detail_wf_synced") != nav_target:
+        st.session_state.detail_wf_input = nav_target
+        st.session_state._detail_wf_synced = nav_target
+
+    wf_id = st.text_input("Workflow ID", key="detail_wf_input",
                           help="Pick a run from Workflow History or paste an ID.")
     if not wf_id:
         st.info("No workflow selected.")
