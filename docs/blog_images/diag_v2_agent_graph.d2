@@ -1,0 +1,110 @@
+# v2 Workflow Graph — main in-graph flow.
+# Uses a 2-row grid so the graph reads as horizontal (banner-friendly) rather
+# than a tall portrait column.
+
+vars: {
+  d2-config: {
+    sketch: false
+    pad: 24
+  }
+}
+
+# Row 1: intake and scoring (left to right)
+# Row 2: deep work and finalize (right to left, then to end)
+flow: "" {
+  grid-rows: 2
+  grid-gap: 80
+  style.stroke-width: 0
+
+  # ── Row 1: intake and scoring (left to right) ──
+  start: "start" {
+    shape: oval
+    style.fill: "#dbeafe"
+    style.stroke: "#3b82f6"
+    style.font-color: "#1e293b"
+  }
+  register_run: "register_run\npersist initial state" {
+    style.fill: "#fef3c7"
+    style.stroke: "#d97706"
+    style.font-color: "#1e293b"
+  }
+  discover_jobs: "discover_jobs\nAdzuna + custom URLs" {
+    style.fill: "#fef9c3"
+    style.stroke: "#ca8a04"
+    style.font-color: "#1e293b"
+  }
+  load_resume: "load_resume\ncached profile" {
+    style.fill: "#fef9c3"
+    style.stroke: "#ca8a04"
+    style.font-color: "#1e293b"
+  }
+  research_companies: "research_companies\nResearch (cheaper tier)" {
+    style.fill: "#dcfce7"
+    style.stroke: "#16a34a"
+    style.font-color: "#1e293b"
+  }
+  score_jobs: "score_jobs\nScoring (cheaper, x5 concurrent)" {
+    style.fill: "#dcfce7"
+    style.stroke: "#16a34a"
+    style.font-color: "#1e293b"
+  }
+  auto_select_jobs: "auto_select_jobs\nthreshold gate" {
+    shape: hexagon
+    style.fill: "#fef9c3"
+    style.stroke: "#ca8a04"
+    style.font-color: "#1e293b"
+  }
+
+  # ── Row 2: deep work and finalize (right to left) ──
+  end: "end" {
+    shape: oval
+    style.fill: "#dbeafe"
+    style.stroke: "#3b82f6"
+    style.font-color: "#1e293b"
+  }
+  generate_report: "generate_report\nMarkdown report" {
+    style.fill: "#fef3c7"
+    style.stroke: "#d97706"
+    style.font-color: "#1e293b"
+  }
+  interview_prep: "interview_prep\nInterview Coach (capable)" {
+    style.fill: "#dbeafe"
+    style.stroke: "#2563eb"
+    style.font-color: "#1e293b"
+  }
+  career_advice: "career_advice\nCareer Advisor (capable)" {
+    style.fill: "#dbeafe"
+    style.stroke: "#2563eb"
+    style.font-color: "#1e293b"
+  }
+  deep_review: "deep_review\nCritic + Auditor (loop, max 3)" {
+    style.fill: "#dbeafe"
+    style.stroke: "#2563eb"
+    style.font-color: "#1e293b"
+  }
+  spacer1: "" {
+    style.opacity: 0
+  }
+  spacer2: "" {
+    style.opacity: 0
+  }
+
+  # ── Edges ──
+  start -> register_run
+  register_run -> discover_jobs
+  discover_jobs -> load_resume
+  load_resume -> research_companies
+  research_companies -> score_jobs
+  score_jobs -> auto_select_jobs
+  auto_select_jobs -> deep_review: "qualifies"
+  deep_review -> career_advice
+  career_advice -> interview_prep: "best track >= threshold"
+  interview_prep -> generate_report
+  generate_report -> end
+  career_advice -> generate_report: "below threshold" {
+    style.stroke-dash: 3
+  }
+  auto_select_jobs -> generate_report: "no qualifying jobs" {
+    style.stroke-dash: 3
+  }
+}

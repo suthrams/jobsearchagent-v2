@@ -569,10 +569,25 @@ def diag_full_table():
 
 # ─────────────────────────────────────────────────────────────────────────────
 # v2 ARTICLE DIAGRAMS  (blog_v2_article1.md)
+#
+# These were initially drawn with matplotlib. They have been replaced with
+# D2 source files at docs/blog_images/diag_v2_*.d2, rendered to PNG via the
+# Terrastruct D2 CLI (https://d2lang.com). The matplotlib functions below are
+# kept for reference but are no longer called from __main__.
+#
+# To regenerate the v2 article diagrams:
+#
+#   d2 docs/blog_images/diag_v2_agent_graph.d2 \
+#      docs/blog_images/diag_v2_agent_graph_core.png --theme=200 --pad=24
+#   python compose_banner.py        # composes the banner around the core graph
+#
+#   d2 docs/blog_images/diag_v2_foundations.d2     docs/blog_images/diag_v2_foundations.png     --theme=200 --pad=40
+#   d2 docs/blog_images/diag_v2_architecture.d2    docs/blog_images/diag_v2_architecture.png    --theme=200 --pad=40
+#   d2 docs/blog_images/diag_v2_hitl_evolution.d2  docs/blog_images/diag_v2_hitl_evolution.png  --theme=200 --pad=40
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-# ── DIAGRAM v2-1: Foundations week ───────────────────────────────────────────
+# ── DIAGRAM v2-1: Foundations week (matplotlib, deprecated; see .d2 source) ──
 def diag_v2_foundations():
     """5-day timeline: the foundations week before any v2 code was written."""
     f, ax = fig(14, 5)
@@ -745,68 +760,107 @@ def diag_v2_hitl_evolution():
     save(f, "diag_v2_hitl_evolution.png")
 
 
-# ── DIAGRAM v2-4: Agent graph (banner image) ─────────────────────────────────
+# ── DIAGRAM v2-4: Agent graph banner (real LangGraph render + pattern panel) ──
 def diag_v2_agent_graph():
-    """v2 workflow graph: 8 agents and how they connect. Used as the article banner."""
-    f, ax = fig(14, 6.5)
-    title_bar(ax, "v2 Workflow  -  8 Agents and How They Connect",
-              "Linear pipeline through scoring and deep review. Tailoring is on-demand and lives off the graph.")
+    """LinkedIn banner: real LangGraph PNG of the v2 workflow on the right,
+    title + agentic AI pattern callouts on the left. Renders the actual graph
+    by calling build_graph() with mocked dependencies, so the visual is always
+    accurate to whatever is in app.workflows.workflow_graph.
+    """
+    import io
+    import sys
+    from pathlib import Path as _Path
+    from PIL import Image as PILImage
 
-    # Tier color shorthands (reuse existing palette)
-    CHEAPER, CHEAPER_S = GREEN,  GREEN_S    # Haiku-tier agents
-    CAPABLE, CAPABLE_S = BLUE,   BLUE_S     # Sonnet-tier agents
-    GATE,    GATE_S    = YELLOW, YELLOW_S   # gate / router nodes (no LLM)
+    # Make sure the project root is on sys.path so app.* imports resolve
+    _proj_root = _Path(__file__).parent
+    if str(_proj_root) not in sys.path:
+        sys.path.insert(0, str(_proj_root))
 
-    pipeline = [
-        ("discover_jobs",   "Adzuna +\ncustom URLs",          GATE,    GATE_S),
-        ("research",        "Research agent",                 CHEAPER, CHEAPER_S),
-        ("score_jobs",      "Scoring agent\n(concurrent x5)", CHEAPER, CHEAPER_S),
-        ("auto_select",     "threshold\ngate",                GATE,    GATE_S),
-        ("deep_review",     "Critic + Auditor\n(loop, max 3)", CAPABLE, CAPABLE_S),
-        ("career_advice",   "Career Advisor",                 CAPABLE, CAPABLE_S),
-        ("interview_prep",  "Interview Coach\n(conditional)", CAPABLE, CAPABLE_S),
-        ("generate_report", "Markdown report",                GATE,    GATE_S),
+    from langgraph.checkpoint.memory import MemorySaver
+    from app.api.dependencies import _build_mocked_deps
+    from app.workflows.workflow_graph import build_graph
+
+    deps = _build_mocked_deps(MemorySaver())
+    graph = build_graph(deps)
+    png_bytes = graph.get_graph().draw_mermaid_png()
+    graph_img = PILImage.open(io.BytesIO(png_bytes))
+
+    # Compose a 2:1-ish landscape banner: text on left, graph on right
+    f = plt.figure(figsize=(16, 8), facecolor=BG)
+
+    # ── Left text panel ───────────────────────────────────────────
+    ax_text = f.add_axes([0.025, 0.04, 0.66, 0.92])
+    ax_text.set_facecolor(BG)
+    ax_text.set_xlim(0, 1); ax_text.set_ylim(0, 1)
+    ax_text.axis("off")
+
+    # Title
+    ax_text.text(0.0, 0.95, "v2 Workflow Graph",
+                 fontsize=30, color=TEXT, fontfamily=FONT, fontweight="bold",
+                 ha="left", va="top")
+    # Subtitle (one line)
+    ax_text.text(0.0, 0.83,
+                 "Agentic AI patterns wired into a stateful orchestrator",
+                 fontsize=14, color=MUTED, fontfamily=FONT,
+                 ha="left", va="top")
+    ax_text.text(0.0, 0.77,
+                 "LangGraph  +  SqliteSaver  +  8 specialized agents",
+                 fontsize=12, color=ACCENT, fontfamily=FONT,
+                 ha="left", va="top")
+
+    # Pattern callouts header
+    ax_text.text(0.0, 0.66,
+                 "Patterns at work in this graph",
+                 fontsize=13, color=ACCENT, fontfamily=FONT, fontweight="bold",
+                 ha="left", va="top")
+
+    patterns = [
+        ("Bounded ReAct",                 "Research agent capped at two reasoning steps"),
+        ("Structured Output",             "Scoring returns Pydantic JSON, batched, no tools"),
+        ("Bounded Reflection",            "Resume Critic + Review Auditor loop, max 3 rounds"),
+        ("Evidence-Bound Generation",     "Tailoring claims cite the original resume"),
+        ("Runtime Fidelity Guardrail",    "Fidelity Reviewer always runs after Tailoring"),
+        ("Stateful Graph Orchestration",  "Workflow checkpointed to SQLite, resumable on crash"),
     ]
+    y_start = 0.58
+    line_h = 0.080
+    for i, (name, desc) in enumerate(patterns):
+        y = y_start - i * line_h
+        ax_text.text(0.02, y, "◆", fontsize=10, color=ACCENT,
+                     fontfamily=FONT, ha="left", va="top")
+        ax_text.text(0.05, y, name, fontsize=12, color=TEXT,
+                     fontfamily=FONT, fontweight="bold", ha="left", va="top")
+        ax_text.text(0.34, y, desc, fontsize=11, color=MUTED,
+                     fontfamily=FONT, ha="left", va="top")
 
-    n = len(pipeline)
-    bw, gap = 0.105, 0.012
-    total_w = n * bw + (n - 1) * gap
-    sx = (1.0 - total_w) / 2
-    by, bh = 0.54, 0.22
+    # Caption / source
+    ax_text.text(0.0, 0.05,
+                 "Real graph from app.workflows.workflow_graph.build_graph()",
+                 fontsize=10, color=MUTED, fontfamily=FONT, ha="left", va="top")
+    ax_text.text(0.0, 0.01,
+                 "github.com/suthrams/jobsearchagent-v2",
+                 fontsize=10, color=ACCENT, fontfamily=FONT, ha="left", va="top")
 
-    for i, (name, sub, fill, stroke) in enumerate(pipeline):
-        x = sx + i * (bw + gap)
-        text = f"{name}\n\n{sub}"
-        box(ax, x, by, bw, bh, text, fill=fill, stroke=stroke,
-            fontsize=8, bold=True, color="#1e293b")
-        if i < n - 1:
-            arrow(ax, x + bw, by + bh / 2, x + bw + gap, by + bh / 2,
-                  color=ACCENT, lw=1.0)
+    # ── Right graph panel ─────────────────────────────────────────
+    ax_graph = f.add_axes([0.70, 0.02, 0.28, 0.96])
+    ax_graph.set_facecolor("#ffffff")  # graph PNG has light bg; give it a clean canvas
+    ax_graph.axis("off")
+    ax_graph.imshow(graph_img)
 
-    # Out-of-graph tailoring callout
-    box(ax, 0.20, 0.20, 0.60, 0.22,
-        "On-demand tailoring (out-of-graph)\n\n"
-        "User POSTs /workflows/{wf}/jobs/{job}/tailorings\n"
-        "Tailoring agent (capable)  ->  Fidelity Reviewer (cheaper)\n"
-        "User approves / revises / rejects via a separate endpoint",
-        fill=PINK, stroke=PINK_S, fontsize=9, color=PINK_S)
-
-    # Legend
-    ly = 0.05
-    box(ax, 0.10, ly, 0.16, 0.06, "cheaper tier",
-        fill=CHEAPER, stroke=CHEAPER_S, fontsize=8.5, bold=True, color=CHEAPER_S)
-    box(ax, 0.27, ly, 0.16, 0.06, "capable tier",
-        fill=CAPABLE, stroke=CAPABLE_S, fontsize=8.5, bold=True, color=CAPABLE_S)
-    box(ax, 0.44, ly, 0.16, 0.06, "gate / router",
-        fill=GATE, stroke=GATE_S, fontsize=8.5, bold=True, color=GATE_S)
-    box(ax, 0.61, ly, 0.24, 0.06, "out-of-graph operation",
-        fill=PINK, stroke=PINK_S, fontsize=8.5, bold=True, color=PINK_S)
+    # Subtle frame around the graph panel
+    frame = FancyBboxPatch((0.70, 0.02), 0.28, 0.96,
+                           boxstyle="round,pad=0.005,rounding_size=0.01",
+                           linewidth=1.5, edgecolor=ACCENT, facecolor="none",
+                           transform=f.transFigure, clip_on=False, zorder=10)
+    f.add_artist(frame)
 
     save(f, "diag_v2_agent_graph.png")
 
 
 # ── Run all ───────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
+    # v1 article (blog_draft_patterns_v2.md / Article 2)
     diag_pattern_map()
     diag_p9_cache()
     diag_p10_hitl()
@@ -818,9 +872,7 @@ if __name__ == "__main__":
     diag_p14_minimization()
     diag_p15_routing()
     diag_full_table()
-    # v2 article (blog_v2_article1.md)
-    diag_v2_agent_graph()       # banner
-    diag_v2_foundations()
-    diag_v2_architecture()
-    diag_v2_hitl_evolution()
-    print("\nAll diagrams saved to docs/blog_images/")
+    # v2 article diagrams have moved to D2 source files.
+    # See the comment block above the v2 functions for the regeneration commands.
+    print("\nAll v1-article diagrams saved to docs/blog_images/")
+    print("v2-article diagrams: render via 'd2' against docs/blog_images/diag_v2_*.d2")
