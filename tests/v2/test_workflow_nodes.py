@@ -392,6 +392,47 @@ def test_deep_review_stops_at_max_rounds():
     assert len(result["review_rounds"]) <= MAX_REVIEW_ROUNDS
 
 
+def test_deep_review_runs_jobs_concurrently():
+    """Regression for the ThreadPoolExecutor refactor.
+
+    With 5 selected jobs and a 50 ms sleep in each agent call, sequential would
+    take >= 500 ms (5 jobs * (50 ms critic + 50 ms auditor)). Parallel with 5
+    workers should complete in roughly one job's worth of time. Asserting under
+    300 ms gives a generous margin for CI variance while still failing if the
+    node ever regresses to sequential.
+    """
+    import time
+
+    def _slow_critic_run(workflow_id, context):
+        time.sleep(0.05)
+        return ResumeReview(**_review_result(job_id=context.get("job_id", "job-001")))
+
+    def _slow_auditor_run(workflow_id, context):
+        time.sleep(0.05)
+        return ReviewAudit(**{**_audit_result(score=85, stop=True),
+                              "job_id": context.get("job_id", "job-001")})
+
+    critic = MagicMock(spec=ResumeCritic)
+    critic.run.side_effect = _slow_critic_run
+
+    auditor = MagicMock(spec=ReviewAuditor)
+    auditor.run.side_effect = _slow_auditor_run
+
+    jobs = [_make_job(f"job-{i:03d}") for i in range(1, 6)]
+    state = _base_state(selected_jobs=jobs, scored_jobs=jobs)
+    node = make_deep_review_node(critic, auditor, _review_repo(), _obs())
+
+    start = time.monotonic()
+    result = node(state)
+    elapsed = time.monotonic() - start
+
+    assert len(result["review_rounds"]) == 5, "expected one round per job"
+    assert elapsed < 0.3, (
+        f"deep_review took {elapsed:.3f}s with 5 jobs * 100ms — looks sequential "
+        f"(should be ~0.1s with 5 parallel workers)"
+    )
+
+
 # ── career_advice ──────────────────────────────────────────────────────────────
 
 def _make_advisor(result: dict | None = None) -> MagicMock:

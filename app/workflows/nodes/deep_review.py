@@ -1,8 +1,17 @@
-"""deep_review node — reflection loop: ResumeCritic + ReviewAuditor per selected job."""
+"""deep_review node — reflection loop: ResumeCritic + ReviewAuditor per selected job.
+
+ADR-054 raised MAX_SELECTED_JOBS from 3 to 10. Each selected job's critic+auditor
+loop is structurally independent of the others, so we fan out across
+_DEEP_REVIEW_WORKERS threads — same template ADR-049 used for score_jobs (75s -> 20s).
+
+LLM budget is pre-flighted before the executor (mirroring score_jobs); worst-case
+per job = MAX_REVIEW_ROUNDS * 2 successful calls (one critic + one auditor per round).
+"""
 from __future__ import annotations
 
 import logging
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 from app.agents.resume_critic import ResumeCritic
@@ -13,17 +22,18 @@ from app.repositories.review_repository import ReviewRepository
 from app.services.observability_service import ObservabilityService
 from app.workflows.limits import (
     AUDIT_QUALITY_THRESHOLD,
+    MAX_LLM_CALLS_PER_RUN,
     MAX_REVIEW_ROUNDS,
     STAGNATION_MIN_IMPROVEMENT,
-    add_llm_call,
+    add_llm_calls_bulk,
     append_error,
-    check_budget,
     get_metrics,
     safe_agent_usage,
-    BudgetExceededError,
 )
 
 logger = logging.getLogger(__name__)
+
+_DEEP_REVIEW_WORKERS = 5
 
 
 def make_deep_review_node(
@@ -41,8 +51,6 @@ def make_deep_review_node(
 
         metrics = get_metrics(state)
         errors = list(state.get("errors") or [])
-        all_rounds: list[dict] = []
-        final_review: dict | None = None
 
         # Build a quick job_id → score dict for context passing
         score_by_job: dict[str, dict] = {}
@@ -51,25 +59,48 @@ def make_deep_review_node(
             if jid:
                 score_by_job[jid] = sj
 
-        for job in selected_jobs:
+        # ── Pre-flight budget cap ──────────────────────────────────────────────
+        # Worst case per job is MAX_REVIEW_ROUNDS * 2 successful LLM calls
+        # (critic + auditor each round). Most jobs stop earlier via stop_recommendation
+        # / threshold / stagnation, so this is a conservative reservation.
+        calls_used = metrics.get("llm_calls", 0)
+        per_job_worst_case = MAX_REVIEW_ROUNDS * 2
+        max_reviewable = max(0, (MAX_LLM_CALLS_PER_RUN - calls_used) // per_job_worst_case)
+        jobs_to_review = selected_jobs[:max_reviewable]
+        budget_skipped = selected_jobs[max_reviewable:]
+
+        if budget_skipped:
+            logger.warning(
+                "deep_review: budget cap — skipping %d jobs (%d/%d calls used)",
+                len(budget_skipped), calls_used, MAX_LLM_CALLS_PER_RUN,
+            )
+
+        # ── Worker: process one job's full reflection loop ────────────────────
+        def _review_one(job: dict) -> tuple[
+            str,                # job_id
+            list[dict],         # rounds collected for this job
+            dict | None,        # best_review (or None if critic failed first round)
+            list[dict],         # errors collected for this job
+            int,                # successful llm_calls
+            int, int, float,    # tokens_in, tokens_out, cost_usd
+        ]:
             job_id = job.get("job_id", job.get("id", ""))
             job_desc = job.get("job_description", "")
             job_score = score_by_job.get(job_id, {})
 
-            round_num = 1
-            prior_feedback: str | None = None
+            local_rounds: list[dict] = []
+            local_errors: list[dict] = []
             round_scores: list[int] = []
             best_review: dict | None = None
             best_audit_score: int = -1
+            llm_calls = 0
+            tokens_in = tokens_out = 0
+            cost_usd = 0.0
+
+            round_num = 1
+            prior_feedback: str | None = None
 
             while round_num <= MAX_REVIEW_ROUNDS:
-                # ── Budget check ──────────────────────────────────────────
-                try:
-                    check_budget({"run_metrics": metrics})
-                except BudgetExceededError:
-                    logger.warning("deep_review: budget exhausted at round %d for %s", round_num, job_id)
-                    break
-
                 # ── ResumeCritic ──────────────────────────────────────────
                 try:
                     review = resume_critic.run(workflow_id, {
@@ -82,23 +113,21 @@ def make_deep_review_node(
                         "prior_audit_feedback": prior_feedback,
                         "review_round": round_num,
                     })
-                    _ti, _to, _cost = safe_agent_usage(resume_critic)
-                    metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
+                    ti, to, cost = safe_agent_usage(resume_critic)
+                    llm_calls += 1
+                    tokens_in += ti; tokens_out += to; cost_usd += cost
                 except (LLMProviderError, RuntimeError) as exc:
-                    logger.warning("deep_review: critic failed for %s round %d: %s", job_id, round_num, exc)
-                    errors = append_error({"errors": errors}, "deep_review", "critic_failed",
-                                         str(exc), recoverable=True)
-                    # Mark job and move to next — no usable review for this job
+                    logger.warning("deep_review: critic failed for %s round %d: %s",
+                                   job_id, round_num, exc)
+                    local_errors.append({
+                        "step": "deep_review", "error_type": "critic_failed",
+                        "message": str(exc), "recoverable": True,
+                        "occurred_at": utcnow_iso(), "suggested_action": None,
+                    })
                     job["status"] = "review_failed"
                     break
 
                 # ── ReviewAuditor ─────────────────────────────────────────
-                try:
-                    check_budget({"run_metrics": metrics})
-                except BudgetExceededError:
-                    best_review = review.model_dump()
-                    break
-
                 try:
                     audit = review_auditor.run(workflow_id, {
                         "job_id": job_id,
@@ -109,16 +138,21 @@ def make_deep_review_node(
                         "review_round": round_num,
                         "max_rounds": MAX_REVIEW_ROUNDS,
                     })
-                    _ti, _to, _cost = safe_agent_usage(review_auditor)
-                    metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
+                    ti, to, cost = safe_agent_usage(review_auditor)
+                    llm_calls += 1
+                    tokens_in += ti; tokens_out += to; cost_usd += cost
                 except (LLMProviderError, RuntimeError) as exc:
-                    logger.warning("deep_review: auditor failed for %s round %d: %s", job_id, round_num, exc)
-                    errors = append_error({"errors": errors}, "deep_review", "auditor_failed",
-                                         str(exc), recoverable=True)
+                    logger.warning("deep_review: auditor failed for %s round %d: %s",
+                                   job_id, round_num, exc)
+                    local_errors.append({
+                        "step": "deep_review", "error_type": "auditor_failed",
+                        "message": str(exc), "recoverable": True,
+                        "occurred_at": utcnow_iso(), "suggested_action": None,
+                    })
                     best_review = review.model_dump()
                     break
 
-                # ── Persist round ─────────────────────────────────────────
+                # ── Persist round (SQLite per-call connection — thread-safe) ─
                 try:
                     review_repo.create_round(
                         str(uuid.uuid4()), workflow_id, job_id,
@@ -128,15 +162,14 @@ def make_deep_review_node(
                 except Exception as exc:
                     logger.warning("deep_review: persist round failed: %s", exc)
 
-                round_entry = {
+                local_rounds.append({
                     "round_number": round_num,
                     "job_id": job_id,
                     "critic_output": review.model_dump(),
                     "audit_output": audit.model_dump(),
                     "audit_score": audit.audit_score,
                     "stop_reason": audit.stop_reason,
-                }
-                all_rounds.append(round_entry)
+                })
                 round_scores.append(audit.audit_score)
 
                 if audit.audit_score > best_audit_score:
@@ -153,19 +186,16 @@ def make_deep_review_node(
                 if len(round_scores) >= 2:
                     improvement = round_scores[-1] - round_scores[-2]
                     if improvement < STAGNATION_MIN_IMPROVEMENT:
-                        logger.info("deep_review: stagnation detected for %s (improvement=%d)", job_id, improvement)
+                        logger.info("deep_review: stagnation detected for %s (improvement=%d)",
+                                    job_id, improvement)
                         break
 
                 instructions = audit.recommended_revision_instructions
                 prior_feedback = "\n".join(instructions) if instructions else None
                 round_num += 1
 
-            # Use last computed review if auditor never ran (critic-only round)
-            if best_review is None and round_num == 1:
-                pass  # no review produced — job already marked review_failed
-
+            # Persist the final (best) review for this job
             if best_review is not None:
-                final_review = best_review
                 try:
                     review_repo.create_review(
                         str(uuid.uuid4()), workflow_id, job_id,
@@ -173,6 +203,58 @@ def make_deep_review_node(
                     )
                 except Exception as exc:
                     logger.warning("deep_review: persist final review failed: %s", exc)
+
+            return (job_id, local_rounds, best_review, local_errors,
+                    llm_calls, tokens_in, tokens_out, cost_usd)
+
+        # ── Fan out across _DEEP_REVIEW_WORKERS threads ───────────────────────
+        all_rounds: list[dict] = []
+        best_review_by_job: dict[str, dict] = {}
+        total_llm_calls = 0
+        total_tokens_in = 0
+        total_tokens_out = 0
+        total_cost_usd = 0.0
+
+        with ThreadPoolExecutor(max_workers=_DEEP_REVIEW_WORKERS) as executor:
+            future_to_job = {executor.submit(_review_one, job): job for job in jobs_to_review}
+            for future in as_completed(future_to_job):
+                try:
+                    (job_id, rounds, best_review, job_errors,
+                     llm_calls, ti, to, cost) = future.result()
+                except Exception as exc:
+                    job = future_to_job[future]
+                    job_id = job.get("job_id", job.get("id", ""))
+                    logger.warning("deep_review: worker crashed for %s: %s", job_id, exc)
+                    errors = append_error(
+                        {"errors": errors}, "deep_review", "worker_crash",
+                        str(exc), recoverable=True,
+                    )
+                    continue
+
+                all_rounds.extend(rounds)
+                if best_review is not None:
+                    best_review_by_job[job_id] = best_review
+                errors.extend(job_errors)
+                total_llm_calls += llm_calls
+                total_tokens_in += ti
+                total_tokens_out += to
+                total_cost_usd += cost
+
+        # Pick final_review deterministically: walk selected_jobs in input order
+        # and choose the LAST job that has a best_review. This preserves the
+        # "last writer wins" semantics of the previous sequential implementation.
+        final_review: dict | None = None
+        for job in jobs_to_review:
+            jid = job.get("job_id", job.get("id", ""))
+            if jid in best_review_by_job:
+                final_review = best_review_by_job[jid]
+
+        metrics = add_llm_calls_bulk(
+            metrics, total_llm_calls,
+            tokens_in=total_tokens_in,
+            tokens_out=total_tokens_out,
+            cost_usd=total_cost_usd,
+        )
 
         return {
             "review_rounds": all_rounds,

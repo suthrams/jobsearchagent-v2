@@ -4,6 +4,19 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-05-03
+
+### Performance — deep_review now processes selected jobs concurrently
+
+- `app/workflows/nodes/deep_review.py` refactored from a sequential `for job in selected_jobs:` loop to a `ThreadPoolExecutor(max_workers=5)` fan-out, mirroring the ADR-049 template that score_jobs uses.
+- Estimated ~4× wall-clock speedup at `MAX_SELECTED_JOBS = 10` (ADR-054). Critical for daily use since deep review is now the dominant cost in a full run.
+- Pre-flight budget cap: `(MAX_LLM_CALLS_PER_RUN - calls_used) // (MAX_REVIEW_ROUNDS * 2)` jobs reviewed; the rest are budget-skipped (matches score_jobs's safety pattern).
+- Final-review selection deterministic: walk `selected_jobs` in input order, pick the last `best_review` — preserves the previous "last writer wins" semantics in spite of nondeterministic worker completion order.
+- New regression test `test_deep_review_runs_jobs_concurrently` in `tests/v2/test_workflow_nodes.py` locks in concurrency: 5 jobs × 100ms agent calls must complete in <300ms (would be 500ms+ sequential). 450 tests pass total.
+- Surfaced by the `/performance-optimization` skill applied to the file.
+
+---
+
 ## 2026-05-02
 
 ### Fixed — Tailoring drafts rejected when Claude omits narrative-summary fields

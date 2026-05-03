@@ -388,7 +388,9 @@ v2: [job1] [job2] ... [job10]              ×5 parallel workers
 
 **Tradeoff:** v1 was more token-efficient (one call, 10 jobs). v2 uses more calls but produces higher-quality per-job scores because the Research Agent enriches each job before scoring.
 
-**References:** ADR-049 · ADR-039
+**Extended to deep_review (post-9):** The `deep_review` node uses the same template — a `_review_one(job)` worker that handles one job's full critic+auditor reflection loop, dispatched across `_DEEP_REVIEW_WORKERS=5` threads via `ThreadPoolExecutor` + `as_completed`. Estimated ~4× wall-clock speedup at `MAX_SELECTED_JOBS=10` (ADR-054). Budget is pre-flighted at `MAX_REVIEW_ROUNDS * 2` calls per job (worst case). Final-review semantics preserved: walk `selected_jobs` in input order and pick the last best_review (matches the previous "last writer wins" behaviour).
+
+**References:** ADR-049 · ADR-039 · ADR-054
 
 ---
 
