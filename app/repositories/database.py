@@ -106,6 +106,9 @@ CREATE TABLE IF NOT EXISTS tailored_resumes (
     job_id TEXT NOT NULL,
     resume_id TEXT NOT NULL,
     tailored_json TEXT NOT NULL,
+    fidelity_review_json TEXT,
+    decision TEXT,
+    decided_at TEXT,
     approved INTEGER DEFAULT 0,
     created_at TEXT NOT NULL
 );
@@ -254,6 +257,16 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             conn.execute("ALTER TABLE resumes ADD COLUMN raw_text_hash TEXT")
         except Exception:
             pass  # column already exists
+        # Migration: tailored_resumes columns added when on-demand tailoring shipped
+        for col_ddl in (
+            "ALTER TABLE tailored_resumes ADD COLUMN fidelity_review_json TEXT",
+            "ALTER TABLE tailored_resumes ADD COLUMN decision TEXT",
+            "ALTER TABLE tailored_resumes ADD COLUMN decided_at TEXT",
+        ):
+            try:
+                conn.execute(col_ddl)
+            except Exception:
+                pass  # column already exists
 
 
 def purge_old_data(db_path: Path = DEFAULT_DB_PATH, config: dict | None = None) -> dict[str, int]:

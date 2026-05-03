@@ -99,7 +99,10 @@ def make_tailoring_node(
         fidelity_dict = fidelity.model_dump()
 
         try:
-            tailoring_repo.create(str(uuid.uuid4()), workflow_id, job_id, draft_dict)
+            tailoring_repo.create(
+                str(uuid.uuid4()), workflow_id, job_id, resume_id, draft_dict,
+                fidelity_review=fidelity_dict,
+            )
         except Exception as exc:
             logger.warning("tailoring: persist failed: %s", exc)
 

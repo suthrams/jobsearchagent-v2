@@ -30,6 +30,7 @@ import yaml
 import app.ui.api_client as api
 from app.services.constraint_analyzer import analyze, summary_metrics
 from app.services.cost_breakdown import compute_breakdown
+from app.workflows.limits import MAX_LLM_CALLS_PER_RUN
 from app.ui.db_reader import (
     load_agent_events,
     load_deep_review_results,
@@ -267,6 +268,110 @@ def _get_config_cached() -> dict:
                                              "protected_keys": [],
                                              "_offline_reason": str(exc)}
     return st.session_state.config_cache
+
+
+_CLAIM_BADGE = {"reword": "🟦 reword", "emphasize": "🟩 emphasize", "gap": "🟧 gap"}
+_FIDELITY_RISK_BADGE = {"low": "🟢 low risk", "medium": "🟡 medium risk", "high": "🔴 high risk"}
+_FIDELITY_STATUS_BADGE = {"pass": "🟢 fidelity pass", "needs_revision": "🟡 needs revision",
+                          "fail": "🔴 fidelity fail"}
+_DECISION_BADGE = {"approve": "🟢 approved", "revise": "🟡 needs revision", "reject": "🔴 rejected"}
+
+
+def _render_tailored_bullets(label: str, bullets: list) -> None:
+    if not bullets:
+        return
+    st.markdown(f"**{label}**")
+    for i, b in enumerate(bullets):
+        if not isinstance(b, dict):
+            continue
+        claim = b.get("claim_type") or "reword"
+        risk = b.get("fidelity_risk") or "low"
+        st.markdown(
+            f"_Suggestion {i + 1}_  ·  "
+            f"{_CLAIM_BADGE.get(claim, claim)}  ·  "
+            f"{_FIDELITY_RISK_BADGE.get(risk, risk)}"
+        )
+        c1, c2 = st.columns(2)
+        c1.markdown("_Original_")
+        c1.markdown(f"> {b.get('original_text') or '_(none — net-new line)_'}")
+        c2.markdown("_Suggested_")
+        c2.markdown(f"> {b.get('suggested_text') or '—'}")
+        ev = b.get("supporting_evidence") or ""
+        if ev:
+            st.caption(f"📎 Evidence from your resume: _{ev}_")
+        unsupported = b.get("unsupported_claims") or []
+        if unsupported:
+            for u in unsupported:
+                st.warning(f"Unsupported claim: {u}")
+        st.markdown("")
+
+
+def _render_tailoring_card(t: dict, on_decision) -> None:
+    """Render one tailoring draft. on_decision(tailoring_id, choice) is invoked when
+    one of the decision buttons is clicked."""
+    tid = t.get("tailoring_id") or t.get("id") or ""
+    draft = t.get("tailored") or {}
+    fidelity = t.get("fidelity_review") or {}
+    decision = t.get("decision")
+
+    # Header row: status badges
+    if decision:
+        st.markdown(f"### {_DECISION_BADGE.get(decision, decision)}  ·  `{tid[:8]}…`")
+    else:
+        f_status = (fidelity or {}).get("overall_fidelity_status", "unknown")
+        rec = (fidelity or {}).get("approval_recommendation")
+        head = _FIDELITY_STATUS_BADGE.get(f_status, f"fidelity: {f_status}")
+        if rec:
+            head += f"  ·  recommended: **{rec}**"
+        st.markdown(f"### {head}  ·  `{tid[:8]}…`")
+    st.caption(f"Created `{_fmt_ts(t.get('created_at'))}`"
+               + (f"  ·  Decided `{_fmt_ts(t.get('decided_at'))}`" if t.get("decided_at") else ""))
+
+    # Fidelity flags
+    flag_lines = []
+    for fk, flabel in (
+        ("unsupported_claims", "Unsupported claims"),
+        ("fabricated_metrics", "Fabricated metrics"),
+        ("inflated_scope_flags", "Inflated scope"),
+        ("unsupported_technology_flags", "Unsupported tech"),
+        ("unsupported_certification_flags", "Unsupported certifications"),
+        ("required_removals", "Must remove"),
+        ("required_revisions", "Must revise"),
+    ):
+        items = (fidelity or {}).get(fk) or []
+        if items:
+            flag_lines.append((flabel, items))
+    if flag_lines:
+        with st.expander("Fidelity flags", expanded=False):
+            for label, items in flag_lines:
+                st.markdown(f"**{label}**")
+                for x in items:
+                    st.markdown(f"- {x}")
+
+    # Per-section diffs
+    _render_tailored_bullets("Summary suggestions", draft.get("summary_suggestions") or [])
+    _render_tailored_bullets("Experience bullet suggestions",
+                             draft.get("experience_bullet_suggestions") or [])
+    skills = draft.get("skills_section_suggestions") or []
+    if skills:
+        st.markdown("**Skills suggestions** _(additions to your existing skills section)_")
+        for s in skills:
+            st.markdown(f"- {s}")
+    if draft.get("overall_tailoring_notes"):
+        st.markdown(f"**Notes:** {draft['overall_tailoring_notes']}")
+    if draft.get("fidelity_risk_summary"):
+        st.caption(f"Risk summary: {draft['fidelity_risk_summary']}")
+
+    # Decision buttons
+    if not decision and tid:
+        st.markdown("---")
+        b1, b2, b3 = st.columns(3)
+        if b1.button("✅ Approve", key=f"tail_app_{tid}"):
+            on_decision(tid, "approve")
+        if b2.button("✏️ Request revision", key=f"tail_rev_{tid}"):
+            on_decision(tid, "revise")
+        if b3.button("🚫 Reject", key=f"tail_rej_{tid}"):
+            on_decision(tid, "reject")
 
 
 def render_track_table(df: pd.DataFrame, score_col: str, min_score: int) -> None:
@@ -680,6 +785,64 @@ elif view == "Workflow Detail":
                 except Exception:
                     pass
 
+    # ── Resume Tailoring (on-demand per job) ──────────────────────────────────
+    st.markdown("---")
+    st.subheader("Resume Tailoring")
+    st.caption(
+        "On-demand: pick a deep-reviewed job and generate evidence-bound "
+        "section suggestions. Every suggestion cites the original line in your resume; "
+        "missing experience is labelled as a gap, never rewritten as if present."
+    )
+
+    selected_jobs_state = state.get("selected_jobs") or []
+    if not selected_jobs_state:
+        st.info("No deep-reviewed jobs in this run — tailoring needs the per-job critic + advice context. "
+                "Lower the threshold or broaden the search to qualify more jobs.")
+    else:
+        try:
+            tail_index = api.list_tailorings(wf_id).get("tailorings") or []
+        except Exception as exc:
+            st.error(f"Could not load existing tailorings: {exc}")
+            tail_index = []
+
+        by_job: dict[str, list[dict]] = {}
+        for t in tail_index:
+            by_job.setdefault(t.get("job_id", ""), []).append(t)
+
+        def _decide(tid: str, choice: str) -> None:
+            try:
+                api.submit_tailoring_decision(tid, choice)
+                st.success(f"Decision saved: {choice}")
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Decision failed: {exc}")
+
+        for sj in selected_jobs_state:
+            jid = sj.get("job_id") or sj.get("id") or ""
+            if not jid:
+                continue
+            jtitle = sj.get("title") or "(untitled)"
+            jcompany = sj.get("company") or ""
+            existing = by_job.get(jid, [])
+            label = f"**{jtitle}** @ {jcompany}  ·  job `{jid[:8]}…`"
+            if existing:
+                label += f"  ·  {len(existing)} draft(s)"
+            with st.expander(label, expanded=False):
+                trig_col, _ = st.columns([1, 4])
+                if trig_col.button("✨ Generate new draft", key=f"trig_tail_{jid}"):
+                    with st.spinner("Tailoring + fidelity review…"):
+                        try:
+                            api.trigger_tailoring(wf_id, jid)
+                            st.rerun()
+                        except Exception as exc:
+                            st.error(f"Tailoring failed: {exc}")
+                if not existing:
+                    st.caption("No drafts yet for this job. Click **Generate new draft** to create one.")
+                else:
+                    for t in existing:
+                        st.markdown("---")
+                        _render_tailoring_card(t, _decide)
+
     # ── Settings used for this run ────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Settings used for this run")
@@ -1091,7 +1254,7 @@ elif view == "Live Run Monitor":
     metrics = resp.get("run_metrics") or {}
     if metrics:
         m1, m2, m3 = st.columns(3)
-        m1.metric("LLM calls", f"{metrics.get('llm_calls', 0)} / 100")
+        m1.metric("LLM calls", f"{metrics.get('llm_calls', 0)} / {MAX_LLM_CALLS_PER_RUN}")
         m2.metric("Est. cost", f"${metrics.get('estimated_cost_usd', 0):.4f}")
         m3.metric("Errors", len(resp.get("errors") or []))
 

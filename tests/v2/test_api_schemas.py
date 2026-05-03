@@ -10,6 +10,7 @@ from app.api.schemas.requests import (
     StartWorkflowRequest,
     TailoringDecision,
 )
+from app.workflows.limits import MAX_SELECTED_JOBS
 
 
 # ── StartWorkflowRequest ──────────────────────────────────────────────────────
@@ -51,19 +52,21 @@ def test_job_selection_decision_empty_list_fails():
 
 
 def test_job_selection_decision_too_many_jobs_fails():
+    too_many = [f"job-{i:03d}" for i in range(1, MAX_SELECTED_JOBS + 2)]
     with pytest.raises(ValidationError):
         JobSelectionDecision(
             decision_type="select_jobs_for_deep_review",
-            selected_job_ids=["job-001", "job-002", "job-003", "job-004"],
+            selected_job_ids=too_many,
         )
 
 
-def test_job_selection_decision_max_exactly_three():
+def test_job_selection_decision_max_at_cap():
+    at_cap = [f"job-{i:03d}" for i in range(1, MAX_SELECTED_JOBS + 1)]
     dec = JobSelectionDecision(
         decision_type="select_jobs_for_deep_review",
-        selected_job_ids=["job-001", "job-002", "job-003"],
+        selected_job_ids=at_cap,
     )
-    assert len(dec.selected_job_ids) == 3
+    assert len(dec.selected_job_ids) == MAX_SELECTED_JOBS
 
 
 # ── TailoringDecision ─────────────────────────────────────────────────────────

@@ -35,18 +35,22 @@ runs in a background thread pool; callers poll `GET /workflows/{id}` to track
 progress.
 
 ```
-POST /workflows                 → start a run (202, async)
-GET  /workflows/{id}            → poll status
-POST /workflows/{id}/retry      → re-submit a workflow after a server restart (202)
-POST /workflows/{id}/decisions  → submit a HITL decision (only used for tailoring approval)
-GET  /workflows/{id}/jobs       → list scored jobs
-GET  /workflows/{id}/report     → fetch the final report
-GET  /config                    → effective merged config + protected key list
-PUT  /config                    → upsert one user-config override (rejects protected keys)
+POST /workflows                                → start a run (202, async)
+GET  /workflows/{id}                           → poll status
+POST /workflows/{id}/retry                     → re-submit a workflow after a server restart (202)
+POST /workflows/{id}/decisions                 → submit an in-graph HITL decision (legacy tailoring approval path)
+GET  /workflows/{id}/jobs                      → list scored jobs
+GET  /workflows/{id}/report                    → fetch the final report
+POST /workflows/{wf}/jobs/{job}/tailor         → run on-demand tailoring + fidelity for one job (200)
+GET  /workflows/{wf}/tailorings                → list tailoring drafts for a workflow
+GET  /tailorings/{id}                          → fetch a single tailoring draft
+POST /tailorings/{id}/decision                 → record approve / revise / reject for a draft
+GET  /config                                   → effective merged config + protected key list
+PUT  /config                                   → upsert one user-config override (rejects protected keys)
 ```
 
 > **Behaviour note.** The previous `select_jobs_for_deep_review` HITL pause has
-> been removed. The graph now auto-selects up to `MAX_SELECTED_JOBS` (3) top
+> been removed. The graph now auto-selects up to `MAX_SELECTED_JOBS` (10) top
 > scoring jobs where any track score (technical / architecture / leadership)
 > meets `effective_config.scoring.min_match_score` (default 75). Workflows run
 > end-to-end without any required user input. The `POST /decisions` endpoint
@@ -104,7 +108,7 @@ All error responses share this structure:
 | 409 | `workflow_not_completed` | Report requested but workflow not yet `completed` |
 | 422 | `decision_type_mismatch` | `decision_type` in body does not match the active interrupt |
 | 422 | `invalid_job_ids` | One or more `selected_job_ids` are not in the eligible set |
-| 422 | `too_many_jobs_selected` | More than `MAX_SELECTED_JOBS` (3) IDs submitted |
+| 422 | `too_many_jobs_selected` | More than `MAX_SELECTED_JOBS` (10) IDs submitted |
 | 422 | _(Pydantic)_ | Request body fails schema validation |
 
 ---
@@ -719,11 +723,11 @@ These limits are enforced by the orchestrator and cannot be overridden at runtim
 | Constant | Value | Enforced where |
 |----------|-------|----------------|
 | `MAX_JOBS_PER_RUN` | 10 | `discover_jobs` node — excess jobs are silently dropped |
-| `MAX_SELECTED_JOBS` | 3 | Decision endpoint (422) + `JobSelectionDecision` schema |
+| `MAX_SELECTED_JOBS` | 10 | Decision endpoint (422) + `JobSelectionDecision` schema |
 | `MAX_RESEARCH_STEPS` | 2 | ResearchAgent ReAct loop |
 | `MAX_REVIEW_ROUNDS` | 3 | `deep_review` reflection loop |
 | `MAX_LLM_CALLS_PER_JOB` | 10 | Per-job budget check in scoring loop |
-| `MAX_LLM_CALLS_PER_RUN` | 100 | `check_budget()` called before every agent invocation |
+| `MAX_LLM_CALLS_PER_RUN` | 200 | `check_budget()` called before every agent invocation |
 
 When `MAX_LLM_CALLS_PER_RUN` is hit, remaining unscored jobs are marked `"skipped"`
 and the workflow proceeds to `await_job_selection` with whatever jobs are already scored.

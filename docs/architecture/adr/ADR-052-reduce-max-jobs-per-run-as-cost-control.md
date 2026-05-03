@@ -1,7 +1,7 @@
 # ADR-052: Reduce MAX_JOBS_PER_RUN as the Primary Volume Cost Control Lever
 
 ## Status
-Accepted
+Accepted (rationale partially superseded by ADR-054 — `MAX_SELECTED_JOBS` is no longer 3, so the "10 jobs is sufficient to find 3 strong matches" framing below no longer applies. The decision to keep `MAX_JOBS_PER_RUN = 10` still stands as a discovery-side cost lever.)
 
 ## Context
 Phase 9 cost analysis. Research + Scoring cost scales linearly with jobs per run. At MAX_JOBS_PER_RUN = 20, a full run involved 20 Research Agent calls and 20 Scoring Agent calls before deep review even began. Most of the additional jobs beyond the top 3–5 matches never influenced any decision.

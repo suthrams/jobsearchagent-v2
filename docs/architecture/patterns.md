@@ -237,15 +237,15 @@ v2: ChatAnthropic.with_structured_output(schema) → Pydantic always
 
 ```python
 MAX_JOBS_PER_RUN       = 10   # volume cap — halved in Phase 9
-MAX_SELECTED_JOBS      = 3
+MAX_SELECTED_JOBS      = 10   # raised in ADR-054 — every qualifying job reaches deep review
 MAX_RESEARCH_STEPS     = 2    # ReAct loop cap
 MAX_REVIEW_ROUNDS      = 3    # reflection loop cap
-MAX_LLM_CALLS_PER_RUN  = 100  # global budget
+MAX_LLM_CALLS_PER_RUN  = 200  # global budget — raised in ADR-054
 ```
 
 **Why it matters:** A single misconfigured or adversarial run cannot spend unbounded API budget. Cost is first-class, not an afterthought.
 
-**References:** ADR-041 · ADR-052
+**References:** ADR-041 · ADR-052 · ADR-054
 
 ---
 

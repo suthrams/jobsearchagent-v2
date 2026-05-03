@@ -93,7 +93,7 @@ Each job is scored against your resume independently on three career tracks.
 - Only tracks enabled in `config.yaml` are scored
 
 ### Score-driven routing
-After scoring, jobs are ranked and the top `MAX_SELECTED_JOBS = 3` are eligible for deep review. The HITL checkpoint asks the user to confirm which jobs to deep-review before any further LLM calls are made.
+After scoring, every job whose best track score (`max(technical_score, architecture_score, leadership_score)`) meets `effective_config.scoring.min_match_score` (default 75) auto-advances to deep review, up to `MAX_SELECTED_JOBS = 10` (= `MAX_JOBS_PER_RUN`). Job-selection HITL was removed in the v2 usability refactor; the cap was raised from 3 to 10 in ADR-054.
 
 ---
 

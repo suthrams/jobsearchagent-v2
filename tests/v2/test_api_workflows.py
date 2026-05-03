@@ -395,12 +395,14 @@ def test_too_many_jobs_selected(client, mock_graph):
     except Exception:
         pass
 
+    from app.workflows.limits import MAX_SELECTED_JOBS
+    too_many = [f"job-{i:03d}" for i in range(1, MAX_SELECTED_JOBS + 2)]
     resp = client.post(
         f"/workflows/{thread_id}/decisions",
         json={
             "decision_type": "select_jobs_for_deep_review",
-            "selected_job_ids": ["job-001", "job-002", "job-003", "job-004"],
+            "selected_job_ids": too_many,
         },
     )
-    # Pydantic enforces max_length=3 before the route handler runs
+    # Pydantic enforces max_length=MAX_SELECTED_JOBS before the route handler runs
     assert resp.status_code == 422

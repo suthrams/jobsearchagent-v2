@@ -125,13 +125,13 @@ All workflows must enforce limits.
 
 ```text
 MAX_JOBS_PER_RUN = 10   # reduced from 20 in Phase 9
-MAX_SELECTED_JOBS = 3
+MAX_SELECTED_JOBS = 10  # raised from 3 in ADR-054 — every qualifying job reaches deep review
 
 MAX_RESEARCH_STEPS = 2
 MAX_REVIEW_ROUNDS = 3
 
 MAX_LLM_CALLS_PER_JOB = 10
-MAX_LLM_CALLS_PER_RUN = 100  # raised from 50 in Phase 9
+MAX_LLM_CALLS_PER_RUN = 200  # raised from 100 in ADR-054 to accommodate up to 10 deep-reviewed jobs
 
 MAX_COST_PER_RUN = configurable
 ```

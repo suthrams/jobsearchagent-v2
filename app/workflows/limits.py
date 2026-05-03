@@ -10,11 +10,11 @@ from app.repositories.database import utcnow_iso
 # ── Execution limits ──────────────────────────────────────────────────────────
 
 MAX_JOBS_PER_RUN = 10
-MAX_SELECTED_JOBS = 3
+MAX_SELECTED_JOBS = 10
 MAX_RESEARCH_STEPS = 2
 MAX_REVIEW_ROUNDS = 3
 MAX_LLM_CALLS_PER_JOB = 10
-MAX_LLM_CALLS_PER_RUN = 100
+MAX_LLM_CALLS_PER_RUN = 200
 
 # ── Quality thresholds ────────────────────────────────────────────────────────
 

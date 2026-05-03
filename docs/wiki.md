@@ -67,10 +67,10 @@
 | Limit | Value | Purpose |
 |---|---|---|
 | `MAX_JOBS_PER_RUN` | 10 | Volume cap — primary cost lever (reduced from 20 in Phase 9) |
-| `MAX_SELECTED_JOBS` | 3 | Deep review candidates |
+| `MAX_SELECTED_JOBS` | 10 | Deep review candidates (raised from 3 in ADR-054 — every qualifying job reaches deep review) |
 | `MAX_RESEARCH_STEPS` | 2 | ReAct loop cap on Research Agent |
 | `MAX_REVIEW_ROUNDS` | 3 | Reflection loop cap |
-| `MAX_LLM_CALLS_PER_RUN` | 100 | Global run budget |
+| `MAX_LLM_CALLS_PER_RUN` | 200 | Global run budget (raised from 100 in ADR-054 to accommodate up to 10 deep-reviewed jobs) |
 
 ---
 

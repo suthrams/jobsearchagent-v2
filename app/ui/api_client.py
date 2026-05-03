@@ -99,3 +99,41 @@ def get_report(workflow_id: str) -> dict:
     r = httpx.get(f"{BASE_URL}/workflows/{workflow_id}/report", timeout=_TIMEOUT_GET)
     r.raise_for_status()
     return r.json()
+
+
+# ── On-demand resume tailoring ───────────────────────────────────────────────
+
+_TIMEOUT_TAILOR = 60.0  # tailoring + fidelity round-trip can take 10-20s with cold caches
+
+
+def trigger_tailoring(workflow_id: str, job_id: str) -> dict:
+    """Run tailoring + fidelity for one (workflow, job). Synchronous; returns the draft."""
+    r = httpx.post(
+        f"{BASE_URL}/workflows/{workflow_id}/jobs/{job_id}/tailor",
+        timeout=_TIMEOUT_TAILOR,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def list_tailorings(workflow_id: str) -> dict:
+    r = httpx.get(f"{BASE_URL}/workflows/{workflow_id}/tailorings", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
+def get_tailoring(tailoring_id: str) -> dict:
+    r = httpx.get(f"{BASE_URL}/tailorings/{tailoring_id}", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
+def submit_tailoring_decision(tailoring_id: str, approval: str) -> dict:
+    """approval ∈ {approve, revise, reject}."""
+    r = httpx.post(
+        f"{BASE_URL}/tailorings/{tailoring_id}/decision",
+        json={"approval": approval},
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()

@@ -16,6 +16,7 @@ from app.api.dependencies import build_and_cache_graph, cleanup_graph, get_graph
 from app.api.routers.config import router as config_router
 from app.api.routers.jobs import router as jobs_router
 from app.api.routers.reports import router as reports_router
+from app.api.routers.tailoring import router as tailoring_router
 from app.api.routers.workflows import router as workflows_router
 
 
@@ -41,3 +42,4 @@ app.include_router(workflows_router)
 app.include_router(jobs_router)
 app.include_router(reports_router)
 app.include_router(config_router)
+app.include_router(tailoring_router)

@@ -200,6 +200,7 @@ Typical cost per run (10 jobs, mix of tracks):
 |---|---|
 | Discovery + research + scoring only | ~$0.02–0.05 |
 | Full run with deep review (3 high-match jobs) | ~$0.05–0.15 |
+| Full run with deep review (10 high-match jobs) | ~$0.15–0.40 |
 | With tailoring for one job | ~$0.10–0.25 |
 
 Cost is tracked per run in the `llm_calls` observability table and surfaced in the UI.
@@ -209,10 +210,10 @@ Cost is tracked per run in the `llm_calls` observability table and surfaced in t
 | Limit | Value |
 |---|---|
 | MAX_JOBS_PER_RUN | 10 |
-| MAX_SELECTED_JOBS | 3 |
+| MAX_SELECTED_JOBS | 10 |
 | MAX_RESEARCH_STEPS | 2 |
 | MAX_REVIEW_ROUNDS | 3 |
-| MAX_LLM_CALLS_PER_RUN | 100 |
+| MAX_LLM_CALLS_PER_RUN | 200 |
 
 ---
 

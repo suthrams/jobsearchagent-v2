@@ -50,6 +50,7 @@ from app.workflows.workflow_graph import WorkflowDependencies, build_graph
 logger = logging.getLogger(__name__)
 
 _graph = None
+_deps: WorkflowDependencies | None = None  # populated alongside _graph; routers can read individual components
 _cleanup_fn = None  # called by cleanup_graph() in lifespan teardown
 
 
@@ -420,7 +421,7 @@ def build_and_cache_graph() -> None:
     Phase 7 gate: ANTHROPIC_API_KEY present → real agents + SqliteSaver.
                   Not set → mocked agents + MemorySaver (Phase 6 behaviour, tests pass).
     """
-    global _graph, _cleanup_fn
+    global _graph, _deps, _cleanup_fn
 
     if os.getenv("ANTHROPIC_API_KEY"):
         logger.info("ANTHROPIC_API_KEY detected — starting in live-agent mode (Phase 7)")
@@ -438,6 +439,7 @@ def build_and_cache_graph() -> None:
         _cleanup_fn = None
 
     _graph = build_graph(deps)
+    _deps = deps
     logger.info("Workflow graph built and cached.")
 
 
@@ -456,3 +458,17 @@ def get_graph():
             "Workflow graph not initialised. build_and_cache_graph() must be called at startup."
         )
     return _graph
+
+
+def get_deps() -> WorkflowDependencies:
+    """FastAPI dependency that returns the cached WorkflowDependencies bundle.
+
+    Used by routers that need direct access to a specific agent / repo (e.g. the
+    on-demand tailoring router) without going through the LangGraph state machine.
+    Tests can inject by overriding this dependency with a stub WorkflowDependencies.
+    """
+    if _deps is None:
+        raise RuntimeError(
+            "WorkflowDependencies not initialised. build_and_cache_graph() must be called at startup."
+        )
+    return _deps

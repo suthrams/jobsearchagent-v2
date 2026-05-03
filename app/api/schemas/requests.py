@@ -5,6 +5,8 @@ from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
+from app.workflows.limits import MAX_SELECTED_JOBS
+
 
 class StartWorkflowRequest(BaseModel):
     resume_id: str
@@ -18,7 +20,7 @@ class StartWorkflowRequest(BaseModel):
 
 class JobSelectionDecision(BaseModel):
     decision_type: Literal["select_jobs_for_deep_review"]
-    selected_job_ids: list[str] = Field(min_length=1, max_length=3)
+    selected_job_ids: list[str] = Field(min_length=1, max_length=MAX_SELECTED_JOBS)
 
 
 class TailoringDecision(BaseModel):

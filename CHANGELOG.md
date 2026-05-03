@@ -6,6 +6,32 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-02
 
+### Added — On-demand resume tailoring is now wired up end-to-end
+
+The TailoringAgent and FidelityReviewer have existed since Phase 4 with full evidence-binding semantics (every claim cites the original resume; missing experience labelled as a gap), but they were UI-dark — `state["user_requested_tailoring"]` defaulted to `False` and nothing ever flipped it. This change adds an out-of-graph trigger so any deep-reviewed job can be tailored on demand.
+
+- `app/workflows/nodes/tailoring.py` — fixed latent bug: `tailoring_repo.create()` was called with 4 args; the repo expects 5. Would have exploded the moment the in-graph path actually ran.
+- `app/api/routers/tailoring.py` (new) — four endpoints:
+  - `POST /workflows/{wf}/jobs/{job}/tailor` runs TailoringAgent + FidelityReviewer synchronously, persists the draft, returns `{tailoring_id, tailored, fidelity_review, ...}`.
+  - `GET /workflows/{wf}/tailorings` lists drafts for a workflow.
+  - `GET /tailorings/{id}` fetches one.
+  - `POST /tailorings/{id}/decision` accepts `{approval: approve|revise|reject}`.
+- `app/repositories/tailoring_repository.py` — added `set_decision()`, `list_by_workflow()`, `get_by_id()`. Migration adds `fidelity_review_json`, `decision`, `decided_at` columns to `tailored_resumes` (try/except ALTER TABLE pattern, safe for existing DBs).
+- `app/api/dependencies.py` — exposed `get_deps()` so routers can inject individual agents/repos without rebuilding the graph.
+- `app/ui/streamlit_app.py` — Workflow Detail now has a "Resume Tailoring" section: per-job expander with **✨ Generate new draft**, side-by-side `original → suggested` diffs (with the cited resume evidence under each suggestion), claim-type and fidelity-risk badges, fidelity flag panel, and **Approve / Request revision / Reject** buttons.
+- 9 new tests in `tests/v2/test_tailoring_router.py` covering happy path, evidence-presence invariant, gap-label invariant, missing workflow / resume_profile, decision validation.
+
+The existing in-graph `await_tailoring_approval` interrupt is unchanged; it remains as the path for users who want to set `user_requested_tailoring=True` before a run starts (still no UI surface for that case).
+
+### Changed — Deep review now scales to all qualifying jobs (ADR-054)
+
+- `MAX_SELECTED_JOBS` raised from 3 → 10 in `app/workflows/limits.py` so every job whose best track score meets `effective_config.scoring.min_match_score` advances to the deep review chain. Previously only the top 3 qualifying jobs were processed and the rest were silently truncated (visible only via the `selected_jobs_cap` finding in the Workflow Detail Limits panel).
+- `MAX_LLM_CALLS_PER_RUN` raised from 100 → 200 to absorb the worst-case ~60–80 deep-review LLM calls when all 10 discovered jobs qualify, plus scoring/research overhead.
+- `app/api/schemas/requests.py` — `JobSelectionDecision.selected_job_ids` `max_length` now bound to the `MAX_SELECTED_JOBS` constant instead of the literal `3`.
+- `app/ui/streamlit_app.py` — Live Run Monitor LLM-calls metric now derives the denominator from `MAX_LLM_CALLS_PER_RUN` instead of a hardcoded `100`.
+- `config/config.example.yaml` — `limits.max_selected_jobs` (3 → 10) and `limits.max_llm_calls_per_run` (100 → 200) updated to match the new enforcement constants.
+- ADR-052 status amended to flag that its "10 jobs is sufficient to find 3 strong matches" framing is superseded by ADR-054.
+
 ### Fixed — Stale limit constants
 
 - `app/ui/streamlit_app.py` — LLM calls metric display updated from `/ 50` → `/ 100` to match `MAX_LLM_CALLS_PER_RUN = 100` set in Phase 9

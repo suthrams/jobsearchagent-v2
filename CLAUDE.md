@@ -117,11 +117,11 @@ python -m pytest tests/ -m integration  # run live-API smoke tests
 
 **Execution limits — never exceed without reviewing cost impact**
 - `MAX_JOBS_PER_RUN = 10`
-- `MAX_SELECTED_JOBS = 3`
+- `MAX_SELECTED_JOBS = 10` (raised in ADR-054 — every qualifying job now reaches deep review)
 - `MAX_RESEARCH_STEPS = 2`
 - `MAX_REVIEW_ROUNDS = 3`
 - `MAX_LLM_CALLS_PER_JOB = 10`
-- `MAX_LLM_CALLS_PER_RUN = 100`
+- `MAX_LLM_CALLS_PER_RUN = 200` (raised in ADR-054 to accommodate up to 10 deep-reviewed jobs)
 
 **Orchestration rules**
 - Only the orchestrator updates `WorkflowState` — agents return structured outputs, never mutate state directly
@@ -136,11 +136,13 @@ python -m pytest tests/ -m integration  # run live-API smoke tests
 **Tailoring rules**
 - Every tailored claim must include `supporting_evidence` from the original resume
 - Missing experience is labeled as a gap — never rewritten as if present
-- Fidelity Reviewer must run after every Tailoring Agent call
+- Fidelity Reviewer must run after every Tailoring Agent call (both the in-graph node and the on-demand router enforce this)
+- `tailored_resumes` carries `fidelity_review_json`, `decision`, `decided_at`, `approved` columns. `decision` ∈ {approve, revise, reject}; `approved=1` only when `decision="approve"`
 
 **HITL rules**
 - Job-selection HITL has been removed — the workflow auto-selects qualifying jobs (see Auto-selection rules) and runs end-to-end
 - The `await_tailoring_approval` interrupt + `approve_tailoring` decision endpoint remain in the codebase but are reachable only when `state["user_requested_tailoring"]` is `True` (currently never set by the UI)
+- On-demand tailoring runs OUTSIDE the graph via `app/api/routers/tailoring.py` — `POST /workflows/{wf}/jobs/{job}/tailor` triggers TailoringAgent + FidelityReviewer for any selected job, persists to `tailored_resumes`, and returns the draft. Decisions go to `POST /tailorings/{id}/decision` with approval ∈ {approve, revise, reject}
 - Backend still validates all decisions before resuming workflow; UI never auto-approves tailored outputs or bypasses backend validation
 
 **Auto-selection rules**

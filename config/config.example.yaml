@@ -144,11 +144,11 @@ search:
 # ─── v2 Execution Limits ─────────────────────────────────────────────────────
 # PROTECTED — never overridden by user_config DB entries
 limits:
-  max_selected_jobs: 3
+  max_selected_jobs: 10
   max_research_steps: 2
   max_review_rounds: 3
   max_llm_calls_per_job: 10
-  max_llm_calls_per_run: 100
+  max_llm_calls_per_run: 200
 
 # ─── v2 Scoring Thresholds ───────────────────────────────────────────────────
 # PROTECTED — never overridden by user_config DB entries
