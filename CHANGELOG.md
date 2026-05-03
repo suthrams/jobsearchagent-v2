@@ -6,6 +6,13 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-02
 
+### Fixed — Tailoring drafts rejected when Claude omits narrative-summary fields
+
+The first real on-demand tailoring run failed with a Pydantic ValidationError: Claude returned a draft with usable per-bullet suggestions but omitted `skills_section_suggestions`, `overall_tailoring_notes`, and `fidelity_risk_summary`. The schema marked all three as required, so the entire response was rejected (and the schema-repair pass that followed pushed the request past the HTTP timeout).
+
+- `app/schemas/tailored_resume_draft.py` — those three narrative-summary fields are now tolerant: empty list / empty string defaults. The load-bearing per-bullet fields (`supporting_evidence`, `claim_type`, `fidelity_risk`) remain required, so the fidelity invariants are unchanged.
+- New regression test `test_tailored_resume_draft_summary_fields_optional` in `tests/v2/test_schemas.py` constructs a draft omitting all three to lock the behaviour in.
+
 ### Added — On-demand resume tailoring is now wired up end-to-end
 
 The TailoringAgent and FidelityReviewer have existed since Phase 4 with full evidence-binding semantics (every claim cites the original resume; missing experience labelled as a gap), but they were UI-dark — `state["user_requested_tailoring"]` defaulted to `False` and nothing ever flipped it. This change adds an out-of-graph trigger so any deep-reviewed job can be tailored on demand.

@@ -291,6 +291,32 @@ def test_tailored_bullet_gap_type():
     assert b.claim_type == "gap"
 
 
+def test_tailored_resume_draft_summary_fields_optional():
+    """Claude sometimes omits the narrative-summary fields (skills_section_suggestions,
+    overall_tailoring_notes, fidelity_risk_summary) — those are tolerant by design.
+    Per-bullet fidelity fields stay required and are tested separately above.
+    Regression for the 'tailoring timed out' bug in 2026-05-02."""
+    draft = TailoredResumeDraft(
+        job_id="job-1",
+        resume_id="res-1",
+        experience_bullet_suggestions=[
+            TailoredBullet(
+                original_text="Led platform team.",
+                suggested_text="Led platform team owning Python services for 10M+ users.",
+                supporting_evidence="Resume states 'led platform team for 3 years'.",
+                claim_type="emphasize",
+                fidelity_risk="low",
+            ),
+        ],
+        # skills_section_suggestions, overall_tailoring_notes,
+        # fidelity_risk_summary, summary_suggestions all omitted on purpose
+    )
+    assert draft.skills_section_suggestions == []
+    assert draft.summary_suggestions == []
+    assert draft.overall_tailoring_notes == ""
+    assert draft.fidelity_risk_summary == ""
+
+
 # ─── FidelityReview ──────────────────────────────────────────────────────────
 
 def test_fidelity_review_valid():
