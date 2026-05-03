@@ -235,11 +235,11 @@ A note on cadence. **I am not committing to a fixed publishing rhythm for this s
 
 If you want to dig in:
 
-- **`docs/wiki.md`** — the documentation index. Every markdown file in the project is listed there exactly once. Start here.
-- **`docs/architecture/adr/`** — 56 ADRs. ADR-001 starts the trail.
-- **`docs/architecture/implementation_plan.md`** — the build plan with phase review gates.
-- **`notebooks/`** — seven phase validation notebooks. Phase 7 walks a live agent run end-to-end.
-- **`CHANGELOG.md`** — the running narrative of what changed and why, by date.
+- **[docs/wiki.md](https://github.com/suthrams/jobsearchagent-v2/blob/main/docs/wiki.md)** — the documentation index. Every markdown file in the project is listed there exactly once. Start here.
+- **[docs/architecture/adr/](https://github.com/suthrams/jobsearchagent-v2/tree/main/docs/architecture/adr)** — 56 ADRs. ADR-001 starts the trail.
+- **[docs/architecture/implementation_plan.md](https://github.com/suthrams/jobsearchagent-v2/blob/main/docs/architecture/implementation_plan.md)** — the build plan with phase review gates.
+- **[notebooks/](https://github.com/suthrams/jobsearchagent-v2/tree/main/notebooks)** — seven phase validation notebooks. Phase 7 walks a live agent run end-to-end.
+- **[CHANGELOG.md](https://github.com/suthrams/jobsearchagent-v2/blob/main/CHANGELOG.md)** — the running narrative of what changed and why, by date.
 
 The codebase is at a point where the documentation is the audit trail. If a section of the system is not in the wiki, it is not in the project.
 

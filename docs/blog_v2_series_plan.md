@@ -141,6 +141,106 @@ My first v2 run with all agents active cost more in one pass than my entire v1 w
 
 ---
 
+## Article 9 — Multi-Provider Abstraction: ModelRegistry and Per-Agent Assignment
+
+**Headline:**
+*How to keep your agent code from getting locked to one LLM vendor — and the tradeoff most production teams should not pay*
+
+**Hook:**
+Per-agent provider and model selection sounds like an obvious win until you have run two providers in production for a month. Each one has its own rate limits, retry semantics, output quirks, observability dashboard, and on-call surface. v2 supports it because I wanted to learn the pattern. Here is the pattern, the seam that makes it work, and the honest tradeoff that should shape your default.
+
+**Core content:**
+- The seam: agents depend only on `LLMClient`; ModelRegistry resolves `(provider, model)` per agent and caches one instance per pair (ADR-053). What this lets you change without touching agent code.
+- Per-agent assignment in `app/providers/model_registry.py::DEFAULT_AGENT_ASSIGNMENT` and the user override path via `agents.{name}.{provider, model}` in `user_config`. Restart-to-apply.
+- The two providers: `ClaudeProvider` and `OpenAIProvider` — same `LLMClient` interface, same retry policy (6 attempts, jittered exponential backoff capped at 60s; 429s honor `retry-after` capped at 90s), same `complete_with_usage(...) -> (dict, LLMUsage)` typed return.
+- Where the cost ducks: the prompt cache key is per-provider; switching providers mid-run costs cache hits.
+- The honest tradeoff: doubled rate-limit profiles, doubled retry tuning, doubled failure-mode triage. When per-agent assignment pays back; when it doesn't.
+
+**Length:** 1300–1500 words
+**New patterns introduced:** Provider-Indirect Agent (LLMClient seam), Registry-Resolved Per-Agent Assignment
+
+---
+
+## Article 10 — Heuristics-First, LLM-Fallback for Untrusted External Content
+
+**Headline:**
+*The pattern that turned my custom-URL job scraper into something I trust — without paying for an LLM call on every URL*
+
+**Hook:**
+Users want to paste career-page URLs from anywhere on the web and have the agent process them. That is an open door for cost blow-ups and prompt injection. v2's CustomUrlScraper closes the door with a four-step pipeline that only reaches for the LLM when the heuristics genuinely cannot handle the page.
+
+**Core content:**
+- The pipeline: JSON-LD JobPosting → OpenGraph metadata → article tag → LLM fallback (sonnet) → log-and-skip with the URL recorded in workflow `errors[]`.
+- Why the order matters: structured signals are cheaper, more reliable, and not vulnerable to prompt injection. Falling back to LLM only when heuristics fail keeps the cost curve flat for the typical case.
+- 25-URL hard cap, 30s fetch timeout per URL — never raise without reviewing cost impact.
+- The trust boundary: the system prompt declares custom-URL content as untrusted external data; the same XML-tag isolation pattern from Article 2's Pattern 13 applies.
+- Generalisable: the same four-step structure works for any agent that ingests arbitrary user-supplied URLs, PDFs, or documents.
+
+**Length:** 1200–1400 words
+**New patterns introduced:** Heuristics-First / LLM-Fallback Cascade, Structured-Signal Preference
+
+---
+
+## Article 11 — Hybrid Configuration: YAML Defaults Plus DB User Overrides with Safe-Key Allowlists
+
+**Headline:**
+*Letting users tune your agent without letting them break it: the configuration model behind v2*
+
+**Hook:**
+Once your agent has more than a handful of users, every one of them wants to change something — the threshold, the model, the search criteria, the retention window. Some of those changes are safe; some are catastrophic. The hybrid configuration pattern in v2 (ADR-046) makes the boundary explicit and enforces it at the read path, not the write path.
+
+**Core content:**
+- The two layers: YAML defaults in `config/config.yaml` (gitignored, copied from `config.example.yaml`) and per-user overrides in the `user_config` SQLite table.
+- The protected-key allowlist: hard limits, retention windows, prompt definitions are read-only via UI. Users can override `tailoring.style`, `scoring.min_match_score`, `agents.{name}.{provider, model}` and a few others. The Settings UI surfaces only the safe keys.
+- The merge order: YAML → user override → effective config; cap-and-clamp at the read path so a stale user override against a tightened limit does not leak past the cap.
+- Why ConfigService is read at run start, not at every node: snapshotting `effective_config` into `WorkflowState` keeps a run's behavior stable even if the config changes mid-run.
+- Generalisable: the same allowlist pattern fits any LLM app that lets end users tune behavior without exposing the controls that should never be turned.
+
+**Length:** 1300–1500 words
+**New patterns introduced:** Hybrid Configuration with Safe-Key Allowlist, Effective-Config Snapshotting
+
+---
+
+## Article 12 — Testing a Multi-Agent System
+
+**Headline:**
+*How I keep 8 agents and a stateful workflow correct without spending a cent on LLM calls in CI*
+
+**Hook:**
+Most agent test suites either run real LLM calls (slow, expensive, flaky) or mock everything so completely that the test exercises nothing useful. v2's test strategy is neither — and at 456 tests, 1 skipped, the suite catches real regressions on every commit.
+
+**Core content:**
+- The mock-by-API-key-absence pattern (ADR-048): if `ANTHROPIC_API_KEY` is missing, the dependency wiring builds mocked agents with deterministic side effects. Every test runs in mock mode by default.
+- The `@pytest.mark.integration` marker for live-API smoke tests; gated, opt-in, never on CI's hot path.
+- Pydantic schemas as the agent contract: every agent's output is validated at the boundary, so mock and real outputs are interchangeable for downstream nodes.
+- The concurrency invariant test for `score_jobs` and `deep_review`: 5 jobs × 100ms agent calls must complete in <300ms, locking in the ThreadPoolExecutor speedup so a future refactor cannot silently revert it.
+- The repair pattern: how I caught seven phase validation notebooks that had drifted with the codebase, and what the recovery loop looked like (static drift scan → mock-mode execution → cell-level repair → CHANGELOG entry).
+
+**Length:** 1300–1500 words
+**New patterns introduced:** Mock-by-API-Key-Absence, Concurrency Invariant Test, Schema-as-Contract Test
+
+---
+
+## Article 13 — The Strangler Fig: Keeping v1 Productive While Building v2
+
+**Headline:**
+*Why I did not delete v1 — and how the wrapper pattern let v2 borrow what worked*
+
+**Hook:**
+The textbook advice for a v2 rewrite is "strangle the legacy and delete it." The textbook is sometimes wrong. v1 of this agent is still in the repo — not as dead code, but as borrowed components — and v2 is better for it.
+
+**Core content:**
+- The decision (ADR-001 + ADR-044): keep v1 stable, build v2 alongside; reuse what is genuinely valuable, replace what is structurally wrong.
+- What got reused: v1 Adzuna scraper wrapped by v2's `ConcurrentAdzunaScraper` (ADR-050), `EXCLUDED_TITLE_KEYWORDS` and `TECH_DESCRIPTION_KEYWORDS` filter lists in `models/filters.py`. Why wrapping beat re-implementing.
+- What got replaced: orchestration (script → graph), agent contract (free-form → Pydantic), HITL (post-hoc curation only → curation + auto-gate + out-of-graph operations), persistence (single SQLite → run-aware schema + SqliteSaver checkpoints).
+- The hard rule: do not modify v1 files. v1 is a known-stable reference; v2 wraps or replaces.
+- The deletion question: when do you actually delete v1? The honest answer for a learning project: never, until the wrapper layer is fully replaced.
+
+**Length:** 1200–1400 words
+**New patterns introduced:** Wrapper-Adapter for Legacy Components, ADR-Anchored v1/v2 Boundary
+
+---
+
 ## Publishing notes
 
 - Each article should stand alone but reward the reader who followed from Article 1
@@ -153,13 +253,20 @@ My first v2 run with all agents active cost more in one pass than my entire v1 w
 
 ---
 
-## Suggested publishing cadence
+## Suggested publishing order
 
-| Week | Article |
-|---|---|
-| Week 1 | Article 3 — Architecture Shift (overview, series launch) |
-| Week 2 | Article 4 — 8 Specialized Agents |
-| Week 3 | Article 5 — Stateful Orchestration |
-| Week 4 | Article 6 — HITL Evolution |
-| Week 5 | Article 7 — Bounded Reflection |
-| Week 6 | Article 8 — Cost Architecture |
+No fixed cadence. Each article needs original thought, fresh diagrams, and a real reader takeaway. Posting twice a week is possible; doing each article justice is more important than hitting a cadence target.
+
+| Order | Article | Notes |
+|---|---|---|
+| 1 | Article 3 — Architecture Shift / Methodology overview | Series launch. |
+| 2 | Article 4 — 8 Specialized Agents | Foundation for the rest. |
+| 3 | Article 9 — Multi-Provider Abstraction | Naturally follows Article 4's per-agent model assignment. |
+| 4 | Article 5 — Stateful Orchestration | LangGraph + SqliteSaver + interrupt-resume. |
+| 5 | Article 6 — HITL Evolution | Builds on Article 5's interrupt-resume primitive. |
+| 6 | Article 7 — Bounded Reflection | Pairs with Article 10 (heuristics-first/LLM-fallback) — both are about bounded LLM use. |
+| 7 | Article 10 — Heuristics-First, LLM-Fallback | Cost + safety pattern for untrusted external content. |
+| 8 | Article 12 — Testing a Multi-Agent System | The article every reader silently wants once they have read 4–7. |
+| 9 | Article 8 — Cost Architecture at Scale | Concurrency, model tiering, volume cap. |
+| 10 | Article 11 — Hybrid Configuration | Safe-key allowlist; YAML + DB overrides. |
+| 11 | Article 13 — Strangler Fig Migration | Closing piece on the v1/v2 boundary discipline. |
