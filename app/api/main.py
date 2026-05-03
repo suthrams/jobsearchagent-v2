@@ -7,8 +7,10 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 load_dotenv()  # load .env before any os.environ reads (e.g. ANTHROPIC_API_KEY)
 
@@ -30,6 +32,25 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Job Search Agent v2", lifespan=lifespan)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+    """Normalise Pydantic body/path/query validation errors to the same {error, message, details}
+    shape that hand-raised HTTPExceptions use across the rest of the API. Without this handler,
+    Pydantic's default 422 surface (a list of field errors at the top level) breaks the consumer's
+    ability to read errors uniformly."""
+    return JSONResponse(
+        status_code=422,
+        content={
+            "detail": {
+                "error": "validation_error",
+                "message": "Request failed schema validation.",
+                "details": exc.errors(),
+            }
+        },
+    )
+
 
 app.add_middleware(
     CORSMiddleware,

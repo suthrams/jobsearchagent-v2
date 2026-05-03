@@ -107,9 +107,12 @@ _TIMEOUT_TAILOR = 60.0  # tailoring + fidelity round-trip can take 10-20s with c
 
 
 def trigger_tailoring(workflow_id: str, job_id: str) -> dict:
-    """Run tailoring + fidelity for one (workflow, job). Synchronous; returns the draft."""
+    """Run tailoring + fidelity for one (workflow, job). Synchronous; returns the draft.
+
+    POSTs to the workflow-scoped tailorings collection — creates a new tailoring resource.
+    """
     r = httpx.post(
-        f"{BASE_URL}/workflows/{workflow_id}/jobs/{job_id}/tailor",
+        f"{BASE_URL}/workflows/{workflow_id}/jobs/{job_id}/tailorings",
         timeout=_TIMEOUT_TAILOR,
     )
     r.raise_for_status()
@@ -129,9 +132,12 @@ def get_tailoring(tailoring_id: str) -> dict:
 
 
 def submit_tailoring_decision(tailoring_id: str, approval: str) -> dict:
-    """approval ∈ {approve, revise, reject}."""
+    """approval ∈ {approve, revise, reject}.
+
+    POSTs to the decisions collection on the tailoring — appends a new decision.
+    """
     r = httpx.post(
-        f"{BASE_URL}/tailorings/{tailoring_id}/decision",
+        f"{BASE_URL}/tailorings/{tailoring_id}/decisions",
         json={"approval": approval},
         timeout=_TIMEOUT_POST,
     )

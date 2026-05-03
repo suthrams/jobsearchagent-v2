@@ -5,11 +5,19 @@ in-flight) run and trigger TailoringAgent + FidelityReviewer directly. The
 draft is persisted to tailored_resumes and the user records an
 approve / revise / reject decision via a separate endpoint.
 
+URL convention:
+  - Workflow-scoped routes for CREATE (POST) and LIST (GET) — tailorings always
+    belong to a workflow at creation time.
+  - Top-level routes (`/tailorings/{id}`) for READ-ONE and DECISION — the
+    tailoring_id is a globally unique UUID, so workflow scope is redundant
+    once you have the ID. This matches GitHub's pattern (`/repos/.../issues`
+    for list, `/issues/{id}` for fetch via global ID).
+
 Endpoints:
-  POST /workflows/{workflow_id}/jobs/{job_id}/tailor
-  GET  /workflows/{workflow_id}/tailorings
-  GET  /tailorings/{tailoring_id}
-  POST /tailorings/{tailoring_id}/decision
+  POST /workflows/{workflow_id}/jobs/{job_id}/tailorings   - run tailoring + fidelity, persist draft
+  GET  /workflows/{workflow_id}/tailorings                  - list drafts for a workflow
+  GET  /tailorings/{tailoring_id}                           - fetch one draft by ID
+  POST /tailorings/{tailoring_id}/decisions                 - record approve / revise / reject
 """
 from __future__ import annotations
 
@@ -21,6 +29,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_deps, get_graph
+from app.api.schemas.responses import TailoringListResponse, TailoringResponse
 from app.providers.llm_client import LLMProviderError
 from app.workflows.workflow_graph import WorkflowDependencies
 
@@ -85,34 +94,35 @@ def _find_job(state: dict, job_id: str, deps: WorkflowDependencies) -> dict:
     }
 
 
-def _serialize_row(row: dict) -> dict:
-    """Trim TailoringRepository row to the API response shape."""
-    return {
-        "tailoring_id": row["id"],
-        "workflow_id": row["workflow_run_id"],
-        "job_id": row["job_id"],
-        "resume_id": row["resume_id"],
-        "tailored": row.get("tailored"),
-        "fidelity_review": row.get("fidelity_review"),
-        "decision": row.get("decision"),
-        "approved": bool(row.get("approved")),
-        "decided_at": row.get("decided_at"),
-        "created_at": row.get("created_at"),
-    }
+def _serialize_row(row: dict) -> TailoringResponse:
+    """Trim TailoringRepository row to the API response shape (typed)."""
+    return TailoringResponse(
+        tailoring_id=row["id"],
+        workflow_id=row["workflow_run_id"],
+        job_id=row["job_id"],
+        resume_id=row["resume_id"],
+        tailored=row.get("tailored"),
+        fidelity_review=row.get("fidelity_review"),
+        decision=row.get("decision"),
+        approved=bool(row.get("approved")),
+        decided_at=row.get("decided_at"),
+        created_at=row.get("created_at"),
+    )
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
 
 @router.post(
-    "/workflows/{workflow_id}/jobs/{job_id}/tailor",
+    "/workflows/{workflow_id}/jobs/{job_id}/tailorings",
     status_code=200,
+    response_model=TailoringResponse,
 )
 def trigger_tailoring(
     workflow_id: str,
     job_id: str,
     graph=Depends(get_graph),
     deps: WorkflowDependencies = Depends(get_deps),
-) -> dict:
+) -> TailoringResponse:
     """Run TailoringAgent + FidelityReviewer for one job, persist the draft, return it.
 
     Synchronous: tailoring + fidelity together typically take 5-15s end to end.
@@ -220,20 +230,23 @@ def trigger_tailoring(
     return _serialize_row(row)
 
 
-@router.get("/workflows/{workflow_id}/tailorings")
+@router.get("/workflows/{workflow_id}/tailorings", response_model=TailoringListResponse)
 def list_tailorings(
     workflow_id: str,
     deps: WorkflowDependencies = Depends(get_deps),
-) -> dict:
+) -> TailoringListResponse:
     rows = deps.tailoring_repo.list_by_workflow(workflow_id)
-    return {"workflow_id": workflow_id, "tailorings": [_serialize_row(r) for r in rows]}
+    return TailoringListResponse(
+        workflow_id=workflow_id,
+        tailorings=[_serialize_row(r) for r in rows],
+    )
 
 
-@router.get("/tailorings/{tailoring_id}")
+@router.get("/tailorings/{tailoring_id}", response_model=TailoringResponse)
 def get_tailoring(
     tailoring_id: str,
     deps: WorkflowDependencies = Depends(get_deps),
-) -> dict:
+) -> TailoringResponse:
     row = deps.tailoring_repo.get_by_id(tailoring_id)
     if row is None:
         raise HTTPException(
@@ -247,12 +260,13 @@ def get_tailoring(
     return _serialize_row(row)
 
 
-@router.post("/tailorings/{tailoring_id}/decision", status_code=200)
+@router.post("/tailorings/{tailoring_id}/decisions", status_code=200,
+             response_model=TailoringResponse)
 def submit_tailoring_decision(
     tailoring_id: str,
     body: TailoringDecisionRequest,
     deps: WorkflowDependencies = Depends(get_deps),
-) -> dict:
+) -> TailoringResponse:
     row = deps.tailoring_repo.get_by_id(tailoring_id)
     if row is None:
         raise HTTPException(

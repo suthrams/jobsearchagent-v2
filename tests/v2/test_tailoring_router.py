@@ -1,8 +1,8 @@
 """Integration tests for the on-demand tailoring router.
 
-Exercises POST /workflows/{wf}/jobs/{job}/tailor, GET listings, and the
-approve/revise/reject decision endpoint. Uses dependency overrides so no real
-LangGraph or SqliteSaver is touched.
+Exercises POST /workflows/{wf}/jobs/{job}/tailorings (create), GET listings,
+and the approve/revise/reject decision endpoint. Uses dependency overrides so
+no real LangGraph or SqliteSaver is touched.
 """
 from __future__ import annotations
 
@@ -208,7 +208,7 @@ def client(graph_with_job, deps_for_graph):
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
 def test_trigger_returns_draft_with_evidence(client):
-    resp = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailor")
+    resp = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings")
     assert resp.status_code == 200
     body = resp.json()
     assert body["workflow_id"] == WF_ID
@@ -239,7 +239,7 @@ def test_trigger_404_when_workflow_unknown(graph_missing_workflow):
     app.dependency_overrides[get_deps] = lambda: deps
     try:
         with TestClient(app) as c:
-            resp = c.post(f"/workflows/missing-wf/jobs/{JOB_ID}/tailor")
+            resp = c.post(f"/workflows/missing-wf/jobs/{JOB_ID}/tailorings")
             assert resp.status_code == 404
             assert resp.json()["detail"]["error"] == "workflow_not_found"
     finally:
@@ -257,7 +257,7 @@ def test_trigger_409_when_resume_profile_missing(graph_with_job, deps_for_graph)
     app.dependency_overrides[get_deps] = lambda: deps_for_graph
     try:
         with TestClient(app) as c:
-            resp = c.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailor")
+            resp = c.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings")
             assert resp.status_code == 409
             assert resp.json()["detail"]["error"] == "resume_profile_missing"
     finally:
@@ -266,8 +266,8 @@ def test_trigger_409_when_resume_profile_missing(graph_with_job, deps_for_graph)
 
 def test_list_tailorings_returns_drafts_for_workflow(client):
     # Create two drafts, then list
-    client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailor")
-    client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailor")
+    client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings")
+    client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings")
     resp = client.get(f"/workflows/{WF_ID}/tailorings")
     assert resp.status_code == 200
     body = resp.json()
@@ -276,10 +276,10 @@ def test_list_tailorings_returns_drafts_for_workflow(client):
 
 
 def test_decision_approve_flips_approved_flag(client):
-    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailor").json()
+    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings").json()
     tid = trig["tailoring_id"]
 
-    resp = client.post(f"/tailorings/{tid}/decision", json={"approval": "approve"})
+    resp = client.post(f"/tailorings/{tid}/decisions", json={"approval": "approve"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["decision"] == "approve"
@@ -288,10 +288,10 @@ def test_decision_approve_flips_approved_flag(client):
 
 
 def test_decision_revise_keeps_approved_false(client):
-    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailor").json()
+    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings").json()
     tid = trig["tailoring_id"]
 
-    resp = client.post(f"/tailorings/{tid}/decision", json={"approval": "revise"})
+    resp = client.post(f"/tailorings/{tid}/decisions", json={"approval": "revise"})
     assert resp.status_code == 200
     body = resp.json()
     assert body["decision"] == "revise"
@@ -299,21 +299,27 @@ def test_decision_revise_keeps_approved_false(client):
 
 
 def test_decision_invalid_value_422(client):
-    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailor").json()
+    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings").json()
     tid = trig["tailoring_id"]
 
-    resp = client.post(f"/tailorings/{tid}/decision", json={"approval": "maybe"})
+    resp = client.post(f"/tailorings/{tid}/decisions", json={"approval": "maybe"})
     assert resp.status_code == 422
+    # Validation errors are normalised to the same {error, message, details} shape
+    # that hand-raised HTTPExceptions use elsewhere — see app/api/main.py handler.
+    body = resp.json()
+    assert body["detail"]["error"] == "validation_error"
+    assert "message" in body["detail"]
+    assert isinstance(body["detail"]["details"], list) and body["detail"]["details"]
 
 
 def test_decision_404_when_tailoring_unknown(client):
-    resp = client.post("/tailorings/nope/decision", json={"approval": "approve"})
+    resp = client.post("/tailorings/nope/decisions", json={"approval": "approve"})
     assert resp.status_code == 404
     assert resp.json()["detail"]["error"] == "tailoring_not_found"
 
 
 def test_get_tailoring_round_trip(client):
-    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailor").json()
+    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings").json()
     tid = trig["tailoring_id"]
 
     resp = client.get(f"/tailorings/{tid}")

@@ -18,10 +18,10 @@
   - [GET /workflows/{workflow_id}/jobs](#get-workflowsworkflow_idjobs)
   - [GET /workflows/{workflow_id}/report](#get-workflowsworkflow_idreport)
 - [On-Demand Tailoring](#on-demand-tailoring)
-  - [POST /workflows/{workflow_id}/jobs/{job_id}/tailor](#post-workflowsworkflow_idjobsjob_idtailor)
+  - [POST /workflows/{workflow_id}/jobs/{job_id}/tailorings](#post-workflowsworkflow_idjobsjob_idtailorings)
   - [GET /workflows/{workflow_id}/tailorings](#get-workflowsworkflow_idtailorings)
   - [GET /tailorings/{tailoring_id}](#get-tailoringstailoring_id)
-  - [POST /tailorings/{tailoring_id}/decision](#post-tailoringstailoring_iddecision)
+  - [POST /tailorings/{tailoring_id}/decisions](#post-tailoringstailoring_iddecisions)
 - [Schema Reference](#schema-reference)
   - [Request Bodies](#request-bodies)
   - [Response Bodies](#response-bodies)
@@ -46,13 +46,15 @@ POST /workflows/{id}/retry                     → re-submit a workflow after a 
 POST /workflows/{id}/decisions                 → submit an in-graph HITL decision (legacy tailoring approval path)
 GET  /workflows/{id}/jobs                      → list scored jobs
 GET  /workflows/{id}/report                    → fetch the final report
-POST /workflows/{wf}/jobs/{job}/tailor         → run on-demand tailoring + fidelity for one job (200)
+POST /workflows/{wf}/jobs/{job}/tailorings     → create a tailoring draft (run tailoring + fidelity, 200)
 GET  /workflows/{wf}/tailorings                → list tailoring drafts for a workflow
-GET  /tailorings/{id}                          → fetch a single tailoring draft
-POST /tailorings/{id}/decision                 → record approve / revise / reject for a draft
+GET  /tailorings/{id}                          → fetch a single tailoring draft (top-level: ID is globally unique)
+POST /tailorings/{id}/decisions                → record approve / revise / reject for a draft
 GET  /config                                   → effective merged config + protected key list
 PUT  /config                                   → upsert one user-config override (rejects protected keys)
 ```
+
+**URL convention notes.** Tailorings use a workflow-scoped path for create + list (a tailoring is created in the context of a workflow + job) and a top-level path for fetch + decision (the `tailoring_id` is a globally unique UUID, so once you have it, the workflow scope is redundant — same pattern as GitHub's `/repos/.../issues` for list vs `/issues/{id}` for fetch). `POST /workflows/{id}/retry` is an action verb, not a resource — accepted as a documented exception because the operation has no clean resource form.
 
 > **Behaviour note.** The previous `select_jobs_for_deep_review` HITL pause has
 > been removed. The graph now auto-selects up to `MAX_SELECTED_JOBS` (10) top
@@ -114,7 +116,7 @@ All error responses share this structure:
 | 422 | `decision_type_mismatch` | `decision_type` in body does not match the active interrupt |
 | 422 | `invalid_job_ids` | One or more `selected_job_ids` are not in the eligible set |
 | 422 | `too_many_jobs_selected` | More than `MAX_SELECTED_JOBS` (10) IDs submitted |
-| 422 | _(Pydantic)_ | Request body fails schema validation |
+| 422 | `validation_error` | Request body / path / query fails schema validation. Pydantic field errors appear in `detail.details` (a list). Normalised by a global handler in `app/api/main.py` so the consumer reads errors uniformly across all endpoints. |
 
 ---
 
@@ -371,7 +373,7 @@ The flow:
 └────────────────┬─────────────────┘
                  │ user clicks "Tailor for this job"
                  ▼
-   POST /workflows/{wf}/jobs/{job}/tailor
+   POST /workflows/{wf}/jobs/{job}/tailorings
                  │ (synchronous, ~5-15s)
                  ▼
    TailoringAgent → FidelityReviewer → tailored_resumes row
@@ -379,20 +381,20 @@ The flow:
                  ▼  returns { tailoring_id, tailored, fidelity_review }
                  │
                  ▼  user reviews diffs + evidence
-   POST /tailorings/{tailoring_id}/decision  { approval: approve|revise|reject }
+   POST /tailorings/{tailoring_id}/decisions  { approval: approve|revise|reject }
                  │
                  ▼
    tailored_resumes.decision = ..., approved = (decision == 'approve')
 ```
 
-### POST /workflows/{workflow_id}/jobs/{job_id}/tailor
+### POST /workflows/{workflow_id}/jobs/{job_id}/tailorings
 
 Run the Tailoring Agent and the Fidelity Reviewer for one job. Synchronous — typically 5–15 s wall clock (~6 LLM calls). The resulting draft is persisted to `tailored_resumes`. Repeated calls for the same `(workflow_id, job_id)` produce additional rows; the caller decides whether to use the latest.
 
 **Request**
 
 ```
-POST /workflows/{workflow_id}/jobs/{job_id}/tailor
+POST /workflows/{workflow_id}/jobs/{job_id}/tailorings
 ```
 
 No body. The router pulls everything it needs from the workflow's checkpoint (`resume_profile`, `selected_jobs`) and the relational repos (`final_resume_review`, `career_advice`).
@@ -476,7 +478,7 @@ Fetch a single draft by ID. Same shape as the trigger endpoint response.
 
 ---
 
-### POST /tailorings/{tailoring_id}/decision
+### POST /tailorings/{tailoring_id}/decisions
 
 Record the user's approve / revise / reject choice. Idempotent: re-submitting overwrites the previous decision and updates `decided_at`. Updates `tailored_resumes.decision`, `decided_at`, and the legacy `approved` flag (1 only when `approval == "approve"`).
 

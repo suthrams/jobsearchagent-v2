@@ -32,3 +32,26 @@ class JobSummaryResponse(BaseModel):
 class ReportResponse(BaseModel):
     workflow_id: str
     report: dict  # {markdown: str, generated_at: str}
+
+
+class TailoringResponse(BaseModel):
+    """One tailoring draft + its fidelity review + the user's decision (if any).
+
+    Returned by the tailoring router for both create (POST) and read (GET) endpoints
+    so the consumer always sees the same shape regardless of how it was retrieved.
+    """
+    tailoring_id: str
+    workflow_id: str
+    job_id: str
+    resume_id: str
+    tailored: dict | None = None          # TailoredResumeDraft fields
+    fidelity_review: dict | None = None   # FidelityReview fields
+    decision: str | None = None           # approve | revise | reject (None until user decides)
+    approved: bool = False                 # legacy boolean; True only when decision == "approve"
+    decided_at: str | None = None
+    created_at: str | None = None
+
+
+class TailoringListResponse(BaseModel):
+    workflow_id: str
+    tailorings: list[TailoringResponse] = []

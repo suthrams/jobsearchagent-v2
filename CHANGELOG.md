@@ -6,6 +6,19 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-03
 
+### Changed — Tailoring REST surface aligned with project conventions
+
+Surfaced by the `/api-and-interface-design` skill applied to `app/api/routers/`. The on-demand tailoring router (ADR-055) had drifted from the conventions established by the existing routers — verb-vs-noun and singular-vs-plural inconsistencies that would compound as more endpoints were added. Fixed in one PR:
+
+- `POST /workflows/{wf}/jobs/{job}/tailor` → `POST /workflows/{wf}/jobs/{job}/tailorings` (plural noun, no verb in URL).
+- `POST /tailorings/{id}/decision` → `POST /tailorings/{id}/decisions` (plural, matches existing `/workflows/{id}/decisions`).
+- `GET /tailorings/{id}` and `POST /tailorings/{id}/decisions` deliberately kept top-level (the `tailoring_id` is a globally unique UUID; same pattern as GitHub's `/repos/.../issues` for list vs `/issues/{id}` for fetch). Documented in `app/api/routers/tailoring.py` header and `api_reference.md`.
+
+### Added — Typed `TailoringResponse` schema and global validation-error handler
+
+- New `TailoringResponse` and `TailoringListResponse` Pydantic models in `app/api/schemas/responses.py`. The tailoring router endpoints now declare `response_model=TailoringResponse` so the response shape is enforced at the API boundary. Consumer-side typing of `api_client.py` is intentionally deferred to a follow-up so the UI doesn't need refactoring in the same change.
+- New global `RequestValidationError` handler in `app/api/main.py` normalises Pydantic 422 responses to the same `{detail: {error, message, details}}` shape that hand-raised `HTTPException`s already use across the rest of the API. Without this, Pydantic's default 422 surfaced a top-level error list that broke the consumer's ability to read errors uniformly. New regression assertion in `tests/v2/test_tailoring_router.py::test_decision_invalid_value_422` locks in the normalised shape.
+
 ### Performance — deep_review now processes selected jobs concurrently
 
 - `app/workflows/nodes/deep_review.py` refactored from a sequential `for job in selected_jobs:` loop to a `ThreadPoolExecutor(max_workers=5)` fan-out, mirroring the ADR-049 template that score_jobs uses.
