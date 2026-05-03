@@ -28,7 +28,7 @@ from app.workflows.limits import (
     add_llm_calls_bulk,
     append_error,
     get_metrics,
-    safe_agent_usage,
+    safe_agent_usage_typed,
 )
 
 logger = logging.getLogger(__name__)
@@ -113,9 +113,9 @@ def make_deep_review_node(
                         "prior_audit_feedback": prior_feedback,
                         "review_round": round_num,
                     })
-                    ti, to, cost = safe_agent_usage(resume_critic)
+                    u = safe_agent_usage_typed(resume_critic)
                     llm_calls += 1
-                    tokens_in += ti; tokens_out += to; cost_usd += cost
+                    tokens_in += u.tokens_input; tokens_out += u.tokens_output; cost_usd += u.cost_usd
                 except (LLMProviderError, RuntimeError) as exc:
                     logger.warning("deep_review: critic failed for %s round %d: %s",
                                    job_id, round_num, exc)
@@ -138,9 +138,9 @@ def make_deep_review_node(
                         "review_round": round_num,
                         "max_rounds": MAX_REVIEW_ROUNDS,
                     })
-                    ti, to, cost = safe_agent_usage(review_auditor)
+                    u = safe_agent_usage_typed(review_auditor)
                     llm_calls += 1
-                    tokens_in += ti; tokens_out += to; cost_usd += cost
+                    tokens_in += u.tokens_input; tokens_out += u.tokens_output; cost_usd += u.cost_usd
                 except (LLMProviderError, RuntimeError) as exc:
                     logger.warning("deep_review: auditor failed for %s round %d: %s",
                                    job_id, round_num, exc)

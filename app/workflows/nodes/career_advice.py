@@ -10,7 +10,7 @@ from app.providers.llm_client import LLMProviderError
 from app.repositories.advice_repository import AdviceRepository
 from app.repositories.database import utcnow_iso
 from app.services.observability_service import ObservabilityService
-from app.workflows.limits import add_llm_call, append_error, get_metrics, safe_agent_usage
+from app.workflows.limits import add_llm_call, append_error, get_metrics, safe_agent_usage_typed
 
 logger = logging.getLogger(__name__)
 
@@ -59,8 +59,9 @@ def make_career_advice_node(
                 "job_score": job_score,
                 "career_track": career_track,
             })
-            _ti, _to, _cost = safe_agent_usage(career_advisor)
-            metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
+            u = safe_agent_usage_typed(career_advisor)
+            metrics = add_llm_call(metrics, tokens_in=u.tokens_input,
+                                   tokens_out=u.tokens_output, cost_usd=u.cost_usd)
         except LLMProviderError as exc:
             logger.warning("career_advice: failed for %s: %s", job_id, exc)
             errors = append_error({"errors": errors}, "career_advice", "advisor_failed",
