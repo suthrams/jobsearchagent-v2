@@ -48,9 +48,10 @@
 | 6 | FastAPI backend + Streamlit UI | ✓ complete |
 | 7 | Live agents — real Claude, SqliteSaver | ✓ complete |
 | 8 | Performance — concurrent scoring + scraping | ✓ complete |
-| 9 | Cost optimization — model tiering, volume caps | ⚡ in progress |
+| 9 | Cost optimization — model tiering, volume caps | ✓ complete |
+| post-9 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055) | ✓ complete |
 
-**Test count:** 389 passing (mock mode, no real API calls in CI)
+**Test count:** 448 passing, 1 skipped (mock mode, no real API calls in CI)
 
 ---
 
@@ -195,7 +196,7 @@
 
 ## 10. Architecture Decision Records
 
-52 ADRs covering every major design decision. All accepted.
+56 ADRs covering every major design decision. All accepted (ADR-051 superseded by ADR-053).
 
 **Index:** [architecture/adr/ADR-000-index.md](architecture/adr/ADR-000-index.md)
 
@@ -251,8 +252,11 @@
 | [048](architecture/adr/ADR-048-api-key-presence-as-live-mock-mode-gate.md) | API key presence as live/mock mode gate | Phase 7 |
 | [049](architecture/adr/ADR-049-use-threadpoolexecutor-for-concurrent-job-scoring.md) | Use ThreadPoolExecutor for concurrent job scoring | Phase 8 |
 | [050](architecture/adr/ADR-050-wrap-v1-adzuna-scraper-with-concurrent-adapter.md) | Wrap v1 AdzunaScraper with a concurrent adapter | Phase 8 |
-| [051](architecture/adr/ADR-051-tiered-model-assignment-haiku-for-volume-sonnet-for-generative.md) | Tiered model assignment — Haiku for volume/validation, Sonnet for generative | Phase 9 |
+| [051](architecture/adr/ADR-051-tiered-model-assignment-haiku-for-volume-sonnet-for-generative.md) | Tiered model assignment — Haiku for volume/validation, Sonnet for generative (superseded by ADR-053) | Phase 9 |
 | [052](architecture/adr/ADR-052-reduce-max-jobs-per-run-as-cost-control.md) | Reduce MAX_JOBS_PER_RUN as primary cost control lever | Phase 9 |
+| [053](architecture/adr/ADR-053-pluggable-per-agent-provider-and-model-selection.md) | Pluggable per-agent provider + model selection (ModelRegistry) | post-9 |
+| [054](architecture/adr/ADR-054-allow-deep-review-for-all-qualifying-jobs.md) | Allow deep review for all qualifying jobs — raise MAX_SELECTED_JOBS to 10 | post-9 |
+| [055](architecture/adr/ADR-055-on-demand-tailoring-as-out-of-graph-operation.md) | On-demand tailoring as an out-of-graph REST operation | post-9 |
 
 ---
 
@@ -369,10 +373,11 @@ Each phase has a dedicated deep-dive document:
 
 | Document | What it covers |
 |---|---|
-| [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — Phase 9 cost optimization, Phase 7/8 live agents and performance, v1 dashboard fixes, Python 3.12 compatibility |
-| [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic) + v1 shared (anthropic, pydantic, httpx, pdfplumber) |
+| [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — on-demand tailoring (ADR-055), deep-review-for-all (ADR-054), multi-provider (ADR-053), Phase 9 cost optimization, Phase 7/8 live agents and performance, v1 dashboard fixes, Python 3.12 compatibility |
+| [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic, langchain-openai) + v1 shared (anthropic, pydantic, httpx, pdfplumber) |
 | [disclaimer.md](disclaimer.md) | Apache 2.0 terms, no-warranty statement, user responsibility for API costs, scraper compliance notes (Adzuna official, LinkedIn/Ladders grey-area), resume data privacy |
 | [blog_draft_patterns_v2.md](blog_draft_patterns_v2.md) | Draft blog post on agentic AI patterns used in v2 — for external publication |
+| [../skills/README.md](../skills/README.md) | Index for the `skills/` agent-skills pack — maps each of the 21 skills to the jobsearchagent-v2 workflow stage where it applies |
 
 ---
 
@@ -383,7 +388,7 @@ Each phase has a dedicated deep-dive document:
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
 | docs/ top-level | 9 |
 | docs/architecture/ | 17 |
-| docs/architecture/adr/ | 53 (index + 52 ADRs) |
+| docs/architecture/adr/ | 57 (index + 56 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/agents/ | 3 |
 | docs/claude/ | 3 |
@@ -392,8 +397,8 @@ Each phase has a dedicated deep-dive document:
 | docs/storage/ | 1 |
 | docs/prompts/ | 1 |
 | prompts/ (project root) | 3 |
-| **Total** | **110** |
+| skills/ (agent-skills pack: 21 SKILL.md + supporting + README) | 26 |
 
 ---
 
-*Every `.md` file in the project (excluding `.venv/`, `.pytest_cache/`, `.git/`) is listed in this index. The wiki itself (`docs/wiki.md`) is the 110th file.*
+*Every `.md` file in the project (excluding `.venv/`, `.pytest_cache/`, `.git/`) is listed in this index. The skills/ pack ships from [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) — see `skills/README.md` for which skill applies to which jobsearchagent-v2 workflow stage.*
