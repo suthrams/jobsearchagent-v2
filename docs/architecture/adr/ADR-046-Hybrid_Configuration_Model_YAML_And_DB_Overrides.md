@@ -47,7 +47,13 @@ Effective Config = YAML Defaults + DB Overrides
 
 Users cannot modify:
 
-* LLM models
 * prompt definitions
 * safety limits
-* cost limits
+* cost limits (per-run + per-job LLM call caps)
+* retention windows
+
+Users **may** modify (added by ADR-053):
+
+* per-agent `provider` and `model`, but only from values registered in
+  `ModelRegistry`. Arbitrary model strings are rejected at validation time.
+  The defaults match ADR-051 (superseded).

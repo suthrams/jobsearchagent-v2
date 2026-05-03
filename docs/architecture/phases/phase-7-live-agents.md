@@ -380,7 +380,7 @@ the workflow state tracks the real cost as it accumulates.
 flowchart LR
     INIT["python -m app.repositories.database\n(run once before first real run)"] --> TABLES
     subgraph TABLES["data/v2.db"]
-        APP["18 application tables\n(job_postings, job_scores,\nresume_versions, workflow_runs,\nagent_events, ...)"]
+        APP["18 application tables\n(jobs, job_scores,\nresume_reviews, workflow_runs,\nagent_events, ...)"]
         LG["LangGraph checkpoint tables\n(checkpoints, checkpoint_blobs,\ncheckpoint_writes)\ncreated by SqliteSaver on first connect"]
     end
 ```
@@ -404,7 +404,7 @@ llm:
   haiku_model: "claude-haiku-4-5-20251001"
 
 scoring:
-  career_track: "ic"               # ic | architect | management
+  career_track: "all"              # ic | architect | management | all (default: weight all three equally)
   interview_coach_threshold: 75    # min overall_score to trigger InterviewCoach
 
 search:

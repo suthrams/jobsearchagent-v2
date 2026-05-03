@@ -44,7 +44,7 @@ _CONTEXT = {
     "job_title": "Staff Engineer", "company": "Acme",
     "job_description": "Python, Kubernetes, distributed systems.",
     "resume_profile": {"name": "Jane", "skills": ["Python"]},
-    "career_track": "ic",
+    "career_track": "all",
     "research_context": None,
 }
 
@@ -76,7 +76,7 @@ def test_run_passes_context_to_provider():
     _make_agent(provider=provider).run("wf-001", _CONTEXT)
     passed_context = provider.complete.call_args.kwargs["context"]
     assert passed_context["job_id"] == "job-001"
-    assert passed_context["career_track"] == "ic"
+    assert passed_context["career_track"] == "all"
 
 def test_run_passes_job_score_schema_to_provider():
     provider = _make_provider()

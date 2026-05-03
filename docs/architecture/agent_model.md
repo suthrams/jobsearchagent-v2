@@ -896,7 +896,32 @@ Agents must:
 
 ---
 
-## 20. Final Agent Model Principle
+## 20. Per-Agent Provider and Model Assignment
+
+Per ADR-053 (which supersedes ADR-051's static assignment), each agent is
+mapped to a `(provider, model)` pair via a `ModelRegistry` that is built once
+at backend startup from the merged effective config.
+
+* Defaults match the ADR-051 tiering (Haiku for high-volume / validation,
+  Sonnet for generative / advisory).
+* Users may override any agent's `provider` and `model` via the Settings UI.
+  Overrides are stored in `user_config` under the dotted keys
+  `agents.{agent_name}.provider` and `agents.{agent_name}.model`.
+* Only models present in the `ModelRegistry`'s known set are accepted. The
+  registry is the single source of truth for what providers and models the
+  system supports; adding a new model requires a code change.
+* Switching an agent's model requires saving via Settings and **restarting
+  the backend**. In-flight workflows continue with the assignment they
+  started under.
+
+This is the layer that lets the system route around per-provider rate limits
+and tune cost per agent. The cost rollup in the run report and Workflow Detail
+shows actual `(provider, model, calls, tokens, cost)` per agent so the user
+can rebalance the next run with real data.
+
+---
+
+## 21. Final Agent Model Principle
 
 The agent model should remain disciplined:
 

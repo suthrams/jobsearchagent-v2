@@ -55,10 +55,16 @@ class JobDiscoveryService:
         self._max_jobs: int = config.get("search", {}).get("max_jobs", 20)
         self._scrapers: list[Any] = scrapers or []
 
-    def discover(self, workflow_id: str, search_criteria: dict) -> list[JobPosting]:
-        """Run all scrapers, normalise, filter, deduplicate, cap, and return."""
+    def discover(
+        self,
+        workflow_id: str,
+        search_criteria: dict,
+        extra_scrapers: list[Any] | None = None,
+    ) -> list[JobPosting]:
+        """Run all scrapers (built-in + per-run extras), normalise, dedupe, cap, return."""
         raw_jobs: list[Any] = []
-        for scraper in self._scrapers:
+        all_scrapers = list(self._scrapers) + list(extra_scrapers or [])
+        for scraper in all_scrapers:
             pool = ThreadPoolExecutor(max_workers=1)
             try:
                 future = pool.submit(scraper.scrape)

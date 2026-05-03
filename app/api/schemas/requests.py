@@ -11,6 +11,9 @@ class StartWorkflowRequest(BaseModel):
     search_criteria: dict
     workflow_type: str = "full_career_review"
     effective_config: dict = Field(default_factory=dict)
+    # User-supplied job posting URLs (LinkedIn, company career pages, etc.)
+    # Scraped per run by CustomUrlScraper, additive to standard scrapers.
+    custom_urls: list[str] = Field(default_factory=list, max_length=25)
 
 
 class JobSelectionDecision(BaseModel):

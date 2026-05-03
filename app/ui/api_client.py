@@ -19,6 +19,7 @@ def start_workflow(
     search_criteria: dict,
     workflow_type: str = "full_career_review",
     effective_config: dict | None = None,
+    custom_urls: list[str] | None = None,
 ) -> dict:
     r = httpx.post(
         f"{BASE_URL}/workflows",
@@ -27,6 +28,7 @@ def start_workflow(
             "search_criteria": search_criteria,
             "workflow_type": workflow_type,
             "effective_config": effective_config or {},
+            "custom_urls": custom_urls or [],
         },
         timeout=_TIMEOUT_POST,
     )
@@ -34,8 +36,38 @@ def start_workflow(
     return r.json()
 
 
+def get_config() -> dict:
+    r = httpx.get(f"{BASE_URL}/config", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
+def put_config(key: str, value: object) -> dict:
+    r = httpx.put(
+        f"{BASE_URL}/config",
+        json={"key": key, "value": value},
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def get_providers() -> dict:
+    """Return registered providers + models + current per-agent assignment (ADR-053)."""
+    r = httpx.get(f"{BASE_URL}/config/providers", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
 def get_workflow_status(workflow_id: str) -> dict:
     r = httpx.get(f"{BASE_URL}/workflows/{workflow_id}", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
+def retry_workflow(workflow_id: str) -> dict:
+    """Re-submit a workflow interrupted by a server restart to the thread pool."""
+    r = httpx.post(f"{BASE_URL}/workflows/{workflow_id}/retry", timeout=_TIMEOUT_POST)
     r.raise_for_status()
     return r.json()
 

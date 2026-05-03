@@ -211,7 +211,7 @@ ScoringAgent(provider: LLMClient, observability: ObservabilityService)
     "company":         str,
     "job_description": str,           # normalized; untrusted — never used as instructions
     "resume_profile":  dict,          # ResumeProfile.model_dump() — never raw resume text
-    "career_track":    str,           # "ic" | "architect" | "management"
+    "career_track":    str,           # "ic" | "architect" | "management" | "all"
     "research_context": dict | None,  # ResearchContext if already available
 }
 ```

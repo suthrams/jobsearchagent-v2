@@ -121,7 +121,7 @@ python -m pytest tests/ -m integration  # run live-API smoke tests
 - `MAX_RESEARCH_STEPS = 2`
 - `MAX_REVIEW_ROUNDS = 3`
 - `MAX_LLM_CALLS_PER_JOB = 10`
-- `MAX_LLM_CALLS_PER_RUN = 50`
+- `MAX_LLM_CALLS_PER_RUN = 100`
 
 **Orchestration rules**
 - Only the orchestrator updates `WorkflowState` — agents return structured outputs, never mutate state directly
@@ -139,18 +139,35 @@ python -m pytest tests/ -m integration  # run live-API smoke tests
 - Fidelity Reviewer must run after every Tailoring Agent call
 
 **HITL rules**
-- Workflow sets `status = waiting_for_user` and `pending_decision` before pausing
-- Backend validates all decisions before resuming workflow
-- UI never auto-approves outputs or bypasses backend validation
+- Job-selection HITL has been removed — the workflow auto-selects qualifying jobs (see Auto-selection rules) and runs end-to-end
+- The `await_tailoring_approval` interrupt + `approve_tailoring` decision endpoint remain in the codebase but are reachable only when `state["user_requested_tailoring"]` is `True` (currently never set by the UI)
+- Backend still validates all decisions before resuming workflow; UI never auto-approves tailored outputs or bypasses backend validation
+
+**Auto-selection rules**
+- `MIN_MATCH_SCORE_DEFAULT = 75` in `app/workflows/limits.py`. `effective_config.scoring.min_match_score` overrides per run
+- A job qualifies for deep review when ANY of `{technical_score, architecture_score, leadership_score} >= threshold` — never just `overall_score`. Use `qualifies_for_deep_review()` / `best_track_score()` helpers; do not inline the comparison
+- `await_job_selection` node auto-selects up to `MAX_SELECTED_JOBS` qualifying jobs (highest best-track score wins). It does NOT call `interrupt()`
+- `deep_review_gate` router skips deep review → ... → tailoring entirely when `selected_jobs` is empty, jumping straight to `generate_report`
 
 **Scraper rules**
 - `ConcurrentAdzunaScraper` wraps v1 `AdzunaScraper` — do not modify v1 scrapers directly
 - `JobDiscoveryService.discover()` enforces a 180s per-scraper safety timeout via `ThreadPoolExecutor` + `shutdown(wait=False)`
 - `_resolve_url` is patched to a no-op on the wrapped instance — Adzuna redirect URLs are stored as-is
+- `CustomUrlScraper` (`app/services/custom_url_scraper.py`) is built per workflow run from `state["custom_urls"]` via `WorkflowDependencies.custom_url_scraper_factory`. Per-URL extraction order: heuristics (JSON-LD JobPosting → OpenGraph → article tag) → LLM fallback (sonnet) → log-and-skip with the URL recorded in workflow `errors[]`
+- 25-URL hard cap, 30s fetch timeout per URL — never raise without reviewing cost impact
+
+**Persistence rules**
+- `register_run` is the graph entry point. It writes the initial state (including `effective_config` and `custom_urls`) to `workflow_runs` so the Workflow Detail UI can show the settings used per run
+- `generate_report` updates `workflow_runs` with terminal status and final metrics
+- The langgraph SqliteSaver `checkpoints` table is for resumption only — query `workflow_runs` for UI / history reads
 
 **Provider rules**
-- `ClaudeProvider.complete(schema=...)` must always receive a Pydantic `BaseModel` subclass — never a builtin like `dict`
+- Both providers (`ClaudeProvider`, `OpenAIProvider`) implement `LLMClient`. Agents depend only on `LLMClient` — never on a concrete provider class
+- `LLMClient.complete(schema=...)` must always receive a Pydantic `BaseModel` subclass — never a builtin like `dict`
 - `make_resume_enhance_fn` uses `_ResumeEnhancement(BaseModel)` defined in `app/providers/claude_provider.py`
+- Both providers use the same retry policy: 6 attempts on `RateLimitError` / `APIConnectionError` / `InternalServerError`, jittered exponential backoff capped at 60s, 429s honor `retry-after` (capped at 90s)
+- Per ADR-053: agents are wired through `app/providers/model_registry.py` (`ModelRegistry`), not directly to a provider. The registry caches one provider instance per `(provider, model)` and exposes `for_agent(agent_name)`. Defaults match ADR-051; user overrides via `agents.{name}.{provider,model}` in `user_config`. Restart-to-apply
+- `OpenAIProvider` is gated by `OPENAI_API_KEY`. If absent, OpenAI models are not registered and the Settings UI hides them. Workflows continue on Claude
 
 ---
 

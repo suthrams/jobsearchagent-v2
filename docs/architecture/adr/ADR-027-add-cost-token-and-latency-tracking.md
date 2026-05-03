@@ -24,3 +24,7 @@
 
     ## Implementation Notes
     - Track per call and summarize per workflow
+    - Extended by ADR-053: per-agent / per-model rollup is surfaced in both the
+      generated markdown report and the Workflow Detail UI (provider, model,
+      calls, tokens in/out, cost, average latency, plus an aggregate row).
+      Drives the user's per-agent provider/model selection decisions.

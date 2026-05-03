@@ -276,6 +276,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     from pathlib import Path
 
     from app.providers.claude_provider import ClaudeProvider, make_resume_enhance_fn
+    from app.providers.model_registry import ModelRegistry, assignment_from_config
     from app.providers.prompt_loader import PromptLoader
 
     # Anchor all paths to the project root (two levels up from app/api/dependencies.py)
@@ -301,34 +302,40 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     security_repo = SecurityRepository(db_path)
     report_repo = ReportRepository(db_path)
 
-    # Providers — sonnet for generative/advisory agents, haiku for high-volume + validation
+    # ConfigService — load early so the agent assignment can come from user overrides
     loader = PromptLoader()
-    sonnet_provider = ClaudeProvider(loader, model_name="claude-sonnet-4-6")
-    haiku_provider = ClaudeProvider(loader, model_name="claude-haiku-4-5-20251001")
+    config_svc_for_models = ConfigService(
+        config_path=_project_root / "config" / "config.yaml",
+        db_path=db_path,
+    )
+    _eff = config_svc_for_models.get_effective_config()
+
+    # Per-agent provider/model assignment (ADR-053). Defaults from ModelRegistry,
+    # overrides from effective_config.agents.*.
+    agent_assignment = assignment_from_config(_eff)
+    registry = ModelRegistry.build(loader, agent_assignment)
+    logger.info("ModelRegistry built; agent assignment: %s", registry.assignment())
 
     # Observability service
     obs = ObservabilityService(obs_repo, step_repo, decision_repo, security_repo)
 
-    # Agents
-    research = ResearchAgent(haiku_provider, obs)   # high-volume: runs every job
-    scoring = ScoringAgent(haiku_provider, obs)
-    critic = ResumeCritic(sonnet_provider, obs)
-    auditor = ReviewAuditor(haiku_provider, obs)    # validation: checking, not generation
-    advisor = CareerAdvisor(sonnet_provider, obs)
-    coach = InterviewCoach(sonnet_provider, obs)
-    tailoring = TailoringAgent(sonnet_provider, obs)
-    fidelity = FidelityReviewer(haiku_provider, obs)  # validation: checking, not generation
+    # Agents — each gets the provider its assignment maps to
+    research = ResearchAgent(registry.for_agent("research_agent"), obs)
+    scoring = ScoringAgent(registry.for_agent("scoring_agent"), obs)
+    critic = ResumeCritic(registry.for_agent("resume_critic"), obs)
+    auditor = ReviewAuditor(registry.for_agent("review_auditor"), obs)
+    advisor = CareerAdvisor(registry.for_agent("career_advisor"), obs)
+    coach = InterviewCoach(registry.for_agent("interview_coach"), obs)
+    tailoring = TailoringAgent(registry.for_agent("tailoring_agent"), obs)
+    fidelity = FidelityReviewer(registry.for_agent("fidelity_reviewer"), obs)
 
-    # ResumeParser with Claude enhance_fn
-    enhance_fn = make_resume_enhance_fn(sonnet_provider)
+    # ResumeParser uses its own assigned provider too
+    enhance_fn = make_resume_enhance_fn(registry.for_agent("resume_parser"))
     resume_parser = ResumeParser(resume_repo, enhance_fn=enhance_fn)
 
-    # ConfigService — loads config.yaml and DB overrides (absolute paths, CWD-independent)
-    config_svc = ConfigService(
-        config_path=_project_root / "config" / "config.yaml",
-        db_path=db_path,
-    )
-    config_dict = config_svc.get_effective_config()
+    # ConfigService for the rest of the build (already loaded above for the registry)
+    config_svc = config_svc_for_models
+    config_dict = _eff
 
     # JobDiscoveryService with real scrapers (only include scrapers whose creds are present)
     scrapers = _build_scrapers(config_dict)
@@ -336,6 +343,11 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
 
     # ReportGenerator
     report_gen = ReportGenerator(score_repo, review_repo, advice_repo, tailoring_repo, report_repo, job_repo)
+
+    # Custom URL scraper factory — built per workflow run with the user-supplied URLs.
+    from app.services.custom_url_scraper import CustomUrlScraper
+    _custom_url_provider = registry.for_agent("custom_url_extractor")
+    custom_url_factory = lambda urls: CustomUrlScraper(urls, llm_client=_custom_url_provider)
 
     return WorkflowDependencies(
         research_agent=research,
@@ -358,6 +370,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
         resume_repo=resume_repo,
         observability=obs,
         checkpointer=checkpointer,
+        custom_url_scraper_factory=custom_url_factory,
     )
 
 

@@ -32,15 +32,27 @@
 
 The API exposes a single LangGraph workflow graph as a REST surface. The graph
 runs in a background thread pool; callers poll `GET /workflows/{id}` to track
-progress and react to `waiting_for_user` status events.
+progress.
 
 ```
-POST /workflows         → start a run (202, async)
-GET  /workflows/{id}    → poll status
-POST /workflows/{id}/decisions  → submit a HITL decision (202, async)
+POST /workflows                 → start a run (202, async)
+GET  /workflows/{id}            → poll status
+POST /workflows/{id}/retry      → re-submit a workflow after a server restart (202)
+POST /workflows/{id}/decisions  → submit a HITL decision (only used for tailoring approval)
 GET  /workflows/{id}/jobs       → list scored jobs
 GET  /workflows/{id}/report     → fetch the final report
+GET  /config                    → effective merged config + protected key list
+PUT  /config                    → upsert one user-config override (rejects protected keys)
 ```
+
+> **Behaviour note.** The previous `select_jobs_for_deep_review` HITL pause has
+> been removed. The graph now auto-selects up to `MAX_SELECTED_JOBS` (3) top
+> scoring jobs where any track score (technical / architecture / leadership)
+> meets `effective_config.scoring.min_match_score` (default 75). Workflows run
+> end-to-end without any required user input. The `POST /decisions` endpoint
+> still validates `select_jobs_for_deep_review` payloads for backwards-compat
+> with older clients but the graph will no longer be in a state that accepts
+> them — the call returns 409 `workflow_not_paused`.
 
 ---
 
@@ -124,9 +136,14 @@ Content-Type: application/json
   "workflow_type": "full_career_review",
   "effective_config": {
     "scoring": {
-      "career_track": "ic"
+      "career_track": "all",
+      "min_match_score": 75
     }
-  }
+  },
+  "custom_urls": [
+    "https://www.linkedin.com/jobs/view/4012345678",
+    "https://acme.com/careers/staff-engineer"
+  ]
 }
 ```
 
@@ -135,7 +152,8 @@ Content-Type: application/json
 | `resume_id` | string | yes | ID of the parsed resume to use |
 | `search_criteria` | object | yes | Passed to `JobDiscoveryService.discover()` |
 | `workflow_type` | string | no | Default: `"full_career_review"` |
-| `effective_config` | object | no | Config overrides; merged with `config.yaml` defaults. Default: `{}` |
+| `effective_config` | object | no | Config overrides; merged with `config.yaml` defaults. Default: `{}`. Use `effective_config.scoring.min_match_score` (default 75) to set the per-run deep-review / interview-prep threshold (any track score ≥ this qualifies). |
+| `custom_urls` | string[] | no | Up to 25 absolute URLs (LinkedIn, company career pages, ATS pages, etc.). Each is fetched and parsed via heuristics (JSON-LD, OpenGraph) → Claude (sonnet) fallback. Per-URL failures are logged in `errors[]` and do not abort the run. Default: `[]`. |
 
 **Response — 202 Accepted**
 
@@ -331,6 +349,154 @@ GET /workflows/{workflow_id}/report
 
 ---
 
+### GET /config
+
+Return the effective merged config (YAML defaults + DB user overrides) plus the
+list of protected keys (read-only, enforced by `ConfigService._PROTECTED_KEYS`).
+
+**Request**
+
+```
+GET /config
+```
+
+**Response — 200 OK**
+
+```json
+{
+  "effective_config": {
+    "search":   {"titles": ["Staff Engineer"], "locations": ["Remote"], "max_jobs": 10},
+    "scoring":  {"min_match_score": 75},
+    "salary":   {"min_desired": 130000, "currency": "USD"},
+    "staleness": {"max_days": 14}
+  },
+  "protected_keys": [
+    "limits.max_llm_calls_per_run",
+    "limits.max_review_rounds",
+    "llm.default_model",
+    "llm.scoring_model",
+    "scoring.deep_review_threshold"
+  ]
+}
+```
+
+---
+
+### PUT /config
+
+Set or update one user-config override. Repeated PUTs to the same `key` upsert
+in place. Protected keys are rejected with **422 `protected_key`**.
+
+**Request**
+
+```
+PUT /config
+Content-Type: application/json
+```
+
+```json
+{
+  "key": "scoring.min_match_score",
+  "value": 65
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `key` | string | yes | Dotted config path (e.g. `search.max_jobs`, `scoring.min_match_score`). |
+| `value` | any JSON | yes | New value — string, number, boolean, list, or object. |
+
+**Response — 200 OK**
+
+```json
+{ "key": "scoring.min_match_score", "value": 65, "status": "saved" }
+```
+
+**Response — 422** `protected_key` — the key is in `_PROTECTED_KEYS` and cannot be overridden via the API.
+
+**Per-agent provider / model overrides (ADR-053)**
+
+The `agents.*` keys let you reroute a specific agent to a different
+provider+model. Both `provider` and `model` are validated against the
+`ModelRegistry` — unknown values return 422.
+
+| Key | Example value |
+|-----|---------------|
+| `agents.research_agent.provider`    | `claude` \| `openai` |
+| `agents.research_agent.model`       | `claude-haiku-4-5-20251001`, `gpt-4o-mini`, ... |
+| `agents.scoring_agent.provider`     | (same options) |
+| `agents.scoring_agent.model`        | (same options) |
+| `agents.resume_critic.provider`     | (same options) |
+| `agents.resume_critic.model`        | (same options) |
+| `agents.career_advisor.provider`    | (same options) |
+| `agents.career_advisor.model`       | (same options) |
+| `agents.interview_coach.provider`   | (same options) |
+| `agents.interview_coach.model`      | (same options) |
+| `agents.tailoring_agent.provider`   | (same options) |
+| `agents.tailoring_agent.model`      | (same options) |
+| `agents.review_auditor.provider`    | (same options) |
+| `agents.review_auditor.model`       | (same options) |
+| `agents.fidelity_reviewer.provider` | (same options) |
+| `agents.fidelity_reviewer.model`    | (same options) |
+
+> **Restart-to-apply.** Saved per-agent overrides take effect after the
+> backend is restarted. Workflows in flight continue under the assignment
+> they were built with.
+
+---
+
+### GET /config/providers
+
+Return the `ModelRegistry`'s known providers and models, with indicative
+per-million-token cost. Used by the UI to populate the per-agent dropdowns.
+
+**Request**
+
+```
+GET /config/providers
+```
+
+**Response — 200 OK**
+
+```json
+{
+  "providers": {
+    "claude": {
+      "available": true,
+      "models": [
+        {"id": "claude-haiku-4-5-20251001",  "input_per_m": 0.25, "output_per_m": 1.25},
+        {"id": "claude-sonnet-4-6",          "input_per_m": 3.00, "output_per_m": 15.00},
+        {"id": "claude-opus-4-7",            "input_per_m": 15.0, "output_per_m": 75.00}
+      ]
+    },
+    "openai": {
+      "available": true,
+      "models": [
+        {"id": "gpt-4o-mini", "input_per_m": 0.15, "output_per_m": 0.60},
+        {"id": "gpt-4o",      "input_per_m": 2.50, "output_per_m": 10.00},
+        {"id": "o1",          "input_per_m": 15.0, "output_per_m": 60.00}
+      ]
+    }
+  },
+  "agent_assignment": {
+    "research_agent":    {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+    "scoring_agent":     {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+    "resume_critic":     {"provider": "claude", "model": "claude-sonnet-4-6"},
+    "review_auditor":    {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+    "career_advisor":    {"provider": "claude", "model": "claude-sonnet-4-6"},
+    "interview_coach":   {"provider": "claude", "model": "claude-sonnet-4-6"},
+    "tailoring_agent":   {"provider": "claude", "model": "claude-sonnet-4-6"},
+    "fidelity_reviewer": {"provider": "claude", "model": "claude-haiku-4-5-20251001"}
+  }
+}
+```
+
+`available: false` indicates the provider's API key isn't set on the server
+(e.g. missing `OPENAI_API_KEY`). The UI should disable that provider's
+options and show the reason.
+
+---
+
 ## Schema Reference
 
 ### Request Bodies
@@ -362,12 +528,12 @@ determined by the discovery implementation.
 ```json
 {
   "scoring": {
-    "career_track": "ic"
+    "career_track": "all"
   }
 }
 ```
 
-Valid `career_track` values: `"ic"` | `"architect"` | `"management"`
+Valid `career_track` values: `"ic"` | `"architect"` | `"management"` | `"all"` (default — weights all three tracks equally)
 
 ---
 

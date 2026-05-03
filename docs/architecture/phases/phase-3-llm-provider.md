@@ -587,7 +587,7 @@ result: dict = provider.complete(
     context={                        # variables available in the prompt template
         "job_description": jd,
         "resume_profile": profile,
-        "career_track": "ic",
+        "career_track": "all",
     },
     schema=JobScore,                 # Pydantic class from app/schemas/
 )

@@ -6,7 +6,8 @@ to get a compiled, checkpointed graph ready for invocation.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from typing import Any, Callable
 
 from langgraph.checkpoint.sqlite import SqliteSaver
 from langgraph.graph import END, StateGraph
@@ -39,9 +40,10 @@ from app.workflows.nodes.discover_jobs import make_discover_jobs_node
 from app.workflows.nodes.generate_report import make_generate_report_node
 from app.workflows.nodes.interview_prep import make_interview_prep_node
 from app.workflows.nodes.load_resume import make_load_resume_node
+from app.workflows.nodes.register_run import make_register_run_node
 from app.workflows.nodes.score_jobs import make_score_jobs_node
 from app.workflows.nodes.tailoring import make_tailoring_node
-from app.workflows.routers import interview_router, tailoring_router
+from app.workflows.routers import deep_review_gate, interview_router, tailoring_router
 
 
 @dataclass
@@ -71,6 +73,9 @@ class WorkflowDependencies:
     # Cross-cutting
     observability: ObservabilityService
     checkpointer: SqliteSaver
+    # Optional per-run scraper factory; receives the URL list and returns a
+    # BaseScraper-compatible object. None disables custom URL ingestion.
+    custom_url_scraper_factory: Callable[[list[str]], Any] | None = None
 
 
 def build_graph(deps: WorkflowDependencies):
@@ -83,8 +88,11 @@ def build_graph(deps: WorkflowDependencies):
     graph = StateGraph(WorkflowGraphState)
 
     # ── Nodes ─────────────────────────────────────────────────────────────────
+    graph.add_node("register_run", make_register_run_node(deps.workflow_repo))
+
     graph.add_node("discover_jobs", make_discover_jobs_node(
-        deps.discovery_service, deps.job_repo, deps.observability))
+        deps.discovery_service, deps.job_repo, deps.observability,
+        custom_url_scraper_factory=deps.custom_url_scraper_factory))
 
     graph.add_node("load_resume", make_load_resume_node(
         deps.resume_parser, deps.observability, deps.resume_repo))
@@ -109,22 +117,29 @@ def build_graph(deps: WorkflowDependencies):
     graph.add_node("await_tailoring_approval", make_await_tailoring_approval_node())
 
     graph.add_node("generate_report", make_generate_report_node(
-        deps.report_generator, deps.observability))
+        deps.report_generator, deps.observability, deps.workflow_repo))
 
     # ── Entry point ───────────────────────────────────────────────────────────
-    graph.set_entry_point("discover_jobs")
+    graph.set_entry_point("register_run")
 
     # ── Sequential edges ──────────────────────────────────────────────────────
+    graph.add_edge("register_run",             "discover_jobs")
     graph.add_edge("discover_jobs",            "load_resume")
     graph.add_edge("load_resume",              "score_jobs")
     graph.add_edge("score_jobs",               "await_job_selection")
-    graph.add_edge("await_job_selection",      "deep_review")
     graph.add_edge("deep_review",              "career_advice")
     graph.add_edge("tailoring",                "await_tailoring_approval")
     graph.add_edge("await_tailoring_approval", "generate_report")
     graph.add_edge("generate_report",          END)
 
     # ── Conditional edges ─────────────────────────────────────────────────────
+    # After auto-select: skip deep review entirely if no jobs qualified.
+    graph.add_conditional_edges(
+        "await_job_selection",
+        deep_review_gate,
+        {"deep_review": "deep_review", "generate_report": "generate_report"},
+    )
+
     # After career_advice: run InterviewCoach if score is high enough, else check tailoring
     graph.add_conditional_edges(
         "career_advice",

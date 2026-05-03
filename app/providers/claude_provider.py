@@ -13,6 +13,7 @@ via the orchestrator, which has access to workflow_id and ObservabilityService.
 """
 
 import logging
+import random
 import threading
 import time
 from typing import Any, Callable
@@ -58,9 +59,10 @@ class ClaudeProvider(LLMClient):
         provider = ClaudeProvider(loader, _model=mock_chat_model)
     """
 
-    _MAX_RETRIES: int = 3
-    _RETRY_WAIT_MIN: int = 1  # seconds before first retry
-    _RETRY_WAIT_MAX: int = 4  # seconds ceiling for exponential backoff
+    _MAX_RETRIES: int = 6
+    _RETRY_WAIT_MIN: int = 2   # seconds before first retry
+    _RETRY_WAIT_MAX: int = 60  # ceiling for exponential backoff
+    _RETRY_AFTER_CAP: int = 90  # never honor retry-after longer than this
 
     def __init__(
         self,
@@ -150,17 +152,63 @@ class ClaudeProvider(LLMClient):
 
         Retries on: APIConnectionError, RateLimitError, InternalServerError.
         Does NOT retry AuthenticationError or BadRequestError — those won't heal.
+
+        On 429s, honors the server's retry-after header (capped at _RETRY_AFTER_CAP)
+        when present; otherwise falls back to jittered exponential backoff.
         """
         for attempt in tenacity.Retrying(
             stop=tenacity.stop_after_attempt(self._MAX_RETRIES),
-            wait=tenacity.wait_exponential(
-                multiplier=1, min=self._RETRY_WAIT_MIN, max=self._RETRY_WAIT_MAX
-            ),
+            wait=self._compute_backoff,
             retry=tenacity.retry_if_exception_type(_RETRYABLE_ERRORS),
             reraise=True,
+            before_sleep=self._log_retry,
         ):
             with attempt:
                 return chain.invoke(messages)
+
+    def _compute_backoff(self, retry_state: "tenacity.RetryCallState") -> float:
+        """Pick a wait time for the next attempt.
+
+        Priority:
+          1. Anthropic 429 with `retry-after` header → honor it (capped).
+          2. Otherwise → jittered exponential, base 2s, cap 60s.
+        """
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        retry_after = self._extract_retry_after(exc)
+        if retry_after is not None:
+            return min(retry_after, self._RETRY_AFTER_CAP)
+        # exponential 2, 4, 8, 16, 32, 60 — plus 0–1s jitter
+        base = min(self._RETRY_WAIT_MIN * (2 ** (retry_state.attempt_number - 1)),
+                   self._RETRY_WAIT_MAX)
+        return base + random.random()
+
+    @staticmethod
+    def _extract_retry_after(exc: BaseException | None) -> float | None:
+        """Read the retry-after header from an Anthropic exception, if present."""
+        if not isinstance(exc, anthropic.RateLimitError):
+            return None
+        response = getattr(exc, "response", None)
+        headers = getattr(response, "headers", None) or {}
+        for key in ("retry-after", "Retry-After", "anthropic-ratelimit-tokens-reset"):
+            raw = headers.get(key)
+            if not raw:
+                continue
+            try:
+                return max(1.0, float(raw))
+            except (TypeError, ValueError):
+                continue
+        return None
+
+    @staticmethod
+    def _log_retry(retry_state: "tenacity.RetryCallState") -> None:
+        exc = retry_state.outcome.exception() if retry_state.outcome else None
+        wait = getattr(retry_state.next_action, "sleep", 0.0)
+        logger.warning(
+            "claude retry attempt=%d wait=%.1fs error=%s",
+            retry_state.attempt_number,
+            wait,
+            type(exc).__name__ if exc else "?",
+        )
 
     def _attempt_schema_repair(
         self, chain, messages: list, error: object

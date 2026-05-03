@@ -15,7 +15,11 @@ from app.repositories.database import DEFAULT_DB_PATH
 
 CONFIG_PATH = Path("config/config.yaml")
 
-# Keys that users must never override — enforced regardless of DB contents
+# Keys that users must never override — enforced regardless of DB contents.
+# Per ADR-053, the legacy `llm.*` keys remain protected (they're no longer used,
+# but unprotecting them would re-enable an unbounded model selection surface).
+# Per-agent assignment lives under `agents.{name}.{provider,model}` and is
+# validated against ModelRegistry.KNOWN_MODELS instead of being absolutely banned.
 _PROTECTED_KEYS = {
     "llm.default_model",
     "llm.scoring_model",

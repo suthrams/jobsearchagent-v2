@@ -84,7 +84,7 @@ def make_deep_review_node(
                     })
                     _ti, _to, _cost = safe_agent_usage(resume_critic)
                     metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
-                except LLMProviderError as exc:
+                except (LLMProviderError, RuntimeError) as exc:
                     logger.warning("deep_review: critic failed for %s round %d: %s", job_id, round_num, exc)
                     errors = append_error({"errors": errors}, "deep_review", "critic_failed",
                                          str(exc), recoverable=True)
@@ -111,7 +111,7 @@ def make_deep_review_node(
                     })
                     _ti, _to, _cost = safe_agent_usage(review_auditor)
                     metrics = add_llm_call(metrics, tokens_in=_ti, tokens_out=_to, cost_usd=_cost)
-                except LLMProviderError as exc:
+                except (LLMProviderError, RuntimeError) as exc:
                     logger.warning("deep_review: auditor failed for %s round %d: %s", job_id, round_num, exc)
                     errors = append_error({"errors": errors}, "deep_review", "auditor_failed",
                                          str(exc), recoverable=True)

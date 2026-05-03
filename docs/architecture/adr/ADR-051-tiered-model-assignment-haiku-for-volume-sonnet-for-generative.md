@@ -1,7 +1,9 @@
 # ADR-051: Tiered Model Assignment — Haiku for Volume/Validation, Sonnet for Generative
 
 ## Status
-Accepted
+Superseded by ADR-053 (pluggable per-agent provider and model selection).
+The model assignment table below remains the **default** when the user has not
+configured an override, but it is no longer the only valid configuration.
 
 ## Context
 Phase 9 cost analysis found that using Sonnet for all agents was the dominant cost driver. Sonnet is 12× more expensive than Haiku per token. The Research Agent alone (one Sonnet call per job × 10 jobs = 10 Sonnet calls per run) accounted for 60–70% of total cost.

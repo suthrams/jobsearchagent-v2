@@ -97,7 +97,7 @@ class LaddersScraper(BaseScraper):
         """
         params = {
             "keywords": keyword,
-            "sort":     "date",   # most recent first
+            "sort": "date",  # most recent first
         }
         return f"{LADDERS_SEARCH_BASE}?{urlencode(params)}"
 
@@ -156,13 +156,13 @@ class LaddersScraper(BaseScraper):
             A Job object, or None if required fields cannot be extracted.
         """
         # These selectors are best-effort — Ladders may change their markup
-        title_el   = card.select_one("a.job-title, h2.title, [data-testid='job-title']")
+        title_el = card.select_one("a.job-title, h2.title, [data-testid='job-title']")
         company_el = card.select_one("span.company, [data-testid='company-name']")
         location_el = card.select_one("span.location, [data-testid='job-location']")
-        link_el    = card.select_one("a[href]")
+        link_el = card.select_one("a[href]")
 
-        title   = title_el.get_text(strip=True)   if title_el   else None
-        company = company_el.get_text(strip=True)  if company_el  else None
+        title = title_el.get_text(strip=True) if title_el else None
+        company = company_el.get_text(strip=True) if company_el else None
         location = location_el.get_text(strip=True) if location_el else None
 
         # Build absolute URL from the link href

@@ -195,7 +195,7 @@ the client polls `GET /workflows/{id}` to detect state changes.
   },
   "workflow_type": "full_career_review",
   "effective_config": {
-    "scoring": { "career_track": "ic" }
+    "scoring": { "career_track": "all" }
   }
 }
 ```
@@ -403,7 +403,7 @@ deep review results, career advice, and interview prep.
 |---|---|---|
 | `score_badge()` | **Reuse as-is** | Same 0–100 scoring model |
 | `render_track_table()` | **Adapt** | Rename columns: `score_ic/arch/mgmt` → `technical_score/architecture_score/leadership_score`; add `domain_score` |
-| `_render_exclude_panel()` | **Adapt** | Write to v2 `job_postings` table via `job_repo.update_status()` instead of direct SQL |
+| `_render_exclude_panel()` | **Adapt** | Write to v2 `jobs` table via `job_repo.update_status()` instead of direct SQL |
 | Companies view (aggregation + Plotly bar) | **Reuse as-is** | Query v2 `job_scores` table with same aggregation logic |
 | Run History charts (cost, tokens, latency) | **Adapt** | Map v2 `workflow_runs` columns to same chart shape |
 | `render_job_card()` expander | **Adapt** | Show v2 score fields; replace inline v1 agent call with `POST /decisions` for tailoring |
@@ -584,11 +584,11 @@ All browse views read `data/v2.db` directly via `db_reader.py` with `@st.cache_d
 
 | View | v2 Tables read | v1 equivalent |
 |---|---|---|
-| Top Matches | `job_scores JOIN job_postings` | `jobs WHERE status='scored'` |
-| IC / Architect / Management Track | `job_scores JOIN job_postings` | same, filtered by track score |
-| Deep Review Results | `resume_reviews JOIN career_advice JOIN interview_prep` | NEW — no v1 equivalent |
-| Companies | `job_scores JOIN job_postings GROUP BY company` | `jobs GROUP BY company` |
-| Run History | `workflow_runs` | `runs` |
+| Top Matches | `jobs JOIN job_scores` (scores extracted from `score_json`) | `jobs WHERE status='scored'` |
+| IC / Architect / Management Track | same, sorted by track score | same, filtered by track score |
+| Deep Review Results | `resume_reviews JOIN career_advice` (fields extracted from `review_json`, `advice_json`) | NEW — no v1 equivalent |
+| Companies | `jobs JOIN job_scores GROUP BY company` | `jobs GROUP BY company` |
+| Run History | derived from `job_scores GROUP BY workflow_run_id` (`workflow_runs` is not written by the graph) | `runs` |
 
 ---
 
@@ -657,18 +657,24 @@ DB_PATH = Path("data/v2.db")
 
 @st.cache_data(ttl=30)
 def load_scored_jobs() -> pd.DataFrame:
-    """All scored jobs joined with posting metadata — replaces v1 load_jobs()."""
+    """All scored jobs. Score fields are in score_json blob — extracted with json_extract()."""
     conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql_query("""
-        SELECT jp.job_id, jp.title, jp.company, jp.location, jp.work_mode,
-               jp.url, jp.source, jp.found_at,
-               js.overall_score, js.technical_score, js.architecture_score,
-               js.leadership_score, js.domain_score,
-               js.match_summary, js.strengths_json, js.gaps_json,
-               js.recommended_next_action, js.workflow_id
-        FROM job_postings jp
-        JOIN job_scores js USING (job_id)
-        WHERE jp.status = 'scored'
+        SELECT j.id                                                    AS job_id,
+               j.title, j.company, j.location, j.url, j.source,
+               j.created_at                                            AS found_at,
+               js.overall_score,
+               json_extract(js.score_json, '$.technical_score')        AS technical_score,
+               json_extract(js.score_json, '$.architecture_score')     AS architecture_score,
+               json_extract(js.score_json, '$.leadership_score')       AS leadership_score,
+               json_extract(js.score_json, '$.domain_score')           AS domain_score,
+               json_extract(js.score_json, '$.match_summary')          AS match_summary,
+               json_extract(js.score_json, '$.strengths')              AS strengths_json,
+               json_extract(js.score_json, '$.gaps')                   AS gaps_json,
+               json_extract(js.score_json, '$.recommended_next_action') AS recommended_next_action,
+               js.workflow_run_id                                       AS workflow_id
+        FROM jobs j
+        JOIN job_scores js ON j.id = js.job_id
         ORDER BY js.overall_score DESC
     """, conn)
     conn.close()
@@ -676,25 +682,42 @@ def load_scored_jobs() -> pd.DataFrame:
 
 @st.cache_data(ttl=30)
 def load_workflow_runs() -> pd.DataFrame:
-    """Run history — replaces v1 load_runs()."""
+    """Run history derived from job_scores. workflow_runs is defined but not written by the graph."""
     conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query(
-        "SELECT * FROM workflow_runs ORDER BY created_at ASC", conn)
+    df = pd.read_sql_query("""
+        SELECT workflow_run_id                             AS id,
+               COUNT(*)                                   AS jobs_scored,
+               MAX(overall_score)                         AS best_score,
+               ROUND(AVG(CAST(overall_score AS REAL)), 1) AS avg_score,
+               MIN(created_at)                            AS started_at,
+               MAX(created_at)                            AS updated_at
+        FROM job_scores
+        GROUP BY workflow_run_id
+        ORDER BY started_at DESC
+    """, conn)
     conn.close()
     return df
 
 @st.cache_data(ttl=30)
 def load_deep_review_results(workflow_id: str) -> pd.DataFrame:
-    """Resume reviews + career advice for a completed workflow — NEW in v2."""
+    """Resume reviews + career advice. Fields are in JSON blobs — extracted with json_extract()."""
     conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql_query("""
-        SELECT rr.job_id, rr.overall_fit_summary, rr.critical_gaps_json,
-               rr.suggested_improvements_json, rr.confidence AS review_confidence,
-               ca.positioning_summary, ca.resume_gaps_json, ca.career_gaps_json,
-               ca.recommended_next_action, ca.confidence AS advice_confidence
+        SELECT rr.job_id,
+               json_extract(rr.review_json, '$.overall_fit_summary')       AS overall_fit_summary,
+               json_extract(rr.review_json, '$.critical_gaps')             AS critical_gaps_json,
+               json_extract(rr.review_json, '$.suggested_improvements')    AS suggested_improvements_json,
+               json_extract(rr.review_json, '$.confidence')                AS review_confidence,
+               json_extract(ca.advice_json, '$.positioning_summary')       AS positioning_summary,
+               json_extract(ca.advice_json, '$.resume_gaps')               AS resume_gaps_json,
+               json_extract(ca.advice_json, '$.career_gaps')               AS career_gaps_json,
+               json_extract(ca.advice_json, '$.recommended_next_action')   AS recommended_next_action,
+               json_extract(ca.advice_json, '$.confidence')                AS advice_confidence
         FROM resume_reviews rr
-        LEFT JOIN career_advice ca USING (job_id)
-        WHERE rr.workflow_id = ?
+        LEFT JOIN career_advice ca
+               ON rr.job_id = ca.job_id
+              AND rr.workflow_run_id = ca.workflow_run_id
+        WHERE rr.workflow_run_id = ?
     """, conn, params=(workflow_id,))
     conn.close()
     return df
@@ -755,7 +778,7 @@ sequenceDiagram
     Note over ST,DB: BROWSE VIEWS — Streamlit reads SQLite directly (read-only)
     U->>ST: open Top Matches / Deep Review / Companies / Run History
     ST->>DB: db_reader.load_scored_jobs() (@st.cache_data ttl=30)
-    DB-->>ST: DataFrame (job_postings JOIN job_scores)
+    DB-->>ST: DataFrame (jobs JOIN job_scores, scores from score_json)
     ST->>U: render sortable table / charts
 ```
 

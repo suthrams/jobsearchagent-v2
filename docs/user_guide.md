@@ -77,9 +77,13 @@ tracks:
 
 ```
 ANTHROPIC_API_KEY=sk-ant-...
+OPENAI_API_KEY=sk-...        # optional — required only if you route any agent to OpenAI
 ADZUNA_APP_ID=your_app_id
 ADZUNA_APP_KEY=your_api_key
 ```
+
+`OPENAI_API_KEY` is optional. If absent, OpenAI models are simply hidden from
+the Settings UI dropdowns; Claude continues to serve every agent.
 
 ---
 
@@ -132,28 +136,31 @@ Open `http://localhost:8501` in your browser.
 
 ## 7. UI Navigation
 
-The sidebar has a radio navigation with 13 items in three groups:
+The sidebar opens to **Workflow History** (the default landing) and gives you the
+following views, top-down:
 
-**Active Run**
-- **Start New Run** — configure and launch a workflow
-- **Monitor / HITL** — track progress, respond to HITL checkpoints
-- **Run Report** — view the final report when the workflow completes
+**Workflow-centric**
+- **Workflow History** — all runs, click **Open** to drill into one
+- **Workflow Detail** — unified per-run view: jobs, scores, deep review, advice,
+  interview prep, **the settings used for that run**, and a "Limits & Constraints"
+  section that flags where execution caps clipped results
+- **Start New Run** — settings inline (threshold, max jobs, custom URLs) plus a
+  textarea for line-by-line custom job URLs
+- **Live Run Monitor** — activity feed for the currently running workflow
+- **Run Report** — generated markdown report
+- **Settings** — view and edit your default config (search criteria, threshold,
+  salary, staleness, **per-agent provider + model**). Protected keys (hard
+  limits, retention windows, prompt definitions) remain read-only.
 
-**Browse Results** *(read directly from `data/v2.db`)*
-- **Top Matches** — all scored jobs by overall score
-- **IC Track** — jobs sorted by technical score
-- **Architect Track** — jobs sorted by architecture score
-- **Management Track** — jobs sorted by leadership score
-- **Deep Review Results** — per-job resume gap analysis and fit summary
-- **Interview Prep** — per-job 7-day prep plan and likely interview topics
+**Cross-Run Analytics** *(read directly from `data/v2.db`)*
+- **Top Matches** — scored jobs across all runs
+- **IC / Architect / Management Track** — sorted by per-track score
+- **Companies** — top target companies by best match score
 
-**Analytics**
-- **Companies** — bar chart of top target companies by best match score
-- **Run History** — log of all workflow runs with cost totals
-
-**Sidebar controls** (apply to all Browse views):
-- **Minimum score** slider — 0–100, default 60, step 5
-- **Search** — filter by title or company name
+**Sidebar controls**
+- **Minimum match score** slider — 0–100, default 75, step 5. Same value drives
+  the auto-selection of jobs for deep review (any track score ≥ this qualifies).
+- **Search** — filter by title or company across browse views
 - **Refresh data** — clears the data cache and reloads from `data/v2.db`
 
 ---
@@ -164,70 +171,47 @@ Select **Start New Run** in the sidebar. Fill in the form:
 
 | Field | What to enter |
 |---|---|
-| **Resume ID** | `res-001` (default) — the ID the parser stored your resume under |
-| **Roles** | Comma-separated job titles to search for, e.g. `Staff Engineer, Principal Engineer` |
-| **Locations** | Comma-separated locations, e.g. `Remote` or `Atlanta, GA, Remote` |
-| **Career track** | `ic`, `architect`, or `management` — sets which score column to optimize for |
+| **Resume ID** | `resume.pdf` (default) — the filename of your resume in the `data/` folder |
+| **Roles** | Comma-separated job titles — pre-filled from your saved settings |
+| **Locations** | Comma-separated locations — pre-filled from your saved settings |
+| **Min match score** | Slider, defaults to 75 — any track score (tech / arch / lead) at or above this triggers deep review |
+| **Max jobs** | Hard cap on jobs surfaced for processing (default 10) |
+| **Custom job URLs** | Optional textarea — paste up to 25 URLs (LinkedIn, company career pages, ATS pages, etc.), one per line. They're scraped alongside Adzuna for this run. |
+| **Save these settings as my defaults** | Persists the slider / max jobs / titles / locations as your defaults for future runs |
 
 Click **Start Workflow**.
 
-On success the UI shows the `workflow_id` UUID and prompts you to switch to **Monitor / HITL**. The backend immediately begins:
+The backend runs end-to-end with no required user input:
 
-1. Discovering jobs from Adzuna (up to 10 jobs per run)
-2. Researching each company (Research Agent — Haiku)
-3. Scoring each job against the selected career track (Scoring Agent — Haiku, concurrent)
+1. **Job discovery** — Adzuna + your custom URLs (each custom URL is fetched and parsed via heuristics first, then via Claude if heuristics fall short; failures are logged per URL and skipped)
+2. **Research** each company (Research Agent — Haiku)
+3. **Scoring** across all three career tracks (Scoring Agent — Haiku, concurrent)
+4. **Auto-select** up to 3 top-scoring jobs where any track ≥ your threshold
+5. **Deep review** (Resume Critic + Review Auditor reflection loop, up to 3 rounds)
+6. **Career advice** (Sonnet) per selected job
+7. **Interview prep** (Sonnet) if any selected job's best track score ≥ threshold
+8. **Report generation** as the final step
+
+If no jobs clear the threshold, deep review and prep are skipped and the run goes straight to report generation. The "Limits & Constraints" section in **Workflow Detail** will flag this so you can lower the threshold or broaden search.
 
 ---
 
-## 9. Monitor Progress and Handle HITL Checkpoints
+## 9. Monitor Progress
 
-Select **Monitor / HITL** in the sidebar. Click **Refresh** to poll the backend for the latest status.
+Select **Live Run Monitor** in the sidebar. Click **Refresh** to poll the backend for the latest status.
 
 ### Status indicators
 
 | Symbol | Status | Meaning |
 |---|---|---|
 | 🔵 | `running` | Workflow is executing |
-| 🟡 | `waiting_for_user` | Paused — action required (see below) |
-| 🟢 | `completed` | Finished — report is available |
+| 🟢 | `completed` | Finished — report is available, see **Workflow Detail** |
+| 🟠 | `completed_with_errors` | Finished but some agents failed — check Errors |
 | 🔴 | `failed` | Unrecoverable error — check Errors section |
 
-The view also shows the **current step** name (e.g. `score_jobs`, `await_job_selection`) and a metrics row: LLM calls used out of 100, estimated cost so far, and any error count.
+The view shows the **current step**, a metrics row (LLM calls / 100, estimated cost, error count), and a per-agent activity feed. Custom URL extraction errors and 429 retry events appear here.
 
-### HITL Checkpoint 1 — Job Selection
-
-When status is 🟡 `waiting_for_user` and the step is `await_job_selection`:
-
-- A list of scored jobs appears, each showing title, company, and overall score
-- Check the boxes next to **1–3 jobs** you want to deep-review
-- Click **Submit Selection**
-
-Only selected jobs proceed to deep review. Unselected jobs are stored in the database but receive no further LLM calls.
-
-After submitting, the workflow resumes and runs for each selected job:
-
-1. **Resume Critic** (Sonnet) — section-by-section gap analysis
-2. **Review Auditor** (Haiku) — quality check on the critic's output
-3. Reflection loop repeats until quality threshold met (up to 3 rounds)
-4. **Career Advisor** (Sonnet) — cross-job career positioning synthesis
-5. **Interview Coach** (Sonnet) — if match score ≥ 75
-6. **Tailoring Agent** (Sonnet) — if you requested tailoring
-
-### HITL Checkpoint 2 — Tailoring Approval
-
-When status is 🟡 `waiting_for_user` and the step is `await_tailoring_approval`:
-
-- The view shows **Fidelity Status** and **Recommendation** from the Fidelity Reviewer
-- Click **View tailored draft** to inspect the full draft
-- Choose one of three actions:
-
-| Button | Effect |
-|---|---|
-| **Approve** | Accept the draft; workflow proceeds to report generation |
-| **Request Revision** | Triggers another tailoring pass (within the 3-round limit) |
-| **Reject** | Discard the draft; workflow proceeds to report without a tailored version |
-
-After the final checkpoint, the workflow runs **Fidelity Review** and then **generates the report**.
+After completion, switch to **Workflow Detail** for the unified view of jobs, scores, deep review, advice, interview prep, the settings that were in effect for this run, and any execution-limit warnings.
 
 ---
 
@@ -301,6 +285,41 @@ Horizontal bar chart of the top 20 companies by best overall match score, filter
 ### Run History
 
 Shows total workflow runs and cumulative estimated API cost across all runs. The full runs table below includes per-run status, job counts, LLM call counts, and cost.
+
+---
+
+## 13a. Picking a Provider and Model per Agent
+
+Open **Settings** → **Agent Models** to see the per-agent assignment. Each
+of the eight agents has a **Provider** dropdown (Claude / OpenAI) and a
+**Model** dropdown filtered to the chosen provider. Indicative cost per
+1K input + 1K output tokens is shown next to each model so you can see the
+trade-off before saving.
+
+Why you'd change one:
+
+* **Claude is rate-limited.** Route `research_agent` and `scoring_agent`
+  (the high-volume per-job agents) to OpenAI's `gpt-4o-mini` to keep
+  workflows running while Claude cools off.
+* **You want stronger reasoning on tailoring.** Switch
+  `tailoring_agent` to `claude-opus-4-7` or OpenAI `o1` for one run, see if
+  the output quality is worth the cost in the report's Cost Breakdown
+  section, then revert.
+* **You're cost-optimising.** Move every advisory agent to Haiku or
+  `gpt-4o-mini` and watch total cost drop in the Workflow Detail rollup.
+
+Two important constraints:
+
+* Models must come from the registered list — you cannot type an arbitrary
+  model name. The list lives in code (`app/providers/model_registry.py`) so
+  cost tables and integration tests stay in sync.
+* Saving a change **requires a backend restart** to take effect. In-flight
+  workflows continue under whatever assignment they started with.
+
+The cost rollup in **Workflow Detail → Cost Breakdown** and at the bottom
+of the **Run Report** shows `provider · model · calls · in tokens · out
+tokens · cost · avg latency` per agent so you can decide which agent is
+worth re-routing next time.
 
 ---
 

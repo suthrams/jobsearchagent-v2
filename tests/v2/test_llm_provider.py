@@ -11,6 +11,7 @@ import logging
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import openai
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
@@ -335,6 +336,71 @@ def test_retry_fires_on_api_connection_error(tmp_path):
     assert result["score"] == 1
 
 
+def test_retry_after_header_is_honored(tmp_path):
+    """A 429 with retry-after header should make _compute_backoff return that value."""
+    import httpx
+    import anthropic as _anthropic
+
+    response = httpx.Response(
+        429,
+        headers={"retry-after": "12"},
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+    )
+    error = _anthropic.RateLimitError("rate limited", response=response, body=None)
+
+    provider = _make_provider(tmp_path)
+    assert provider._extract_retry_after(error) == 12.0
+
+
+def test_retry_after_capped(tmp_path):
+    """retry-after values larger than the cap should be clamped."""
+    import httpx
+    import anthropic as _anthropic
+
+    response = httpx.Response(
+        429,
+        headers={"retry-after": "9999"},
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+    )
+    error = _anthropic.RateLimitError("rate limited", response=response, body=None)
+
+    provider = _make_provider(tmp_path)
+    state = MagicMock()
+    state.outcome.exception.return_value = error
+    state.attempt_number = 1
+    wait = provider._compute_backoff(state)
+    assert wait <= provider._RETRY_AFTER_CAP
+
+
+def test_retry_recovers_from_rate_limit(tmp_path):
+    """A RateLimitError on first invoke is retried and recovers."""
+    import httpx
+    import anthropic as _anthropic
+
+    response = httpx.Response(
+        429,
+        headers={"retry-after": "0"},
+        request=httpx.Request("POST", "https://api.anthropic.com/v1/messages"),
+    )
+    error = _anthropic.RateLimitError("rate limited", response=response, body=None)
+
+    ai_message = AIMessage(content="", usage_metadata={"input_tokens": 5, "output_tokens": 5, "total_tokens": 10})
+    good = {"raw": ai_message, "parsed": _Score(result="ok", score=1), "parsing_error": None}
+
+    chain = MagicMock()
+    chain.invoke.side_effect = [error, good]
+    mock_model = MagicMock()
+    mock_model.with_structured_output.return_value = chain
+
+    provider = ClaudeProvider(PromptLoader(_write_prompts(tmp_path)), _model=mock_model)
+    provider._RETRY_WAIT_MIN = 0
+    provider._RETRY_WAIT_MAX = 0
+
+    result = provider.complete("test_agent", {}, _Score)
+    assert chain.invoke.call_count == 2
+    assert result["score"] == 1
+
+
 # ── ClaudeProvider — token extraction and cost ───────────────────────────────
 
 def test_extract_usage_from_ai_message_metadata(tmp_path):
@@ -390,22 +456,119 @@ def test_log_call_emits_prompt_version(tmp_path, caplog):
     assert "test_agent:v1" in caplog.text
 
 
-# ── OpenAIProvider stub ───────────────────────────────────────────────────────
+# ── OpenAIProvider — real implementation (ADR-053) ───────────────────────────
 
-def test_openai_complete_raises_not_implemented():
-    provider = OpenAIProvider()
-    with pytest.raises(NotImplementedError):
-        provider.complete("scoring_agent", {}, _Score)
+def _make_openai_response(payload_dict: dict, *, tokens_in: int = 100, tokens_out: int = 50):
+    """Build a stand-in for openai.ChatCompletion.create() return value."""
+    msg = MagicMock()
+    msg.content = json.dumps(payload_dict)
+    choice = MagicMock()
+    choice.message = msg
+    response = MagicMock()
+    response.choices = [choice]
+    usage = MagicMock()
+    usage.prompt_tokens = tokens_in
+    usage.completion_tokens = tokens_out
+    response.usage = usage
+    return response
 
 
-def test_openai_count_tokens_raises_not_implemented():
-    with pytest.raises(NotImplementedError):
-        OpenAIProvider().count_tokens("text")
+def _openai_provider(tmp_path, model="gpt-4o-mini"):
+    return OpenAIProvider(
+        PromptLoader(_write_prompts(tmp_path)),
+        model_name=model,
+        _client=MagicMock(),
+    )
 
 
-def test_openai_estimate_cost_raises_not_implemented():
-    with pytest.raises(NotImplementedError):
-        OpenAIProvider().estimate_cost(100, 50)
+def test_openai_complete_returns_validated_dict(tmp_path):
+    provider = _openai_provider(tmp_path)
+    response = _make_openai_response({"result": "ok", "score": 7})
+    provider._client.chat.completions.create.return_value = response
+
+    out = provider.complete("test_agent", {}, _Score)
+    assert out == {"result": "ok", "score": 7}
+    assert provider.last_call_usage()[0] == 100
+    assert provider.last_call_usage()[1] == 50
+
+
+def test_openai_estimate_cost_uses_pricing_table(tmp_path):
+    provider = _openai_provider(tmp_path, model="gpt-4o")
+    # gpt-4o: $2.50 / $10.00 per million → 1M in + 1M out = $12.50
+    cost = provider.estimate_cost(1_000_000, 1_000_000)
+    assert abs(cost - 12.50) < 0.01
+
+
+def test_openai_estimate_cost_falls_back_for_unknown_model(tmp_path):
+    provider = _openai_provider(tmp_path, model="some-future-model-xyz")
+    # Falls back to default pricing — cost should still be > 0
+    assert provider.estimate_cost(100, 100) > 0
+
+
+def test_openai_count_tokens_works(tmp_path):
+    provider = _openai_provider(tmp_path)
+    # Either tiktoken or the char/4 fallback — both should return a positive int
+    n = provider.count_tokens("hello world")
+    assert n >= 1
+
+
+def test_openai_schema_validation_failure_triggers_repair(tmp_path):
+    """If first response fails Pydantic validation, the repair pass runs."""
+    provider = _openai_provider(tmp_path)
+    bad = _make_openai_response({"result": "ok"})  # missing 'score' field
+    good = _make_openai_response({"result": "ok", "score": 9})
+    provider._client.chat.completions.create.side_effect = [bad, good]
+
+    out = provider.complete("test_agent", {}, _Score)
+    assert out["score"] == 9
+    assert provider._client.chat.completions.create.call_count == 2
+
+
+def test_openai_retry_on_rate_limit_recovers(tmp_path):
+    """A RateLimitError on first invoke is retried and recovers."""
+    import httpx
+    response_429 = httpx.Response(
+        429, headers={"retry-after": "0"},
+        request=httpx.Request("POST", "https://api.openai.com/v1/chat/completions"),
+    )
+    err = openai.RateLimitError("rate limited", response=response_429, body=None)
+    good = _make_openai_response({"result": "ok", "score": 1})
+
+    provider = _openai_provider(tmp_path)
+    provider._RETRY_WAIT_MIN = 0
+    provider._RETRY_WAIT_MAX = 0
+    provider._client.chat.completions.create.side_effect = [err, good]
+
+    out = provider.complete("test_agent", {}, _Score)
+    assert out["score"] == 1
+    assert provider._client.chat.completions.create.call_count == 2
+
+
+def test_openai_complete_rejects_non_pydantic_schema(tmp_path):
+    provider = _openai_provider(tmp_path)
+    with pytest.raises(LLMProviderError):
+        provider.complete("test_agent", {}, dict)
+
+
+def test_openai_json_schema_enforces_no_additional_props(tmp_path):
+    """The response_format payload must set additionalProperties:false on every object."""
+    provider = _openai_provider(tmp_path)
+    fmt = provider._build_json_schema(_Score)
+    # walk it
+    def all_objects_locked(node):
+        if isinstance(node, dict):
+            if node.get("type") == "object":
+                if node.get("additionalProperties") is not False:
+                    return False
+            for v in node.values():
+                if not all_objects_locked(v):
+                    return False
+        elif isinstance(node, list):
+            for item in node:
+                if not all_objects_locked(item):
+                    return False
+        return True
+    assert all_objects_locked(fmt["json_schema"]["schema"])
 
 
 # ── LLMClient is abstract ─────────────────────────────────────────────────────

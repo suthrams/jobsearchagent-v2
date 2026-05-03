@@ -40,11 +40,17 @@ class ReportGenerator:
         """Assemble a full Markdown run report, persist it, and return the Markdown string."""
         scores = self._scores.get_by_workflow_run(workflow_id)
 
+        # Cost breakdown lives under the scores summary so it's near the top
+        # of the report — that's where the user looks first.
+        from app.services.cost_breakdown import compute_breakdown, to_markdown as cost_markdown
+        breakdown = compute_breakdown(workflow_id)
+
         lines: list[str] = [
             "# Job Search Run Summary",
             "",
             f"**Run ID:** `{workflow_id}`",
             "",
+            cost_markdown(breakdown),
         ]
 
         if scores:

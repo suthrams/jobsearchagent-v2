@@ -210,7 +210,7 @@ def _initial_state(thread_id: str = "wf-test-001", **overrides) -> dict:
         "selected_jobs": [],
         "run_metrics": {"llm_calls": 0, "tokens_input": 0, "tokens_output": 0, "estimated_cost_usd": 0.0},
         "errors": [],
-        "effective_config": {"scoring": {"career_track": "ic"}},
+        "effective_config": {"scoring": {"career_track": "all"}},
         "human_decisions": [],
         "user_requested_interview_prep": False,
         "user_requested_tailoring": False,
@@ -223,54 +223,43 @@ def _initial_state(thread_id: str = "wf-test-001", **overrides) -> dict:
 
 # ── Tests ──────────────────────────────────────────────────────────────────────
 
-def test_graph_runs_to_job_selection_hitl():
-    """Graph should pause at await_job_selection after scoring."""
+def test_graph_auto_selects_qualifying_jobs_no_interrupt():
+    """With score=80 and default threshold=75, the job qualifies and deep review runs end-to-end."""
     saver = MemorySaver()
-    deps = _make_deps(checkpointer=saver)
+    deps = _make_deps(checkpointer=saver, override_scoring_score=80)
     graph = build_graph(deps)
 
-    config = {"configurable": {"thread_id": "wf-hitl-001"}}
-    state = _initial_state("wf-hitl-001")
+    config = {"configurable": {"thread_id": "wf-auto-001"}}
+    state = _initial_state("wf-auto-001")
 
-    # Run until the interrupt — LangGraph raises GraphInterrupt internally
-    # and the result contains the interrupt payload
-    try:
-        result = graph.invoke(state, config)
-    except Exception:
-        # Some LangGraph versions surface interrupt differently; check state instead
-        pass
+    # Should run end-to-end with no HITL interrupt
+    graph.invoke(state, config)
 
-    # Verify scoring ran
-    checkpoint = saver.get(config)
-    assert checkpoint is not None
-
-
-def test_graph_resumes_after_job_selection():
-    """After job selection decision, deep_review should run."""
-    saver = MemorySaver()
-    deps = _make_deps(checkpointer=saver)
-    graph = build_graph(deps)
-
-    config = {"configurable": {"thread_id": "wf-resume-001"}}
-    state = _initial_state("wf-resume-001")
-
-    # First invocation — runs until interrupt at await_job_selection
-    try:
-        graph.invoke(state, config)
-    except Exception:
-        pass
-
-    # Resume with a job selection
-    try:
-        result = graph.invoke(
-            Command(resume={"selected_job_ids": ["job-001"]}),
-            config,
-        )
-    except Exception:
-        result = None
-
-    # Deep review agent should have been called (critic was invoked)
     deps.resume_critic.run.assert_called()
+
+
+def test_graph_skips_deep_review_when_no_jobs_qualify():
+    """All scores below threshold → auto_select picks zero jobs → graph short-circuits to report."""
+    saver = MemorySaver()
+    # Score 50 < default threshold 75, none of the track scores will qualify
+    deps = _make_deps(checkpointer=saver, override_scoring_score=50)
+    # Override scoring to also have low track scores
+    from app.schemas.job_score import JobScore
+    deps.scoring_agent.run.return_value = JobScore(
+        job_id="job-001", resume_id="res-001",
+        overall_score=50, technical_score=50,
+        architecture_score=40, leadership_score=30, domain_score=40,
+        match_summary="Weak match.", strengths=[], gaps=["Domain"],
+        recommended_next_action="Skip.", confidence=70,
+    )
+    graph = build_graph(deps)
+
+    config = {"configurable": {"thread_id": "wf-skip-001"}}
+    state = _initial_state("wf-skip-001")
+    graph.invoke(state, config)
+
+    deps.resume_critic.run.assert_not_called()
+    deps.report_generator.generate_run_summary.assert_called()
 
 
 def test_graph_per_job_error_does_not_abort_run():

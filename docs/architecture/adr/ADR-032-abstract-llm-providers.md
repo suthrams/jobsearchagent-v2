@@ -24,3 +24,5 @@
 
     ## Implementation Notes
     - Create providers/llm_client.py, providers/claude_provider.py, providers/openai_provider.py
+    - Updated by ADR-053: `OpenAIProvider` is now a real implementation (not a stub)
+      and providers are resolved per-agent through `app/providers/model_registry.py`.

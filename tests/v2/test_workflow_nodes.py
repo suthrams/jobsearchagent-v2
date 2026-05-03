@@ -74,7 +74,7 @@ def _base_state(**overrides) -> dict:
         "selected_jobs": [],
         "run_metrics": {"llm_calls": 0, "tokens_input": 0, "tokens_output": 0, "estimated_cost_usd": 0.0},
         "errors": [],
-        "effective_config": {"scoring": {"career_track": "ic"}},
+        "effective_config": {"scoring": {"career_track": "all"}},
     }
     state.update(overrides)
     return state
@@ -443,35 +443,61 @@ def _make_coach(result: dict | None = None) -> MagicMock:
     return mock
 
 
-def test_interview_prep_high_score_triggers_coach():
-    from app.workflows.limits import INTERVIEW_COACH_THRESHOLD
-    state = _base_state(
-        selected_jobs=[_make_job("job-001", score=INTERVIEW_COACH_THRESHOLD + 1)],
-        scored_jobs=[_make_job("job-001", score=INTERVIEW_COACH_THRESHOLD + 1)],
-    )
+def _make_scored_job(job_id: str = "job-001", *,
+                     technical: int = 0, architecture: int = 0,
+                     leadership: int = 0, overall: int = 0) -> dict:
+    """Builds a scored job dict with explicit per-track scores for threshold tests."""
+    return {
+        "id": job_id, "job_id": job_id,
+        "title": "Staff Engineer", "company": "Acme",
+        "location": "Remote", "job_description": "Python.",
+        "url": "https://example.com/job", "status": "scored",
+        "overall_score": overall,
+        "technical_score": technical,
+        "architecture_score": architecture,
+        "leadership_score": leadership,
+        "domain_score": 0,
+    }
+
+
+def test_interview_prep_high_track_score_triggers_coach():
+    """Any track score >= threshold triggers the coach."""
+    job = _make_scored_job("job-001", architecture=80)  # only architecture qualifies
+    state = _base_state(selected_jobs=[job], scored_jobs=[job])
     node = make_interview_prep_node(_make_coach(), _advice_repo(), _obs())
     result = node(state)
     assert result["interview_prep"] is not None
 
 
 def test_interview_prep_low_score_no_request_is_noop():
+    job = _make_scored_job("job-001", technical=50, architecture=50, leadership=50)
     state = _base_state(
-        selected_jobs=[_make_job("job-001", score=50)],
-        scored_jobs=[_make_job("job-001", score=50)],
+        selected_jobs=[job], scored_jobs=[job],
         user_requested_interview_prep=False,
     )
     coach = MagicMock(spec=InterviewCoach)
     node = make_interview_prep_node(coach, _advice_repo(), _obs())
-    result = node(state)
-    # Node returns without running coach
+    node(state)
     coach.run.assert_not_called()
 
 
 def test_interview_prep_user_request_overrides_threshold():
+    job = _make_scored_job("job-001", technical=30, architecture=30, leadership=30)
     state = _base_state(
-        selected_jobs=[_make_job("job-001", score=30)],
-        scored_jobs=[_make_job("job-001", score=30)],
+        selected_jobs=[job], scored_jobs=[job],
         user_requested_interview_prep=True,
+    )
+    node = make_interview_prep_node(_make_coach(), _advice_repo(), _obs())
+    result = node(state)
+    assert result["interview_prep"] is not None
+
+
+def test_interview_prep_custom_threshold_from_config():
+    """Per-run min_match_score in effective_config overrides the default."""
+    job = _make_scored_job("job-001", technical=70)  # above 65, below default 75
+    state = _base_state(
+        selected_jobs=[job], scored_jobs=[job],
+        effective_config={"scoring": {"min_match_score": 65}},
     )
     node = make_interview_prep_node(_make_coach(), _advice_repo(), _obs())
     result = node(state)
@@ -555,19 +581,33 @@ def test_generate_report_error_sets_completed_with_errors():
 
 # ── routers ────────────────────────────────────────────────────────────────────
 
-def test_interview_router_high_score_returns_interview_prep():
-    from app.workflows.limits import INTERVIEW_COACH_THRESHOLD
-    state = {"scored_jobs": [{"overall_score": INTERVIEW_COACH_THRESHOLD + 5}]}
+def test_interview_router_high_track_score_returns_interview_prep():
+    """Any single track score >= threshold qualifies."""
+    state = {"selected_jobs": [{"architecture_score": 90, "technical_score": 30, "leadership_score": 20}]}
     assert interview_router(state) == "interview_prep"
 
 
 def test_interview_router_low_score_returns_tailoring_check():
-    state = {"scored_jobs": [{"overall_score": 40}], "user_requested_interview_prep": False}
+    state = {
+        "selected_jobs": [{"technical_score": 40, "architecture_score": 40, "leadership_score": 40}],
+        "user_requested_interview_prep": False,
+    }
     assert interview_router(state) == "tailoring_check"
 
 
 def test_interview_router_user_request_overrides_score():
-    state = {"scored_jobs": [{"overall_score": 10}], "user_requested_interview_prep": True}
+    state = {
+        "selected_jobs": [{"technical_score": 10}],
+        "user_requested_interview_prep": True,
+    }
+    assert interview_router(state) == "interview_prep"
+
+
+def test_interview_router_respects_custom_threshold():
+    state = {
+        "selected_jobs": [{"technical_score": 60}],
+        "effective_config": {"scoring": {"min_match_score": 50}},
+    }
     assert interview_router(state) == "interview_prep"
 
 

@@ -1,60 +1,64 @@
-"""await_job_selection node — HITL pause #1: user selects jobs for deep review."""
+"""auto_select_jobs node — selects high-scoring jobs for deep review without HITL.
+
+Replaces the previous HITL pause. Eligibility = any track score (technical,
+architecture, leadership) at or above effective_config['scoring']['min_match_score'].
+Up to MAX_SELECTED_JOBS top-qualifying jobs proceed; if none qualify, the
+workflow continues with selected_jobs=[] and downstream nodes short-circuit.
+"""
 from __future__ import annotations
 
 import logging
 from typing import Callable
 
-from langgraph.types import interrupt
-
 from app.repositories.database import utcnow_iso
-from app.workflows.limits import MAX_SELECTED_JOBS
+from app.workflows.limits import (
+    MAX_SELECTED_JOBS,
+    best_track_score,
+    get_min_match_score,
+    qualifies_for_deep_review,
+)
 
 logger = logging.getLogger(__name__)
 
 
 def make_await_job_selection_node() -> Callable[[dict], dict]:
-    def await_job_selection(state: dict) -> dict:
+    """Factory kept for backwards-compat with workflow_graph wiring."""
+    def auto_select_jobs(state: dict) -> dict:
         scored_jobs: list[dict] = state.get("scored_jobs") or []
-        eligible = [j for j in scored_jobs if j.get("status") == "scored"]
+        threshold = get_min_match_score(state)
 
-        decision = interrupt({
-            "decision_type": "select_jobs_for_deep_review",
-            "message": f"Select up to {MAX_SELECTED_JOBS} jobs to move into deep review.",
-            "eligible_jobs": [
-                {
-                    "job_id": j.get("job_id", j.get("id", "")),
-                    "title": j.get("title", ""),
-                    "company": j.get("company", ""),
-                    "overall_score": j.get("overall_score", 0),
-                }
-                for j in eligible
-            ],
-        })
-
-        selected_ids: list[str] = (decision or {}).get("selected_job_ids", [])
-        selected_ids = selected_ids[:MAX_SELECTED_JOBS]
-
-        selected_jobs = [
-            j for j in eligible
-            if j.get("job_id", j.get("id", "")) in selected_ids
+        eligible = [
+            j for j in scored_jobs
+            if j.get("status") == "scored" and qualifies_for_deep_review(j, threshold)
         ]
+        eligible.sort(key=best_track_score, reverse=True)
+        selected_jobs = eligible[:MAX_SELECTED_JOBS]
 
         human_decisions = list(state.get("human_decisions") or [])
         human_decisions.append({
-            "decision_type": "select_jobs_for_deep_review",
-            "decision_value": "selected",
-            "payload": {"selected_job_ids": selected_ids},
+            "decision_type": "auto_select_jobs_for_deep_review",
+            "decision_value": "auto",
+            "payload": {
+                "threshold": threshold,
+                "eligible_count": len(eligible),
+                "selected_job_ids": [
+                    j.get("job_id", j.get("id", "")) for j in selected_jobs
+                ],
+            },
             "decided_at": utcnow_iso(),
         })
 
-        logger.info("await_job_selection: user selected %d jobs", len(selected_jobs))
+        logger.info(
+            "auto_select_jobs: threshold=%d eligible=%d selected=%d",
+            threshold, len(eligible), len(selected_jobs),
+        )
 
         return {
             "selected_jobs": selected_jobs,
             "pending_decision": None,
             "human_decisions": human_decisions,
-            "current_step": "deep_review_in_progress",
+            "current_step": "deep_review_in_progress" if selected_jobs else "no_qualifying_jobs",
             "updated_at": utcnow_iso(),
         }
 
-    return await_job_selection
+    return auto_select_jobs

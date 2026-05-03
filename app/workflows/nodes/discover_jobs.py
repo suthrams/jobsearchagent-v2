@@ -1,8 +1,13 @@
-"""discover_jobs node — fetches, normalises, and persists jobs from all sources."""
+"""discover_jobs node — fetches, normalises, and persists jobs from all sources.
+
+In addition to the always-on scrapers wired at startup, this node honors
+state['custom_urls']: when present, it constructs a per-run CustomUrlScraper
+via the injected factory and adds it to the discovery pass for this run only.
+"""
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from typing import Any, Callable
 
 from app.repositories.database import utcnow_iso
 from app.repositories.job_repository import JobRepository
@@ -17,14 +22,30 @@ def make_discover_jobs_node(
     discovery_service: JobDiscoveryService,
     job_repo: JobRepository,
     observability: ObservabilityService,
+    custom_url_scraper_factory: Callable[[list[str]], Any] | None = None,
 ) -> Callable[[dict], dict]:
     def discover_jobs(state: dict) -> dict:
         workflow_id: str = state.get("workflow_id", "")
         search_criteria: dict = state.get("search_criteria") or {}
+        custom_urls: list[str] = list(state.get("custom_urls") or [])
         errors = list(state.get("errors") or [])
 
+        # Per-run scrapers: build one CustomUrlScraper if URLs were provided.
+        extra_scrapers: list[Any] = []
+        custom_scraper = None
+        if custom_urls and custom_url_scraper_factory is not None:
+            try:
+                custom_scraper = custom_url_scraper_factory(custom_urls)
+                extra_scrapers.append(custom_scraper)
+            except Exception as exc:
+                logger.warning("discover_jobs: failed to build CustomUrlScraper: %s", exc)
+                errors = append_error({"errors": errors}, "custom_urls",
+                                      "scraper_build_failed", str(exc), recoverable=True)
+
         try:
-            postings = discovery_service.discover(workflow_id, search_criteria)
+            postings = discovery_service.discover(
+                workflow_id, search_criteria, extra_scrapers=extra_scrapers,
+            )
             postings = postings[:MAX_JOBS_PER_RUN]
         except Exception as exc:
             logger.error("discover_jobs: discovery failed: %s", exc)
@@ -60,7 +81,21 @@ def make_discover_jobs_node(
             raw_jobs.append(db_dict)
             normalized_jobs.append({**db_dict, "status": "discovered"})
 
-        logger.info("discover_jobs: found %d jobs", len(normalized_jobs))
+        # Capture per-URL custom scraper errors as workflow errors[] entries
+        if custom_scraper is not None:
+            for fetch_err in getattr(custom_scraper, "errors", lambda: [])():
+                errors = append_error(
+                    {"errors": errors},
+                    step="custom_urls",
+                    error_type="extraction_failed",
+                    message=f"{fetch_err.get('url', '?')} → {fetch_err.get('reason', '?')}",
+                    recoverable=True,
+                )
+
+        logger.info(
+            "discover_jobs: found %d jobs (custom_urls=%d)",
+            len(normalized_jobs), len(custom_urls),
+        )
         return {
             "raw_jobs": raw_jobs,
             "normalized_jobs": normalized_jobs,

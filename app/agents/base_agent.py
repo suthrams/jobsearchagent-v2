@@ -66,6 +66,12 @@ class BaseAgent(ABC):
             self._observability.log_agent_failed(
                 workflow_id, self.AGENT_NAME, event_id, str(exc), duration_ms,
             )
+            # Convert interpreter-shutdown RuntimeErrors to LLMProviderError so
+            # callers that catch LLMProviderError handle this gracefully instead of
+            # crashing the whole workflow. This happens when the server is killed
+            # while a LangChain/httpx call is in-flight in a background thread.
+            if isinstance(exc, RuntimeError) and "interpreter shutdown" in str(exc):
+                raise LLMProviderError(f"Provider call interrupted by process shutdown: {exc}") from exc
             raise
 
     def last_call_usage(self) -> tuple[int, int, float]:

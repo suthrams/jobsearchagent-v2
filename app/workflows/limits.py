@@ -20,7 +20,14 @@ MAX_LLM_CALLS_PER_RUN = 100
 
 AUDIT_QUALITY_THRESHOLD = 75
 STAGNATION_MIN_IMPROVEMENT = 5
-INTERVIEW_COACH_THRESHOLD = 75
+
+# Default minimum match score — a job qualifies for deep review / interview prep
+# if ANY of {technical_score, architecture_score, leadership_score} >= this value.
+# Overridable via effective_config['scoring']['min_match_score'].
+MIN_MATCH_SCORE_DEFAULT = 75
+
+# Track score keys checked by qualifies_for_deep_review().
+_TRACK_SCORE_KEYS = ("technical_score", "architecture_score", "leadership_score")
 
 
 class BudgetExceededError(Exception):
@@ -100,6 +107,35 @@ def add_llm_calls_bulk(
         "started_at": metrics.get("started_at"),
         "completed_at": metrics.get("completed_at"),
     }
+
+
+def get_min_match_score(state: dict) -> int:
+    """Return the per-run min match threshold from effective_config, falling back to default."""
+    cfg = state.get("effective_config") or {}
+    scoring = cfg.get("scoring") or {}
+    raw = scoring.get("min_match_score", MIN_MATCH_SCORE_DEFAULT)
+    try:
+        return int(raw)
+    except (TypeError, ValueError):
+        return MIN_MATCH_SCORE_DEFAULT
+
+
+def best_track_score(scored_job: dict) -> int:
+    """Highest of the three track scores on a scored job dict. Missing scores treated as 0."""
+    best = 0
+    for key in _TRACK_SCORE_KEYS:
+        try:
+            v = int(scored_job.get(key, 0) or 0)
+        except (TypeError, ValueError):
+            v = 0
+        if v > best:
+            best = v
+    return best
+
+
+def qualifies_for_deep_review(scored_job: dict, threshold: int) -> bool:
+    """True if any of the three track scores meets or exceeds the threshold."""
+    return best_track_score(scored_job) >= threshold
 
 
 def append_error(

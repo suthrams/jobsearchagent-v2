@@ -46,6 +46,7 @@ def _build_initial_state(req: StartWorkflowRequest, workflow_id: str) -> dict:
         "resume_profile": None,
         "resume_version": None,
         "search_criteria": req.search_criteria,
+        "custom_urls": list(req.custom_urls or []),
         "raw_jobs": [],
         "normalized_jobs": [],
         "scored_jobs": [],
@@ -96,6 +97,24 @@ def _run_graph(graph, initial_state: dict, config: dict) -> None:
             })
         except Exception:
             logger.exception("Failed to write failed status to graph state for %s", config)
+
+
+def _retry_graph(graph, config: dict) -> None:
+    """Re-invoke a workflow from its last checkpoint after a server restart."""
+    try:
+        graph.invoke(None, config)
+    except _GraphInterrupt:
+        logger.debug("Graph paused at HITL interrupt for thread %s", config)
+    except Exception as exc:
+        logger.exception("Unhandled error retrying graph for config %s", config)
+        try:
+            graph.update_state(config, {
+                "status": "failed",
+                "errors": [{"stage": "graph_retry", "error_type": type(exc).__name__, "message": str(exc), "recoverable": False}],
+                "updated_at": utcnow_iso(),
+            })
+        except Exception:
+            logger.exception("Failed to write failed status after retry for %s", config)
 
 
 def _resume_graph(graph, decision_payload: dict, config: dict) -> None:
@@ -197,6 +216,50 @@ def get_workflow_status(
             },
         )
     return status
+
+
+@router.post("/{workflow_id}/retry", status_code=202)
+def retry_workflow(
+    workflow_id: str,
+    graph=Depends(get_graph),
+) -> dict:
+    """Re-submit a workflow that was interrupted by a server restart.
+
+    Valid only when snapshot.next is non-empty and there is no active HITL interrupt.
+    Use POST /decisions for workflows paused at a user decision point.
+    """
+    config = {"configurable": {"thread_id": workflow_id}}
+    snapshot = graph.get_state(config)
+    if snapshot is None or not snapshot.values:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "workflow_not_found", "message": f"Workflow {workflow_id!r} not found.", "workflow_id": workflow_id},
+        )
+
+    has_interrupts = any(getattr(task, "interrupts", None) for task in (snapshot.tasks or []))
+    if has_interrupts:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "workflow_waiting_for_user",
+                "message": "Workflow is paused for user input — use POST /decisions instead.",
+                "workflow_id": workflow_id,
+            },
+        )
+
+    if not snapshot.next:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "workflow_already_complete",
+                "message": "Workflow has no pending steps to resume.",
+                "workflow_id": workflow_id,
+            },
+        )
+
+    _executor.submit(_retry_graph, graph, config)
+    logger.info("Workflow %s re-submitted for retry, resuming from: %s", workflow_id, list(snapshot.next))
+    return {"workflow_id": workflow_id, "status": "running", "resuming_from": list(snapshot.next)}
 
 
 @router.post("/{workflow_id}/decisions", status_code=202)
