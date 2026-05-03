@@ -25,7 +25,7 @@ from app.workflows.limits import (
     MAX_LLM_CALLS_PER_RUN,
     add_llm_calls_bulk,
     get_metrics,
-    safe_agent_usage,
+    safe_agent_usage_typed,
 )
 
 logger = logging.getLogger(__name__)
@@ -82,8 +82,8 @@ def make_score_jobs_node(
                     "source_url": job.get("url", ""),
                     "job_description": job.get("job_description", ""),
                 })
-                ti, to, cost = safe_agent_usage(research_agent)
-                total_ti += ti; total_to += to; total_cost += cost
+                u = safe_agent_usage_typed(research_agent)
+                total_ti += u.tokens_input; total_to += u.tokens_output; total_cost += u.cost_usd
             except LLMProviderError as exc:
                 logger.warning("score_jobs: research failed for %s: %s", job_id, exc)
                 return {**entry, "status": "research_failed"}, 0, [{
@@ -104,8 +104,8 @@ def make_score_jobs_node(
                     "career_track": career_track,
                     "research_context": research.model_dump(),
                 })
-                ti, to, cost = safe_agent_usage(scoring_agent)
-                total_ti += ti; total_to += to; total_cost += cost
+                u = safe_agent_usage_typed(scoring_agent)
+                total_ti += u.tokens_input; total_to += u.tokens_output; total_cost += u.cost_usd
             except LLMProviderError as exc:
                 logger.warning("score_jobs: scoring failed for %s: %s", job_id, exc)
                 return {**entry, "status": "scoring_failed"}, 1, [{

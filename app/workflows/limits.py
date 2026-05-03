@@ -78,12 +78,38 @@ def safe_agent_usage(agent) -> tuple[int, int, float]:
 
     Guards against mock objects that return non-tuple values — test doubles never
     need to configure last_call_usage; real providers always return (int, int, float).
+
+    DEPRECATED in favor of safe_agent_usage_typed(). Removed in the next PR.
     """
     try:
         ti, to, cost = agent.last_call_usage()
         return int(ti), int(to), float(cost)
     except Exception:
         return 0, 0, 0.0
+
+
+def safe_agent_usage_typed(agent):
+    """Read last_call_usage_typed() from an agent with a zero-LLMUsage fallback.
+
+    Guards against mock objects that haven't configured the typed accessor —
+    older test doubles only set up the legacy tuple, so fall through to the
+    safe default (zero usage) on any failure.
+    """
+    from app.providers.llm_client import LLMUsage
+    try:
+        usage = agent.last_call_usage_typed()
+        if isinstance(usage, LLMUsage):
+            return usage
+        # Test doubles that override last_call_usage_typed with a non-LLMUsage value
+        # land here — coerce or fall through to zero.
+    except Exception:
+        pass
+    # Final fallback — try the legacy tuple shape, then zero.
+    try:
+        ti, to, cost = agent.last_call_usage()
+        return LLMUsage(tokens_input=int(ti), tokens_output=int(to), cost_usd=float(cost))
+    except Exception:
+        return LLMUsage()
 
 
 def add_llm_calls_bulk(
