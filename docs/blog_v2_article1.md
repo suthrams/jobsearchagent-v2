@@ -129,22 +129,35 @@ Articles 4–8 each go inside one of those boxes.
 
 ---
 
-## The agents and the patterns they use
+## The eight agents — what each one does and how
 
-Articles 1 and 2 introduced patterns like Structured Output, Multi-Track Scoring, Batched Fan-Out, Pre-Filter Gate, Pipeline State Machine, Per-Operation Model Routing, Prompt Injection Defense, and Data Minimization. v2 adds a focused set of new ones — and combines them per agent.
+Articles 1 and 2 introduced patterns like Structured Output, Multi-Track Scoring, Batched Fan-Out, Pre-Filter Gate, Pipeline State Machine, Per-Operation Model Routing, Prompt Injection Defense, and Data Minimization. v2 adds a focused set of new ones and combines them per agent. Below: each agent's purpose in the system and a couple of sentences on how it produces its output.
 
-| Agent                 | Reasoning pattern *(this series introduces)* | When it runs                      | Model tier |
-| --------------------- | -------------------------------------------- | --------------------------------- | ---------- |
-| **Research**          | Bounded ReAct (max 2 tool steps)             | Before scoring, per company       | Cheaper    |
-| **Scoring**           | Structured Output *(Article 1)*              | Always, batched                   | Cheaper    |
-| **Resume Critic**     | Critique                                     | Per qualifying job                | Capable    |
-| **Review Auditor**    | Evaluator + Bounded Reflection               | After Critic; bounded at 3 rounds | Cheaper    |
-| **Career Advisor**    | Advisory                                     | After reflection loop             | Capable    |
-| **Interview Coach**   | Conditional                                  | Best track score ≥ threshold      | Capable    |
-| **Tailoring**         | Evidence-Bound Generation                    | On user request, out-of-graph     | Capable    |
-| **Fidelity Reviewer** | Runtime Fidelity Guardrail                   | Always after Tailoring            | Cheaper    |
+**Research** — *Bounded ReAct · cheaper-tier model · runs before scoring*
+Surfaces company, role, and technology signals so the scorer is not reading the job description cold. Reads the description and source URL hints; emits a structured `ResearchContext` (technology / leadership / domain signals, risk flags, confidence). Bounded at two reasoning steps so the agent cannot wander into open-ended browsing.
 
-Article 4 goes deep on each pattern. The asymmetry to notice now: cheaper-tier models do classification, validation, and bounded loops. Capable-tier models do generation and advisory output. This is per-operation model routing from Article 2 applied at agent granularity.
+**Scoring** — *Structured Output (Article 1) · cheaper-tier model · always, batched*
+Rates each job against your resume across five dimensions — overall, technical, architecture, leadership, domain — on a 0–100 scale. One structured-output call per job: no tools, no loop. Receives the resume profile, the job description, the career track, and the Research Agent's context; returns a `JobScore` with strengths, gaps, and a recommended next action.
+
+**Resume Critic** — *Critique · capable-tier model · per qualifying job*
+Identifies where your resume is weakly positioned for *this specific* job — not in general, but for the role being scored. One critique pass per round of the reflection loop. Reads the job, your resume, the score, and (rounds 2 and 3) the auditor's prior feedback; emits a `ResumeReview` with section-level critical gaps, resume-only gaps, career gaps observed, and suggested improvements.
+
+**Review Auditor** — *Evaluator + Bounded Reflection · cheaper-tier model · after every Critic round*
+Decides whether the critique is good enough to act on or deserves another round. Reads the critique against the resume and job; emits an `audit_score`, specific quality concerns (generic feedback, unsupported claims, fidelity concerns), and a `stop_recommendation`. The orchestrator stops the loop on quality threshold met, stagnation (improvement < 5 points between rounds), or `MAX_REVIEW_ROUNDS = 3`.
+
+**Career Advisor** — *Advisory · capable-tier model · after the reflection loop*
+Translates the final critique into actionable positioning advice — and crucially, separates *"tailoring can fix this"* from *"you actually lack this experience."* Reads the final review, score, and resume; emits a `CareerAdvice` with two distinct lists (`resume_gaps` and `career_gaps`), a positioning summary, a 30-60-90 day plan, and a recommended next action. The two-list separation is the load-bearing invariant.
+
+**Interview Coach** — *Conditional · capable-tier model · best track score ≥ threshold*
+Produces a seven-day interview prep plan tailored to your strengths, gaps, and the company. Runs only on high-value roles — best track score at or above `min_match_score`, or explicit user request. Reads everything upstream and emits an `InterviewPrep` with likely interview topics, weak areas to defend, leadership stories to prepare, and a day-by-day plan.
+
+**Tailoring** — *Evidence-Bound Generation · capable-tier model · on user request, out-of-graph*
+Drafts resume improvements for a specific job — without inventing experience. Every suggestion is tagged with a `claim_type` and a `supporting_evidence` quote from your original resume. `claim_type="gap"` means the experience does not exist; those bullets are labelled as gaps, never rewritten as if present. The ethical guardrail lives in the prompt itself.
+
+**Fidelity Reviewer** — *Validation Guardrail · cheaper-tier model · always after Tailoring*
+The safety gate. Reads the original resume and the tailored draft side by side; emits a `FidelityReview` with required removals, required revisions, fabrication / inflation / unsupported-tech flags, and an `approval_recommendation`. `reject` means the draft must not be shown regardless of what the user requested — the orchestrator enforces this; the reviewer is never bypassed.
+
+The asymmetry worth noticing: cheaper-tier models do classification, validation, and bounded loops. Capable-tier models do generation and advisory output. This is per-operation model routing from Article 2 applied at agent granularity. Article 4 goes deep on each pattern.
 
 ---
 
