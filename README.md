@@ -146,11 +146,12 @@ python -m pytest tests/ -m integration   # live-API smoke tests (requires .env)
 ```
 app/
 ├── api/              FastAPI endpoints and dependency wiring
+│   └── routers/      workflows, jobs, reports, config, tailoring
 ├── workflows/        LangGraph workflow graph and node implementations
 ├── agents/           8 specialized agents
 ├── services/         Deterministic services (no LLM)
 │   └── concurrent_adzuna_scraper.py
-├── providers/        ClaudeProvider + PromptLoader
+├── providers/        Claude + OpenAI providers via ModelRegistry (ADR-053)
 ├── state/            WorkflowState schema
 ├── schemas/          Pydantic output schemas for all agents
 ├── repositories/     SQLite data access (raw sqlite3)
@@ -158,18 +159,25 @@ app/
 ├── prompts/
 │   ├── shared/       guardrails.txt — injected into every agent
 │   └── agents/       one prompt file per agent
-└── ui/               Streamlit frontend
+└── ui/               Streamlit frontend (streamlit_app.py + db_reader + api_client)
 
 config/
 ├── config.example.yaml
 └── config.yaml       Your settings (gitignored)
 
+data/                 SQLite databases (gitignored)
+└── v2.db             Workflow runs, jobs, scores, reviews, advice, tailorings
+
 docs/architecture/
-├── adr/              46 Architecture Decision Records
+├── adr/              56 Architecture Decision Records
 ├── implementation_plan.md
 └── *.md              Agent, workflow, state, data, and security models
 
-tests/                pytest suite (389 tests, mock mode)
+skills/               addyosmani/agent-skills pack — 21 curated skills
+└── README.md         Index mapping each skill to a workflow stage
+                      Pinned via skills-lock.json at the repo root
+
+tests/                pytest suite (448 passed, 1 skipped — mock mode)
 notebooks/            Phase validation notebooks
 ```
 

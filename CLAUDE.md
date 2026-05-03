@@ -16,7 +16,7 @@ This is a ground-up v2 refactor. v1 (`main.py`, `agents/`, `scrapers/`, `storage
 
 ## Build status
 
-Phases 1–7 complete. 389 tests passing.
+Phases 1–8 complete. 448 tests passing, 1 skipped.
 
 | Phase | Description | Status |
 |---|---|---|
@@ -27,7 +27,8 @@ Phases 1–7 complete. 389 tests passing.
 | 5 | LangGraph workflow orchestrator | ✓ |
 | 6 | FastAPI backend + Streamlit UI | ✓ |
 | 7 | Live agents — real Claude calls, SqliteSaver, real scrapers | ✓ |
-| 8 | Performance — concurrent job scoring | ✓ |
+| 8 | Performance — concurrent job scoring + concurrent scraping | ✓ |
+| post-8 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055) | ✓ |
 
 ---
 
@@ -54,11 +55,12 @@ Explicitly excluded: SQLAlchemy · Celery · Redis · LangSmith (for now)
 ```
 app/
   api/              ← FastAPI endpoints + dependency wiring (Phase 7 gate)
+    routers/        ← workflows.py, jobs.py, reports.py, config.py, tailoring.py
   workflows/        ← LangGraph workflow graphs (orchestrator)
   agents/           ← 8 specialized agents
   services/         ← deterministic services (no LLM)
     concurrent_adzuna_scraper.py  ← v2 wrapper: 5-worker concurrent Adzuna scraper
-  providers/        ← LLM provider abstraction (ClaudeProvider)
+  providers/        ← LLM provider abstraction (Claude + OpenAI via ModelRegistry)
   state/            ← WorkflowState schema
   schemas/          ← Pydantic output schemas for all agents
   repositories/     ← SQLite data access
@@ -66,16 +68,26 @@ app/
   prompts/
     shared/         ← guardrails.txt (injected into every agent)
     agents/         ← one prompt file per agent
+  ui/               ← Streamlit frontend (streamlit_app.py + db_reader.py + api_client.py)
 
 docs/architecture/
-  adr/              ← 46 Architecture Decision Records
+  adr/              ← 56 Architecture Decision Records
   implementation_plan.md
   agent_model.md · workflow_model.md · state_and_memory_model.md
   data_model.md · observability.md · security.model.md
   hitl.md · prompt_and_guardrails_model.md · config_model.md
   patterns.md · principles.md · architecture_overview.md
 
-tests/              ← pytest suite (no real LLM calls in CI)
+skills/             ← addyosmani/agent-skills pack — 21 curated skills
+                     (see skills/README.md for which skill applies when)
+                     Pinned via skills-lock.json at the repo root
+
+config/
+  config.example.yaml
+  config.yaml       ← your settings (gitignored)
+
+data/               ← SQLite databases (v2.db, jobs.db); gitignored
+tests/              ← pytest suite (448 passed, 1 skipped — no real LLM calls in CI)
 notebooks/
   phase_7_validation.ipynb  ← E2E live-agent validation notebook
 ```
