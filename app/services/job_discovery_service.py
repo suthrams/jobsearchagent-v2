@@ -61,9 +61,15 @@ class JobDiscoveryService:
         search_criteria: dict,
         extra_scrapers: list[Any] | None = None,
     ) -> list[JobPosting]:
-        """Run all scrapers (built-in + per-run extras), normalise, dedupe, cap, return."""
+        """Run all scrapers (per-run extras first, then built-ins), normalise, dedupe, cap, return.
+
+        Per-run extras (e.g. CustomUrlScraper from user-pasted URLs) run BEFORE
+        the always-on scrapers and their results land at the front of the list.
+        That way the max_jobs cap further down can never silently truncate
+        explicitly-requested URLs in favour of auto-discovered ones.
+        """
         raw_jobs: list[Any] = []
-        all_scrapers = list(self._scrapers) + list(extra_scrapers or [])
+        all_scrapers = list(extra_scrapers or []) + list(self._scrapers)
         for scraper in all_scrapers:
             pool = ThreadPoolExecutor(max_workers=1)
             try:

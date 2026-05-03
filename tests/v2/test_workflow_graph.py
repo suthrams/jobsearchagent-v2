@@ -238,6 +238,29 @@ def test_graph_auto_selects_qualifying_jobs_no_interrupt():
     deps.resume_critic.run.assert_called()
 
 
+def test_graph_preserves_custom_urls_in_state():
+    """Regression: custom_urls must be declared in WorkflowGraphState so LangGraph
+    doesn't strip it. Without this, the discover_jobs node sees an empty list
+    and never builds the CustomUrlScraper for the user's pasted URLs.
+    """
+    saver = MemorySaver()
+    deps = _make_deps(checkpointer=saver)
+    graph = build_graph(deps)
+    config = {"configurable": {"thread_id": "wf-curl-001"}}
+    state = _initial_state(
+        "wf-curl-001",
+        custom_urls=["https://example.com/job/1", "https://example.com/job/2"],
+    )
+    graph.invoke(state, config)
+
+    snapshot = graph.get_state(config)
+    assert snapshot is not None
+    assert snapshot.values.get("custom_urls") == [
+        "https://example.com/job/1",
+        "https://example.com/job/2",
+    ], "custom_urls must round-trip through WorkflowGraphState"
+
+
 def test_graph_skips_deep_review_when_no_jobs_qualify():
     """All scores below threshold → auto_select picks zero jobs → graph short-circuits to report."""
     saver = MemorySaver()

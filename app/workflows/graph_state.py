@@ -28,6 +28,7 @@ class WorkflowGraphState(TypedDict, total=False):
 
     # ── Jobs ──────────────────────────────────────────────────────────────────
     search_criteria: dict
+    custom_urls: list[str]        # user-supplied URLs to scrape alongside built-in scrapers
     raw_jobs: list[dict]
     normalized_jobs: list[dict]
     scored_jobs: list[dict]       # each dict gains a "status" field from scoring node

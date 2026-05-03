@@ -153,6 +153,110 @@ def _label_with_cost(model_id: str, entries: list[dict]) -> str:
     return model_id
 
 
+def _bullets(label: str, items, *, sub: bool = False) -> None:
+    """Render a labelled bullet list. No-op when items is empty / not a list.
+
+    sub=True uses italic caption-style label for nested groups.
+    """
+    if not items or not isinstance(items, list):
+        return
+    if sub:
+        st.markdown(f"_{label}_")
+    else:
+        st.markdown(f"**{label}**")
+    for item in items:
+        if isinstance(item, dict):
+            # Best-effort flatten — render dicts as "key: value" bullets
+            inner = "  ·  ".join(f"_{k}_: {v}" for k, v in item.items())
+            st.markdown(f"- {inner}")
+        else:
+            st.markdown(f"- {item}")
+    st.markdown("")  # blank line for breathing room
+
+
+def _para(label: str, value) -> None:
+    """Render a labelled paragraph. No-op when value is empty."""
+    if not value:
+        return
+    st.markdown(f"**{label}**")
+    st.write(value)
+    st.markdown("")
+
+
+# Friendly display labels for workflow stage names and progress strings.
+# Keep this in sync with the actual current_step values written by workflow nodes.
+_STAGE_LABEL = {
+    "initialized":             "Starting up",
+    "registered":              "Starting up",
+    "job_discovery":           "Finding jobs",
+    "load_resume":             "Loading resume",
+    "scoring":                 "Scoring jobs",
+    "score_jobs":              "Scoring jobs",
+    "deep_review_in_progress": "Deep review",
+    "review_completed":        "Computing advice",
+    "no_qualifying_jobs":      "No matches above threshold",
+    "career_advice":           "Generating career advice",
+    "interview_prep":          "Generating interview prep",
+    "tailoring":               "Tailoring resume",
+    "completed":               "Done",
+    "completed_with_errors":   "Done (with errors)",
+    "failed":                  "Failed",
+}
+
+
+def _friendly_stage(current_step: str | None) -> str:
+    if not current_step:
+        return "—"
+    return _STAGE_LABEL.get(current_step, str(current_step).replace("_", " ").title())
+
+
+def _stage_progress(row: dict) -> str:
+    """Build a 'where exactly is this run' string from a workflow_runs row.
+
+    Examples:
+      "5 / 10 scored"            during scoring
+      "review 1 / 2 selected"    during deep review
+      "8 jobs · 3 reviewed"      after completion
+      ""                         when nothing meaningful to show
+    """
+    step = row.get("current_step") or ""
+    status = row.get("status") or ""
+    scored = int(row.get("jobs_scored") or 0)
+    max_jobs = int(row.get("max_jobs") or 0) or None
+    selected = int(row.get("selected_count") or 0)
+    rounds = int(row.get("review_rounds_count") or 0)
+    normalized = int(row.get("normalized_count") or 0)
+
+    if status in ("completed", "completed_with_errors"):
+        bits = []
+        if scored:
+            bits.append(f"{scored} scored")
+        if selected:
+            bits.append(f"{selected} reviewed")
+        return " · ".join(bits) or "—"
+    if status == "failed":
+        return "halted"
+
+    # Running: derive progress from the current step
+    if step in ("job_discovery", "registered", "initialized"):
+        return f"{normalized} found" if normalized else "discovering…"
+    if step in ("load_resume",):
+        return "parsing resume…"
+    if step in ("scoring", "score_jobs"):
+        if max_jobs:
+            return f"{scored} / {max_jobs} scored"
+        if normalized:
+            return f"{scored} / {normalized} scored"
+        return f"{scored} scored"
+    if step == "deep_review_in_progress":
+        if selected:
+            return f"review {min(rounds, selected)} / {selected} jobs"
+        return f"{rounds} review rounds"
+    if step in ("career_advice", "interview_prep", "tailoring", "review_completed"):
+        return f"{selected} job(s) advanced"
+    return ""
+
+
 def _get_config_cached() -> dict:
     """Pull config once per render and stash on session_state to avoid extra HTTP calls."""
     if st.session_state.config_cache is None:
@@ -272,7 +376,7 @@ if view.startswith("───"):
 
 if view == "Workflow History":
     st.header("Workflow History")
-    st.caption("All workflow runs, newest first. Click **Open** on any row to drill into the per-run detail.")
+    st.caption("All workflow runs, newest first. **Click any row** to open its Workflow Detail.")
 
     df = load_persisted_workflow_runs()
 
@@ -289,6 +393,12 @@ if view == "Workflow History":
         df["current_step"] = df.get("current_step", "—")
         df["completed_at"] = df.get("completed_at", df.get("updated_at"))
         df["error_message"] = df.get("error_message", None)
+        # Fill in the columns the new query exposes so the table renders consistently
+        for _col in ("max_jobs", "normalized_count", "selected_count",
+                     "review_rounds_count", "cost_usd", "llm_calls",
+                     "threshold", "custom_url_count", "roles_json", "locations_json"):
+            if _col not in df.columns:
+                df[_col] = None
         using_legacy = True
 
     # Filter input
@@ -312,6 +422,8 @@ if view == "Workflow History":
     if only_with_jobs and "jobs_scored" in df.columns:
         df = df[df["jobs_scored"].fillna(0) > 0]
 
+    df = df.reset_index(drop=True)
+
     # Top metrics
     m1, m2, m3, m4 = st.columns(4)
     m1.metric("Runs shown", len(df))
@@ -323,70 +435,88 @@ if view == "Workflow History":
 
     if using_legacy:
         st.caption("⚠ Showing legacy aggregation — these runs predate the workflow_runs snapshot. "
-                   "Search criteria and threshold won't be visible until you run a new workflow.")
+                   "Stage / progress / threshold won't be visible until you run a new workflow.")
 
-    st.markdown("---")
+    # ── Build a display dataframe with friendly columns ──────────────────────
+    _STATUS_DISPLAY = {
+        "running":               "🔵 Running",
+        "waiting_for_user":      "🟡 Waiting",
+        "completed":             "🟢 Done",
+        "completed_with_errors": "🟠 Done (errors)",
+        "failed":                "🔴 Failed",
+    }
+
+    def _summarize_list(raw, max_items=2) -> str:
+        try:
+            items = json.loads(raw) if isinstance(raw, str) else raw
+            if not isinstance(items, list) or not items:
+                return ""
+            shown = ", ".join(items[:max_items])
+            if len(items) > max_items:
+                shown += f" +{len(items) - max_items}"
+            return shown
+        except Exception:
+            return ""
+
+    rows_for_display: list[dict] = []
     for _, row in df.iterrows():
-        wf_id = row["workflow_id"]
-        status = row.get("status", "unknown")
-        icon = {
-            "running": "🔵", "waiting_for_user": "🟡",
-            "completed": "🟢", "failed": "🔴",
-            "completed_with_errors": "🟠",
-        }.get(status, "⚪")
+        roles = _summarize_list(row.get("roles_json"))
+        locs = _summarize_list(row.get("locations_json"))
+        run_label = roles or "(no criteria snapshot)"
+        if locs:
+            run_label += f"  ·  📍 {locs}"
 
-        # Row 1: identity + nav
-        c1, c2, c3 = st.columns([6, 2, 1])
-        # Build an identifier line with a friendly title from criteria when available.
-        roles_summary = ""
-        try:
-            _roles = json.loads(row.get("roles_json") or "[]")
-            if isinstance(_roles, list) and _roles:
-                roles_summary = ", ".join(_roles[:2])
-                if len(_roles) > 2:
-                    roles_summary += f" +{len(_roles) - 2}"
-        except Exception:
-            pass
-        locs_summary = ""
-        try:
-            _locs = json.loads(row.get("locations_json") or "[]")
-            if isinstance(_locs, list) and _locs:
-                locs_summary = ", ".join(_locs[:2])
-                if len(_locs) > 2:
-                    locs_summary += f" +{len(_locs) - 2}"
-        except Exception:
-            pass
+        rows_for_display.append({
+            "Status":   _STATUS_DISPLAY.get(row.get("status", ""), str(row.get("status", "—"))),
+            "Run":      run_label,
+            "Stage":    _friendly_stage(row.get("current_step")),
+            "Progress": _stage_progress(row.to_dict()),
+            "Started":  _fmt_ts(row.get("started_at")),
+            "Updated":  _fmt_ts(row.get("completed_at") or row.get("updated_at")),
+            "Best":     int(row["best_score"]) if pd.notna(row.get("best_score")) else None,
+            "≥": int(row["threshold"]) if pd.notna(row.get("threshold")) else None,
+            "URLs":     int(row["custom_url_count"]) if pd.notna(row.get("custom_url_count")) else 0,
+            "Cost":     float(row["cost_usd"]) if pd.notna(row.get("cost_usd")) else 0.0,
+            "ID":       row.get("workflow_id", ""),
+        })
+    display_df = pd.DataFrame(rows_for_display)
 
-        title_line = roles_summary or "(no roles snapshot)"
-        if locs_summary:
-            title_line += f"  ·  📍 {locs_summary}"
-        c1.markdown(f"{icon} **{title_line}**  \n`{wf_id}`")
+    event = st.dataframe(
+        display_df,
+        hide_index=True,
+        use_container_width=True,
+        on_select="rerun",
+        selection_mode="single-row",
+        column_config={
+            "Status":   st.column_config.TextColumn("Status",   width="small"),
+            "Run":      st.column_config.TextColumn("Run",      width="large"),
+            "Stage":    st.column_config.TextColumn("Stage",    width="medium"),
+            "Progress": st.column_config.TextColumn("Progress", width="medium"),
+            "Started":  st.column_config.TextColumn("Started",  width="small"),
+            "Updated":  st.column_config.TextColumn("Updated",  width="small"),
+            "Best":     st.column_config.NumberColumn("Best",   format="%d", width="small"),
+            "≥":        st.column_config.NumberColumn("≥",      format="%d", width="small",
+                                                       help="min_match_score for this run"),
+            "URLs":     st.column_config.NumberColumn("URLs",   format="%d", width="small",
+                                                       help="custom URLs supplied at run start"),
+            "Cost":     st.column_config.NumberColumn("Cost",   format="$%.4f", width="small"),
+            "ID":       st.column_config.TextColumn("ID",       width="small"),
+        },
+    )
 
-        c2.markdown(f"**{status}**  \n_{row.get('current_step', '—')}_")
-        if c3.button("Open ▶", key=f"open_{wf_id}"):
-            _navigate("Workflow Detail", detail_workflow_id=wf_id, detail_job_id=None)
+    # Row click → drill into Workflow Detail
+    sel = (event.selection.rows if event and getattr(event, "selection", None) else []) or []
+    if sel:
+        chosen = display_df.iloc[sel[0]]["ID"]
+        if chosen and chosen != st.session_state.get("detail_workflow_id"):
+            _navigate("Workflow Detail", detail_workflow_id=chosen, detail_job_id=None)
 
-        # Row 2: timestamps + counts + threshold + custom URL count
-        d1, d2, d3, d4, d5 = st.columns([2, 2, 1, 1, 1])
-        d1.caption(f"Started: `{_fmt_ts(row.get('started_at'))}`")
-        _comp = row.get("completed_at") or row.get("updated_at")
-        d2.caption(f"Ended:   `{_fmt_ts(_comp)}`")
-        d3.caption(f"{int(row.get('jobs_scored', 0) or 0)} scored")
-        _best = row.get("best_score")
-        d4.caption(f"best {int(_best)}" if pd.notna(_best) else "best —")
-        _thr = row.get("threshold")
-        _curl = row.get("custom_url_count")
-        bits = []
-        if pd.notna(_thr):
-            bits.append(f"≥{int(_thr)}")
-        if pd.notna(_curl) and int(_curl or 0) > 0:
-            bits.append(f"{int(_curl)} URLs")
-        d5.caption("  ·  ".join(bits) if bits else "—")
-
-        if row.get("error_message"):
-            st.caption(f"⚠ {str(row['error_message'])[:200]}")
-
-        st.markdown("---")
+    # Surface the most recent error inline so failures are obvious without drilling in
+    err_rows = df[df["error_message"].notna()] if "error_message" in df.columns else pd.DataFrame()
+    if not err_rows.empty:
+        with st.expander(f"⚠ Errors on {len(err_rows)} run(s)"):
+            for _, e in err_rows.head(5).iterrows():
+                st.markdown(f"- `{e['workflow_id'][:18]}…` — {str(e['error_message'])[:200]}")
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -707,8 +837,10 @@ elif view == "Job Detail":
     if timeline_rows:
         st.markdown("---")
         st.subheader("Timeline for this job")
-        for r in timeline_rows:
-            st.markdown(f"`{_fmt_ts(r['ts'])}` — {r['stage']}")
+        _bullets(
+            "",
+            [f"`{_fmt_ts(r['ts'])}` — {r['stage']}" for r in timeline_rows],
+        )
 
     # ── Score ─────────────────────────────────────────────────────────────────
     score = pipeline.get("score")
@@ -721,13 +853,11 @@ elif view == "Job Detail":
         s2.metric("Technical",    sd.get("technical_score", "—"))
         s3.metric("Architecture", sd.get("architecture_score", "—"))
         s4.metric("Leadership",   sd.get("leadership_score", "—"))
-        st.markdown(f"**Summary:** {sd.get('match_summary', '—')}")
-        if sd.get("recommended_next_action"):
-            st.markdown(f"**Recommended:** {sd['recommended_next_action']}")
-        if sd.get("strengths"):
-            st.markdown("**Strengths:** " + ", ".join(sd["strengths"]))
-        if sd.get("gaps"):
-            st.markdown("**Gaps:** " + ", ".join(sd["gaps"]))
+        st.markdown("")
+        _para("Summary",     sd.get("match_summary"))
+        _para("Recommended", sd.get("recommended_next_action"))
+        _bullets("Strengths", sd.get("strengths"))
+        _bullets("Gaps",      sd.get("gaps"))
     else:
         st.subheader("Score")
         st.info("This job was not scored.")
@@ -747,31 +877,16 @@ elif view == "Job Detail":
                 audit = r.get("audit") or {}
                 cc1, cc2 = st.columns(2)
                 with cc1:
-                    st.markdown("**Critic — fit summary**")
-                    st.write(critic.get("overall_fit_summary") or "—")
-                    if critic.get("critical_gaps"):
-                        st.markdown("**Critical gaps**")
-                        for g in critic["critical_gaps"]:
-                            st.markdown(f"- {g}")
-                    if critic.get("resume_only_gaps"):
-                        st.markdown("**Resume gaps (can tailor)**")
-                        for g in critic["resume_only_gaps"]:
-                            st.markdown(f"- {g}")
-                    if critic.get("career_gaps_observed"):
-                        st.markdown("**Career gaps**")
-                        for g in critic["career_gaps_observed"]:
-                            st.markdown(f"- {g}")
+                    st.markdown("#### Critic")
+                    _para("Fit summary",                 critic.get("overall_fit_summary"))
+                    _bullets("Critical gaps",            critic.get("critical_gaps"))
+                    _bullets("Resume gaps (can tailor)", critic.get("resume_only_gaps"))
+                    _bullets("Career gaps",              critic.get("career_gaps_observed"))
                 with cc2:
-                    st.markdown("**Auditor — quality summary**")
-                    st.write(audit.get("quality_summary") or "—")
-                    if audit.get("missing_analysis_points"):
-                        st.markdown("**Missing analysis**")
-                        for g in audit["missing_analysis_points"]:
-                            st.markdown(f"- {g}")
-                    if audit.get("recommended_revision_instructions"):
-                        st.markdown("**Recommended revisions**")
-                        for g in audit["recommended_revision_instructions"]:
-                            st.markdown(f"- {g}")
+                    st.markdown("#### Auditor")
+                    _para("Quality summary",          audit.get("quality_summary"))
+                    _bullets("Missing analysis",      audit.get("missing_analysis_points"))
+                    _bullets("Recommended revisions", audit.get("recommended_revision_instructions"))
                     if r.get("stop_reason"):
                         st.caption(f"Stop reason: {r['stop_reason']}")
 
@@ -781,15 +896,9 @@ elif view == "Job Detail":
         st.markdown("---")
         st.subheader(f"Final Resume Review — persisted `{_fmt_ts(fr['created_at'])}`")
         d = fr["data"] or {}
-        st.markdown(f"**Fit summary:** {d.get('overall_fit_summary', '—')}")
-        if d.get("suggested_improvements"):
-            st.markdown("**Suggested improvements**")
-            for g in d["suggested_improvements"]:
-                st.markdown(f"- {g}")
-        if d.get("questions_for_user"):
-            st.markdown("**Questions for you**")
-            for g in d["questions_for_user"]:
-                st.markdown(f"- {g}")
+        _para("Fit summary",            d.get("overall_fit_summary"))
+        _bullets("Suggested improvements", d.get("suggested_improvements"))
+        _bullets("Questions for you",      d.get("questions_for_user"))
 
     # ── Career advice ─────────────────────────────────────────────────────────
     adv = pipeline.get("advice")
@@ -797,32 +906,14 @@ elif view == "Job Detail":
         st.markdown("---")
         st.subheader(f"Career Advice — produced `{_fmt_ts(adv['created_at'])}`")
         d = adv["data"] or {}
-        if d.get("positioning_summary"):
-            st.markdown(f"**Positioning:** {d['positioning_summary']}")
-        if d.get("recommended_positioning"):
-            st.markdown(f"**Recommended positioning:** {d['recommended_positioning']}")
-        if d.get("recommended_next_action"):
-            st.markdown(f"**Recommended next action:** {d['recommended_next_action']}")
-        if d.get("resume_gaps"):
-            st.markdown("**Resume gaps (can address through tailoring)**")
-            for g in d["resume_gaps"]:
-                st.markdown(f"- {g}")
-        if d.get("career_gaps"):
-            st.markdown("**Career gaps (must not fabricate)**")
-            for g in d["career_gaps"]:
-                st.markdown(f"- {g}")
-        if d.get("skills_to_strengthen"):
-            st.markdown("**Skills to strengthen**")
-            for g in d["skills_to_strengthen"]:
-                st.markdown(f"- {g}")
-        if d.get("experience_to_collect"):
-            st.markdown("**Experience to collect**")
-            for g in d["experience_to_collect"]:
-                st.markdown(f"- {g}")
-        if d.get("thirty_sixty_ninety_day_plan"):
-            st.markdown("**30/60/90-day plan**")
-            for g in d["thirty_sixty_ninety_day_plan"]:
-                st.markdown(f"- {g}")
+        _para("Positioning",                d.get("positioning_summary"))
+        _para("Recommended positioning",    d.get("recommended_positioning"))
+        _para("Recommended next action",    d.get("recommended_next_action"))
+        _bullets("Resume gaps (can address through tailoring)", d.get("resume_gaps"))
+        _bullets("Career gaps (must not fabricate)",            d.get("career_gaps"))
+        _bullets("Skills to strengthen",                        d.get("skills_to_strengthen"))
+        _bullets("Experience to collect",                       d.get("experience_to_collect"))
+        _bullets("30 / 60 / 90-day plan",                       d.get("thirty_sixty_ninety_day_plan"))
 
     # ── Interview prep ────────────────────────────────────────────────────────
     prep = pipeline.get("prep")
@@ -830,26 +921,12 @@ elif view == "Job Detail":
         st.markdown("---")
         st.subheader(f"Interview Prep — produced `{_fmt_ts(prep['created_at'])}`")
         d = prep["data"] or {}
-        if d.get("likely_interview_topics"):
-            st.markdown("**Likely topics:** " + ", ".join(d["likely_interview_topics"]))
-        if d.get("technical_topics_to_review"):
-            st.markdown("**Technical topics to review:** " + ", ".join(d["technical_topics_to_review"]))
-        if d.get("leadership_stories_to_prepare"):
-            st.markdown("**Leadership stories to prepare**")
-            for s in d["leadership_stories_to_prepare"]:
-                st.markdown(f"- {s}")
-        if d.get("weak_areas_to_defend"):
-            st.markdown("**Weak areas to defend**")
-            for s in d["weak_areas_to_defend"]:
-                st.markdown(f"- {s}")
-        if d.get("questions_to_ask_interviewer"):
-            st.markdown("**Questions to ask the interviewer**")
-            for s in d["questions_to_ask_interviewer"]:
-                st.markdown(f"- {s}")
-        if d.get("seven_day_prep_plan"):
-            st.markdown("**7-day prep plan**")
-            for s in d["seven_day_prep_plan"]:
-                st.markdown(f"- {s}")
+        _bullets("Likely interview topics",       d.get("likely_interview_topics"))
+        _bullets("Technical topics to review",    d.get("technical_topics_to_review"))
+        _bullets("Leadership stories to prepare", d.get("leadership_stories_to_prepare"))
+        _bullets("Weak areas to defend",          d.get("weak_areas_to_defend"))
+        _bullets("Questions to ask the interviewer", d.get("questions_to_ask_interviewer"))
+        _bullets("7-day prep plan",               d.get("seven_day_prep_plan"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════

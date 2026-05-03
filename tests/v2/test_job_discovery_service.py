@@ -179,3 +179,38 @@ def test_discover_no_scrapers_returns_empty():
     svc = _svc(scrapers=[])
     results = svc.discover("wf-001", {})
     assert results == []
+
+
+def test_discover_extra_scrapers_run_first_so_user_urls_survive_cap():
+    """Regression: when both built-in (Adzuna) and per-run extras (CustomUrlScraper)
+    produce more jobs than max_jobs, the user's pasted URLs must survive the cap.
+    Achieved by processing extras BEFORE built-ins in JobDiscoveryService.discover.
+    """
+    builtin = MagicMock()
+    builtin.scrape.return_value = [
+        _mock_v1_job(url=f"https://adzuna.example/{i}") for i in range(10)
+    ]
+    extra = MagicMock()
+    extra.scrape.return_value = [
+        _mock_v1_job(url="https://user-supplied.example/a"),
+        _mock_v1_job(url="https://user-supplied.example/b"),
+    ]
+
+    svc = _svc(max_jobs=10, scrapers=[builtin])
+    results = svc.discover("wf-001", {}, extra_scrapers=[extra])
+
+    urls = [p.url for p in results]
+    assert "https://user-supplied.example/a" in urls, \
+        "user-supplied URL was dropped by the max_jobs cap"
+    assert "https://user-supplied.example/b" in urls, \
+        "user-supplied URL was dropped by the max_jobs cap"
+    assert len(results) == 10
+
+
+def test_discover_extra_scrapers_run_when_no_builtins():
+    extra = MagicMock()
+    extra.scrape.return_value = [_mock_v1_job(url="https://x.example/a")]
+    svc = _svc(scrapers=[])
+    results = svc.discover("wf-001", {}, extra_scrapers=[extra])
+    assert len(results) == 1
+    assert results[0].url == "https://x.example/a"
