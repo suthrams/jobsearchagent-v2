@@ -59,7 +59,7 @@ class ConfigService:
                 f"Config file not found: {self._config_path}. "
                 "Copy config/config.example.yaml to config/config.yaml and fill in your preferences."
             )
-        with open(self._config_path) as f:
+        with open(self._config_path, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
 
     def _load_user_overrides(self, user_id: str | None) -> dict:
