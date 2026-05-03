@@ -13,7 +13,7 @@ import threading
 import time
 from abc import ABC, abstractmethod
 
-from app.providers.llm_client import LLMClient, LLMProviderError
+from app.providers.llm_client import LLMClient, LLMProviderError, LLMUsage
 from app.services.observability_service import ObservabilityService
 
 logger = logging.getLogger(__name__)
@@ -43,18 +43,34 @@ class BaseAgent(ABC):
         Emits started → completed on success, started → failed on any exception.
         LLMProviderError is re-raised so the orchestrator can decide whether to
         mark the job as failed or skip it — never swallowed here.
+
+        Internally uses provider.complete_with_usage() so result + usage arrive
+        together (no thread-local race between the two calls). Falls back to the
+        legacy two-step path if the provider returns something unexpected (e.g.
+        a test double that overrides only complete()).
         """
         t0 = time.monotonic()
         event_id = self._observability.log_agent_started(
             workflow_id, self.AGENT_NAME, self._input_summary(context)
         )
         try:
-            result = self._provider.complete(agent_name=self.AGENT_NAME, context=context, schema=schema)
             try:
-                ti, to, cost = self._provider.last_call_usage()
+                result, usage = self._provider.complete_with_usage(
+                    agent_name=self.AGENT_NAME, context=context, schema=schema,
+                )
             except (AttributeError, TypeError, ValueError):
-                ti, to, cost = 0, 0, 0.0
-            self._tlocal.last_usage = (int(ti), int(to), float(cost))
+                # Legacy path: provider returns dict, usage fetched separately.
+                # Test doubles that only implement complete() land here.
+                result = self._provider.complete(
+                    agent_name=self.AGENT_NAME, context=context, schema=schema,
+                )
+                try:
+                    ti, to, cost = self._provider.last_call_usage()
+                except (AttributeError, TypeError, ValueError):
+                    ti, to, cost = 0, 0, 0.0
+                usage = LLMUsage(tokens_input=int(ti), tokens_output=int(to), cost_usd=float(cost))
+
+            self._tlocal.last_usage = usage
             duration_ms = int((time.monotonic() - t0) * 1000)
             self._observability.log_agent_completed(
                 workflow_id, self.AGENT_NAME, event_id,
@@ -79,8 +95,21 @@ class BaseAgent(ABC):
 
         Safe to call from concurrent threads — each thread has its own value.
         Returns (0, 0, 0.0) if no call has been made yet in the current thread.
+
+        DEPRECATED in favor of last_call_usage_typed(). Kept until all callers migrate.
         """
-        return getattr(self._tlocal, "last_usage", (0, 0, 0.0))
+        usage = getattr(self._tlocal, "last_usage", None)
+        if usage is None:
+            return (0, 0, 0.0)
+        return usage.as_tuple()
+
+    def last_call_usage_typed(self) -> LLMUsage:
+        """Return the typed LLMUsage for the most recent call in this thread.
+
+        Same thread-safety guarantees as last_call_usage(). Prefer this — the
+        positional tuple shape is being phased out (see ADR-055-era migration).
+        """
+        return getattr(self._tlocal, "last_usage", LLMUsage())
 
     # ── Summary helpers (override for richer log messages) ───────────────────
 

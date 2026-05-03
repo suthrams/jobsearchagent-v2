@@ -101,3 +101,29 @@ def test_run_propagates_llm_provider_error():
     provider.complete.side_effect = LLMProviderError("fail")
     with pytest.raises(LLMProviderError):
         TailoringAgent(provider, _make_obs()).run("wf-001", _CONTEXT)
+
+
+def test_last_call_usage_typed_returns_LLMUsage():
+    """BaseAgent.last_call_usage_typed() returns the typed LLMUsage object,
+    matching values with the legacy tuple accessor."""
+    from app.providers.llm_client import LLMUsage
+
+    provider = _make_provider()
+    # Make complete_with_usage return a real (data, usage) tuple so BaseAgent's
+    # primary path runs (not the legacy fallback).
+    provider.complete_with_usage.return_value = (
+        _draft_result(),
+        LLMUsage(tokens_input=200, tokens_output=80, cost_usd=0.0042),
+    )
+
+    agent = TailoringAgent(provider, _make_obs())
+    agent.run("wf-001", _CONTEXT)
+
+    typed = agent.last_call_usage_typed()
+    legacy = agent.last_call_usage()
+
+    assert isinstance(typed, LLMUsage)
+    assert typed.tokens_input == 200
+    assert typed.tokens_output == 80
+    assert typed.cost_usd == 0.0042
+    assert legacy == typed.as_tuple()
