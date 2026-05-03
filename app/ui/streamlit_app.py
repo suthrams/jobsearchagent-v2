@@ -119,9 +119,12 @@ def _fmt_ts(raw) -> str:
     return s[:19] if len(s) >= 19 else s
 
 
-# Auto-reconnect to the most recent workflow on first load
+# Auto-reconnect to the most recent workflow on first load.
+# Failures are stored on session_state so the sidebar can surface them as a caption
+# instead of the user wondering why "Active Run" is empty.
 if "workflow_reconnect_attempted" not in st.session_state:
     st.session_state.workflow_reconnect_attempted = True
+    st.session_state.workflow_reconnect_error = None
     if st.session_state.workflow_id is None:
         try:
             _recent = load_recent_workflows()
@@ -132,10 +135,14 @@ if "workflow_reconnect_attempted" not in st.session_state:
                     _reconnect_resp = api.get_workflow_status(_reconnect_id)
                     st.session_state.last_status = _reconnect_resp.get("status")
                     st.session_state.last_response = _reconnect_resp
-                except Exception:
-                    pass
-        except Exception:
-            pass
+                except Exception as exc:
+                    st.session_state.workflow_reconnect_error = (
+                        f"Could not fetch status for the most-recent run: {exc}"
+                    )
+        except Exception as exc:
+            st.session_state.workflow_reconnect_error = (
+                f"Could not load recent workflows from the database: {exc}"
+            )
 
 
 # ── Shared helpers ────────────────────────────────────────────────────────────
@@ -466,6 +473,8 @@ with st.sidebar:
         st.cache_data.clear()
         st.session_state.config_cache = None
         st.rerun()
+    if st.session_state.get("workflow_reconnect_error"):
+        st.caption(f"⚠ {st.session_state.workflow_reconnect_error}")
     if st.session_state.workflow_id:
         _wst = st.session_state.last_status or "unknown"
         _wicon = {
@@ -679,9 +688,11 @@ elif view == "Workflow Detail":
     g7.metric("Tokens out", f"{metrics['tokens_output']:,}")
     g8.metric("Review rounds", metrics["review_rounds"])
 
-    # ── Pipeline table (jobs × stages) ────────────────────────────────────────
+    # ── Find & Score — Pipeline table (jobs × stages) ─────────────────────────
     st.markdown("---")
-    st.subheader("Pipeline — jobs and pipeline stages")
+    st.subheader("📍 Find & Score — jobs surfaced and ranked")
+    st.caption("What came back from the search and how each job scored across the three career tracks. "
+               "Jobs whose best track score meets your threshold automatically advance to deep review.")
 
     jobs_df = load_workflow_jobs(wf_id)
     if jobs_df.empty:
@@ -732,11 +743,13 @@ elif view == "Workflow Detail":
                       detail_workflow_id=wf_id,
                       detail_job_id=_options[_label])
 
-    # ── Deep review + career advice (per job) ─────────────────────────────────
+    # ── Review — deep critic + career advice (per job) ────────────────────────
     rev_df = load_deep_review_results(wf_id)
     if not rev_df.empty:
         st.markdown("---")
-        st.subheader("Deep Review & Career Advice")
+        st.subheader("📋 Review — deep analysis & career guidance")
+        st.caption("Per-job critic + auditor output and the career advisor's positioning summary. "
+                   "Resume gaps can be addressed via tailoring; career gaps must not be fabricated.")
         # Map review/advice timestamps from jobs_df for header timestamps
         ts_by_job = {
             r["job_id"]: (r.get("reviewed_at"), r.get("advised_at"))
@@ -773,11 +786,12 @@ elif view == "Workflow Detail":
                 if row.get("recommended_next_action"):
                     st.markdown(f"**Recommended:** {row['recommended_next_action']}")
 
-    # ── Interview Prep ────────────────────────────────────────────────────────
+    # ── Prep — interview readiness ────────────────────────────────────────────
     prep_df = load_interview_prep(wf_id)
     if not prep_df.empty:
         st.markdown("---")
-        st.subheader("Interview Prep")
+        st.subheader("✨ Prep — interview readiness")
+        st.caption("Likely topics, technical areas to brush up on, and a 7-day prep plan per qualifying job.")
         prep_ts = {
             r["job_id"]: r.get("prep_at")
             for _, r in (jobs_df.iterrows() if not jobs_df.empty else [])
@@ -803,13 +817,14 @@ elif view == "Workflow Detail":
                 except Exception:
                     pass
 
-    # ── Resume Tailoring (on-demand per job) ──────────────────────────────────
+    # ── Prep — resume tailoring (on-demand per job, the action surface) ───────
     st.markdown("---")
-    st.subheader("Resume Tailoring")
+    st.subheader("✨ Prep — tailored resume drafts")
     st.caption(
-        "On-demand: pick a deep-reviewed job and generate evidence-bound "
-        "section suggestions. Every suggestion cites the original line in your resume; "
-        "missing experience is labelled as a gap, never rewritten as if present."
+        "Pick a deep-reviewed job and generate evidence-bound section suggestions. "
+        "Every suggestion cites the original line in your resume; missing experience "
+        "is labelled as a gap, never rewritten as if present. Approve / revise / "
+        "reject each draft to record your decision."
     )
 
     selected_jobs_state = state.get("selected_jobs") or []
@@ -818,7 +833,8 @@ elif view == "Workflow Detail":
                 "Lower the threshold or broaden the search to qualify more jobs.")
     else:
         try:
-            tail_index = _cached_list_tailorings(wf_id)
+            with st.spinner("Loading tailoring drafts…"):
+                tail_index = _cached_list_tailorings(wf_id)
         except Exception as exc:
             st.error(f"Could not load existing tailorings: {exc}")
             tail_index = []
@@ -863,70 +879,76 @@ elif view == "Workflow Detail":
                         st.markdown("---")
                         _render_tailoring_card(t, _decide)
 
-    # ── Settings used for this run ────────────────────────────────────────────
+    # ── Diagnostics — collapsed by default to keep the action surfaces above ──
     st.markdown("---")
-    st.subheader("Settings used for this run")
+    st.subheader("🔧 Diagnostics")
+    st.caption("Settings used, cost breakdown, limits hit, and any errors. "
+               "Collapsed by default — open if a run looks off.")
+
     cfg_used = state.get("effective_config") or {}
     sc = state.get("search_criteria") or {}
     cc = state.get("custom_urls") or []
-    if cfg_used or sc or cc:
-        col_a, col_b = st.columns(2)
-        with col_a:
-            st.markdown("**Search criteria**")
-            st.json(sc, expanded=False)
-            if cc:
-                st.markdown(f"**Custom URLs** ({len(cc)})")
-                for u in cc:
-                    st.markdown(f"- {u}")
-        with col_b:
-            st.markdown("**Effective config**")
-            st.json(cfg_used, expanded=False)
-    else:
-        st.caption("No settings snapshot stored for this run (likely a pre-snapshot legacy run).")
-
-    # ── Cost Breakdown (per-agent / per-model) ────────────────────────────────
     breakdown = compute_breakdown(wf_id)
-    if breakdown["rows"]:
-        st.markdown("---")
-        st.subheader("Cost Breakdown")
-        cost_df = pd.DataFrame(breakdown["rows"])
-        cost_df = cost_df.rename(columns={
-            "agent_name": "Agent", "provider": "Provider", "model": "Model",
-            "calls": "Calls", "tokens_input": "Tokens in",
-            "tokens_output": "Tokens out", "cost_usd": "Cost ($)",
-            "avg_latency_ms": "Avg latency (ms)",
-        })
-        st.dataframe(
-            cost_df, hide_index=True, use_container_width=True,
-            column_config={
-                "Cost ($)": st.column_config.NumberColumn(format="$%.4f"),
-                "Avg latency (ms)": st.column_config.NumberColumn(format="%d"),
-            },
-        )
-        agg = breakdown["aggregate"]
-        st.caption(
-            f"**Aggregate:** {agg['calls']} calls · "
-            f"{agg['tokens_input']:,} in · {agg['tokens_output']:,} out · "
-            f"**${agg['cost_usd']:.4f}** · ~{int(agg['avg_latency_ms'])} ms avg"
-        )
-
-    # ── Constraints + limits hit ──────────────────────────────────────────────
     findings = analyze(state)
-    st.markdown("---")
-    st.subheader("Limits & Constraints")
-    if not findings:
-        st.success("No execution limits clipped this run.")
-    else:
-        for f in findings:
-            (st.warning if f["severity"] == "warning" else st.info)(f["message"])
-
-    # ── Errors collected during the run ───────────────────────────────────────
     errors = state.get("errors") or []
+
+    with st.expander("Settings used for this run", expanded=False):
+        if cfg_used or sc or cc:
+            col_a, col_b = st.columns(2)
+            with col_a:
+                st.markdown("**Search criteria**")
+                st.json(sc, expanded=False)
+                if cc:
+                    st.markdown(f"**Custom URLs** ({len(cc)})")
+                    for u in cc:
+                        st.markdown(f"- {u}")
+            with col_b:
+                st.markdown("**Effective config**")
+                st.json(cfg_used, expanded=False)
+        else:
+            st.caption("No settings snapshot stored for this run (likely a pre-snapshot legacy run).")
+
+    if breakdown["rows"]:
+        agg = breakdown["aggregate"]
+        with st.expander(f"Cost Breakdown — ${agg['cost_usd']:.4f} across {agg['calls']} calls",
+                         expanded=False):
+            cost_df = pd.DataFrame(breakdown["rows"])
+            cost_df = cost_df.rename(columns={
+                "agent_name": "Agent", "provider": "Provider", "model": "Model",
+                "calls": "Calls", "tokens_input": "Tokens in",
+                "tokens_output": "Tokens out", "cost_usd": "Cost ($)",
+                "avg_latency_ms": "Avg latency (ms)",
+            })
+            st.dataframe(
+                cost_df, hide_index=True, use_container_width=True,
+                column_config={
+                    "Cost ($)": st.column_config.NumberColumn(format="$%.4f"),
+                    "Avg latency (ms)": st.column_config.NumberColumn(format="%d"),
+                },
+            )
+            st.caption(
+                f"**Aggregate:** {agg['calls']} calls · "
+                f"{agg['tokens_input']:,} in · {agg['tokens_output']:,} out · "
+                f"**${agg['cost_usd']:.4f}** · ~{int(agg['avg_latency_ms'])} ms avg"
+            )
+
+    # Limits & Constraints — keep open when something fired so the user notices
+    _has_findings = bool(findings)
+    with st.expander(
+        f"Limits & Constraints" + (f" — {len(findings)} finding(s)" if _has_findings else ""),
+        expanded=_has_findings,
+    ):
+        if not findings:
+            st.success("No execution limits clipped this run.")
+        else:
+            for f in findings:
+                (st.warning if f["severity"] == "warning" else st.info)(f["message"])
+
+    # Errors — open when present
     if errors:
-        st.markdown("---")
-        st.subheader(f"Errors ({len(errors)})")
-        for err in errors:
-            st.json(err, expanded=False)
+        with st.expander(f"Errors ({len(errors)})", expanded=True):
+            for err in errors:
+                st.json(err, expanded=False)
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -1206,11 +1228,12 @@ elif view == "Start New Run":
                 st.warning(f"Settings save failed (run will still start): {exc}")
 
         try:
-            resp = api.start_workflow(
-                resume_id, search_criteria,
-                effective_config=effective_config,
-                custom_urls=custom_urls,
-            )
+            with st.spinner("Submitting workflow…"):
+                resp = api.start_workflow(
+                    resume_id, search_criteria,
+                    effective_config=effective_config,
+                    custom_urls=custom_urls,
+                )
             st.session_state.workflow_id = resp["workflow_id"]
             st.session_state.last_status = "running"
             st.session_state.last_response = resp
@@ -1360,7 +1383,8 @@ elif view == "Run Report":
         st.info(f"Report is available when the workflow completes. Current status: `{status or 'not started'}`.")
         st.stop()
     try:
-        resp = api.get_report(wf_id)
+        with st.spinner("Loading report…"):
+            resp = api.get_report(wf_id)
         report = resp.get("report") or {}
         st.caption(f"Generated: {report.get('generated_at', '—')}")
         st.markdown(report.get("markdown", "_No report content._"))
@@ -1473,7 +1497,8 @@ elif view == "Settings":
         "their original assignment."
     )
 
-    providers_payload = _cached_get_providers()
+    with st.spinner("Loading provider catalog…"):
+        providers_payload = _cached_get_providers()
     if providers_payload is None:
         st.warning("Couldn't reach `/config/providers` (backend may be down or restarting).")
 
@@ -1550,7 +1575,8 @@ elif view == "Top Matches":
     st.header("Top Matches (across all runs)")
     df = load_scored_jobs()
     if df.empty:
-        st.warning("No scored jobs found.")
+        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
+                "results will populate this view automatically.")
         st.stop()
     if search:
         mask = (
@@ -1570,7 +1596,8 @@ elif view == "IC Track":
     st.header("IC Engineering Track")
     df = load_scored_jobs()
     if df.empty:
-        st.warning("No scored jobs found.")
+        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
+                "jobs scored on the IC track will appear here.")
         st.stop()
     render_track_table(df, "technical_score", min_score)
 
@@ -1579,7 +1606,8 @@ elif view == "Architect Track":
     st.header("Architect Track")
     df = load_scored_jobs()
     if df.empty:
-        st.warning("No scored jobs found.")
+        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
+                "jobs scored on the Architect track will appear here.")
         st.stop()
     render_track_table(df, "architecture_score", min_score)
 
@@ -1588,7 +1616,8 @@ elif view == "Management Track":
     st.header("Management Track")
     df = load_scored_jobs()
     if df.empty:
-        st.warning("No scored jobs found.")
+        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
+                "jobs scored on the Management track will appear here.")
         st.stop()
     render_track_table(df, "leadership_score", min_score)
 
@@ -1597,7 +1626,8 @@ elif view == "Companies":
     st.header("Top Target Companies")
     df = load_scored_jobs()
     if df.empty:
-        st.warning("No scored jobs found.")
+        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
+                "this view aggregates the best score per company across all runs.")
         st.stop()
     agg = (
         df.groupby("company")
