@@ -1,6 +1,6 @@
 # Job Search Agent v2
 
-A multi-agent career intelligence system that discovers jobs, scores fit across three career tracks, identifies resume gaps, prepares you for interviews, and tailors your resume — all powered by Claude (Anthropic) and orchestrated with LangGraph.
+A multi-agent career intelligence system that discovers jobs, scores fit across three career tracks, identifies resume gaps, prepares you for interviews, and tailors your resume — all orchestrated with LangGraph.
 
 Built as a real-world exploration of **production agentic AI patterns**: stateful workflow graphs, structured output, bounded ReAct loops, critique-reflection cycles, evidence-bound generation, and human-in-the-loop checkpointing.
 
