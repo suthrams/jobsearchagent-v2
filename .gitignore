@@ -109,11 +109,9 @@ env/
 .windsurf/
 .zencoder/
 
-# ─── Agent skills pack (personal tooling, not part of the project) ───────────
-# Third-party skills (e.g. addyosmani/agent-skills) installed via the skill
-# manager. Each developer installs whichever pack they prefer — keep local.
-skills/
-skills-lock.json
+# ─── Agent skills pack ───────────────────────────────────────────────────────
+# skills/ and skills-lock.json are project assets — committed so the team
+# gets the same curated pack on clone. See skills/README.md for the index.
 
 # ─── Local content (architecture diagrams, publish package, blog drafts) ──────
 /architecture/
