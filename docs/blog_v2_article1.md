@@ -14,7 +14,7 @@ I tell you this up front because the field is moving fast and being honest about
 
 ## TL;DR
 
-- [Article 1](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) and [Article 2](LINK_TO_ARTICLE_2) covered 15 patterns I learned while building and running v1 of a personal job-search agent. v1 ran for less than a month — long enough to verify the patterns, not long enough to call it production.
+- [Article 1](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/) and [Article 2](https://www.linkedin.com/pulse/what-building-ai-agent-from-scratch-actually-teaches-you-suthram-s8zqe/) covered 15 patterns I learned while building and running v1 of a personal job-search agent. v1 ran for less than a month — long enough to verify the patterns, not long enough to call it production.
 - v2 is a deliberate learning effort. I rebuilt the system to apply advanced agentic AI patterns — orchestration, stateful workflows, evidence-bound generation, bounded reflection, per-agent model assignment — to a use case I personally needed: a career transition.
 - The interesting part of v2 is not the architecture diagram. It is the **methodology** that produced it: a week of foundations work — patterns, principles, ADRs, an implementation plan, and a skills inventory — before any v2 code was written.
 - This article gives you four concrete things you can take away today: a build sequence, an architecture sketch, an agents-and-patterns map, and a candid view of where humans belong in the loop.
