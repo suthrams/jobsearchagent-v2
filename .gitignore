@@ -14,6 +14,10 @@ data/profile.json
 # Job search database — contains your full search and application history
 data/jobs.db
 data/*.db
+# SQLite write-ahead log artifacts that live next to the .db file
+data/*.db-shm
+data/*.db-wal
+data/*.db-journal
 
 # Tailored resumes and run logs — contain personal content
 output/
@@ -104,6 +108,12 @@ env/
 .vibe/
 .windsurf/
 .zencoder/
+
+# ─── Agent skills pack (personal tooling, not part of the project) ───────────
+# Third-party skills (e.g. addyosmani/agent-skills) installed via the skill
+# manager. Each developer installs whichever pack they prefer — keep local.
+skills/
+skills-lock.json
 
 # ─── Local content (architecture diagrams, publish package, blog drafts) ──────
 /architecture/
