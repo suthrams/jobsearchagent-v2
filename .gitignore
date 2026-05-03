@@ -62,7 +62,48 @@ env/
 .claude/
 
 # ─── Obsidian ─────────────────────────────────────────────────────────────────
-docs/.obsidian/
+.obsidian/
+
+# ─── AI coding assistants — local config, never commit ───────────────────────
+# Each tool drops its own dot-prefixed config dir at the project root. Listed
+# explicitly (rather than `.[a-z]*/`) so legitimate dirs like .github/ stay
+# committed.
+.adal/
+.agents/
+.aider-desk/
+.augment/
+.bob/
+.codeartsdoer/
+.codebuddy/
+.codemaker/
+.codestudio/
+.commandcode/
+.continue/
+.cortex/
+.crush/
+.devin/
+.factory/
+.forge/
+.goose/
+.iflow/
+.junie/
+.kilocode/
+.kiro/
+.kode/
+.mcpjam/
+.mux/
+.neovate/
+.openhands/
+.pi/
+.pochi/
+.qoder/
+.qwen/
+.rovodev/
+.tabnine/
+.trae/
+.vibe/
+.windsurf/
+.zencoder/
 
 # ─── Local content (architecture diagrams, publish package, blog drafts) ──────
 /architecture/
