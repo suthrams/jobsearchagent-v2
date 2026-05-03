@@ -12,85 +12,7 @@ jobsearchagent-v2 is a multi-agent career intelligence system that helps users:
 
 This is a ground-up v2 refactor. v1 (`main.py`, `agents/`, `scrapers/`, `storage/`, `dashboard.py`) remains stable for reference — do not modify v1 files.
 
----
-
-## Build status
-
-Phases 1–8 complete. 448 tests passing, 1 skipped.
-
-| Phase | Description | Status |
-|---|---|---|
-| 1 | Foundation — schemas, repos, providers | ✓ |
-| 2 | Job discovery — scrapers, JobDiscoveryService | ✓ |
-| 3 | LLM provider — ClaudeProvider, PromptLoader | ✓ |
-| 4 | All 8 agents | ✓ |
-| 5 | LangGraph workflow orchestrator | ✓ |
-| 6 | FastAPI backend + Streamlit UI | ✓ |
-| 7 | Live agents — real Claude calls, SqliteSaver, real scrapers | ✓ |
-| 8 | Performance — concurrent job scoring + concurrent scraping | ✓ |
-| post-8 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055) | ✓ |
-
----
-
-## v2 Stack
-
-| Layer | Technology |
-|---|---|
-| Orchestration | LangGraph (stateful workflow graphs) + SqliteSaver |
-| Agent framework | LangChain + LangChain-Anthropic |
-| LLM | Claude (`claude-sonnet-4-6` default, `claude-haiku-4-5-20251001` for scoring) |
-| Backend API | FastAPI + Uvicorn |
-| UI | Streamlit (thin control surface only) |
-| Persistence | SQLite (raw sqlite3, no SQLAlchemy) |
-| Validation | Pydantic v2 |
-| Config | config.yaml defaults + DB user overrides via ConfigService |
-| Testing | pytest + pytest-asyncio + pytest-mock |
-
-Explicitly excluded: SQLAlchemy · Celery · Redis · LangSmith (for now)
-
----
-
-## v2 File Structure
-
-```
-app/
-  api/              ← FastAPI endpoints + dependency wiring (Phase 7 gate)
-    routers/        ← workflows.py, jobs.py, reports.py, config.py, tailoring.py
-  workflows/        ← LangGraph workflow graphs (orchestrator)
-  agents/           ← 8 specialized agents
-  services/         ← deterministic services (no LLM)
-    concurrent_adzuna_scraper.py  ← v2 wrapper: 5-worker concurrent Adzuna scraper
-  providers/        ← LLM provider abstraction (Claude + OpenAI via ModelRegistry)
-  state/            ← WorkflowState schema
-  schemas/          ← Pydantic output schemas for all agents
-  repositories/     ← SQLite data access
-  memory/           ← MemoryService (long-term learning)
-  prompts/
-    shared/         ← guardrails.txt (injected into every agent)
-    agents/         ← one prompt file per agent
-  ui/               ← Streamlit frontend (streamlit_app.py + db_reader.py + api_client.py)
-
-docs/architecture/
-  adr/              ← 56 Architecture Decision Records
-  implementation_plan.md
-  agent_model.md · workflow_model.md · state_and_memory_model.md
-  data_model.md · observability.md · security.model.md
-  hitl.md · prompt_and_guardrails_model.md · config_model.md
-  patterns.md · principles.md · architecture_overview.md
-
-skills/             ← addyosmani/agent-skills pack — 21 curated skills
-                     (see skills/README.md for which skill applies when)
-                     Pinned via skills-lock.json at the repo root
-
-config/
-  config.example.yaml
-  config.yaml       ← your settings (gitignored)
-
-data/               ← SQLite databases (v2.db, jobs.db); gitignored
-tests/              ← pytest suite (448 passed, 1 skipped — no real LLM calls in CI)
-notebooks/
-  phase_7_validation.ipynb  ← E2E live-agent validation notebook
-```
+For human-readable browseable documentation, see `docs/wiki.md`.
 
 ---
 
@@ -98,10 +20,10 @@ notebooks/
 
 ```bash
 # Requires ANTHROPIC_API_KEY, ADZUNA_APP_ID, ADZUNA_APP_KEY in .env
-uvicorn app.api.main:app --reload   # start FastAPI backend (live-agent mode)
-streamlit run app/ui/streamlit_app.py  # start Streamlit UI
-python -m pytest tests/             # run test suite (mock mode — no real API calls)
-python -m pytest tests/ -m integration  # run live-API smoke tests
+uvicorn app.api.main:app --reload         # start FastAPI backend (live-agent mode)
+streamlit run app/ui/streamlit_app.py     # start Streamlit UI
+python -m pytest tests/                   # run test suite (mock mode — no real API calls)
+python -m pytest tests/ -m integration    # run live-API smoke tests
 ```
 
 **Phase 7 gate** — `app/api/dependencies.py` checks `ANTHROPIC_API_KEY` at startup:
@@ -110,18 +32,36 @@ python -m pytest tests/ -m integration  # run live-API smoke tests
 
 ---
 
-## Agents
+## Workflow rules (read before contributing)
 
-| Agent | Pattern | Condition |
-|---|---|---|
-| Research Agent | Bounded ReAct | Always (before scoring) |
-| Scoring Agent | Structured output | Always (batch) |
-| Resume Critic | Critique | High match jobs only |
-| Review Auditor | Evaluator / Reflection | High match jobs only |
-| Career Advisor | Advisory | After reflection loop |
-| Interview Coach | Conditional | match_score ≥ threshold OR user request |
-| Tailoring Agent | Evidence-bound generation | User request |
-| Fidelity Reviewer | Validation / Guardrail | Always after tailoring |
+- **ADR-first for architectural changes** — write/update the ADR in `docs/architecture/adr/` and any impacted docs **before** implementing. Skip for bug fixes, dep bumps, and refactors that don't change a contract.
+- **Run the test suite before committing** — `python -m pytest tests/` must pass (currently 456 passed, 1 skipped). Live-API tests are gated by `-m integration`.
+- **PSSR audit each change** — Performance, Scalability, Security, Reliability. Even a small change has implications on at least one of the four; touch only what you can justify.
+- **No application tracking features** — Apply / Save / status fields are intentionally out of scope. The user's career decision-making point stays human-owned.
+- **ASCII-only commit messages and chat output** — terminal rendering can mangle non-ASCII glyphs. Streamlit UI files (browser-rendered) may use emojis.
+
+---
+
+## Commit conventions
+
+- Use HEREDOC for the commit message so multi-line formatting survives shell quoting.
+- End the message with `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
+- First line: short imperative summary. ASCII only.
+- Body: what changed and why. Reference ADRs / files / line numbers where useful.
+
+```bash
+git commit -m "$(cat <<'EOF'
+feat: short imperative summary line
+
+Multi-line body explaining what changed and why. Reference ADRs, file
+paths, or line numbers where it would help a future reader.
+
+Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+EOF
+)"
+```
+
+Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the user explicitly asks.
 
 ---
 
@@ -151,11 +91,11 @@ python -m pytest tests/ -m integration  # run live-API smoke tests
 - Fidelity Reviewer must run after every Tailoring Agent call (both the in-graph node and the on-demand router enforce this)
 - `tailored_resumes` carries `fidelity_review_json`, `decision`, `decided_at`, `approved` columns. `decision` ∈ {approve, revise, reject}; `approved=1` only when `decision="approve"`
 
-**HITL rules**
-- Job-selection HITL has been removed — the workflow auto-selects qualifying jobs (see Auto-selection rules) and runs end-to-end
-- The `await_tailoring_approval` interrupt + `approve_tailoring` decision endpoint remain in the codebase but are reachable only when `state["user_requested_tailoring"]` is `True` (currently never set by the UI)
-- On-demand tailoring runs OUTSIDE the graph via `app/api/routers/tailoring.py` — `POST /workflows/{wf}/jobs/{job}/tailor` triggers TailoringAgent + FidelityReviewer for any selected job, persists to `tailored_resumes`, and returns the draft. Decisions go to `POST /tailorings/{id}/decision` with approval ∈ {approve, revise, reject}
-- Backend still validates all decisions before resuming workflow; UI never auto-approves tailored outputs or bypasses backend validation
+**HITL rules — two distinct tailoring paths**
+- **Path 1 (in-graph, currently UI-dark):** when `state["user_requested_tailoring"]` is `True` before run start, the tailoring node runs inside the LangGraph workflow and pauses at the `await_tailoring_approval` interrupt. Approval is sent to `POST /workflows/{id}/decisions`. The flag is currently never set by the UI; the path is reachable but unused.
+- **Path 2 (out-of-graph, ADR-055):** `POST /workflows/{wf}/jobs/{job}/tailorings` runs `TailoringAgent` + `FidelityReviewer` directly outside the graph for any selected job and persists to `tailored_resumes`. Decision is recorded via `POST /tailorings/{id}/decisions` with `approval ∈ {approve, revise, reject}`. This is the path the UI uses today.
+- Job-selection HITL has been removed entirely — the workflow auto-selects qualifying jobs (see Auto-selection rules) and runs end-to-end.
+- Backend always validates decisions before persisting; UI never auto-approves tailored outputs.
 
 **Auto-selection rules**
 - `MIN_MATCH_SCORE_DEFAULT = 75` in `app/workflows/limits.py`. `effective_config.scoring.min_match_score` overrides per run
@@ -174,27 +114,129 @@ python -m pytest tests/ -m integration  # run live-API smoke tests
 - `register_run` is the graph entry point. It writes the initial state (including `effective_config` and `custom_urls`) to `workflow_runs` so the Workflow Detail UI can show the settings used per run
 - `generate_report` updates `workflow_runs` with terminal status and final metrics
 - The langgraph SqliteSaver `checkpoints` table is for resumption only — query `workflow_runs` for UI / history reads
+- Schema changes to `data/v2.db` require updating BOTH the repository layer AND `app/ui/db_reader.py` (the UI read-path bypasses the API for performance — documented in `db_reader.py` header)
 
 **Provider rules**
 - Both providers (`ClaudeProvider`, `OpenAIProvider`) implement `LLMClient`. Agents depend only on `LLMClient` — never on a concrete provider class
 - `LLMClient.complete(schema=...)` must always receive a Pydantic `BaseModel` subclass — never a builtin like `dict`
-- `make_resume_enhance_fn` uses `_ResumeEnhancement(BaseModel)` defined in `app/providers/claude_provider.py`
+- Per ADR-053: agents are wired through `app/providers/model_registry.py` (`ModelRegistry`), not directly to a provider. The registry caches one provider instance per `(provider, model)` and exposes `for_agent(agent_name)`. User overrides via `agents.{name}.{provider,model}` in `user_config`. Restart-to-apply
 - Both providers use the same retry policy: 6 attempts on `RateLimitError` / `APIConnectionError` / `InternalServerError`, jittered exponential backoff capped at 60s, 429s honor `retry-after` (capped at 90s)
-- Per ADR-053: agents are wired through `app/providers/model_registry.py` (`ModelRegistry`), not directly to a provider. The registry caches one provider instance per `(provider, model)` and exposes `for_agent(agent_name)`. Defaults match ADR-051; user overrides via `agents.{name}.{provider,model}` in `user_config`. Restart-to-apply
 - `OpenAIProvider` is gated by `OPENAI_API_KEY`. If absent, OpenAI models are not registered and the Settings UI hides them. Workflows continue on Claude
+- Prefer `provider.complete_with_usage(...) -> (dict, LLMUsage)` over the legacy `complete()` + `last_call_usage()` two-step. The typed return eliminates the thread-local race that the old side-channel had
 
 ---
 
-## Architecture Reference
+## v2 File Structure
 
-All design decisions are documented in `docs/architecture/`. Start here for any implementation question:
+```
+app/
+  api/              ← FastAPI endpoints + dependency wiring (Phase 7 gate)
+    routers/        ← workflows.py, jobs.py, reports.py, config.py, tailoring.py
+  workflows/        ← LangGraph workflow graphs (orchestrator)
+  agents/           ← 8 specialized agents (all inherit BaseAgent)
+  services/         ← deterministic services (no LLM)
+    concurrent_adzuna_scraper.py  ← v2 wrapper: 5-worker concurrent Adzuna scraper
+  providers/        ← LLM provider abstraction (Claude + OpenAI via ModelRegistry)
+  state/            ← WorkflowState schema
+  schemas/          ← Pydantic output schemas for all agents
+  repositories/     ← SQLite data access
+  memory/           ← MemoryService (long-term learning)
+  prompts/
+    shared/         ← guardrails.txt (injected into every agent)
+    agents/         ← one prompt file per agent
+  ui/               ← Streamlit frontend (streamlit_app.py + db_reader.py + api_client.py)
+
+docs/architecture/
+  adr/              ← 56 Architecture Decision Records (start at ADR-000-index.md)
+  implementation_plan.md
+  agent_model.md · workflow_model.md · state_and_memory_model.md
+  data_model.md · observability.md · security.model.md
+  hitl.md · prompt_and_guardrails_model.md · config_model.md
+  patterns.md · principles.md · architecture_overview.md
+  api_reference.md  ← REST endpoint contracts
+
+skills/             ← addyosmani/agent-skills pack — 21 curated skills
+                     (see skills/README.md for which skill applies when)
+                     Pinned via skills-lock.json at the repo root
+
+config/
+  config.example.yaml
+  config.yaml       ← your settings (gitignored)
+
+data/               ← SQLite databases (v2.db, jobs.db); gitignored
+tests/              ← pytest suite (456 passed, 1 skipped — no real LLM calls in CI)
+notebooks/
+  phase_7_validation.ipynb  ← E2E live-agent validation notebook
+```
+
+### Architecture Reference
+
+All design decisions live in `docs/architecture/`. Start here for any implementation question:
 
 - `implementation_plan.md` — phased build plan with review gates
 - `agent_model.md` — per-agent input/output contracts and constraints
 - `workflow_model.md` — complete workflow execution blueprint
 - `state_and_memory_model.md` — WorkflowState schema and memory rules
 - `data_model.md` — all 17 SQLite table definitions
-- `adr/` — 46 Architecture Decision Records
+- `api_reference.md` — REST contracts (URLs, status codes, error envelope)
+- `adr/` — 56 Architecture Decision Records
+
+---
+
+## Agents
+
+| Agent | Pattern | Condition |
+|---|---|---|
+| Research Agent | Bounded ReAct | Always (before scoring) |
+| Scoring Agent | Structured output | Always (batch) |
+| Resume Critic | Critique | High match jobs only |
+| Review Auditor | Evaluator / Reflection | High match jobs only |
+| Career Advisor | Advisory | After reflection loop |
+| Interview Coach | Conditional | match_score ≥ threshold OR user request |
+| Tailoring Agent | Evidence-bound generation | User request |
+| Fidelity Reviewer | Validation / Guardrail | Always after tailoring |
+
+### Typical agent skeleton
+
+Every agent inherits `BaseAgent`, sets `AGENT_NAME` matching its prompt file, and implements `run()` by calling `_run()` and constructing the right Pydantic schema:
+
+```python
+class ScoringAgent(BaseAgent):
+    AGENT_NAME = "scoring_agent"  # → app/prompts/agents/scoring_agent.txt
+
+    def __init__(self, provider: LLMClient, observability: ObservabilityService) -> None:
+        super().__init__(provider, observability)
+
+    def run(self, workflow_id: str, context: dict) -> JobScore:
+        result = self._run(workflow_id, context, JobScore)
+        return JobScore(**result)
+```
+
+The split between `_run()` (infrastructure: timing, observability, provider dispatch) and `run()` (schema construction) keeps observability logic out of concrete agents and makes testing easy: mock the provider, assert on the schema type.
+
+---
+
+## v2 Stack
+
+| Layer | Technology |
+|---|---|
+| Orchestration | LangGraph (stateful workflow graphs) + SqliteSaver |
+| Agent framework | LangChain + LangChain-Anthropic |
+| LLM | Claude + OpenAI (per-agent assignment via ModelRegistry — ADR-053). Defaults in `app/providers/model_registry.py::DEFAULT_AGENT_ASSIGNMENT` |
+| Backend API | FastAPI + Uvicorn |
+| UI | Streamlit (thin control surface only) |
+| Persistence | SQLite (raw sqlite3, no SQLAlchemy) |
+| Validation | Pydantic v2 |
+| Config | config.yaml defaults + DB user overrides via ConfigService |
+| Testing | pytest + pytest-asyncio + pytest-mock |
+
+Explicitly excluded: SQLAlchemy · Celery · Redis · LangSmith (for now)
+
+---
+
+## Build status
+
+Phases 1–8 + post-8 work all complete. 456 tests pass, 1 skipped. **Latest activity → see `CHANGELOG.md`** for the up-to-date narrative; the per-phase status table moved out of this file because it had stopped changing meaningfully.
 
 ---
 
