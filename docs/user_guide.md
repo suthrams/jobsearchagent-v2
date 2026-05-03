@@ -189,7 +189,7 @@ The backend runs end-to-end with no required user input:
 1. **Job discovery** — Adzuna + your custom URLs (each custom URL is fetched and parsed via heuristics first, then via Claude if heuristics fall short; failures are logged per URL and skipped)
 2. **Research** each company (Research Agent — Haiku)
 3. **Scoring** across all three career tracks (Scoring Agent — Haiku, concurrent)
-4. **Auto-select** up to 3 top-scoring jobs where any track ≥ your threshold
+4. **Auto-select** up to 10 top-scoring jobs where any track ≥ your threshold (raised from 3 in ADR-054 — every qualifying job now reaches deep review)
 5. **Deep review** (Resume Critic + Review Auditor reflection loop, up to 3 rounds)
 6. **Career advice** (Sonnet) per selected job
 7. **Interview prep** (Sonnet) if any selected job's best track score ≥ threshold

@@ -6,6 +6,27 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-03
 
+### Fixed — Phase validation notebooks repaired after refactor drift; all 7 run green in mock mode
+
+The seven `notebooks/phase_*_validation.ipynb` files had drifted against current code from accumulated refactors (ADR-053 ModelRegistry, ADR-054 auto-select for deep review, ADR-055 out-of-graph tailoring, the `complete_with_usage` typed return migration, the `WorkflowDependencies.resume_repo` addition, and a Windows portability bug in `ConfigService`). End-to-end execution in mock mode failed across phases 1, 3, 5, 6, 7. Fixed:
+
+| File | What changed |
+|---|---|
+| `app/services/config_service.py` | YAML loader now opens with `encoding="utf-8"` (was the OS default — broke on Windows because `config/config.example.yaml` contains UTF-8 chars at byte 2). Real codebase bug surfaced by phase_1. |
+| `notebooks/phase_1_validation.ipynb` | Updated stale assertions to current limits (max_selected_jobs 3 → 10, max_llm_calls_per_run 50 → 200; ADR-054). |
+| `notebooks/phase_3_validation.ipynb` | Path detection robust to launch dir (cwd-or-parent). Cell that asserted `OpenAIProvider` raises `NotImplementedError` rewritten — OpenAIProvider is now a real LLMClient (ADR-053), constructed with a `PromptLoader` and a mocked `openai.OpenAI` client. |
+| `notebooks/phase_4_validation.ipynb` | Path detection robust to launch dir. |
+| `notebooks/phase_5_validation.ipynb` | Dropped `INTERVIEW_COACH_THRESHOLD` import (constant removed; threshold is now per-run via `get_min_match_score(state)` defaulting to `MIN_MATCH_SCORE_DEFAULT=75`). Added `resume_repo=MagicMock(spec=ResumeRepository)` to `WorkflowDependencies(...)` (now required). `build_phase` visualisation helper wraps `compile()` in try/except so converging-paths topologies still render via ASCII when LangGraph rejects parallel updates over plain-dict state. |
+| `notebooks/phase_6_validation.ipynb` | Added `resume_repo` to `WorkflowDependencies(...)` and configured the mock to return a valid cached profile (default `MagicMock` returned a non-string for `parsed_profile_json`, causing `load_resume` to raise inside the graph background thread and leaving the workflow stuck in `running`). Cells 8-19 rewritten to drop the in-graph HITL #1 (`select_jobs_for_deep_review`) — replaced with a single end-to-end completion poll plus a markdown note pointing at ADR-054 (auto-select) and ADR-055 (on-demand tailoring). |
+| `notebooks/phase_7_validation.ipynb` | Path detection robust to launch dir. Cell 20 (mock-mode regression) seeds `mock_deps.resume_repo.get_by_id` with a valid profile. Real-mode cells (gated by `REAL_MODE = bool(ANTHROPIC_API_KEY)` from `.env`) unchanged — still require an API key. |
+
+Verified: all phases 1-6 execute end-to-end with no `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` set; phase 7 also passes in mock mode (`.env` temporarily moved aside) and is structurally ready for live mode when keys are available.
+
+### Fixed — Workflow Detail showed the most recent run regardless of which history row was clicked
+
+- `app/ui/streamlit_app.py` — clicking a row in **Workflow History** now actually loads that run's detail. Root cause: the Detail view's `st.text_input("Workflow ID", value=...)` had no `key`, so Streamlit retained the widget's previous value across reruns and ignored the freshly-set `detail_workflow_id`, clobbering it back to whatever was last in the input. Replaced with a keyed input + `_detail_wf_synced` sentinel; `_navigate()` clears the sentinel whenever it sets a new `detail_workflow_id` so the widget re-syncs on the next render. User-typed values are still preserved across unrelated reruns.
+- Same file, **Workflow History** table — long columns shrunk to keep the table scannable: `Run` shows the first role + first location with `+N` badges (was 2 of each, `width="large"`), `ID` shows the first 8 chars + ellipsis, `Stage` and `Progress` dropped from `medium` to `small`. Row-click handler now reads the workflow_id from the source `df` (not `display_df`) so the truncation doesn't break navigation.
+
 ### Changed — LLMClient typed-usage migration (5 stacked PRs)
 
 Surfaced by `/api-and-interface-design` applied to `app/providers/llm_client.py`. The legacy `last_call_usage() -> tuple[int, int, float]` side-channel was racy under concurrency (mitigated by thread-locals at every layer, but still fragile) and the positional-tuple shape blocked future-additive fields like latency. Replaced with a typed return-value usage object, migrated as 5 small independently-revertable PRs.
