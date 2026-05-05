@@ -4,6 +4,23 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-05-05
+
+### Changed — Tailoring page-budget contract + section-grouped suggestions (ADR-056)
+
+User feedback: tailoring suggestions were verbose enough that adopting more than a couple pushed the resume onto an extra page, and the flat `summary_suggestions` / `experience_bullet_suggestions` lists made it hard to map a suggestion back to the right resume section. Both made the feature lossy for the candidate it exists for.
+
+- `app/schemas/tailored_resume_draft.py` — `TailoredBullet.claim_type` extended with `"remove"` (frees space by deleting a low-value bullet); new `section_label: str` field (defaults to `""` for backwards compat) carries identifiers like `"summary"`, `"experience:Acme:Staff Engineer"`, `"skills"`.
+- `app/prompts/agents/tailoring_agent.txt` v2 → v3 — adds the per-bullet length band `ceil(0.85 * original_words) .. floor(1.05 * original_words)` so rewrites match the original line count instead of overflowing or collapsing; requires `section_label` per suggestion; documents `claim_type="remove"` as the way to free space.
+- `app/prompts/agents/fidelity_reviewer.txt` v2 → v3 — mirrors the length-band check, validates `section_label` against the candidate's actual resume sections, and rejects `claim_type="remove"` with non-empty `suggested_text`. Layout violations land in `required_revisions` with diagnostic notes like `"Bullet N: 28w > 18w original"`.
+- `app/ui/streamlit_app.py` — `_render_tailored_sections()` groups bullets by `section_label` in resume order (Summary → Experience entries in resume order → Skills) and shows per-section word-delta summary; `_render_one_bullet()` shows length delta inline (`24w → 19w (-5w)`) and renders `remove` / `gap` distinctly. Older drafts (no `section_label`) fall back into a single "Other suggestions" bucket per source list — re-running tailoring produces a properly grouped draft.
+- `docs/architecture/adr/ADR-056-tailoring-page-budget-and-section-grouping.md` — new. ADR-015 and ADR-016 updated with pointers; index updated.
+- No DB migration. The schema additions are backwards-compatible; the prompt version bump (v2 → v3) is what the observability pipeline keys off to distinguish drafts produced under the new contract.
+
+Per-suggestion accept/reject and iterative-revision context (carrying user decisions from one draft to the next) are intentionally **not** included here; they are scoped for a follow-up ADR that builds on this section-labeled structure.
+
+---
+
 ## 2026-05-03
 
 ### Fixed — Phase validation notebooks repaired after refactor drift; all 7 run green in mock mode

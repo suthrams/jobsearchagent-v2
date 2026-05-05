@@ -322,45 +322,176 @@ def _get_config_cached() -> dict:
     return st.session_state.config_cache
 
 
-_CLAIM_BADGE = {"reword": "🟦 reword", "emphasize": "🟩 emphasize", "gap": "🟧 gap"}
+_CLAIM_BADGE = {
+    "reword":    "🟦 reword",
+    "emphasize": "🟩 emphasize",
+    "gap":       "🟧 gap (need to add)",
+    "remove":    "🟥 remove (frees space)",
+}
 _FIDELITY_RISK_BADGE = {"low": "🟢 low risk", "medium": "🟡 medium risk", "high": "🔴 high risk"}
 _FIDELITY_STATUS_BADGE = {"pass": "🟢 fidelity pass", "needs_revision": "🟡 needs revision",
                           "fail": "🔴 fidelity fail"}
 _DECISION_BADGE = {"approve": "🟢 approved", "revise": "🟡 needs revision", "reject": "🔴 rejected"}
 
 
-def _render_tailored_bullets(label: str, bullets: list) -> None:
-    if not bullets:
-        return
-    st.markdown(f"**{label}**")
-    for i, b in enumerate(bullets):
-        if not isinstance(b, dict):
-            continue
-        claim = b.get("claim_type") or "reword"
-        risk = b.get("fidelity_risk") or "low"
-        st.markdown(
-            f"_Suggestion {i + 1}_  ·  "
-            f"{_CLAIM_BADGE.get(claim, claim)}  ·  "
-            f"{_FIDELITY_RISK_BADGE.get(risk, risk)}"
-        )
-        c1, c2 = st.columns(2)
-        c1.markdown("_Original_")
-        c1.markdown(f"> {b.get('original_text') or '_(none — net-new line)_'}")
-        c2.markdown("_Suggested_")
+def _word_count(text: str | None) -> int:
+    return len((text or "").split())
+
+
+def _section_display(label: str, resume_profile: dict | None) -> str:
+    """Turn a raw section_label into a human-readable header.
+
+    "summary"                          -> "Summary"
+    "experience:Acme:Staff Engineer"   -> "Experience — Staff Engineer @ Acme"
+    "skills"                           -> "Skills"
+    "education:MIT"                    -> "Education — MIT"
+    Anything else                      -> the raw label.
+    """
+    if not label:
+        return "Other suggestions"
+    if label == "summary":
+        return "Summary"
+    if label == "skills":
+        return "Skills"
+    if label.startswith("experience:"):
+        parts = label.split(":", 2)
+        if len(parts) == 3:
+            return f"Experience — {parts[2]} @ {parts[1]}"
+        return label
+    if label.startswith("education:"):
+        return f"Education — {label.split(':', 1)[1]}"
+    if label.startswith("certifications:"):
+        return f"Certifications — {label.split(':', 1)[1]}"
+    return label
+
+
+def _section_order(resume_profile: dict | None) -> list[str]:
+    """Build the display-order list of section_labels matching resume order:
+    summary -> experience entries (in resume order) -> skills -> education -> certifications.
+    Unknown labels render after these in encounter order.
+    """
+    rp = resume_profile or {}
+    order: list[str] = ["summary"]
+    for exp in (rp.get("experience") or []):
+        co = (exp.get("company") or "").strip()
+        ti = (exp.get("title") or "").strip()
+        if co and ti:
+            order.append(f"experience:{co}:{ti}")
+    order.append("skills")
+    for edu in (rp.get("education") or []):
+        inst = (edu.get("institution") or "").strip()
+        if inst:
+            order.append(f"education:{inst}")
+    for cert in (rp.get("certifications") or []):
+        nm = (cert.get("name") or "").strip()
+        if nm:
+            order.append(f"certifications:{nm}")
+    return order
+
+
+def _render_one_bullet(b: dict, idx: int) -> None:
+    claim = b.get("claim_type") or "reword"
+    risk = b.get("fidelity_risk") or "low"
+    st.markdown(
+        f"_Suggestion {idx + 1}_  ·  "
+        f"{_CLAIM_BADGE.get(claim, claim)}  ·  "
+        f"{_FIDELITY_RISK_BADGE.get(risk, risk)}"
+    )
+    c1, c2 = st.columns(2)
+    c1.markdown("_Original_")
+    c1.markdown(f"> {b.get('original_text') or '_(none — net-new line)_'}")
+    c2.markdown("_Suggested_")
+    if claim == "remove":
+        c2.markdown("> _(remove this bullet to free space)_")
+    elif claim == "gap":
+        c2.markdown("> _(gap — candidate decides whether to add)_")
+    else:
         c2.markdown(f"> {b.get('suggested_text') or '—'}")
-        ev = b.get("supporting_evidence") or ""
-        if ev:
-            st.caption(f"📎 Evidence from your resume: _{ev}_")
-        unsupported = b.get("unsupported_claims") or []
-        if unsupported:
-            for u in unsupported:
-                st.warning(f"Unsupported claim: {u}")
-        st.markdown("")
+    # Length-budget hint so the candidate sees the word delta inline.
+    o_w = _word_count(b.get("original_text"))
+    s_w = _word_count(b.get("suggested_text"))
+    if claim in ("reword", "emphasize") and o_w:
+        st.caption(f"Length: {o_w}w → {s_w}w  ({s_w - o_w:+d}w)")
+    ev = b.get("supporting_evidence") or ""
+    if ev:
+        st.caption(f"📎 Evidence from your resume: _{ev}_")
+    unsupported = b.get("unsupported_claims") or []
+    if unsupported:
+        for u in unsupported:
+            st.warning(f"Unsupported claim: {u}")
+    st.markdown("")
 
 
-def _render_tailoring_card(t: dict, on_decision) -> None:
+def _render_tailored_sections(draft: dict, resume_profile: dict | None) -> None:
+    """Group all bullet-style suggestions by section_label and render in resume order.
+
+    Falls back gracefully for older drafts that have no section_label: those are
+    bucketed as "summary" (if pulled from summary_suggestions) or "experience:other"
+    (if from experience_bullet_suggestions) so existing drafts stay readable.
+    """
+    summary = list(draft.get("summary_suggestions") or [])
+    experience = list(draft.get("experience_bullet_suggestions") or [])
+
+    # Tag each bullet with a fallback section_label so older drafts still group.
+    tagged: list[dict] = []
+    for b in summary:
+        if isinstance(b, dict):
+            b2 = dict(b)
+            b2.setdefault("section_label", "summary")
+            tagged.append(b2)
+    for b in experience:
+        if isinstance(b, dict):
+            b2 = dict(b)
+            b2.setdefault("section_label", "experience:other")
+            tagged.append(b2)
+
+    if not tagged:
+        return
+
+    # Group
+    by_section: dict[str, list[dict]] = {}
+    for b in tagged:
+        by_section.setdefault(b.get("section_label") or "", []).append(b)
+
+    # Order: known sections first, then any unknown labels
+    known = _section_order(resume_profile)
+    seen: set[str] = set()
+    ordered_labels: list[str] = []
+    for k in known:
+        if k in by_section and k not in seen:
+            ordered_labels.append(k)
+            seen.add(k)
+    for k in by_section:
+        if k not in seen:
+            ordered_labels.append(k)
+            seen.add(k)
+
+    for label in ordered_labels:
+        bullets = by_section[label]
+        # Section-level word delta so the candidate sees the page-budget impact.
+        delta_o = sum(_word_count(b.get("original_text")) for b in bullets
+                      if (b.get("claim_type") or "reword") in ("reword", "emphasize"))
+        delta_s = sum(_word_count(b.get("suggested_text")) for b in bullets
+                      if (b.get("claim_type") or "reword") in ("reword", "emphasize"))
+        n_remove = sum(1 for b in bullets if b.get("claim_type") == "remove")
+        n_gap = sum(1 for b in bullets if b.get("claim_type") == "gap")
+        meta_bits = [f"{len(bullets)} suggestion(s)"]
+        if delta_o or delta_s:
+            meta_bits.append(f"{delta_o}w → {delta_s}w ({delta_s - delta_o:+d}w)")
+        if n_remove:
+            meta_bits.append(f"{n_remove} remove")
+        if n_gap:
+            meta_bits.append(f"{n_gap} gap")
+        st.markdown(f"### {_section_display(label, resume_profile)}")
+        st.caption("  ·  ".join(meta_bits))
+        for i, b in enumerate(bullets):
+            _render_one_bullet(b, i)
+
+
+def _render_tailoring_card(t: dict, on_decision, resume_profile: dict | None = None) -> None:
     """Render one tailoring draft. on_decision(tailoring_id, choice) is invoked when
-    one of the decision buttons is clicked."""
+    one of the decision buttons is clicked. resume_profile, when provided, is used
+    to order suggestion groups by the candidate's actual resume sections."""
     tid = t.get("tailoring_id") or t.get("id") or ""
     draft = t.get("tailored") or {}
     fidelity = t.get("fidelity_review") or {}
@@ -400,13 +531,13 @@ def _render_tailoring_card(t: dict, on_decision) -> None:
                 for x in items:
                     st.markdown(f"- {x}")
 
-    # Per-section diffs
-    _render_tailored_bullets("Summary suggestions", draft.get("summary_suggestions") or [])
-    _render_tailored_bullets("Experience bullet suggestions",
-                             draft.get("experience_bullet_suggestions") or [])
+    # Per-section diffs, grouped by section_label in resume order so the
+    # candidate sees changes the way they appear on the page.
+    _render_tailored_sections(draft, resume_profile)
     skills = draft.get("skills_section_suggestions") or []
     if skills:
-        st.markdown("**Skills suggestions** _(additions to your existing skills section)_")
+        st.markdown("### Skills additions")
+        st.caption(f"{len(skills)} bare skill label(s) to add to your existing Skills section")
         for s in skills:
             st.markdown(f"- {s}")
     if draft.get("overall_tailoring_notes"):
@@ -980,9 +1111,10 @@ elif view == "Workflow Detail":
                 if not existing:
                     st.caption("No drafts yet for this job. Click **Generate new draft** to create one.")
                 else:
+                    rp_for_render = state.get("resume_profile") or None
                     for t in existing:
                         st.markdown("---")
-                        _render_tailoring_card(t, _decide)
+                        _render_tailoring_card(t, _decide, resume_profile=rp_for_render)
 
     # ── Diagnostics — collapsed by default to keep the action surfaces above ──
     st.markdown("---")

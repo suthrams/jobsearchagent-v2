@@ -24,3 +24,7 @@
 
     ## Implementation Notes
     - Fidelity Reviewer flags invented metrics, unsupported technologies, inflated scope, new certifications, and unsupported domains
+    - As of ADR-056, the reviewer also enforces the per-bullet length band (0.85x..1.05x of original word count), validates section_label against the candidate's actual resume sections, and rejects claim_type="remove" with non-empty suggested_text. Layout violations land in required_revisions
+
+    ## References
+    - ADR-056 — Tailoring Page-Budget Contract and Section-Grouped Suggestions (extends this ADR; does not supersede it)

@@ -61,3 +61,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-053 | [Pluggable Per-Agent Provider and Model Selection](ADR-053-pluggable-per-agent-provider-and-model-selection.md) | Accepted |
 | ADR-054 | [Allow Deep Review for All Qualifying Jobs](ADR-054-allow-deep-review-for-all-qualifying-jobs.md) | Accepted |
 | ADR-055 | [On-Demand Tailoring as an Out-of-Graph Operation](ADR-055-on-demand-tailoring-as-out-of-graph-operation.md) | Accepted |
+| ADR-056 | [Tailoring Page-Budget Contract and Section-Grouped Suggestions](ADR-056-tailoring-page-budget-and-section-grouping.md) | Accepted |
