@@ -14,13 +14,14 @@ End-to-end walkthrough: setup, starting the system, running a workflow, and read
 6. [Start the System](#6-start-the-system)
 7. [UI Navigation](#7-ui-navigation)
 8. [Start a Workflow Run](#8-start-a-workflow-run)
-9. [Monitor Progress and Handle HITL Checkpoints](#9-monitor-progress-and-handle-hitl-checkpoints)
+9. [Monitor Progress](#9-monitor-progress)
 10. [Read the Run Report](#10-read-the-run-report)
 11. [Browse Results](#11-browse-results)
 12. [Deep Review Results and Interview Prep](#12-deep-review-results-and-interview-prep)
-13. [Analytics: Companies and Run History](#13-analytics-companies-and-run-history)
-14. [Daily Workflow](#14-daily-workflow)
-15. [Troubleshooting](#15-troubleshooting)
+13. [Tailored Resume Drafts](#13-tailored-resume-drafts)
+14. [Analytics: Companies and Run History](#14-analytics-companies-and-run-history)
+15. [Daily Workflow](#15-daily-workflow)
+16. [Troubleshooting](#16-troubleshooting)
 
 ---
 
@@ -227,7 +228,8 @@ The report renders as Markdown and includes:
 - Deep review findings per job
 - Career advice across tracks
 - Interview prep highlights
-- Any tailored resume sections (if approved)
+
+Tailored resume drafts are generated on demand from **Workflow Detail** (see [section 13](#13-tailored-resume-drafts)) and are not part of the auto-generated report.
 
 Click **Download Markdown** to save a copy locally.
 
@@ -279,7 +281,76 @@ For each job where Interview Coach ran (match score ≥ 75), an expandable secti
 
 ---
 
-## 13. Analytics: Companies and Run History
+## 13. Tailored Resume Drafts
+
+Tailoring runs **on demand**, per job, after the workflow finishes. There is no HITL pause for tailoring during the run — pick whichever deep-reviewed jobs are worth the effort once you've read their reviews, and generate drafts for those.
+
+### Where to find it
+
+**Workflow History** → click any completed run → scroll to **✨ Prep — tailored resume drafts** at the bottom of the Workflow Detail page. There is one expandable section per deep-reviewed job (`selected_jobs`).
+
+Inside each job's expander:
+
+- **✨ Generate new draft** — runs Tailoring Agent + Fidelity Reviewer. Takes 5-15s and ~6 LLM calls (~$0.01-0.02). Each click creates a brand-new draft; previous drafts stick around so you can compare.
+
+### What a draft contains
+
+When a draft renders you'll see four blocks, top to bottom:
+
+**1. Strategy for this draft** — a callout with the agent's positioning thesis for the whole draft. Sentence one is the thesis (`"Positioning you as <role-shape> who <strongest hook from JD>."`), followed by 2-3 concrete moves anchored to specific JD signals. This is the line to read before deciding whether to spend time on the rest.
+
+**2. Estimated impact (directional, not a re-score)** — per-track lift derived from the structure of the suggestions:
+- 🟢 Likely lift, 🟡 small lift, ⚪ neutral
+- Up to four example tokens added per track (e.g. `kubernetes`, `prometheus`)
+- Footer for freed bullets (`remove` count) and unclosed gaps (`gap` count)
+
+This is a cheap heuristic, not a re-score — it tells you which tracks the draft is moving toward, not what number the agent would assign. Re-scoring with the same agent that scored the original creates a self-fulfilling prophecy (see ADR-056 addendum #3).
+
+**3. Fidelity flags** (collapsed unless there are violations) — unsupported claims, fabricated metrics, inflated scope, length overruns, generic rationale, missing strategy summary, etc. If the Fidelity Reviewer's `approval_recommendation` is `"revise"` or `"reject"`, the header at the top of the draft tells you so.
+
+**4. Section-grouped diffs** — suggestions grouped by resume section in resume order:
+- Headline (positioning tagline below the name)
+- Summary
+- Experience entries in resume order
+- Skills additions
+
+Each section header shows the count and the per-section word delta (e.g. `3 suggestions · 47w → 41w (-6w) · 1 remove`) so you see the page-budget impact at a glance.
+
+### What's in each suggestion
+
+Per bullet:
+- **Original** vs **Suggested** side-by-side
+- **Claim type** badge:
+  - 🟦 `reword` — same meaning, sharper for this job
+  - 🟩 `emphasize` — promotes a strong point that was buried
+  - 🟧 `gap` — surfaces missing experience; never rewritten as if present (you decide whether to address in cover letter / interview)
+  - 🟥 `remove` — the bullet doesn't pull weight for this job; deleting it frees space for higher-value rewrites elsewhere
+- **Length:** `24w → 19w (-5w)` — the page-budget delta. Per the contract (ADR-056), `suggested_text` word count must fall in `0.85x..1.05x` of `original_text` for summary / experience / skills, relaxing to ±3 words for headlines. The Fidelity Reviewer rejects bullets that overflow OR collapse.
+- 📎 **Evidence** — the exact resume line that justifies the suggestion. No suggestion ships without evidence.
+- 💡 **Why for this role** — one sentence tying the change to a specific JD signal (a stated requirement, named technology, responsibility). Generic praise like "stronger phrasing" gets rejected.
+
+### Decisions
+
+Three buttons at the bottom of every undecided draft:
+- **✅ Approve** — record this draft as the one you used. Does NOT modify your resume file (you paste the changes manually).
+- **✏️ Request revision** — flag the draft for follow-up. Click **Generate new draft** to produce another attempt.
+- **🚫 Reject** — discard.
+
+Decisions are persisted in `tailored_resumes.decision`. You can iterate as many times as you like; drafts accumulate per job, newest first.
+
+### Reading the strategy summary
+
+If sentence one opens with hedging (`"This draft attempts to..."`) or generic praise (`"Strong overall fit..."`) instead of a positioning thesis, the Fidelity Reviewer flags it and recommends `revise`. If you see this pattern, click **Generate new draft** — the v5 prompts catch it but a single rerun with the same context usually produces better positioning.
+
+### Page-budget mental model
+
+The whole point of the per-bullet length rule is that you can paste suggestions into your resume and the page count doesn't change. If you adopt every reword + every remove suggested in a draft, the resume should occupy the same number of lines as before. That's the contract.
+
+If a section's suggestions don't fit your style, skip them — but don't add length back by combining a `reword` with extra context. The rule exists because real resumes get reflowed onto a third page when bullets grow, and that's the most common reason tailored content doesn't actually get used.
+
+---
+
+## 14. Analytics: Companies and Run History
 
 ### Companies
 
@@ -291,7 +362,7 @@ Shows total workflow runs and cumulative estimated API cost across all runs. The
 
 ---
 
-## 13a. Picking a Provider and Model per Agent
+## 14a. Picking a Provider and Model per Agent
 
 Open **Settings** → **Agent Models** to see the per-agent assignment. Each
 of the eight agents has a **Provider** dropdown (Claude / OpenAI) and a
@@ -326,18 +397,24 @@ worth re-routing next time.
 
 ---
 
-## 14. Daily Workflow
+## 15. Daily Workflow
 
 Once configured, a typical session looks like:
 
 ```
 1. (Optional) Add LinkedIn URLs to inbox/linkedin.txt
 2. Start backend + Streamlit UI if not running
-3. Start New Run — fill form, click Start Workflow
-4. Switch to Monitor / HITL — refresh until scoring completes (~2–5 min)
-5. HITL #1: select 1–3 jobs for deep review, click Submit Selection
-6. Wait for deep review to finish (~3–5 min) — refresh periodically
-7. HITL #2 (if tailoring was requested): review draft, approve or request revision
+3. Start New Run — fill form (optionally paste custom URLs), click Start Workflow
+4. Switch to Live Run Monitor — refresh until run completes (~5–15 min)
+   (Job selection is auto: every job whose best track score >= threshold
+   advances to deep review — no HITL pause.)
+5. Workflow History — click the row to open Workflow Detail
+6. Read deep-reviewed jobs + interview prep on the detail screen
+7. For jobs worth pursuing: scroll to Prep — tailored resume drafts,
+   expand the job, click Generate new draft (5–15s per draft).
+   Read the Strategy summary, scan the per-track Estimated impact,
+   review section-grouped diffs, then Approve / Revise / Reject.
+   Iterate by clicking Generate new draft again — drafts accumulate.
 8. Switch to Run Report — read findings and download markdown
 9. Browse Results for history across all runs
 ```
@@ -347,12 +424,12 @@ Once configured, a typical session looks like:
 | Scenario | Estimated cost |
 |---|---|
 | Discovery + research + scoring only | ~$0.02–0.05 |
-| Full run with deep review (3 jobs) | ~$0.05–0.15 |
-| With tailoring for one job | ~$0.10–0.25 |
+| Full run with deep review (auto-selected jobs) | ~$0.05–0.20 |
+| Each on-demand tailoring draft (per job, post-run) | ~$0.01–0.02 |
 
 ---
 
-## 15. Troubleshooting
+## 16. Troubleshooting
 
 **Backend starts in mock mode**
 - Verify `.env` exists in the project root with `ANTHROPIC_API_KEY=sk-ant-...`
