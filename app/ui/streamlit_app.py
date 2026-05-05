@@ -341,6 +341,7 @@ def _word_count(text: str | None) -> int:
 def _section_display(label: str, resume_profile: dict | None) -> str:
     """Turn a raw section_label into a human-readable header.
 
+    "headline"                         -> "Headline (positioning tagline)"
     "summary"                          -> "Summary"
     "experience:Acme:Staff Engineer"   -> "Experience — Staff Engineer @ Acme"
     "skills"                           -> "Skills"
@@ -349,6 +350,8 @@ def _section_display(label: str, resume_profile: dict | None) -> str:
     """
     if not label:
         return "Other suggestions"
+    if label == "headline":
+        return "Headline (positioning tagline)"
     if label == "summary":
         return "Summary"
     if label == "skills":
@@ -367,11 +370,12 @@ def _section_display(label: str, resume_profile: dict | None) -> str:
 
 def _section_order(resume_profile: dict | None) -> list[str]:
     """Build the display-order list of section_labels matching resume order:
-    summary -> experience entries (in resume order) -> skills -> education -> certifications.
-    Unknown labels render after these in encounter order.
+    headline -> summary -> experience entries (in resume order) -> skills ->
+    education -> certifications. Unknown labels render after these in
+    encounter order.
     """
     rp = resume_profile or {}
-    order: list[str] = ["summary"]
+    order: list[str] = ["headline", "summary"]
     for exp in (rp.get("experience") or []):
         co = (exp.get("company") or "").strip()
         ti = (exp.get("title") or "").strip()
@@ -432,11 +436,17 @@ def _render_tailored_sections(draft: dict, resume_profile: dict | None) -> None:
     bucketed as "summary" (if pulled from summary_suggestions) or "experience:other"
     (if from experience_bullet_suggestions) so existing drafts stay readable.
     """
+    headline = list(draft.get("headline_suggestions") or [])
     summary = list(draft.get("summary_suggestions") or [])
     experience = list(draft.get("experience_bullet_suggestions") or [])
 
     # Tag each bullet with a fallback section_label so older drafts still group.
     tagged: list[dict] = []
+    for b in headline:
+        if isinstance(b, dict):
+            b2 = dict(b)
+            b2.setdefault("section_label", "headline")
+            tagged.append(b2)
     for b in summary:
         if isinstance(b, dict):
             b2 = dict(b)

@@ -11,11 +11,18 @@ is shown to the user.
 section_label identifies the resume section a suggestion targets, so the UI
 can group suggestions in resume order rather than as a flat list. Use the
 candidate's actual section identifiers:
+  - "headline"                       (the positioning tagline below the name)
   - "summary"
   - "experience:<company>:<title>"   (one per ExperienceEntry)
   - "skills"
   - "education:<institution>"        (rare)
   - "certifications:<name>"          (rare)
+
+The page-budget rule (suggested_text word count in 0.85x..1.05x of original)
+applies to bullets in summary / experience / skills sections. Headline is
+short (typically 5-15 words on a single line) and the rule relaxes to
+"same one-line display width" — the agent should match the original word
+count within +/- 3 words rather than the strict 0.85x..1.05x band.
 
 impact_rationale explains WHY the suggested change strengthens this bullet
 for THIS specific job. It is meta — it never goes onto the resume — so
@@ -57,6 +64,7 @@ class TailoredBullet(BaseModel):
 class TailoredResumeDraft(BaseModel):
     job_id: str
     resume_id: str
+    headline_suggestions: list[TailoredBullet] = Field(default_factory=list)
     summary_suggestions: list[TailoredBullet] = Field(default_factory=list)
     experience_bullet_suggestions: list[TailoredBullet] = Field(default_factory=list)
     skills_section_suggestions: list[str] = Field(default_factory=list)

@@ -6,6 +6,17 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-05
 
+### Changed — Tailoring headline section + impactful strategy summary (ADR-056 addendum #2)
+
+User feedback after using the v4 draft on real jobs: (1) the strategy summary still read as generic prose despite the length budget; (2) the headline (the positioning tagline below the candidate's name) was the highest-leverage real estate on the resume but was not tailored at all.
+
+- `app/schemas/tailored_resume_draft.py` — `TailoredResumeDraft` gains `headline_suggestions: list[TailoredBullet]` (defaults to `[]` for backwards compat). Docstring documents the new `"headline"` section_label and the relaxed `+/- 3 words` length rule (the strict 0.85x..1.05x band is too narrow at the 5-15 word scale headlines occupy).
+- `app/prompts/agents/tailoring_agent.txt` v4 → v5 — adds Headline as task #1 (highest leverage real estate), exempts headline from the "one strong verb, one sentence" rule (headlines are noun-style positioning labels), and rewrites the Strategy Summary section to enforce a 3-part structure: (1) positioning thesis sentence, (2) two-three concrete JD-anchored moves with active verbs, (3) optional sharp interview-prep line. Frames the field as the load-bearing artifact it actually is: "the candidate is making a career decision based on this summary."
+- `app/prompts/agents/fidelity_reviewer.txt` v4 → v5 — accepts `"headline"` as a valid section_label, applies the relaxed +/- 3 word length rule for headlines, and rewrites the Strategy Summary check to flag specific failure modes: hedging openings, generic praise, generic moves with no named JD signal. Diagnostic flags like `"Strategy summary opens with hedging; needs positioning thesis"` land in required_revisions.
+- `app/ui/streamlit_app.py` — `_section_order` puts `"headline"` first; `_section_display` renders it as `"Headline (positioning tagline)"`; `_render_tailored_sections` consumes the new `headline_suggestions` list with the same fallback behavior as summary/experience for older drafts.
+- `docs/architecture/adr/ADR-056-tailoring-page-budget-and-section-grouping.md` — second addendum documenting the additions and the impact-first framing.
+- No DB migration; backwards-compatible.
+
 ### Changed — Tailoring per-suggestion rationale + strategy summary (ADR-056 addendum)
 
 User feedback on the v3 draft: candidate could not tell *why* a particular rewrite would land better with the hiring manager, and the draft as a whole had no narrative the candidate could carry into a cover letter or interview. Two additive, backwards-compatible fields fix this.

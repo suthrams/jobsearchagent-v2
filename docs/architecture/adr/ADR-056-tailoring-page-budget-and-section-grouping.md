@@ -201,3 +201,49 @@ rationale is shown inline under each bullet's evidence caption with a
 "Why for this role:" prefix. Old drafts (no rationale, terse old-style
 notes) render unchanged: empty rationale is silently omitted; the old
 short note appears in the new top callout if present.
+
+## Addendum 2026-05-05 (#2) — Headline tailoring + impactful strategy summary
+
+User feedback after using the v4 draft on real jobs: (1) the strategy
+summary still read as generic prose despite the "3-5 sentences <=120 words"
+budget; (2) the headline (the positioning tagline below the candidate's
+name) was the highest-leverage real estate on the resume but was not
+tailored at all. Both gaps reduced the draft's usefulness for the
+career-transition use case the tool exists for.
+
+Two changes, same contract spirit. Both backwards-compatible.
+
+- **Headline as a first-class tailored section.**
+  - `TailoredResumeDraft` gains `headline_suggestions: list[TailoredBullet]`
+    (defaults to `[]` for backwards compat).
+  - New section_label: `"headline"`. Section order in the UI is now
+    Headline -> Summary -> Experience entries -> Skills -> ...
+  - Headline length budget relaxes from `0.85x..1.05x` to "match original
+    word count within +/- 3 words" because the percentage band is too
+    narrow at the 5-15 word scale headlines occupy. Headlines are also
+    exempt from the "one strong verb, one sentence" rule — they are
+    noun-style positioning labels separated by `|` or similar.
+  - The original headline may be empty (some resumes have no headline).
+    In that case the agent proposes one rather than blocking on missing
+    `original_text`.
+
+- **Strategy summary structure for impact (not just length).**
+  - Sentence 1 must be a positioning thesis: `"Positioning you as
+    <role-shape> who <strongest hook from JD>."` Hedging, generic praise,
+    or restatement of the obvious is rejected by the Fidelity Reviewer.
+  - Sentences 2-4 are concrete moves, each leading with an active verb
+    and naming a specific JD signal ("Quantified the latency win because
+    the JD specifies SLO ownership"). Generic moves like "Improved several
+    bullets to better reflect the role" are rejected.
+  - Sentence 5 (optional) is a single sharp interview-prep line or the
+    most important hiring-manager objection to address.
+  - Reviewer flags fall under `required_revisions` with concrete diagnostics
+    like `"Strategy summary opens with hedging; needs positioning thesis"`
+    or `"Strategy summary lacks concrete JD-anchored moves"`.
+
+The framing "the candidate is making a career decision based on this
+summary" is now in the prompt so the model treats the field as the
+load-bearing user-facing artifact it actually is, not as boilerplate.
+
+Prompt versions bumped: tailoring_agent.txt v4 -> v5, fidelity_reviewer.txt
+v4 -> v5.
