@@ -6,6 +6,15 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-05
 
+### Added — Directional per-track impact estimate for tailoring drafts (ADR-056 addendum #3)
+
+User question: "Is it possible to estimate the score improvement after the suggested revision?" The honest answer is yes, but with three options that trade off cost vs precision vs self-fulfilling-prophecy risk. We chose Option A: a cheap, deterministic, structural derivation that tells the candidate WHICH career tracks the draft is moving toward, NOT what number the ScoringAgent would assign.
+
+- `app/ui/streamlit_app.py` — new `_estimate_track_impact(draft)` helper. For each reword/emphasize bullet across headline + summary + experience, tokenizes suggested_text and original_text, computes the set difference, and intersects with curated per-track keyword buckets (technical / architecture / leadership). Maps the count to a signal: `neutral` (0 keywords added), `small_lift` (1-2 in a single bullet), `likely_lift` (otherwise). Counts `claim_type="remove"` as freed-space and `claim_type="gap"` as unclosed-gap.
+- `_render_estimated_impact(draft)` renders an "Estimated impact (directional, not a re-score)" panel between the Strategy summary and the section diffs. Shows per-track signal with up to 4 example tokens and a footer for freed bullets / unclosed gaps. Caption explicitly tells the candidate this is heuristic and structural.
+- Why not re-score: the same ScoringAgent that scored the original would now score text written specifically toward its rubric — partly real lift, partly tautology, plus run-to-run variance the candidate would read as precision. ADR-056 addendum #3 documents the reasoning at length.
+- No schema change, no DB change, no extra LLM call, no prompt change. Pure UI-layer derivation. Old drafts get the panel automatically when re-rendered.
+
 ### Changed — Tailoring headline section + impactful strategy summary (ADR-056 addendum #2)
 
 User feedback after using the v4 draft on real jobs: (1) the strategy summary still read as generic prose despite the length budget; (2) the headline (the positioning tagline below the candidate's name) was the highest-leverage real estate on the resume but was not tailored at all.

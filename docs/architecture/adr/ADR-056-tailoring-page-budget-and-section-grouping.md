@@ -247,3 +247,63 @@ load-bearing user-facing artifact it actually is, not as boilerplate.
 
 Prompt versions bumped: tailoring_agent.txt v4 -> v5, fidelity_reviewer.txt
 v4 -> v5.
+
+## Addendum 2026-05-05 (#3) — Directional track-impact estimate (Option A)
+
+User feedback on the v5 draft: "is it possible to estimate the score
+improvement after the suggested revision?" The honest answer required
+choosing between three options:
+
+  - A. Cheap directional estimate from suggestion structure. No extra LLM
+       call. Tells the candidate WHICH tracks the draft is moving toward,
+       not what number the agent would assign.
+  - B. Apply suggestions to a synthesized resume_profile and re-call
+       ScoringAgent. Concrete number, but the same agent now scores text
+       written specifically toward its rubric — partly real lift, partly
+       tautology, plus run-to-run variance the candidate would read as
+       precision.
+  - C. B but with confidence intervals from a re-scored baseline. Most
+       honest, but most work.
+
+We chose A. The reasoning: the candidate's actual question is "is this
+draft directionally better, and where," and A answers exactly that without
+inventing precision the system does not have. Option B's self-fulfilling
+prophecy is a real failure mode — promising a "78 -> 84" lift that the
+ScoringAgent then "confirms" because we wrote toward its keywords would be
+worse than not estimating at all.
+
+Implementation lives entirely in the UI layer (no schema, no DB, no extra
+prompt budget). For each reword/emphasize bullet across headline + summary
++ experience the heuristic:
+
+  1. Tokenizes original_text and suggested_text (lowercased, hyphens kept
+     so "multi-region" survives).
+  2. Computes the set difference (tokens added in suggested vs original).
+  3. Intersects the added tokens with curated keyword buckets per track:
+     technical (kubernetes, postgres, prometheus, ...), architecture
+     (scaled, p99, multi-region, ...), leadership (led, mentored,
+     cross-functional, ...).
+  4. Aggregates per track, mapping the count to a signal:
+       - 0 added       -> "neutral"
+       - 1-2 added in <= 1 bullet  -> "small lift"
+       - otherwise     -> "likely lift"
+  5. Counts claim_type="remove" bullets as "freed N bullets of space" and
+     claim_type="gap" bullets as "N gaps remain unclosed" — both shown as
+     a footer.
+
+The keyword sets are deliberately narrow and ASCII; generic verbs like
+"delivered" only contribute when they fall in the leadership set. The UI
+caption explicitly tells the candidate this is a heuristic about direction,
+not a re-score.
+
+Pros: deterministic, zero cost, transparent (tokens shown), no latency added
+to draft generation.
+Cons: misses semantic lift that does not surface as added keyword tokens
+(e.g. an emphasis rewrite of an existing K8s bullet). For the career-
+transition use case this is acceptable — the candidate is using this to
+decide WHICH suggestions to apply, and "which tracks improve" is the
+right granularity for that decision.
+
+Implementation: `_estimate_track_impact()` and `_render_estimated_impact()`
+in `app/ui/streamlit_app.py`. Rendered in the tailoring card between the
+Strategy summary and the section diffs.

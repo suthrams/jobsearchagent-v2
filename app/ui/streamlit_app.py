@@ -338,6 +338,191 @@ def _word_count(text: str | None) -> int:
     return len((text or "").split())
 
 
+# ── Track-impact heuristic (per-track directional lift, no LLM call) ─────────
+# Curated keyword buckets for the three career tracks the ScoringAgent grades.
+# These are intentionally narrow — generic verbs like "delivered" only land in a
+# track if their context is unambiguous. The heuristic counts how many tokens
+# appear in suggested_text but NOT in original_text per track, then maps the
+# count to a directional signal. This is deliberately structural, not predictive:
+# we are answering "which tracks are these suggestions moving toward" — NOT
+# "what number will the ScoringAgent return after the rewrite". Re-scoring with
+# the rubric-trained agent would create a self-fulfilling prophecy (ADR-056
+# addendum #3).
+_TRACK_KEYWORDS: dict[str, frozenset[str]] = {
+    "technical": frozenset({
+        "kubernetes", "k8s", "docker", "aws", "gcp", "azure", "terraform",
+        "ansible", "helm", "argocd",
+        "python", "go", "golang", "rust", "java", "typescript", "javascript",
+        "node", "react", "vue", "angular", "fastapi", "django", "flask", "spring",
+        "postgres", "postgresql", "mysql", "redis", "kafka", "rabbitmq",
+        "elasticsearch", "mongodb", "dynamodb", "snowflake", "bigquery",
+        "graphql", "grpc", "rest", "openapi", "websocket",
+        "jenkins", "circleci", "github-actions",
+        "prometheus", "grafana", "datadog", "opentelemetry", "otel",
+        "linux", "bash", "git",
+    }),
+    "architecture": frozenset({
+        "architected", "designed", "scaled", "throughput", "latency", "sla",
+        "slo", "p99", "p95", "uptime",
+        "ha", "high-availability", "multi-region", "multi-az", "redundancy",
+        "fault-tolerant", "load-balancing", "sharding", "replication",
+        "consistency", "idempotent",
+        "microservices", "monolith", "event-driven", "saga", "cqrs",
+        "domain-driven", "ddd", "service-mesh", "api-gateway",
+        "queue", "stream", "pipeline", "etl", "elt",
+        "platform", "infrastructure", "system",
+    }),
+    "leadership": frozenset({
+        "led", "managed", "mentored", "coached", "hired", "interviewed",
+        "promoted", "team", "cross-functional", "stakeholder", "roadmap",
+        "vision", "strategy", "owned", "ownership", "accountable",
+        "delivered", "shipped", "report", "reports", "manager", "lead",
+        "principal", "people", "headcount", "org", "organization",
+    }),
+}
+
+
+def _tokenize(text: str | None) -> set[str]:
+    """Lowercase, strip punctuation except hyphens (so 'multi-region' survives)."""
+    if not text:
+        return set()
+    out: set[str] = set()
+    for raw in text.lower().split():
+        # keep alphanumerics + hyphens + slashes; drop everything else
+        cleaned = "".join(c for c in raw if c.isalnum() or c in "-/")
+        if cleaned:
+            out.add(cleaned)
+    return out
+
+
+def _estimate_track_impact(draft: dict) -> dict:
+    """Pure structural derivation of which career tracks the draft is moving toward.
+
+    For each reword/emphasize bullet across headline + summary + experience:
+      - tokenize original_text and suggested_text
+      - for each track, count tokens added (in suggested but not original)
+        that fall in the track's keyword set
+    For each skills_section_suggestions string, count it as a +1 token
+    in whichever track keyword set contains it (mostly technical).
+
+    Returns:
+      {
+        "technical":    {"signal": "...", "added": [...], "n_bullets": int},
+        "architecture": {...},
+        "leadership":   {...},
+        "freed_bullets":  int,   # remove suggestions
+        "open_gaps":      int,   # gap suggestions
+      }
+    signal is one of: "neutral" | "small_lift" | "likely_lift".
+    """
+    track_added: dict[str, list[str]] = {"technical": [], "architecture": [], "leadership": []}
+    track_bullet_count: dict[str, set[int]] = {"technical": set(), "architecture": set(), "leadership": set()}
+    freed = 0
+    gaps = 0
+
+    bullets: list[dict] = []
+    for key in ("headline_suggestions", "summary_suggestions", "experience_bullet_suggestions"):
+        for b in draft.get(key) or []:
+            if isinstance(b, dict):
+                bullets.append(b)
+
+    for idx, b in enumerate(bullets):
+        claim = b.get("claim_type") or "reword"
+        if claim == "remove":
+            freed += 1
+            continue
+        if claim == "gap":
+            gaps += 1
+            continue
+        orig = _tokenize(b.get("original_text"))
+        sug = _tokenize(b.get("suggested_text"))
+        new_tokens = sug - orig
+        for track, kws in _TRACK_KEYWORDS.items():
+            hits = new_tokens & kws
+            if hits:
+                track_added[track].extend(sorted(hits))
+                track_bullet_count[track].add(idx)
+
+    # Skills additions: each appended skill is a +1 token; classify by membership.
+    for s in draft.get("skills_section_suggestions") or []:
+        if not isinstance(s, str):
+            continue
+        toks = _tokenize(s)
+        for track, kws in _TRACK_KEYWORDS.items():
+            hits = toks & kws
+            if hits:
+                track_added[track].extend(sorted(hits))
+
+    def _signal(added: list[str], n_bullets: int) -> str:
+        n = len(added)
+        if n == 0:
+            return "neutral"
+        if n <= 2 and n_bullets <= 1:
+            return "small_lift"
+        return "likely_lift"
+
+    return {
+        "technical":    {"signal": _signal(track_added["technical"], len(track_bullet_count["technical"])),
+                         "added": track_added["technical"],
+                         "n_bullets": len(track_bullet_count["technical"])},
+        "architecture": {"signal": _signal(track_added["architecture"], len(track_bullet_count["architecture"])),
+                         "added": track_added["architecture"],
+                         "n_bullets": len(track_bullet_count["architecture"])},
+        "leadership":   {"signal": _signal(track_added["leadership"], len(track_bullet_count["leadership"])),
+                         "added": track_added["leadership"],
+                         "n_bullets": len(track_bullet_count["leadership"])},
+        "freed_bullets": freed,
+        "open_gaps":     gaps,
+    }
+
+
+_TRACK_SIGNAL_BADGE = {
+    "neutral":     ("⚪", "neutral"),
+    "small_lift":  ("🟡", "small lift"),
+    "likely_lift": ("🟢", "likely lift"),
+}
+
+
+def _render_estimated_impact(draft: dict) -> None:
+    """Render the per-track directional lift derived from the suggestion structure."""
+    impact = _estimate_track_impact(draft)
+    rows: list[str] = []
+    for track in ("technical", "architecture", "leadership"):
+        info = impact[track]
+        icon, label = _TRACK_SIGNAL_BADGE[info["signal"]]
+        track_name = track.capitalize()
+        if info["signal"] == "neutral":
+            rows.append(f"- {icon} **{track_name}**: {label} — no track-keyword additions in this draft.")
+        else:
+            # Show up to 4 example tokens added; dedupe preserving order.
+            seen: set[str] = set()
+            uniq: list[str] = []
+            for t in info["added"]:
+                if t not in seen:
+                    seen.add(t)
+                    uniq.append(t)
+            ex = ", ".join(f"`{t}`" for t in uniq[:4])
+            extra = f" +{len(uniq) - 4} more" if len(uniq) > 4 else ""
+            n = info["n_bullets"]
+            bullet_clause = f" across {n} bullet{'s' if n != 1 else ''}" if n else ""
+            rows.append(f"- {icon} **{track_name}**: {label} — added {ex}{extra}{bullet_clause}.")
+
+    footer_bits: list[str] = []
+    if impact["freed_bullets"]:
+        footer_bits.append(f"🗑 freed {impact['freed_bullets']} bullet(s) of space")
+    if impact["open_gaps"]:
+        footer_bits.append(f"⚠ {impact['open_gaps']} gap(s) remain unclosed")
+
+    body = "**Estimated impact (directional, not a re-score)**\n\n" + "\n".join(rows)
+    if footer_bits:
+        body += "\n\n_" + "  ·  ".join(footer_bits) + "_"
+    st.markdown(body)
+    st.caption(
+        "Heuristic: counts JD-relevant keywords the suggestion adds vs the original. "
+        "It tells you which tracks the draft is moving toward, not what score the agent would assign."
+    )
+
+
 def _section_display(label: str, resume_profile: dict | None) -> str:
     """Turn a raw section_label into a human-readable header.
 
@@ -528,6 +713,10 @@ def _render_tailoring_card(t: dict, on_decision, resume_profile: dict | None = N
     strategy = (draft.get("overall_tailoring_notes") or "").strip()
     if strategy:
         st.info(f"**Strategy for this draft**\n\n{strategy}")
+
+    # Estimated per-track impact — directional, derived from the suggestion
+    # structure. Not a re-score (see ADR-056 addendum #3 for why).
+    _render_estimated_impact(draft)
 
     # Fidelity flags
     flag_lines = []
