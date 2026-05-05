@@ -49,9 +49,9 @@
 | 7 | Live agents — real Claude, SqliteSaver | ✓ complete |
 | 8 | Performance — concurrent scoring + scraping | ✓ complete |
 | 9 | Cost optimization — model tiering, volume caps | ✓ complete |
-| post-9 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055) | ✓ complete |
+| post-9 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + section grouping + headline + strategy summary + impact estimate (ADR-056) | ✓ complete |
 
-**Test count:** 448 passing, 1 skipped (mock mode, no real API calls in CI)
+**Test count:** 456 passing, 1 skipped (mock mode, no real API calls in CI)
 
 ---
 
@@ -257,6 +257,7 @@
 | [053](architecture/adr/ADR-053-pluggable-per-agent-provider-and-model-selection.md) | Pluggable per-agent provider + model selection (ModelRegistry) | post-9 |
 | [054](architecture/adr/ADR-054-allow-deep-review-for-all-qualifying-jobs.md) | Allow deep review for all qualifying jobs — raise MAX_SELECTED_JOBS to 10 | post-9 |
 | [055](architecture/adr/ADR-055-on-demand-tailoring-as-out-of-graph-operation.md) | On-demand tailoring as an out-of-graph REST operation | post-9 |
+| [056](architecture/adr/ADR-056-tailoring-page-budget-and-section-grouping.md) | Tailoring page-budget contract + section-grouped suggestions (with three addenda: per-suggestion rationale, headline section + impactful strategy summary, directional per-track impact estimate) | post-9 |
 
 ---
 
@@ -373,7 +374,7 @@ Each phase has a dedicated deep-dive document:
 
 | Document | What it covers |
 |---|---|
-| [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — on-demand tailoring (ADR-055), deep-review-for-all (ADR-054), multi-provider (ADR-053), Phase 9 cost optimization, Phase 7/8 live agents and performance, v1 dashboard fixes, Python 3.12 compatibility |
+| [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — tailoring page-budget + headline + strategy summary + impact estimate (ADR-056), on-demand tailoring (ADR-055), deep-review-for-all (ADR-054), multi-provider (ADR-053), Phase 9 cost optimization, Phase 7/8 live agents and performance, v1 dashboard fixes, Python 3.12 compatibility |
 | [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic, langchain-openai) + v1 shared (anthropic, pydantic, httpx, pdfplumber) |
 | [disclaimer.md](disclaimer.md) | Apache 2.0 terms, no-warranty statement, user responsibility for API costs, scraper compliance notes (Adzuna official, LinkedIn/Ladders grey-area), resume data privacy |
 | [blog_draft_patterns_v2.md](blog_draft_patterns_v2.md) | Draft blog post on agentic AI patterns used in v2 — for external publication |

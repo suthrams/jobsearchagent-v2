@@ -625,10 +625,11 @@ Evidence-bound output.
 Structured `TailoredResumeDraft`:
 
 ```text
+headline_suggestions          (ADR-056 addendum #2 — the positioning tagline below the candidate's name)
 summary_suggestions
 experience_bullet_suggestions
 skills_section_suggestions
-overall_tailoring_notes
+overall_tailoring_notes       (ADR-056 addendum — strategy summary; 3-5 sentences <=120 words; positioning thesis + concrete moves)
 fidelity_risk_summary
 ```
 
@@ -636,12 +637,19 @@ Each tailored bullet must include:
 
 ```text
 original_text
-suggested_text
+suggested_text                (empty for claim_type="remove" or "gap")
 supporting_evidence
-claim_type
+claim_type                    Literal["reword", "emphasize", "gap", "remove"]   (ADR-056 added "remove")
 fidelity_risk
+section_label                 (ADR-056 — e.g. "headline", "summary", "experience:Acme:Staff Engineer", "skills")
+impact_rationale              (ADR-056 addendum — one sentence <=25 words; references a concrete JD signal)
 unsupported_claims
 ```
+
+Page-budget contract (ADR-056): per-bullet `suggested_text` word count must
+fall in `ceil(0.85 * original_words) .. floor(1.05 * original_words)` for
+summary / experience / skills sections, relaxing to "match within +/- 3
+words" for headlines.
 
 ---
 
@@ -662,6 +670,12 @@ Report generation is handled by a service, not the Tailoring Agent.
 * No new certifications
 * No unsupported domain claims
 * Missing experience must be labeled as a gap, not rewritten as if present
+* Page count must not grow — `suggested_text` word count stays within the
+  per-section length band (ADR-056)
+* Net-new bullets are not allowed; `claim_type="remove"` is the only way to
+  free space; `claim_type="gap"` is the only way to surface missing experience
+* Every suggestion must declare a valid `section_label` and a non-generic
+  `impact_rationale` that references the JD (ADR-056 addenda)
 
 ---
 
@@ -743,6 +757,16 @@ None.
 * Must reject fabricated or inflated content
 * Must prefer conservative wording
 * Must require user approval before final export
+* Must enforce the per-bullet length band and reject bullets that overflow
+  (>1.05x original) OR collapse (<0.85x original); headline budget relaxes
+  to "match within +/- 3 words" (ADR-056)
+* Must validate `section_label` against the candidate's actual resume
+  sections; missing or mismatched labels land in `required_revisions`
+* Must reject `claim_type="remove"` with non-empty `suggested_text`
+* Must reject generic `impact_rationale` (phrases like "stronger phrasing",
+  "better impact" with no JD reference) and missing rationale
+* Must reject strategy-summary opening with hedging or generic praise on
+  any non-trivial draft (ADR-056 addendum #2)
 
 ---
 

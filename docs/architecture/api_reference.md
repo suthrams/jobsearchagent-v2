@@ -408,19 +408,44 @@ No body. The router pulls everything it needs from the workflow's checkpoint (`r
   "job_id": "string",
   "resume_id": "string",
   "tailored": {
+    "headline_suggestions": [
+      {
+        "original_text": "...",
+        "suggested_text": "...",
+        "supporting_evidence": "Resume line: '...'",
+        "claim_type": "reword | emphasize | gap | remove",
+        "fidelity_risk": "low | medium | high",
+        "section_label": "headline",
+        "impact_rationale": "Sentence (<=25w) explaining JD fit; never generic praise.",
+        "unsupported_claims": []
+      }
+    ],
     "summary_suggestions": [
       {
         "original_text": "...",
         "suggested_text": "...",
         "supporting_evidence": "Resume line: '...'",
-        "claim_type": "reword | emphasize | gap",
+        "claim_type": "reword | emphasize | gap | remove",
         "fidelity_risk": "low | medium | high",
+        "section_label": "summary",
+        "impact_rationale": "...",
         "unsupported_claims": []
       }
     ],
-    "experience_bullet_suggestions": [...],
+    "experience_bullet_suggestions": [
+      {
+        "original_text": "...",
+        "suggested_text": "...",
+        "supporting_evidence": "Resume line: '...'",
+        "claim_type": "reword | emphasize | gap | remove",
+        "fidelity_risk": "low | medium | high",
+        "section_label": "experience:Acme:Staff Engineer",
+        "impact_rationale": "...",
+        "unsupported_claims": []
+      }
+    ],
     "skills_section_suggestions": ["..."],
-    "overall_tailoring_notes": "...",
+    "overall_tailoring_notes": "Strategy summary, 3-5 sentences <=120w. Sentence 1 is a positioning thesis.",
     "fidelity_risk_summary": "..."
   },
   "fidelity_review": {
@@ -449,6 +474,8 @@ No body. The router pulls everything it needs from the workflow's checkpoint (`r
 **Response — 502** `tailoring_failed` — the Tailoring Agent raised an `LLMProviderError` after retries.
 
 If the Fidelity Reviewer fails (rare), the draft is still persisted with `fidelity_review: null` so the user can see it; the UI surfaces this case explicitly.
+
+**Schema notes (ADR-056).** `claim_type="remove"` is the only way to free page space (carries empty `suggested_text` and the bullet to delete in `supporting_evidence`); `"gap"` is the only way to surface missing experience (also empty `suggested_text`). `section_label` lets the UI group suggestions in resume order — values are `"headline"`, `"summary"`, `"experience:<company>:<title>"`, `"skills"`, `"education:<institution>"`, `"certifications:<name>"`. `impact_rationale` is the per-suggestion "why for this role" string and must reference a concrete JD signal — generic phrasing praise is rejected by the Fidelity Reviewer with a `required_revisions` flag. The page-budget contract requires `suggested_text` word count to fall in `ceil(0.85 * original_words) .. floor(1.05 * original_words)` for non-headline sections; headline relaxes to "match within +/- 3 words". `overall_tailoring_notes` is now the draft's strategy summary (positioning thesis + concrete JD-anchored moves; <=120 words).
 
 ---
 
