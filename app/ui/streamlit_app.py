@@ -535,7 +535,8 @@ if view.startswith("───"):
 
 if view == "Workflow History":
     st.header("Workflow History")
-    st.caption("All workflow runs, newest first. **Click any row** to open its Workflow Detail.")
+    st.caption("All workflow runs, newest first. **Select a row, then click Open detail** "
+               "(or just click a different row to switch).")
 
     df = load_persisted_workflow_runs()
 
@@ -646,6 +647,7 @@ if view == "Workflow History":
 
     event = st.dataframe(
         display_df,
+        key="wf_history_table",
         hide_index=True,
         use_container_width=True,
         on_select="rerun",
@@ -665,17 +667,47 @@ if view == "Workflow History":
                                                        help="custom URLs supplied at run start"),
             "Cost":     st.column_config.NumberColumn("Cost",   format="$%.4f", width="small"),
             "ID":       st.column_config.TextColumn("ID",       width="small",
-                                                       help="Click the row to open this run's full detail"),
+                                                       help="Select the row, then click Open detail."),
         },
     )
 
-    # Row click → drill into Workflow Detail. Use the source df (full UUID) since
-    # the displayed ID column is intentionally truncated.
-    sel = (event.selection.rows if event and getattr(event, "selection", None) else []) or []
-    if sel:
-        chosen = df.iloc[sel[0]].get("workflow_id", "")
-        if chosen and chosen != st.session_state.get("detail_workflow_id"):
-            _navigate("Workflow Detail", detail_workflow_id=chosen, detail_job_id=None)
+    # Resolve the selected workflow_id from the dataframe widget. Selection state
+    # is read from the keyed widget (st.session_state["wf_history_table"]) which
+    # survives reruns, with a fallback to the event return value for the same
+    # render cycle.
+    sel: list[int] = []
+    widget_state = st.session_state.get("wf_history_table")
+    if widget_state and getattr(widget_state, "selection", None):
+        sel = list(widget_state.selection.rows or [])
+    if not sel and event and getattr(event, "selection", None):
+        sel = list(event.selection.rows or [])
+
+    chosen = ""
+    if sel and sel[0] < len(df):
+        chosen = str(df.iloc[sel[0]].get("workflow_id", "") or "")
+
+    # Explicit navigation affordance. Row-click selection alone is easy to miss
+    # (no visible focus ring) and the auto-navigate variant occasionally does
+    # not fire if the selection state lands on the same id between renders.
+    nav_col1, nav_col2 = st.columns([1, 4])
+    open_clicked = nav_col1.button(
+        "Open detail →",
+        type="primary",
+        disabled=not chosen,
+        use_container_width=True,
+        help="Select a row above, then click here to open its Workflow Detail.",
+    )
+    if chosen:
+        nav_col2.caption(f"Selected: `{chosen}`")
+    else:
+        nav_col2.caption("Select any row above to enable Open detail.")
+
+    if open_clicked and chosen:
+        _navigate("Workflow Detail", detail_workflow_id=chosen, detail_job_id=None)
+    # Convenience: also auto-navigate on a fresh row click when the user picks a
+    # different run than the one currently loaded in the Detail view.
+    elif chosen and chosen != st.session_state.get("detail_workflow_id"):
+        _navigate("Workflow Detail", detail_workflow_id=chosen, detail_job_id=None)
 
     # Surface the most recent error inline so failures are obvious without drilling in
     err_rows = df[df["error_message"].notna()] if "error_message" in df.columns else pd.DataFrame()
@@ -793,24 +825,41 @@ elif view == "Workflow Detail":
         st.subheader("📋 Review — deep analysis & career guidance")
         st.caption("Per-job critic + auditor output and the career advisor's positioning summary. "
                    "Resume gaps can be addressed via tailoring; career gaps must not be fabricated.")
-        # Map review/advice timestamps from jobs_df for header timestamps
-        ts_by_job = {
-            r["job_id"]: (r.get("reviewed_at"), r.get("advised_at"))
+        # Look up title/company/location and review/advice timestamps from jobs_df
+        # so each expander header is human-readable (UUIDs are useless to the user).
+        meta_by_job = {
+            r["job_id"]: {
+                "title":    r.get("title") or "(untitled)",
+                "company":  r.get("company") or "",
+                "location": r.get("location") or "",
+                "reviewed": r.get("reviewed_at"),
+                "advised":  r.get("advised_at"),
+            }
             for _, r in (jobs_df.iterrows() if not jobs_df.empty else [])
         } if not jobs_df.empty else {}
         for _, row in rev_df.iterrows():
             jid = row["job_id"]
-            _rev_ts, _adv_ts = ts_by_job.get(jid, (None, None))
+            meta = meta_by_job.get(jid, {})
+            title = meta.get("title") or "(untitled)"
+            company = meta.get("company") or ""
+            location = meta.get("location") or ""
             ts_caption = []
-            if _rev_ts:
-                ts_caption.append(f"reviewed `{_fmt_ts(_rev_ts)}`")
-            if _adv_ts:
-                ts_caption.append(f"advised `{_fmt_ts(_adv_ts)}`")
+            if meta.get("reviewed"):
+                ts_caption.append(f"reviewed `{_fmt_ts(meta['reviewed'])}`")
+            if meta.get("advised"):
+                ts_caption.append(f"advised `{_fmt_ts(meta['advised'])}`")
             ts_str = "  ·  ".join(ts_caption)
-            with st.expander(
-                f"Job `{jid}` — {row.get('overall_fit_summary', '—')[:80]}"
-                + (f"  ·  {ts_str}" if ts_str else "")
-            ):
+            header = title
+            if company:
+                header += f" @ {company}"
+            if location:
+                header += f"  ·  {location}"
+            summary = (row.get("overall_fit_summary") or "").strip()
+            if summary:
+                header += f" — {summary[:80]}"
+            if ts_str:
+                header += f"  ·  {ts_str}"
+            with st.expander(header):
                 c1, c2 = st.columns(2)
                 c1.markdown("**Resume Gaps** *(can tailor)*")
                 try:
@@ -835,16 +884,29 @@ elif view == "Workflow Detail":
         st.markdown("---")
         st.subheader("✨ Prep — interview readiness")
         st.caption("Likely topics, technical areas to brush up on, and a 7-day prep plan per qualifying job.")
-        prep_ts = {
-            r["job_id"]: r.get("prep_at")
+        prep_meta = {
+            r["job_id"]: {
+                "title":    r.get("title") or "(untitled)",
+                "company":  r.get("company") or "",
+                "location": r.get("location") or "",
+                "prep":     r.get("prep_at"),
+            }
             for _, r in (jobs_df.iterrows() if not jobs_df.empty else [])
         } if not jobs_df.empty else {}
         for _, row in prep_df.iterrows():
             jid = row["job_id"]
-            _pts = prep_ts.get(jid)
-            with st.expander(
-                f"Job `{jid}`" + (f"  ·  prep `{_fmt_ts(_pts)}`" if _pts else "")
-            ):
+            meta = prep_meta.get(jid, {})
+            title = meta.get("title") or "(untitled)"
+            company = meta.get("company") or ""
+            location = meta.get("location") or ""
+            header = title
+            if company:
+                header += f" @ {company}"
+            if location:
+                header += f"  ·  {location}"
+            if meta.get("prep"):
+                header += f"  ·  prep `{_fmt_ts(meta['prep'])}`"
+            with st.expander(header):
                 try:
                     topics = json.loads(row.get("likely_topics_json") or "[]")
                     if topics:
