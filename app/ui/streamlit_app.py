@@ -415,6 +415,9 @@ def _render_one_bullet(b: dict, idx: int) -> None:
     ev = b.get("supporting_evidence") or ""
     if ev:
         st.caption(f"📎 Evidence from your resume: _{ev}_")
+    rationale = (b.get("impact_rationale") or "").strip()
+    if rationale:
+        st.caption(f"💡 Why for this role: {rationale}")
     unsupported = b.get("unsupported_claims") or []
     if unsupported:
         for u in unsupported:
@@ -510,6 +513,12 @@ def _render_tailoring_card(t: dict, on_decision, resume_profile: dict | None = N
     st.caption(f"Created `{_fmt_ts(t.get('created_at'))}`"
                + (f"  ·  Decided `{_fmt_ts(t.get('decided_at'))}`" if t.get("decided_at") else ""))
 
+    # Strategy summary — render at the top so the candidate sees the throughline
+    # before scrolling through individual bullet diffs.
+    strategy = (draft.get("overall_tailoring_notes") or "").strip()
+    if strategy:
+        st.info(f"**Strategy for this draft**\n\n{strategy}")
+
     # Fidelity flags
     flag_lines = []
     for fk, flabel in (
@@ -540,8 +549,6 @@ def _render_tailoring_card(t: dict, on_decision, resume_profile: dict | None = N
         st.caption(f"{len(skills)} bare skill label(s) to add to your existing Skills section")
         for s in skills:
             st.markdown(f"- {s}")
-    if draft.get("overall_tailoring_notes"):
-        st.markdown(f"**Notes:** {draft['overall_tailoring_notes']}")
     if draft.get("fidelity_risk_summary"):
         st.caption(f"Risk summary: {draft['fidelity_risk_summary']}")
 

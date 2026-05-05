@@ -161,3 +161,43 @@ render unchanged: the UI buckets unlabeled summary suggestions under
 - ADR-055 — On-Demand Tailoring as an Out-of-Graph Operation. The trigger
   surface (`POST /workflows/{wf}/jobs/{job}/tailorings`) is unchanged. Old
   drafts created before this ADR remain readable.
+
+## Addendum 2026-05-05 — Per-suggestion rationale and strategy summary
+
+User feedback on the v3 draft: the candidate could not tell *why* a
+particular rewrite was supposed to land better with the hiring manager, and
+the draft as a whole had no narrative the candidate could carry into a
+cover letter or interview. Both gaps reduced the draft's usefulness even
+when the suggestions themselves were sound.
+
+The same prompt-and-schema surface is extended with two additive,
+backwards-compatible fields. No new ADR; the contract spirit is identical.
+
+- `TailoredBullet.impact_rationale: str = ""` — one short sentence
+  (<= 25 words) explaining why the change strengthens the bullet for
+  THIS specific job. Required to reference something concrete from the
+  JD (a stated requirement, named technology, responsibility, or scope
+  hint). Generic praise like "stronger phrasing" is rejected by the
+  Fidelity Reviewer.
+- `TailoredResumeDraft.overall_tailoring_notes` — repurposed from a
+  terse note (<= 20 words, never used) to the draft's strategy summary
+  (3-5 short sentences, <= 120 words): what the candidate is emphasizing
+  across the draft, what is being removed and why, where the gaps sit,
+  what to be ready to discuss in interview. Required for any draft with
+  reword / emphasize / remove suggestions; a one-sentence summary is
+  acceptable for gap-only drafts.
+
+Both fields are meta — they do NOT go onto the resume — so the page-budget
+contract (`0.85x .. 1.05x` of original word count) does not apply to them.
+Length budgets here exist for the candidate's reading time.
+
+Prompt versions bumped: tailoring_agent.txt v3 -> v4, fidelity_reviewer.txt
+v3 -> v4. The Fidelity Reviewer flags missing rationale, generic rationale,
+and missing strategy summary in `required_revisions`.
+
+UI: the strategy summary is rendered as a top-of-card `st.info` callout so
+the candidate reads it before scrolling through individual diffs. The
+rationale is shown inline under each bullet's evidence caption with a
+"Why for this role:" prefix. Old drafts (no rationale, terse old-style
+notes) render unchanged: empty rationale is silently omitted; the old
+short note appears in the new top callout if present.

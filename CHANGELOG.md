@@ -6,6 +6,17 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-05
 
+### Changed — Tailoring per-suggestion rationale + strategy summary (ADR-056 addendum)
+
+User feedback on the v3 draft: candidate could not tell *why* a particular rewrite would land better with the hiring manager, and the draft as a whole had no narrative the candidate could carry into a cover letter or interview. Two additive, backwards-compatible fields fix this.
+
+- `app/schemas/tailored_resume_draft.py` — `TailoredBullet` gains `impact_rationale: str = ""` (one short sentence, <=25 words; references a concrete JD signal, not generic phrasing praise). `overall_tailoring_notes` repurposed from terse note to draft strategy summary (3-5 sentences, <=120 words). Both are meta — page-budget rule does NOT apply; budgets are for the candidate's reading time.
+- `app/prompts/agents/tailoring_agent.txt` v3 → v4 — adds the Per-Suggestion Rationale section (with concrete good/bad examples) and the Strategy Summary section.
+- `app/prompts/agents/fidelity_reviewer.txt` v3 → v4 — adds Rationale Quality Check (rejects generic phrasing, missing rationale) and Strategy Summary Check (non-trivial drafts must have a non-empty strategy summary).
+- `app/ui/streamlit_app.py` — strategy summary rendered as a top-of-card `st.info` callout above all bullet diffs. Per-bullet rationale shown inline under the evidence caption with "💡 Why for this role:" prefix. Removed the old bottom-of-card "Notes:" line.
+- `docs/architecture/adr/ADR-056-tailoring-page-budget-and-section-grouping.md` — addendum documenting the two field additions, the prompt version bumps, and the UI placement decisions. No new ADR; same contract spirit.
+- No DB migration; all additions are backwards-compatible. Old drafts (no rationale, no narrative summary) render with the new fields silently omitted.
+
 ### Changed — Tailoring page-budget contract + section-grouped suggestions (ADR-056)
 
 User feedback: tailoring suggestions were verbose enough that adopting more than a couple pushed the resume onto an extra page, and the flat `summary_suggestions` / `experience_bullet_suggestions` lists made it hard to map a suggestion back to the right resume section. Both made the feature lossy for the candidate it exists for.
