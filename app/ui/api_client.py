@@ -143,3 +143,24 @@ def submit_tailoring_decision(tailoring_id: str, approval: str) -> dict:
     )
     r.raise_for_status()
     return r.json()
+
+
+# ── ADR-057: per-job exclusion ───────────────────────────────────────────────
+
+def exclude_job(job_id: str, reason: str | None = None) -> dict:
+    r = httpx.post(
+        f"{BASE_URL}/jobs/{job_id}/exclude",
+        json={"reason": reason},
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def unexclude_job(job_id: str) -> dict:
+    r = httpx.delete(
+        f"{BASE_URL}/jobs/{job_id}/exclude",
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()

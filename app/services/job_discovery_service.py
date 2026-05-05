@@ -149,7 +149,14 @@ class JobDiscoveryService:
         )
 
     def deduplicate(self, jobs: list[JobPosting]) -> list[JobPosting]:
-        """Remove URL duplicates within the batch and against already-persisted jobs in the DB."""
+        """Remove URL duplicates within the batch and against already-persisted jobs in the DB.
+
+        ADR-057 note: this implicitly filters re-discoveries of excluded URLs
+        too. Excluding a job leaves its row in `jobs` with `excluded=1`; a
+        future scraper that surfaces the same URL hits `url_exists(url) ->
+        True` here and is dropped before scoring. The cost saving from
+        ADR-057 is realised at this exact line — no extra logic required.
+        """
         seen_urls: set[str] = set()
         unique: list[JobPosting] = []
         for job in jobs:

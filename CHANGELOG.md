@@ -6,6 +6,29 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-05
 
+### Added — Per-job exclusion as a pipeline filter (ADR-057)
+
+Restored v1's per-job exclusion as a deliberate filter primitive (NOT application tracking). v1 had `excluded` / `excluded_reason` columns on the `jobs` table; v2 dropped them along with the actual application-tracking surface (Apply / Save / status), conflating two distinct concerns. ADR-057 makes the distinction explicit: this is a filter the user gives the system, not an outcome the system records.
+
+- `app/repositories/database.py` — three columns added to `jobs` via try/except `ALTER TABLE` in `init_db()` (same migration pattern ADR-055 used for `tailored_resumes`):
+  ```sql
+  excluded INTEGER NOT NULL DEFAULT 0
+  excluded_reason TEXT
+  excluded_at TEXT
+  ```
+- `app/repositories/job_repository.py` — `set_excluded(job_id, reason)`, `clear_excluded(job_id)`, `excluded_set() -> set[str]`, `list_excluded() -> list[dict]`. `upsert()` left alone — re-discoveries of the same `job_id` preserve the prior flag because the `ON CONFLICT(id) DO UPDATE` clause only overwrites `normalized_job_json`.
+- `app/api/routers/jobs.py` — new `exclusion_router` with `POST /jobs/{job_id}/exclude`, `DELETE /jobs/{job_id}/exclude`, `GET /jobs/excluded`. Wired in `app/api/main.py`.
+- `app/services/job_discovery_service.py` — `deduplicate()` already drops URLs that exist in the DB; comment added documenting that this implicitly filters re-discoveries of excluded URLs (the cost-saving claim from ADR-057). No new logic needed at discovery time.
+- `app/ui/db_reader.py` — `load_scored_jobs(include_excluded=False)` (cross-run analytics; default-hide) and `load_workflow_jobs(workflow_id, include_excluded=True)` (per-run Find & Score; default-show with a column for the badge). Both return the new `excluded` / `excluded_reason` / `excluded_at` columns.
+- `app/ui/api_client.py` — `exclude_job(job_id, reason)` and `unexclude_job(job_id)`.
+- `app/ui/streamlit_app.py` — Find & Score table gains a 🚫 badge column, single-row selection, and a per-row `🚫 Exclude selected` / `♻ Un-exclude selected` button. Sidebar adds an `Include excluded jobs` checkbox that threads through every cross-run analytics view (Top Matches, IC / Architect / Management Track, Companies).
+- `tests/v2/test_job_exclusion.py` — 14 new tests covering the repository, the router, the discovery filter, and the upsert-preserves-flag invariant.
+
+What this ADR does NOT change:
+- CLAUDE.md's "no application tracking features" rule still stands. Apply / Save / status remain out of scope.
+- Tailoring decision flow is unrelated; those track decisions on TAILORED DRAFTS, not on jobs.
+- Job-selection HITL remains removed (auto-select per ADR-054).
+
 ### Added — Directional per-track impact estimate for tailoring drafts (ADR-056 addendum #3)
 
 User question: "Is it possible to estimate the score improvement after the suggested revision?" The honest answer is yes, but with three options that trade off cost vs precision vs self-fulfilling-prophecy risk. We chose Option A: a cheap, deterministic, structural derivation that tells the candidate WHICH career tracks the draft is moving toward, NOT what number the ScoringAgent would assign.

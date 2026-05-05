@@ -24,17 +24,26 @@ def _connect() -> sqlite3.Connection:
 
 
 @st.cache_data(ttl=30)
-def load_scored_jobs() -> pd.DataFrame:
-    """All scored jobs joined with posting metadata. Extracts scores from score_json blob."""
+def load_scored_jobs(include_excluded: bool = False) -> pd.DataFrame:
+    """All scored jobs joined with posting metadata. Extracts scores from score_json blob.
+
+    ADR-057: rows with `jobs.excluded = 1` are filtered out by default.
+    Pass include_excluded=True to surface them (the "Include excluded jobs"
+    sidebar toggle).
+    """
     if not DB_PATH.exists():
         return pd.DataFrame()
+    where = "" if include_excluded else "WHERE (j.excluded = 0 OR j.excluded IS NULL)"
     conn = _connect()
     try:
         df = pd.read_sql_query(
-            """
+            f"""
             SELECT j.id                                                   AS job_id,
                    j.title, j.company, j.location, j.url, j.source,
                    j.created_at                                           AS found_at,
+                   COALESCE(j.excluded, 0)                                AS excluded,
+                   j.excluded_reason,
+                   j.excluded_at,
                    js.overall_score,
                    json_extract(js.score_json, '$.technical_score')       AS technical_score,
                    json_extract(js.score_json, '$.architecture_score')    AS architecture_score,
@@ -47,6 +56,7 @@ def load_scored_jobs() -> pd.DataFrame:
                    js.workflow_run_id                                     AS workflow_id
             FROM jobs j
             JOIN job_scores js ON j.id = js.job_id
+            {where}
             ORDER BY js.overall_score DESC
             """,
             conn,
@@ -278,17 +288,28 @@ def load_workflow_run(workflow_id: str) -> dict | None:
 
 
 @st.cache_data(ttl=10)
-def load_workflow_jobs(workflow_id: str) -> pd.DataFrame:
-    """All jobs scored for a workflow run, with per-track scores and pipeline pointers."""
+def load_workflow_jobs(workflow_id: str, include_excluded: bool = True) -> pd.DataFrame:
+    """All jobs scored for a workflow run, with per-track scores and pipeline pointers.
+
+    ADR-057: per-workflow Find & Score view ALWAYS surfaces excluded rows
+    by default (so the user can see what they have excluded for this run
+    and act on it). The `excluded` column lets the UI render a 🚫 badge
+    and a Show / Hide toggle. Cross-run analytics use load_scored_jobs()
+    where the default is the opposite (exclude by default).
+    """
     if not DB_PATH.exists():
         return pd.DataFrame()
+    where = "" if include_excluded else "AND (j.excluded = 0 OR j.excluded IS NULL)"
     conn = _connect()
     try:
         df = pd.read_sql_query(
-            """
+            f"""
             SELECT j.id                                                 AS job_id,
                    j.title, j.company, j.location, j.url, j.source,
                    j.created_at                                         AS found_at,
+                   COALESCE(j.excluded, 0)                              AS excluded,
+                   j.excluded_reason,
+                   j.excluded_at,
                    js.overall_score,
                    json_extract(js.score_json, '$.technical_score')     AS technical_score,
                    json_extract(js.score_json, '$.architecture_score')  AS architecture_score,
@@ -305,6 +326,7 @@ def load_workflow_jobs(workflow_id: str) -> pd.DataFrame:
             LEFT JOIN resume_reviews rr ON j.id = rr.job_id AND rr.workflow_run_id = js.workflow_run_id
             LEFT JOIN career_advice  ca ON j.id = ca.job_id AND ca.workflow_run_id = js.workflow_run_id
             LEFT JOIN interview_prep ip ON j.id = ip.job_id AND ip.workflow_run_id = js.workflow_run_id
+            WHERE 1=1 {where}
             ORDER BY js.overall_score DESC
             """,
             conn,

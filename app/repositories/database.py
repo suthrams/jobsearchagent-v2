@@ -38,7 +38,10 @@ CREATE TABLE IF NOT EXISTS jobs (
     job_description TEXT,
     normalized_job_json TEXT,
     url TEXT,
-    created_at TEXT NOT NULL
+    created_at TEXT NOT NULL,
+    excluded INTEGER NOT NULL DEFAULT 0,   -- ADR-057: per-job pipeline-filter flag (1 = hidden / skipped)
+    excluded_reason TEXT,                  -- ADR-057: optional free-text recall; never parsed
+    excluded_at TEXT                        -- ADR-057: ISO 8601 UTC; null for unexcluded rows
 );
 
 CREATE TABLE IF NOT EXISTS resumes (
@@ -262,6 +265,17 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             "ALTER TABLE tailored_resumes ADD COLUMN fidelity_review_json TEXT",
             "ALTER TABLE tailored_resumes ADD COLUMN decision TEXT",
             "ALTER TABLE tailored_resumes ADD COLUMN decided_at TEXT",
+        ):
+            try:
+                conn.execute(col_ddl)
+            except Exception:
+                pass  # column already exists
+        # Migration (ADR-057): per-job exclusion columns on the jobs table.
+        # Same pattern as tailored_resumes above — safe on existing DBs.
+        for col_ddl in (
+            "ALTER TABLE jobs ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE jobs ADD COLUMN excluded_reason TEXT",
+            "ALTER TABLE jobs ADD COLUMN excluded_at TEXT",
         ):
             try:
                 conn.execute(col_ddl)

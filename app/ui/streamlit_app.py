@@ -832,6 +832,12 @@ with st.sidebar:
     )
     st.markdown("---")
     search = st.text_input("Search title / company", placeholder="e.g. Staff Engineer")
+    include_excluded = st.checkbox(
+        "Include excluded jobs",
+        value=False,
+        help="ADR-057: jobs you've explicitly excluded are hidden from cross-run "
+             "analytics by default. Tick to surface them.",
+    )
     st.markdown("---")
     if st.button("Refresh data"):
         st.cache_data.clear()
@@ -1110,12 +1116,27 @@ elif view == "Workflow Detail":
     if jobs_df.empty:
         st.info("No scored jobs yet for this run.")
     else:
+        # ADR-057: hide-by-default toggle for excluded rows in this run.
+        n_excluded = int(jobs_df["excluded"].fillna(0).sum()) if "excluded" in jobs_df.columns else 0
+        show_excluded = False
+        if n_excluded:
+            show_excluded = st.toggle(
+                f"Show {n_excluded} excluded job(s) in this run",
+                value=False,
+                key=f"show_excluded_{wf_id}",
+            )
+        if not show_excluded and "excluded" in jobs_df.columns:
+            jobs_df = jobs_df[(jobs_df["excluded"].fillna(0) == 0)].reset_index(drop=True)
+
         view_df = jobs_df.copy()
+        view_df["🚫"] = view_df["excluded"].fillna(0).apply(lambda v: "🚫" if v else "")
         view_df["✅ Reviewed"] = view_df["reviewed_at"].apply(_checked)
         view_df["✅ Advised"] = view_df["advised_at"].apply(_checked)
         view_df["✅ Prep"] = view_df["prep_at"].apply(_checked)
-        st.dataframe(
+
+        ev = st.dataframe(
             view_df[[
+                "🚫",
                 "title", "company", "location", "url",
                 "overall_score", "technical_score", "architecture_score", "leadership_score",
                 "✅ Reviewed", "✅ Advised", "✅ Prep",
@@ -1128,9 +1149,14 @@ elif view == "Workflow Detail":
                 "leadership_score": "Lead",
                 "found_at": "Found", "scored_at": "Scored",
             }),
+            key=f"jobs_table_{wf_id}",
             hide_index=True,
             use_container_width=True,
+            on_select="rerun",
+            selection_mode="single-row",
             column_config={
+                "🚫":      st.column_config.TextColumn("🚫", width="small",
+                                                       help="🚫 = excluded from cross-run analytics + future discovery"),
                 "URL":     st.column_config.LinkColumn("URL", width="small"),
                 "Overall": st.column_config.ProgressColumn("Overall", min_value=0, max_value=100, format="%d"),
                 "Tech":    st.column_config.ProgressColumn("Tech",    min_value=0, max_value=100, format="%d"),
@@ -1138,6 +1164,38 @@ elif view == "Workflow Detail":
                 "Lead":    st.column_config.ProgressColumn("Lead",    min_value=0, max_value=100, format="%d"),
             },
         )
+
+        # ADR-057: per-row exclude / un-exclude action. Single-row selection
+        # is the same affordance Workflow History uses, kept consistent.
+        sel_rows = (ev.selection.rows if ev and getattr(ev, "selection", None) else []) or []
+        sel_job: dict | None = None
+        if sel_rows and sel_rows[0] < len(jobs_df):
+            sel_job = jobs_df.iloc[sel_rows[0]].to_dict()
+
+        ex_col1, ex_col2 = st.columns([1, 4])
+        if sel_job:
+            is_excluded = bool(sel_job.get("excluded") or 0)
+            label = "♻ Un-exclude selected" if is_excluded else "🚫 Exclude selected"
+            if ex_col1.button(label, key=f"excl_btn_{wf_id}", use_container_width=True):
+                try:
+                    if is_excluded:
+                        api.unexclude_job(sel_job["job_id"])
+                        st.success(f"Un-excluded: {sel_job.get('title', '')}")
+                    else:
+                        api.exclude_job(sel_job["job_id"])
+                        st.success(f"Excluded: {sel_job.get('title', '')}")
+                    st.cache_data.clear()
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Action failed: {exc}")
+            ex_col2.caption(
+                f"Selected: **{sel_job.get('title','(untitled)')}** @ {sel_job.get('company','')}"
+                + ("  ·  currently excluded" if is_excluded else "")
+            )
+        else:
+            ex_col1.button("🚫 Exclude selected", disabled=True, use_container_width=True,
+                           key=f"excl_btn_disabled_{wf_id}")
+            ex_col2.caption("Select a row above to enable Exclude / Un-exclude.")
 
         # Drill into a specific job — picker + button
         st.markdown("**Drill into a job →**")
@@ -2016,7 +2074,7 @@ elif view == "Settings":
 
 elif view == "Top Matches":
     st.header("Top Matches (across all runs)")
-    df = load_scored_jobs()
+    df = load_scored_jobs(include_excluded=include_excluded)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "results will populate this view automatically.")
@@ -2037,7 +2095,7 @@ elif view == "Top Matches":
 
 elif view == "IC Track":
     st.header("IC Engineering Track")
-    df = load_scored_jobs()
+    df = load_scored_jobs(include_excluded=include_excluded)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the IC track will appear here.")
@@ -2047,7 +2105,7 @@ elif view == "IC Track":
 
 elif view == "Architect Track":
     st.header("Architect Track")
-    df = load_scored_jobs()
+    df = load_scored_jobs(include_excluded=include_excluded)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the Architect track will appear here.")
@@ -2057,7 +2115,7 @@ elif view == "Architect Track":
 
 elif view == "Management Track":
     st.header("Management Track")
-    df = load_scored_jobs()
+    df = load_scored_jobs(include_excluded=include_excluded)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the Management track will appear here.")
@@ -2067,7 +2125,7 @@ elif view == "Management Track":
 
 elif view == "Companies":
     st.header("Top Target Companies")
-    df = load_scored_jobs()
+    df = load_scored_jobs(include_excluded=include_excluded)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "this view aggregates the best score per company across all runs.")

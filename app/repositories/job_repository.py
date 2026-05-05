@@ -55,3 +55,39 @@ class JobRepository:
                 (company,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    # ── Exclusion (ADR-057) ──────────────────────────────────────────────────
+    # `excluded` is a pipeline-filter flag, NOT application-tracking metadata.
+    # See ADR-057 for the filter-vs-tracker distinction. upsert() above does
+    # NOT touch the exclusion columns, so re-discoveries of the same job_id
+    # preserve the prior flag.
+
+    def set_excluded(self, job_id: str, reason: str | None = None) -> None:
+        """Mark a job excluded. Filtered out of discovery + analytics views."""
+        with get_connection(self.db_path) as conn:
+            conn.execute(
+                "UPDATE jobs SET excluded = 1, excluded_reason = ?, excluded_at = ? WHERE id = ?",
+                (reason, utcnow_iso(), job_id),
+            )
+
+    def clear_excluded(self, job_id: str) -> None:
+        """Un-exclude a previously excluded job. Rare; provided for completeness."""
+        with get_connection(self.db_path) as conn:
+            conn.execute(
+                "UPDATE jobs SET excluded = 0, excluded_reason = NULL, excluded_at = NULL WHERE id = ?",
+                (job_id,),
+            )
+
+    def excluded_set(self) -> set[str]:
+        """All currently-excluded job_ids. Cheap; called once per workflow run."""
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute("SELECT id FROM jobs WHERE excluded = 1").fetchall()
+        return {r["id"] for r in rows}
+
+    def list_excluded(self) -> list[dict]:
+        """All excluded jobs, newest exclusion first. Powers GET /jobs/excluded."""
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT * FROM jobs WHERE excluded = 1 ORDER BY excluded_at DESC"
+            ).fetchall()
+        return [dict(r) for r in rows]
