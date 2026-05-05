@@ -18,6 +18,13 @@ Control actions (start workflow, edit config) call FastAPI via api_client.py.
 from __future__ import annotations
 
 import json
+import sys
+from pathlib import Path
+
+# Ensure the project root is on sys.path so `import app.*` works when launched
+# via `streamlit run app/ui/streamlit_app.py` (Streamlit puts the script's
+# directory on sys.path[0], not the project root).
+sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
 import pandas as pd
 import plotly.express as px
@@ -241,6 +248,21 @@ def _friendly_stage(current_step: str | None) -> str:
     return _STAGE_LABEL.get(current_step, str(current_step).replace("_", " ").title())
 
 
+def _safe_int(value, default: int = 0) -> int:
+    """Coerce DataFrame-origin values (None, NaN, '', numeric strings) to int."""
+    if value is None:
+        return default
+    try:
+        if pd.isna(value):
+            return default
+    except (TypeError, ValueError):
+        pass
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
 def _stage_progress(row: dict) -> str:
     """Build a 'where exactly is this run' string from a workflow_runs row.
 
@@ -252,11 +274,11 @@ def _stage_progress(row: dict) -> str:
     """
     step = row.get("current_step") or ""
     status = row.get("status") or ""
-    scored = int(row.get("jobs_scored") or 0)
-    max_jobs = int(row.get("max_jobs") or 0) or None
-    selected = int(row.get("selected_count") or 0)
-    rounds = int(row.get("review_rounds_count") or 0)
-    normalized = int(row.get("normalized_count") or 0)
+    scored = _safe_int(row.get("jobs_scored"))
+    max_jobs = _safe_int(row.get("max_jobs")) or None
+    selected = _safe_int(row.get("selected_count"))
+    rounds = _safe_int(row.get("review_rounds_count"))
+    normalized = _safe_int(row.get("normalized_count"))
 
     if status in ("completed", "completed_with_errors"):
         bits = []
