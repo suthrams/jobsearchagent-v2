@@ -80,7 +80,7 @@
 | Document | What it covers |
 |---|---|
 | [architecture/architecture_overview.md](architecture/architecture_overview.md) | System boundary, 7 system layers, 10 core design principles, input model, core workflows, agentic pattern strategy |
-| [architecture/data_model.md](architecture/data_model.md) | All 17 SQLite tables — core (workflow_runs, jobs, job_scores, reviews, advice, tailoring, reports, decisions, user_config), observability (agent_events, llm_calls, run_metrics), security (security_events), memory (memory_items); indexing strategy, JSON column conventions, anti-patterns |
+| [architecture/data_model.md](architecture/data_model.md) | All 18 SQLite tables — core (workflow_runs, jobs, job_scores, reviews, advice, tailoring, reports, decisions, user_config), observability (step_executions, agent_events, llm_calls, run_metrics), security (security_events), memory (memory_items); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState schema (22 fields, 9 sections), 6 workflow status values, 15+ step values, state ownership rules, memory service (memory_items table), memory write/retrieve patterns, anti-patterns |
 
 ---
@@ -114,12 +114,12 @@
 | [architecture/data_model.md](architecture/data_model.md) | 17-table SQLite schema with core, observability, security, and memory tables |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState ownership, memory service, state update rules, HITL state flow |
 
-**17 SQLite tables at a glance:**
+**18 SQLite tables at a glance:**
 
 | Category | Tables |
 |---|---|
 | Core | workflow_runs · jobs · resumes · job_scores · review_rounds · resume_reviews · career_advice · interview_prep · tailored_resumes · reports · human_decisions · user_config |
-| Observability | agent_events · llm_calls · run_metrics |
+| Observability | step_executions · agent_events · llm_calls · run_metrics |
 | Security | security_events |
 | Memory | memory_items |
 

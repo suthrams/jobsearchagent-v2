@@ -177,7 +177,7 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 - `agent_model.md` — per-agent input/output contracts and constraints
 - `workflow_model.md` — complete workflow execution blueprint
 - `state_and_memory_model.md` — WorkflowState schema and memory rules
-- `data_model.md` — all 17 SQLite table definitions
+- `data_model.md` — all 18 SQLite table definitions, per-column data dictionary, and per-table workflow usage
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
 - `adr/` — 56 Architecture Decision Records
 
