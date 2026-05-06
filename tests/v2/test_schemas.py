@@ -227,6 +227,96 @@ def test_research_context_valid():
     assert len(ctx.research_steps) == 1
 
 
+# ─── ResearchContext Haiku-emission-quirk regression tests ───────────────────
+# A previous run failed because Haiku emitted leadership_signals as a
+# JSON-encoded STRING ('["Head of...", "CTO..."]') instead of a real list.
+# These tests pin the coercion behavior.
+
+def test_research_context_coerces_jsonish_string_to_list():
+    """The exact failing shape from production: a list[str] field arrives as
+    a JSON-encoded string. The validator must parse it back to a real list."""
+    ctx = ResearchContext.model_validate({
+        "job_id": "j1",
+        "company_summary": "A SaaS company",
+        "role_context": "Director of Engineering",
+        # Haiku quirk: stringified array
+        "leadership_signals": '["Head of title indicates leadership", "CTO or VP Engineering"]',
+        "technology_signals": ["AWS"],   # normal list works alongside
+    })
+    assert ctx.leadership_signals == [
+        "Head of title indicates leadership",
+        "CTO or VP Engineering",
+    ]
+    assert ctx.technology_signals == ["AWS"]
+
+
+def test_research_context_coerces_all_four_signal_lists():
+    """Apply coercion to every list[str] field, not just leadership_signals."""
+    ctx = ResearchContext.model_validate({
+        "job_id": "j2",
+        "company_summary": "Test",
+        "role_context": "Test",
+        "technology_signals": '["Python", "Go"]',
+        "leadership_signals": '["IC track"]',
+        "domain_signals": '["Fintech"]',
+        "risk_flags": '["Recent layoffs"]',
+    })
+    assert ctx.technology_signals == ["Python", "Go"]
+    assert ctx.leadership_signals == ["IC track"]
+    assert ctx.domain_signals == ["Fintech"]
+    assert ctx.risk_flags == ["Recent layoffs"]
+
+
+def test_research_context_wraps_non_json_string_in_one_item_list():
+    """Worst-case fallback: if the value is a string but not JSON-list-shaped,
+    wrap it in a one-item list rather than rejecting."""
+    ctx = ResearchContext.model_validate({
+        "job_id": "j3",
+        "company_summary": "Test",
+        "role_context": "Test",
+        "leadership_signals": "Single freeform observation",
+    })
+    assert ctx.leadership_signals == ["Single freeform observation"]
+
+
+def test_research_context_empty_string_becomes_empty_list():
+    """Empty string -> empty list, not [''] or rejection."""
+    ctx = ResearchContext.model_validate({
+        "job_id": "j4",
+        "company_summary": "Test",
+        "role_context": "Test",
+        "leadership_signals": "",
+    })
+    assert ctx.leadership_signals == []
+
+
+def test_research_context_accepts_minimal_partial_response():
+    """Tolerance: optional fields default if missing, just like ResumeReview."""
+    ctx = ResearchContext.model_validate({
+        "job_id": "j5",
+        "company_summary": "Stealth-mode startup; little public info.",
+        "role_context": "Senior backend role.",
+        # All signal lists, research_steps, confidence omitted
+    })
+    assert ctx.technology_signals == []
+    assert ctx.leadership_signals == []
+    assert ctx.domain_signals == []
+    assert ctx.risk_flags == []
+    assert ctx.research_steps == []
+    assert ctx.confidence == 0
+
+
+def test_research_context_still_rejects_load_bearing_omissions():
+    """Tolerance is strictly limited; required fields are still required."""
+    import pytest as _pytest
+    with _pytest.raises(Exception):
+        ResearchContext.model_validate({
+            "job_id": "j6",
+            # company_summary missing
+            "role_context": "x",
+        })
+
+
 # ─── ResumeReview ────────────────────────────────────────────────────────────
 
 def test_resume_review_gap_separation():

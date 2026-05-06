@@ -6,6 +6,25 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-05
 
+### Fixed — ResearchContext rejected Haiku stringified-list emissions
+
+Same root cause class as the recent ResumeReview fix: after the Sonnet → Haiku cost cut, the smaller model's emission shape is less reliable. Reported error in production:
+
+    leadership_signals
+      Input should be a valid list [type=list_type,
+      input_value='["Head of" title indicat...CTO or VP Engineering"]', input_type=str]
+
+Haiku returned a JSON-encoded STRING (`'["Head of...", "CTO..."]'`) where the schema expected a real `list[str]`. Schema-repair retry hit the same issue and the workflow crashed.
+
+- `app/schemas/research_context.py` — added `field_validator(mode="before")` covering all four signal lists (`technology_signals`, `leadership_signals`, `domain_signals`, `risk_flags`). The validator detects a string value, JSON-decodes it if it looks like an array, falls back to wrapping a non-JSON string in a one-item list, and treats empty strings as `[]`.
+- Same tolerance pattern as ResumeReview: signal lists, `research_steps`, and `confidence` now default to empty/0. Load-bearing fields (`job_id`, `company_summary`, `role_context`) stay required.
+- `app/prompts/agents/research_agent.txt` v1 → v2 — explicit "Output Schema" section enumerating every field with its purpose. Adds a CRITICAL block contrasting `["x", "y"]` (correct array) vs `"[\"x\", \"y\"]"` (wrong; stringified) with concrete examples to nudge Claude away from the stringified emission.
+- `tests/v2/test_schemas.py` — 6 new tests pin the coercion: jsonish-string → real list, all 4 signal fields covered, non-JSON string wrapped in one-item list, empty string becomes empty list, minimal partial response works, load-bearing omissions still rejected.
+
+This is a follow-up to the cost-cut Haiku migration, not a reversal — the cost win holds. The schema is now appropriately tolerant of Haiku's emission quirks.
+
+Tests: 506 passed (was 500), 1 skipped.
+
 ### Added — Live config reload eliminates restart-to-apply friction (ADR-053 addendum)
 
 Symptom that triggered this: user saved `scoring_agent: Haiku` in Settings, ran a workflow, and got billed for Sonnet because the backend was still running with the previous binding. Per the original ADR-053, a Settings save required a manual `uvicorn` restart to take effect — easy to forget, and real money when forgotten.
