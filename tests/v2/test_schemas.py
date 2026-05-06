@@ -255,6 +255,60 @@ def test_resume_review_gap_separation():
     assert "No formal architecture certification" in review.career_gaps_observed
 
 
+# ─── ResumeReview tolerance (regression for Haiku-omits-fields error) ────────
+# A previous run failed with "career_gaps_observed Field required" when Haiku
+# emitted a partial response. The schema now defaults the tolerant fields to
+# empty list / 0 so the load-bearing analysis isn't thrown away.
+
+def test_resume_review_accepts_minimal_partial_response():
+    """Only the load-bearing fields are required. Tolerant fields default."""
+    review = ResumeReview(
+        job_id="job_002", resume_id="res_002",
+        overall_fit_summary="Strong fit on core; some gaps.",
+        section_reviews=[],
+        critical_gaps=["No SOC 2 experience"],
+        # career_gaps_observed, resume_only_gaps, suggested_improvements,
+        # questions_for_user, confidence ALL omitted — must default cleanly
+    )
+    assert review.career_gaps_observed == []
+    assert review.resume_only_gaps == []
+    assert review.suggested_improvements == []
+    assert review.questions_for_user == []
+    assert review.confidence == 0
+
+
+def test_resume_review_accepts_partial_haiku_shape():
+    """The exact shape that crashed in production: Haiku returned overall_fit
+    and critical_gaps but omitted career_gaps_observed, suggested_improvements,
+    questions_for_user, confidence. Must validate cleanly now."""
+    payload = {
+        "job_id": "95352ddb-a2d5",
+        "resume_id": "res_003",
+        "overall_fit_summary": "Direct relevance to ClickUp.",
+        "section_reviews": [],
+        "critical_gaps": ["No formal product management title"],
+        "resume_only_gaps": ["Cross-functional leadership not surfaced"],
+        # career_gaps_observed, suggested_improvements, questions_for_user,
+        # confidence — all missing, as in the failing run
+    }
+    review = ResumeReview.model_validate(payload)
+    assert review.overall_fit_summary == "Direct relevance to ClickUp."
+    assert review.critical_gaps == ["No formal product management title"]
+    assert review.career_gaps_observed == []  # tolerated
+    assert review.confidence == 0              # tolerated
+
+
+def test_resume_review_still_rejects_load_bearing_omissions():
+    """Tolerance is strictly limited. Removing a load-bearing field still fails."""
+    import pytest as _pytest
+    with _pytest.raises(Exception):
+        ResumeReview.model_validate({
+            "job_id": "x", "resume_id": "y",
+            # overall_fit_summary missing -> must reject
+            "section_reviews": [], "critical_gaps": [],
+        })
+
+
 # ─── TailoredBullet ──────────────────────────────────────────────────────────
 
 def test_tailored_bullet_requires_supporting_evidence():
