@@ -346,6 +346,14 @@ def load_persisted_workflow_runs(limit: int = 50) -> pd.DataFrame:
     Pulls roles, locations, threshold, custom-URL count, max_jobs, and the
     normalized/selected/review counts out of state_json so each history row is
     self-describing — the UI never has to do per-row lookups to render progress.
+
+    Cost columns:
+      - cost_usd  : truth source = COALESCE(SUM(llm_calls.estimated_cost),
+                    state_json estimate). Falls back to the in-memory estimate
+                    only for runs that predate the observability fix
+                    (CHANGELOG 2026-05-05) and therefore have no llm_calls
+                    rows. Newer runs always read from llm_calls.
+      - llm_calls : same fallback pattern.
     """
     if not DB_PATH.exists():
         return pd.DataFrame()
@@ -369,8 +377,23 @@ def load_persisted_workflow_runs(limit: int = 50) -> pd.DataFrame:
                    json_array_length(json_extract(wr.state_json, '$.normalized_jobs')) AS normalized_count,
                    json_array_length(json_extract(wr.state_json, '$.selected_jobs'))   AS selected_count,
                    json_array_length(json_extract(wr.state_json, '$.review_rounds'))   AS review_rounds_count,
-                   json_extract(wr.state_json, '$.run_metrics.estimated_cost_usd') AS cost_usd,
-                   json_extract(wr.state_json, '$.run_metrics.llm_calls')          AS llm_calls,
+                   -- Truth source: SUM(llm_calls.estimated_cost). When llm_calls
+                   -- has no rows for this workflow, SUM returns NULL and we fall
+                   -- back to the legacy state_json estimate (CHANGELOG 2026-05-05).
+                   -- COUNT returns 0 not NULL on empty input, so we wrap it in
+                   -- NULLIF to let COALESCE proceed to the fallback.
+                   COALESCE(
+                       (SELECT SUM(estimated_cost) FROM llm_calls lc1
+                        WHERE lc1.workflow_run_id = wr.id),
+                       json_extract(wr.state_json, '$.run_metrics.estimated_cost_usd'),
+                       0
+                   ) AS cost_usd,
+                   COALESCE(
+                       NULLIF((SELECT COUNT(*) FROM llm_calls lc2
+                               WHERE lc2.workflow_run_id = wr.id), 0),
+                       json_extract(wr.state_json, '$.run_metrics.llm_calls'),
+                       0
+                   ) AS llm_calls,
                    COUNT(js.id)                       AS jobs_scored,
                    MAX(js.overall_score)              AS best_score,
                    ROUND(AVG(CAST(js.overall_score AS REAL)), 1) AS avg_score

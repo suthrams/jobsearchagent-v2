@@ -37,6 +37,7 @@ import yaml
 import app.ui.api_client as api
 from app.services.constraint_analyzer import analyze, summary_metrics
 from app.services.cost_breakdown import (
+    all_runs_by_cost,
     compute_breakdown,
     compute_dashboard_aggregate,
     daily_spend_trend,
@@ -2255,6 +2256,38 @@ elif view == "Cost Dashboard":
             if chosen_wf and chosen_wf != st.session_state.get("detail_workflow_id"):
                 _navigate("Workflow Detail",
                           detail_workflow_id=chosen_wf, detail_job_id=None)
+
+    # ── All runs by cost (full per-run table) ─────────────────────────────────
+    st.markdown("---")
+    st.subheader("📋 All runs by cost")
+    st.caption("Every workflow in the selected window, sourced from `llm_calls` "
+               "(the truth source — see `docs/cost_troubleshooting.md` Step 4 for "
+               "why this differs from `state_json` estimates). Click a row to drill in.")
+    all_runs = all_runs_by_cost(days=window_days)
+    if all_runs:
+        all_df = pd.DataFrame(all_runs)
+        all_df["ID"] = all_df["workflow_run_id"].apply(lambda s: (s[:8] + "…") if len(s) > 8 else s)
+        all_df["Started"] = all_df["started_at"].apply(_fmt_ts)
+        all_view = all_df[["ID", "Started", "calls", "tokens_input", "tokens_output", "cost_usd"]]
+        all_view = all_view.rename(columns={
+            "calls": "Calls", "tokens_input": "Tokens in",
+            "tokens_output": "Tokens out", "cost_usd": "Cost ($)",
+        })
+        ev_all_runs = st.dataframe(
+            all_view, hide_index=True, use_container_width=True,
+            on_select="rerun", selection_mode="single-row",
+            key="cost_all_runs_table",
+            column_config={
+                "Cost ($)": st.column_config.NumberColumn(format="$%.4f"),
+            },
+        )
+        sel = (ev_all_runs.selection.rows if ev_all_runs and getattr(ev_all_runs, "selection", None) else []) or []
+        if sel and sel[0] < len(all_df):
+            chosen_wf = str(all_df.iloc[sel[0]]["workflow_run_id"])
+            if chosen_wf and chosen_wf != st.session_state.get("detail_workflow_id"):
+                _navigate("Workflow Detail",
+                          detail_workflow_id=chosen_wf, detail_job_id=None)
+        st.caption(f"{len(all_runs)} run(s) in this window. Sum: ${sum(r['cost_usd'] for r in all_runs):.4f}")
 
     # ── Top 10 most expensive single calls ────────────────────────────────────
     st.markdown("---")

@@ -314,6 +314,49 @@ def top_runs_by_cost(
     ]
 
 
+def all_runs_by_cost(
+    days: int | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> list[dict]:
+    """Every run in the window, ordered by cost descending. Same shape as
+    top_runs_by_cost but no LIMIT — used by the dashboard's full-list table."""
+    if not Path(db_path).exists():
+        return []
+    conn = sqlite3.connect(str(db_path))
+    where = _window_clause(days)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT workflow_run_id,
+                   MIN(created_at)               AS started_at,
+                   COUNT(*)                      AS calls,
+                   COALESCE(SUM(tokens_input), 0)   AS tokens_in,
+                   COALESCE(SUM(tokens_output), 0)  AS tokens_out,
+                   COALESCE(SUM(estimated_cost), 0) AS cost
+            FROM llm_calls
+            {where}
+            GROUP BY workflow_run_id
+            ORDER BY cost DESC
+            """,
+        ).fetchall()
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+    finally:
+        conn.close()
+    return [
+        {
+            "workflow_run_id": wf,
+            "started_at": started,
+            "calls": int(c or 0),
+            "tokens_input": int(ti or 0),
+            "tokens_output": int(to or 0),
+            "cost_usd": float(cost or 0.0),
+        }
+        for wf, started, c, ti, to, cost in rows
+    ]
+
+
 def top_calls_by_cost(
     n: int = 10,
     days: int | None = None,

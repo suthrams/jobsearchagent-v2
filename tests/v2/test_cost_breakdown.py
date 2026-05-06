@@ -8,6 +8,7 @@ from pathlib import Path
 import pytest
 
 from app.services.cost_breakdown import (
+    all_runs_by_cost,
     compute_breakdown,
     compute_dashboard_aggregate,
     daily_spend_trend,
@@ -286,3 +287,47 @@ def test_dashboard_returns_zeros_when_db_missing(tmp_path):
     assert top_runs_by_cost(n=5, days=None, db_path=tmp_path / "missing.db") == []
     assert top_calls_by_cost(n=10, days=None, db_path=tmp_path / "missing.db") == []
     assert daily_spend_trend(days=7, db_path=tmp_path / "missing.db") == []
+    assert all_runs_by_cost(days=None, db_path=tmp_path / "missing.db") == []
+
+
+def test_all_runs_by_cost_includes_every_run_unlike_top_n(tmp_path):
+    """all_runs_by_cost has no LIMIT — it must return every distinct workflow_run_id
+    in the window, ordered by cost desc. The 'all runs by cost' table in the
+    dashboard depends on this."""
+    db = tmp_path / "v2.db"
+    init_db(db)
+    for i in range(7):
+        _seed_calls(db, f"wf-{i}", [
+            {"agent": "scoring_agent", "model": "claude-haiku-4-5-20251001",
+             "t_in": 100, "t_out": 50, "cost": (i + 1) * 0.001, "latency": 100},
+        ])
+    runs = all_runs_by_cost(days=None, db_path=db)
+    assert len(runs) == 7
+    # Highest cost first.
+    assert runs[0]["workflow_run_id"] == "wf-6"
+    assert runs[-1]["workflow_run_id"] == "wf-0"
+    # And it includes runs that top_runs_by_cost(n=5) would exclude.
+    top5 = top_runs_by_cost(n=5, days=None, db_path=db)
+    top5_ids = {r["workflow_run_id"] for r in top5}
+    assert "wf-0" not in top5_ids
+    assert any(r["workflow_run_id"] == "wf-0" for r in runs)
+
+
+def test_all_runs_by_cost_window_filter(tmp_path):
+    """Same window-filtering semantics as the other dashboard helpers."""
+    db = tmp_path / "v2.db"
+    init_db(db)
+    _seed_calls_at(db, "wf-old", "2020-01-01T00:00:00Z", [
+        {"agent": "scoring_agent", "model": "claude-haiku-4-5-20251001",
+         "t_in": 100, "t_out": 50, "cost": 0.99, "latency": 100},
+    ])
+    _seed_calls_at(db, "wf-new", "2099-01-01T00:00:00Z", [
+        {"agent": "scoring_agent", "model": "claude-haiku-4-5-20251001",
+         "t_in": 100, "t_out": 50, "cost": 0.001, "latency": 100},
+    ])
+    # 7-day window excludes wf-old.
+    last_7 = all_runs_by_cost(days=7, db_path=db)
+    assert all(r["workflow_run_id"] != "wf-old" for r in last_7)
+    # All-time includes both.
+    all_time = all_runs_by_cost(days=None, db_path=db)
+    assert {r["workflow_run_id"] for r in all_time} == {"wf-old", "wf-new"}
