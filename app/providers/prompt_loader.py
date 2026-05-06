@@ -45,27 +45,68 @@ class PromptLoader:
     def assemble(self, agent_name: str, context: dict) -> list:
         """Build [SystemMessage, HumanMessage] for the given agent and context.
 
-        The system message uses Anthropic's ephemeral prompt caching. The content
-        (guardrails + agent prompt) is static per agent, so after the first call
-        within a 5-minute window it is served from cache at 10% of normal input cost.
-        Cache activates automatically once the content exceeds Anthropic's 1024-token
-        minimum — no error if the threshold is not yet met.
+        Two-tier prompt caching (Anthropic supports up to 4 cache_control blocks):
+
+          Block 1 — agent prompt (always cached):
+            guardrails + agent prompt. Static per (agent, prompt-version) for
+            the lifetime of the process. Highest cache hit rate.
+
+          Block 2 — session-static context (cached if context["_cached"] is set):
+            Pulled out of context["_cached"]. Intended for fields that are
+            constant across all calls within a user session — typically
+            resume_profile (1-2K tokens). Cached for 5 minutes per content
+            identity. The first call in a window pays full price; subsequent
+            calls within that window pay 10% on this block too.
+
+          Block 3 — per-call context (never cached):
+            The remaining context dict (everything except "_cached"). Varies
+            per call (job description, review, advice).
+
+        Anthropic's cache minimum is 1024 tokens per block. Block 2 is opt-in
+        precisely because resume_profile is right at this threshold and the
+        cache lookup has its own overhead — only worth the round-trip when the
+        content is genuinely substantial.
 
         Args:
             agent_name:  e.g. "scoring_agent" — must match a file in agents/.
             context:     Input variables serialized into the human message.
+                         A nested key "_cached" (dict) is moved into a separate
+                         cached system block; everything else lands in the
+                         human message.
 
         Returns:
-            Two-element list: [SystemMessage, HumanMessage].
+            List of messages: [SystemMessage(prompt), maybe SystemMessage(cached_ctx), HumanMessage(per_call_ctx)].
         """
-        return [
+        # Pull cached context out of the regular context dict so it doesn't
+        # get serialized into the human message twice.
+        cached_ctx = None
+        per_call_ctx = context
+        if isinstance(context, dict) and "_cached" in context:
+            cached_ctx = context.get("_cached") or None
+            per_call_ctx = {k: v for k, v in context.items() if k != "_cached"}
+
+        messages: list = [
             SystemMessage(content=[{
                 "type": "text",
                 "text": self._build_system_content(agent_name),
                 "cache_control": {"type": "ephemeral"},
             }]),
-            HumanMessage(content=self._build_human_content(context)),
         ]
+        if cached_ctx:
+            # Second cached block. Anthropic enforces the 1024-token minimum
+            # internally; below that, the block is sent without caching.
+            messages.append(SystemMessage(content=[{
+                "type": "text",
+                "text": (
+                    "STATIC CONTEXT (constant across calls in this session — "
+                    "do not re-emit any of these fields in your output, just "
+                    "use them as background):\n"
+                    + json.dumps(cached_ctx, indent=2, default=str)
+                ),
+                "cache_control": {"type": "ephemeral"},
+            }]))
+        messages.append(HumanMessage(content=self._build_human_content(per_call_ctx)))
+        return messages
 
     def get_version(self, agent_name: str) -> str:
         """Return the version string for this agent, e.g. "scoring_agent:v1".

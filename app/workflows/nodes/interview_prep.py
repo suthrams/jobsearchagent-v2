@@ -54,15 +54,25 @@ def make_interview_prep_node(
         score_by_job = {sj.get("job_id", sj.get("id", "")): sj for sj in scored_jobs}
         job_score = score_by_job.get(job_id, {})
 
+        # Trim context — see app/services/context_trimmer.py. Same rationale
+        # as career_advice: drop fields the coach doesn't read to cut input
+        # tokens with no quality impact.
+        from app.services.context_trimmer import (
+            trim_career_advice, trim_resume_profile, trim_review, trim_score,
+        )
         try:
             prep = interview_coach.run(workflow_id, {
+                # _cached: PromptLoader puts this in a second cached system block
+                # so subsequent calls in the same 5-min window get the 10% rate.
+                "_cached": {
+                    "resume_profile": trim_resume_profile(resume_profile),
+                },
                 "job_id": job_id,
                 "job_description": top_job.get("job_description", ""),
-                "resume_profile": resume_profile,
-                "job_score": job_score,
+                "job_score": trim_score(job_score),
                 "research_context": {},
-                "career_advice": career_advice or {},
-                "final_review": final_review or {},
+                "career_advice": trim_career_advice(career_advice or {}),
+                "final_review": trim_review(final_review or {}),
             })
             u = safe_agent_usage_typed(interview_coach)
             metrics = add_llm_call(metrics, tokens_in=u.tokens_input,

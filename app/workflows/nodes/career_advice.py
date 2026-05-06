@@ -49,14 +49,24 @@ def make_career_advice_node(
         score_by_job = {sj.get("job_id", sj.get("id", "")): sj for sj in scored_jobs}
         job_score = score_by_job.get(job_id, {})
 
+        # Trim context — see app/services/context_trimmer.py. Quality-neutral
+        # cost cut: drops raw_text from resume_profile, drops verbose critic
+        # subfields the advisor doesn't read.
+        from app.services.context_trimmer import (
+            trim_resume_profile, trim_review, trim_score,
+        )
         try:
             advice = career_advisor.run(workflow_id, {
+                # _cached: PromptLoader puts this in a second cached system block
+                # so subsequent calls in the same 5-min window get the 10% rate.
+                "_cached": {
+                    "resume_profile": trim_resume_profile(resume_profile),
+                },
                 "job_id": job_id,
                 "resume_id": resume_id,
                 "job_description": job_desc,
-                "resume_profile": resume_profile,
-                "final_review": final_review or {},
-                "job_score": job_score,
+                "final_review": trim_review(final_review or {}),
+                "job_score": trim_score(job_score),
                 "career_track": career_track,
             })
             u = safe_agent_usage_typed(career_advisor)

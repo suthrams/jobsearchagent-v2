@@ -6,6 +6,23 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-05
 
+### Changed — Cost cuts for the high-cost agents (advisor + coach + tailoring)
+
+Audit data showed the four cost-driving agents per run were `tailoring_agent`, `interview_coach`, `career_advisor` (each ~$0.07-0.09 per Sonnet call), and `scoring_agent` (10× Haiku). Two coordinated cuts that are quality-neutral.
+
+- `app/services/context_trimmer.py` — new module with pure trimming functions: `trim_resume_profile`, `trim_review`, `trim_career_advice`, `trim_score`. Each drops fields downstream agents don't read (raw_text, section_reviews, suggested_improvements, questions_for_user, verbose advice prose). Per-field justification documented in the module docstring.
+- `app/api/routers/tailoring.py`, `app/workflows/nodes/career_advice.py`, `app/workflows/nodes/interview_prep.py` — wired the trim functions into the context payload before each agent call. Saves 1-3K input tokens per call across the three high-cost agents.
+- `app/providers/prompt_loader.py` — `assemble()` now supports a second cached system block. When the context dict contains a `_cached` key, that sub-dict is moved to a separate `SystemMessage` with `cache_control: ephemeral`. Anthropic's prompt-cache 5-minute TTL means subsequent calls in the same session pay 10% on the cached block.
+- The three call sites move `resume_profile` (the largest static-per-session chunk) into `_cached`. Resume profile is constant across all tailoring/advisor/coach calls in a session — the cache hit rate should be high.
+- `tests/v2/test_context_trimmer.py` — 12 new tests pin every per-field decision (so a future refactor that adds a field to one of the trimmed dicts doesn't accidentally re-bloat the context) and verify the PromptLoader cached-block plumbing (3-block emission when `_cached` set; 2-block backwards-compat when absent; empty `_cached` is skipped).
+
+Estimated impact per run with 1 selected job + 1 tailoring draft:
+- Before: ~$0.27 (advisor $0.07 + coach $0.09 + tailoring $0.09 + scoring $0.03)
+- After (Phase 1): ~$0.17-0.20 once cache is warm; ~$0.22 on cold cache
+- $25 budget multiplied from ~92 runs to ~125-150 runs
+
+Tests: 518 passed (was 506), 1 skipped.
+
 ### Fixed — ResearchContext rejected Haiku stringified-list emissions
 
 Same root cause class as the recent ResumeReview fix: after the Sonnet → Haiku cost cut, the smaller model's emission shape is less reliable. Reported error in production:

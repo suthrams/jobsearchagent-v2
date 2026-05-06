@@ -31,6 +31,11 @@ from pydantic import BaseModel, Field
 from app.api.dependencies import get_deps, get_graph
 from app.api.schemas.responses import TailoringListResponse, TailoringResponse
 from app.providers.llm_client import LLMProviderError
+from app.services.context_trimmer import (
+    trim_career_advice,
+    trim_resume_profile,
+    trim_review,
+)
 from app.workflows.workflow_graph import WorkflowDependencies
 
 logger = logging.getLogger(__name__)
@@ -168,13 +173,22 @@ def trigger_tailoring(
         except Exception:
             career_advice = {}
 
+    # Trim context to drop fields the tailoring agent doesn't read (raw_text,
+    # critic's per-section reviews, etc.). See app/services/context_trimmer.py
+    # for the per-field justification. Quality-neutral cost cut.
+    #
+    # resume_profile is moved into "_cached" so PromptLoader puts it in a
+    # second cached system block (constant across all tailoring calls in the
+    # session — gets the 10% rate on subsequent calls within the 5-min window).
     context = {
+        "_cached": {
+            "resume_profile": trim_resume_profile(resume_profile),
+        },
         "job_id": job_id,
         "resume_id": resume_id,
         "job_description": job.get("job_description", ""),
-        "resume_profile": resume_profile,
-        "final_review": final_review,
-        "career_advice": career_advice,
+        "final_review": trim_review(final_review),
+        "career_advice": trim_career_advice(career_advice),
     }
 
     try:
