@@ -1311,20 +1311,36 @@ elif view == "Workflow Detail":
             if meta.get("prep"):
                 header += f"  ·  prep `{_fmt_ts(meta['prep'])}`"
             with st.expander(header):
-                try:
-                    topics = json.loads(row.get("likely_topics_json") or "[]")
-                    if topics:
-                        st.markdown("**Likely topics:** " + ", ".join(topics))
-                except Exception:
-                    pass
-                try:
-                    plan = json.loads(row.get("seven_day_plan_json") or "[]")
-                    if plan:
-                        st.markdown("**7-day plan:**")
-                        for item in plan:
+                # Render every section the InterviewCoach produces. The previous
+                # version only rendered topics + plan and dropped 4 sections
+                # entirely; combined with the field-name bug below it, the user
+                # never saw any prep output at all.
+                def _render_list_section(label: str, json_key: str, *, bullets: bool = True) -> None:
+                    try:
+                        items = json.loads(row.get(json_key) or "[]")
+                    except Exception:
+                        return
+                    if not items:
+                        return
+                    st.markdown(f"**{label}**")
+                    if bullets:
+                        for item in items:
                             st.markdown(f"- {item}")
-                except Exception:
-                    pass
+                    else:
+                        st.markdown(", ".join(items))
+
+                _render_list_section("Likely interview topics", "likely_topics_json")
+                _render_list_section("Technical topics to review", "technical_topics_json")
+                _render_list_section("Leadership stories to prepare", "leadership_stories_json")
+                _render_list_section("Weak areas to defend", "weak_areas_json")
+                _render_list_section("Questions to ask the interviewer", "questions_to_ask_json")
+                _render_list_section("7-day prep plan", "seven_day_plan_json")
+                conf = row.get("confidence")
+                if conf is not None:
+                    try:
+                        st.caption(f"Coach confidence: {int(conf)}%")
+                    except (TypeError, ValueError):
+                        pass
 
     # ── Prep — resume tailoring (on-demand per job, the action surface) ───────
     st.markdown("---")

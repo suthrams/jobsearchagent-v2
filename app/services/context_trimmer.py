@@ -62,15 +62,30 @@ def trim_review(review: dict | None) -> dict:
 def trim_career_advice(advice: dict | None) -> dict:
     """Keep the actionable fields the coach + tailoring agent read.
 
-    Drops verbose track-by-track prose; keeps the positioning thesis and
-    recommended action that interview_coach and tailoring_agent actually
-    condition on.
+    CareerAdvice schema fields kept (all from app/schemas/career_advice.py):
+      - positioning_summary       — the one-line pitch
+      - recommended_positioning   — the richer positioning prose
+      - skills_to_strengthen      — signals what to emphasize in tailoring
+      - recommended_next_action   — apply / interview-prep / hold
+
+    Dropped (not consumed by downstream agents):
+      - resume_gaps, career_gaps  — already in resume_review (the trimmed
+        review still carries critical_gaps / resume_only_gaps / career_gaps_observed)
+      - role_fit_assessment       — overlaps with positioning_summary
+      - experience_to_collect     — for the user, not for downstream agents
+      - thirty_sixty_ninety_day_plan — same
+      - confidence                — UI display only
 
     Typical saving: 0.5-1K tokens.
     """
     if not advice:
         return {}
-    keep = {"positioning_summary", "recommended_next_action", "key_strengths_to_lead_with"}
+    keep = {
+        "positioning_summary",
+        "recommended_positioning",
+        "skills_to_strengthen",
+        "recommended_next_action",
+    }
     return {k: v for k, v in advice.items() if k in keep}
 
 

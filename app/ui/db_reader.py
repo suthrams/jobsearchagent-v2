@@ -135,7 +135,15 @@ def load_deep_review_results(workflow_id: str) -> pd.DataFrame:
 
 @st.cache_data(ttl=30)
 def load_interview_prep(workflow_id: str) -> pd.DataFrame:
-    """Interview prep results for a completed workflow. Extracts from prep_json blob."""
+    """Interview prep results for a completed workflow. Extracts from prep_json blob.
+
+    The json_extract paths must match `app/schemas/interview_prep.py::InterviewPrep`
+    field names exactly. A previous version of this query used short paths
+    (`$.likely_topics`, `$.weak_areas`, etc.) that did not exist in the schema,
+    so every column came back NULL and the UI showed no content despite
+    interview_prep rows being persisted. Fixed 2026-05-05; see
+    test_db_reader_query_field_names_match_schemas regression test.
+    """
     if not DB_PATH.exists():
         return pd.DataFrame()
     conn = _connect()
@@ -143,11 +151,13 @@ def load_interview_prep(workflow_id: str) -> pd.DataFrame:
         df = pd.read_sql_query(
             """
             SELECT job_id,
-                   json_extract(prep_json, '$.likely_topics')   AS likely_topics_json,
-                   json_extract(prep_json, '$.technical_topics') AS technical_topics_json,
-                   json_extract(prep_json, '$.weak_areas')       AS weak_areas_json,
-                   json_extract(prep_json, '$.seven_day_plan')   AS seven_day_plan_json,
-                   json_extract(prep_json, '$.confidence')       AS confidence
+                   json_extract(prep_json, '$.likely_interview_topics')      AS likely_topics_json,
+                   json_extract(prep_json, '$.technical_topics_to_review')   AS technical_topics_json,
+                   json_extract(prep_json, '$.leadership_stories_to_prepare') AS leadership_stories_json,
+                   json_extract(prep_json, '$.weak_areas_to_defend')         AS weak_areas_json,
+                   json_extract(prep_json, '$.questions_to_ask_interviewer') AS questions_to_ask_json,
+                   json_extract(prep_json, '$.seven_day_prep_plan')          AS seven_day_plan_json,
+                   json_extract(prep_json, '$.confidence')                   AS confidence
             FROM interview_prep
             WHERE workflow_run_id = ?
             """,

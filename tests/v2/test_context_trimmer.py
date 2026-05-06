@@ -87,20 +87,42 @@ def test_review_handles_empty():
 # ── trim_career_advice ───────────────────────────────────────────────────────
 
 def test_advice_keeps_only_actionable_fields():
+    """Pin the kept fields against the actual CareerAdvice schema. If a refactor
+    drops or renames a field this trim depends on, the test fails."""
     advice = {
         "job_id": "j",
         "positioning_summary": "Lead with platform leadership.",
+        "recommended_positioning": "Pitch yourself as a platform-engineering leader.",
+        "skills_to_strengthen": ["public speaking", "people management"],
         "recommended_next_action": "Apply",
-        "key_strengths_to_lead_with": ["distributed systems"],
-        # Verbose fields downstream agents don't need
-        "track_breakdown": {"ic": "...", "architect": "...", "management": "..."},
-        "growth_recommendations": ["...", "...", "..."],
-        "longer_term_outlook": "Some prose...",
+        # Fields downstream agents don't need
+        "resume_gaps": ["Cloud experience not surfaced"],
+        "career_gaps": ["No formal compliance experience"],
+        "role_fit_assessment": "Strong fit on technical track.",
+        "experience_to_collect": ["Lead a customer-facing project"],
+        "thirty_sixty_ninety_day_plan": ["..."],
+        "confidence": 75,
     }
     out = trim_career_advice(advice)
     assert set(out.keys()) == {
-        "positioning_summary", "recommended_next_action", "key_strengths_to_lead_with",
+        "positioning_summary", "recommended_positioning",
+        "skills_to_strengthen", "recommended_next_action",
     }
+
+
+def test_advice_kept_fields_exist_in_career_advice_schema():
+    """Regression: trim_career_advice once kept 'key_strengths_to_lead_with',
+    a field that doesn't exist on CareerAdvice. Trim was a no-op for that
+    key. This test catches the same class of drift."""
+    from app.schemas.career_advice import CareerAdvice
+    schema_fields = set(CareerAdvice.model_fields.keys())
+    # Reverse-engineer the keep set by passing every schema field as input.
+    full_advice = {f: "x" for f in schema_fields}
+    out = trim_career_advice(full_advice)
+    drift = set(out.keys()) - schema_fields
+    assert not drift, (
+        f"trim_career_advice keeps fields that don't exist in CareerAdvice: {sorted(drift)}"
+    )
 
 
 def test_advice_handles_empty():
