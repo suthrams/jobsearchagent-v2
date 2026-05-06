@@ -1,3 +1,9 @@
+# ─── Blog and article content ────────────────────────────────────────────────
+# Article drafts, published versions, series plan, and image assets live in
+# blogs/ and are intentionally not tracked. Move article files here before
+# editing.
+blogs/
+
 # ─── Secrets & credentials ───────────────────────────────────────────────────
 .env
 .env.*

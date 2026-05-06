@@ -379,7 +379,6 @@ Each phase has a dedicated deep-dive document:
 | [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — tailoring page-budget + headline + strategy summary + impact estimate (ADR-056), on-demand tailoring (ADR-055), deep-review-for-all (ADR-054), multi-provider (ADR-053), Phase 9 cost optimization, Phase 7/8 live agents and performance, v1 dashboard fixes, Python 3.12 compatibility |
 | [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic, langchain-openai) + v1 shared (anthropic, pydantic, httpx, pdfplumber) |
 | [disclaimer.md](disclaimer.md) | Apache 2.0 terms, no-warranty statement, user responsibility for API costs, scraper compliance notes (Adzuna official, LinkedIn/Ladders grey-area), resume data privacy |
-| [blog_draft_patterns_v2.md](blog_draft_patterns_v2.md) | Draft blog post on agentic AI patterns used in v2 — for external publication |
 | [../skills/README.md](../skills/README.md) | Index for the `skills/` agent-skills pack — maps each of the 21 skills to the jobsearchagent-v2 workflow stage where it applies |
 
 ---
