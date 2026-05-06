@@ -213,6 +213,11 @@ LIMIT 5;
 | Total spend ballooning across many runs | Cut tailoring iterations | Limit yourself to 1-2 drafts per job; each draft is ~$0.015-0.025 on Sonnet |
 | Same job re-discovered and re-scored across runs | Exclude it (ADR-057) | Workflow Detail → Find & Score → row → 🚫 Exclude. URL-based dedup at next discovery prevents re-scoring. |
 
+For the recommended baseline assignment per agent, with the reasoning
+for each pick, see [`docs/model_recommendations.md`](model_recommendations.md).
+That doc also covers the escalation order if budget pressure mounts and
+the symptoms that signal an agent should be upgraded.
+
 **Rate reference** (per 1M tokens, May 2026):
 
 | Model | Input | Output | Where defined |

@@ -61,6 +61,7 @@
 |---|---|
 | [user_guide.md](user_guide.md) | End-to-end v2 walkthrough — install, configure, start backend + UI, HITL workflow, daily routine, troubleshooting |
 | [cost_troubleshooting.md](cost_troubleshooting.md) | Step-by-step cost diagnosis: per-agent cost queries, reconciliation against the provider billing console, lever decision matrix, pre-flight estimation, regression-prevention invariants. Read this when cost surprises happen. |
+| [model_recommendations.md](model_recommendations.md) | Recommended per-agent model assignment with rationale, estimated cost per run, escalation order if budget pressure mounts, symptoms that signal an agent should be upgraded. Read this when configuring or tuning the system. |
 | [features.md](features.md) | Complete v2 feature reference — all 8 agents, HITL checkpoints, observability, model tiering, feature summary table |
 | [README.md](README.md) | Docs index — maps every topic area to its authoritative file; v1 reference section |
 
