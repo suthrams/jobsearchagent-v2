@@ -6,6 +6,34 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-05
 
+### Fixed — Observability gap: llm_calls and run_metrics tables were never populated
+
+Diagnosis triggered by hitting the Anthropic credit ceiling. Found that despite ~$20 of API spend reported by the provider, the local `llm_calls` table had 0 rows and `run_metrics` had 0 rows — so per-call cost attribution was impossible to reconcile against the billing console. Two real wiring bugs:
+
+- `app/agents/base_agent.py::_run` called `log_agent_started`, `log_agent_completed`, and `log_agent_failed` — but never `log_llm_call`. Every Claude / OpenAI call happened invisibly to the audit trail.
+- `app/workflows/nodes/register_run.py` never called `create_run_metrics`. `app/workflows/nodes/generate_report.py` never called `finalize_run_metrics`. Both methods existed in `ObservabilityService` but were only exercised in tests.
+
+Fix:
+
+- `app/providers/llm_client.py` — `LLMClient` ABC gains `provider_name` and `model_name` properties (default-implemented as `"unknown"` for back-compat with bare-bones test doubles). `ClaudeProvider` and `OpenAIProvider` override to return `"claude"`/`"openai"` and `self._model_name`.
+- `app/agents/base_agent.py` — `_run` now brackets the LLM call with its own `time.monotonic()` and calls `self._observability.log_llm_call(...)` after every successful `complete_with_usage`. Failures in the logging path are swallowed (observability must never crash a run).
+- `app/services/observability_service.py` — adds `init_run_metrics(workflow_id, started_at)` and `compute_run_totals_from_llm_calls(workflow_id) -> dict`. The latter is the truth source for finalize: it queries `llm_calls` rather than trusting the lossy in-memory `state["run_metrics"]` aggregator.
+- `app/repositories/observability_repository.py` — adds `get_llm_calls_by_run(workflow_id)`.
+- `app/workflows/nodes/register_run.py` — accepts an optional `ObservabilityService`; calls `init_run_metrics` after the workflow_runs row is persisted.
+- `app/workflows/nodes/generate_report.py` — calls `compute_run_totals_from_llm_calls` then `finalize_run_metrics` after the terminal-state write. Per-run cost is now reconciled from the audit trail, not from in-memory estimates.
+- `tests/v2/test_observability_wiring.py` — 5 new tests lock in the fix: every `BaseAgent.run()` writes one `llm_calls` row; multiple runs produce multiple rows; observability failures don't crash the agent; `register_run` creates the `run_metrics` row; `generate_report` finalizes it from `llm_calls` rather than state_json.
+
+### Changed — Cost cuts: resume_critic moved to Haiku; MAX_SELECTED_JOBS 10→3; MAX_REVIEW_ROUNDS 3→2
+
+Per-agent breakdown of the credit-blow run (`55548473`) showed `resume_critic` on Sonnet was ~80% of run cost (16 calls × Sonnet rates). Three cuts that together turn a worst-case run from ~$1.40 down to ~$0.30-0.40, multiplying the $25 budget into roughly 60-80 runs instead of ~18.
+
+- `app/providers/model_registry.py` — `resume_critic` default moved from `claude-sonnet-4-6` to `claude-haiku-4-5-20251001`. The Review Auditor loop already polices critic output, so the quality risk of dropping to Haiku is bounded. Override per-run via Settings if a specific session warrants Sonnet.
+- `app/workflows/limits.py` — `MAX_SELECTED_JOBS` lowered from 10 (ADR-054) to 3. ADR-054's design intent — every qualifying job reaches deep review — still holds; this only changes the cap on how many qualifying jobs we'll pay for per run.
+- `app/workflows/limits.py` — `MAX_REVIEW_ROUNDS` lowered from 3 to 2. The reflection loop usually converges by round 2 in observed runs; round 3 rarely changes the verdict.
+- `CLAUDE.md` Key Invariants section updated to reflect the new caps with rationale.
+
+Tests: 475 passed (was 470), 1 skipped.
+
 ### Added — Per-job exclusion as a pipeline filter (ADR-057)
 
 Restored v1's per-job exclusion as a deliberate filter primitive (NOT application tracking). v1 had `excluded` / `excluded_reason` columns on the `jobs` table; v2 dropped them along with the actual application-tracking surface (Apply / Save / status), conflating two distinct concerns. ADR-057 makes the distinction explicit: this is a filter the user gives the system, not an outcome the system records.

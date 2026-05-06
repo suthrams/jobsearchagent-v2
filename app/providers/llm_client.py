@@ -37,6 +37,19 @@ class LLMClient(ABC):
     and test doubles injected via the _model / _client constructor parameter.
     """
 
+    # ── Provider identity (ADR pending — observability wiring) ───────────────
+    # Default-implemented so legacy test doubles that subclass LLMClient without
+    # setting these don't break. Real providers override.
+    @property
+    def provider_name(self) -> str:
+        """Lowercase provider tag, e.g. "claude", "openai". Used for llm_calls.provider."""
+        return "unknown"
+
+    @property
+    def model_name(self) -> str:
+        """Provider-native model id, e.g. "claude-sonnet-4-6". Used for llm_calls.model."""
+        return "unknown"
+
     @abstractmethod
     def complete(self, agent_name: str, context: dict, schema: type) -> dict:
         """Call the LLM and return a validated dict matching the given schema.

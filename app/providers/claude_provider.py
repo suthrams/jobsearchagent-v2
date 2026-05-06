@@ -79,6 +79,14 @@ class ClaudeProvider(LLMClient):
         # Thread-local storage for last-call token usage — safe for concurrent callers.
         self._tlocal = threading.local()
 
+    @property
+    def provider_name(self) -> str:
+        return "claude"
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
     # ── Public interface (LLMClient contract) ─────────────────────────────────
 
     def complete(self, agent_name: str, context: dict, schema: type) -> dict:

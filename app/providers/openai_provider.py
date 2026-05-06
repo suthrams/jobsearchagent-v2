@@ -75,6 +75,14 @@ class OpenAIProvider(LLMClient):
         self._client = _client if _client is not None else openai.OpenAI()
         self._tlocal = threading.local()
 
+    @property
+    def provider_name(self) -> str:
+        return "openai"
+
+    @property
+    def model_name(self) -> str:
+        return self._model_name
+
     # ── Public interface (LLMClient contract) ─────────────────────────────────
 
     def complete(self, agent_name: str, context: dict, schema: type) -> dict:

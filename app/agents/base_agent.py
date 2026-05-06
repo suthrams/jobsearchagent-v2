@@ -54,6 +54,7 @@ class BaseAgent(ABC):
             workflow_id, self.AGENT_NAME, self._input_summary(context)
         )
         try:
+            llm_t0 = time.monotonic()
             try:
                 result, usage = self._provider.complete_with_usage(
                     agent_name=self.AGENT_NAME, context=context, schema=schema,
@@ -69,8 +70,31 @@ class BaseAgent(ABC):
                 except (AttributeError, TypeError, ValueError):
                     ti, to, cost = 0, 0, 0.0
                 usage = LLMUsage(tokens_input=int(ti), tokens_output=int(to), cost_usd=float(cost))
+            llm_latency_ms = int((time.monotonic() - llm_t0) * 1000)
 
             self._tlocal.last_usage = usage
+            # Per-call audit row (ADR-pending observability fix). Without this the
+            # llm_calls table stays empty and cost attribution is impossible to
+            # reconcile against the provider's billing console. Best-effort: failures
+            # are swallowed by ObservabilityService so a broken audit trail never
+            # crashes a run.
+            try:
+                self._observability.log_llm_call(
+                    workflow_id=workflow_id,
+                    agent_name=self.AGENT_NAME,
+                    provider=self._provider.provider_name,
+                    model=self._provider.model_name,
+                    tokens_input=usage.tokens_input,
+                    tokens_output=usage.tokens_output,
+                    cost_usd=usage.cost_usd,
+                    latency_ms=llm_latency_ms,
+                )
+            except Exception:
+                # Already-defensive ObservabilityService logs and swallows; this
+                # outer guard catches the unlikely case of attribute lookup failing
+                # on a bare-bones test double provider.
+                pass
+
             duration_ms = int((time.monotonic() - t0) * 1000)
             self._observability.log_agent_completed(
                 workflow_id, self.AGENT_NAME, event_id,

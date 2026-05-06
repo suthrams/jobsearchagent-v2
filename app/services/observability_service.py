@@ -200,6 +200,37 @@ class ObservabilityService:
 
     # ── Run metrics ───────────────────────────────────────────────────────────
 
+    def init_run_metrics(self, workflow_id: str, started_at: str) -> None:
+        """Initialise the run_metrics row at workflow start. Wraps the repo
+        method so failures are swallowed (observability must never crash runs)."""
+        try:
+            self._obs.create_run_metrics(
+                metrics_id=str(uuid.uuid4()),
+                workflow_run_id=workflow_id,
+                started_at=started_at,
+            )
+        except Exception:
+            logger.exception("ObservabilityService: init_run_metrics failed")
+
+    def compute_run_totals_from_llm_calls(self, workflow_id: str) -> dict:
+        """Derive canonical totals (calls / tokens / cost) from llm_calls rows.
+
+        This is the truth source — state_json.run_metrics only counts what the
+        in-memory aggregator captured and misses retries / interpreter shutdowns.
+        Returns {"calls": int, "tokens_input": int, "tokens_output": int, "cost_usd": float}.
+        """
+        try:
+            rows = self._obs.get_llm_calls_by_run(workflow_id)
+        except Exception:
+            logger.exception("ObservabilityService: get_llm_calls_by_run failed")
+            return {"calls": 0, "tokens_input": 0, "tokens_output": 0, "cost_usd": 0.0}
+        return {
+            "calls":         len(rows),
+            "tokens_input":  sum(int(r.get("tokens_input")  or 0) for r in rows),
+            "tokens_output": sum(int(r.get("tokens_output") or 0) for r in rows),
+            "cost_usd":      sum(float(r.get("estimated_cost") or 0.0) for r in rows),
+        }
+
     def finalize_run_metrics(
         self,
         workflow_id: str,

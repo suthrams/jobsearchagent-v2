@@ -69,11 +69,11 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 
 **Execution limits — never exceed without reviewing cost impact**
 - `MAX_JOBS_PER_RUN = 10`
-- `MAX_SELECTED_JOBS = 10` (raised in ADR-054 — every qualifying job now reaches deep review)
+- `MAX_SELECTED_JOBS = 3` (lowered from 10 as a cost cut; ADR-054's "every qualifying job reaches deep review" still applies — this only caps how many qualifying jobs we pay for per run)
 - `MAX_RESEARCH_STEPS = 2`
-- `MAX_REVIEW_ROUNDS = 3`
+- `MAX_REVIEW_ROUNDS = 2` (lowered from 3 as a cost cut; reflection loop usually converges by round 2)
 - `MAX_LLM_CALLS_PER_JOB = 10`
-- `MAX_LLM_CALLS_PER_RUN = 200` (raised in ADR-054 to accommodate up to 10 deep-reviewed jobs)
+- `MAX_LLM_CALLS_PER_RUN = 200`
 
 **Orchestration rules**
 - Only the orchestrator updates `WorkflowState` — agents return structured outputs, never mutate state directly

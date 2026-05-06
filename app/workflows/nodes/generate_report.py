@@ -53,6 +53,32 @@ def make_generate_report_node(
                 logger.warning("generate_report: workflow_runs update failed for %s: %s",
                                workflow_id, exc)
 
+        # ADR-pending observability fix: roll up the canonical totals from
+        # llm_calls (the audit-truth source) and persist them to run_metrics.
+        # The in-memory state["run_metrics"] aggregator is lossy — schema-repair
+        # retries and interpreter-shutdown failures get billed by the provider
+        # but don't always land in state. Reading from llm_calls reconciles
+        # closer to the provider's billing console.
+        if workflow_id:
+            try:
+                totals = observability.compute_run_totals_from_llm_calls(workflow_id)
+                started_at = state.get("started_at") or utcnow_iso()
+                # Best-effort wall-clock; full duration tracking lives in step_executions.
+                state_metrics = state.get("run_metrics") or {}
+                duration_ms = int(state_metrics.get("total_duration_ms") or 0)
+                observability.finalize_run_metrics(
+                    workflow_id=workflow_id,
+                    total_llm_calls=totals["calls"],
+                    total_tokens_input=totals["tokens_input"],
+                    total_tokens_output=totals["tokens_output"],
+                    total_cost_usd=totals["cost_usd"],
+                    total_duration_ms=duration_ms,
+                    completed_at=utcnow_iso(),
+                )
+            except Exception as exc:
+                logger.warning("generate_report: finalize_run_metrics failed for %s: %s",
+                               workflow_id, exc)
+
         return update
 
     return generate_report

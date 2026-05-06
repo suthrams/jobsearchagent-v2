@@ -50,7 +50,11 @@ _KNOWN_MODELS: dict[str, list[str]] = {
 DEFAULT_AGENT_ASSIGNMENT: dict[str, dict[str, str]] = {
     "research_agent":      {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
     "scoring_agent":       {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
-    "resume_critic":       {"provider": "claude", "model": "claude-sonnet-4-6"},
+    # Cost cut: resume_critic moved off Sonnet — per-agent breakdown showed it
+    # was ~80% of run cost (16 calls × ~$0.025 in observed runs). The auditor
+    # loop polices critic output, so the quality risk of dropping to Haiku is
+    # bounded. Override per-run via Settings if a specific tailoring deserves Sonnet.
+    "resume_critic":       {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
     "review_auditor":      {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
     "career_advisor":      {"provider": "claude", "model": "claude-sonnet-4-6"},
     "interview_coach":     {"provider": "claude", "model": "claude-sonnet-4-6"},

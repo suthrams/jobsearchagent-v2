@@ -75,3 +75,13 @@ class ObservabilityRepository:
                 (workflow_run_id,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def get_llm_calls_by_run(self, workflow_run_id: str) -> list[dict]:
+        """All llm_calls rows for a run, oldest first. Used by finalize_run_metrics
+        to compute canonical totals (vs the lossy in-memory state_json aggregator)."""
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT * FROM llm_calls WHERE workflow_run_id = ? ORDER BY created_at ASC",
+                (workflow_run_id,),
+            ).fetchall()
+        return [dict(r) for r in rows]

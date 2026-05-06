@@ -88,7 +88,7 @@ def build_graph(deps: WorkflowDependencies):
     graph = StateGraph(WorkflowGraphState)
 
     # ── Nodes ─────────────────────────────────────────────────────────────────
-    graph.add_node("register_run", make_register_run_node(deps.workflow_repo))
+    graph.add_node("register_run", make_register_run_node(deps.workflow_repo, deps.observability))
 
     graph.add_node("discover_jobs", make_discover_jobs_node(
         deps.discovery_service, deps.job_repo, deps.observability,

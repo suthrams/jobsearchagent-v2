@@ -10,9 +10,15 @@ from app.repositories.database import utcnow_iso
 # ── Execution limits ──────────────────────────────────────────────────────────
 
 MAX_JOBS_PER_RUN = 10
-MAX_SELECTED_JOBS = 10
+# Cost cut: lowered from 10 (ADR-054) to 3 to cap deep-review fan-out.
+# ADR-054's design intent (every qualifying job reaches deep review) still
+# holds; this only changes the budget cap for how many qualifying jobs we'll
+# pay for per run. Raise per-run via effective_config if a session warrants it.
+MAX_SELECTED_JOBS = 3
 MAX_RESEARCH_STEPS = 2
-MAX_REVIEW_ROUNDS = 3
+# Cost cut: lowered from 3. The reflection loop usually converges by round 2
+# (see review_rounds.stop_reason data); round 3 rarely changes the verdict.
+MAX_REVIEW_ROUNDS = 2
 MAX_LLM_CALLS_PER_JOB = 10
 MAX_LLM_CALLS_PER_RUN = 200
 
