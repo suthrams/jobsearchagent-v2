@@ -142,3 +142,45 @@ The "Users cannot modify: LLM models" constraint in ADR-046 is **narrowed**:
 - `app/ui/streamlit_app.py`: Settings screen exposes a per-agent dropdown
   (provider → model, with per-1K-call cost shown) backed by the registry.
   Workflow Detail and the Run Report show the cost breakdown table.
+
+
+## Addendum 2026-05-05 — Live reload supersedes restart for runtime overrides
+
+The original ADR said "Saving a change requires a backend restart to take
+effect." That friction caused real cost waste: on 2026-05-06 a $0.52 run
+landed because the user had saved `scoring_agent: Haiku` to user_config
+but the backend was still running with the previous Sonnet binding.
+
+The fix is `POST /config/reload` (`app/api/routers/config.py`). It calls
+`reload_deps_and_graph()` (`app/api/dependencies.py`) which:
+
+  1. Snapshots the old SqliteSaver cleanup function.
+  2. Runs the same build path startup uses (`build_and_cache_graph`),
+     which re-reads `user_config` and rebuilds `ModelRegistry`, all
+     agents, and the compiled graph.
+  3. Releases the old SqliteSaver only after the new graph is wired.
+
+The Streamlit Settings page calls `api.reload_config()` after every
+successful `put_config(...)`. Toast surfaces the new effective assignment
+("Saved + applied. Active: scoring_agent → claude/claude-haiku-4-5-20251001")
+so the user can verify the change took effect.
+
+In-flight workflows are not disturbed: their LangGraph runner holds a
+reference to the OLD graph + agents and continues using them until the
+run completes. Only workflows started AFTER the reload pick up the new
+assignment. This matches the semantics of a real restart, just without
+process exit.
+
+What `POST /config/reload` does NOT pick up (still requires real restart):
+
+- Prompt file changes — `PromptLoader` caches files at first read.
+- Code changes — Python doesn't reload modules.
+- Environment variable changes — `os.getenv` reads at process start; if
+  `OPENAI_API_KEY` is set AFTER the backend is already running, the
+  registry rebuild WILL pick it up correctly because env-var reads happen
+  inside `_build_real_deps` rather than at import time.
+
+Tests in `tests/v2/test_api_config.py`:
+  - `test_reload_endpoint_returns_status_and_assignment`
+  - `test_reload_endpoint_surfaces_rebuild_failure_as_500`
+  - `test_reload_endpoint_idempotent`

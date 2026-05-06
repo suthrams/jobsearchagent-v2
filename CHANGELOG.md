@@ -6,6 +6,26 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-05
 
+### Added — Live config reload eliminates restart-to-apply friction (ADR-053 addendum)
+
+Symptom that triggered this: user saved `scoring_agent: Haiku` in Settings, ran a workflow, and got billed for Sonnet because the backend was still running with the previous binding. Per the original ADR-053, a Settings save required a manual `uvicorn` restart to take effect — easy to forget, and real money when forgotten.
+
+- `app/api/dependencies.py` — new `reload_deps_and_graph()` function. Atomically rebuilds `WorkflowDependencies` + the compiled graph from current `user_config` (re-reads `ModelRegistry`, re-instantiates agents, re-compiles graph). Releases the old SqliteSaver only after the new graph is wired so `get_graph()` never returns None during the swap.
+- `app/api/routers/config.py` — new `POST /config/reload` endpoint. Calls `reload_deps_and_graph()`, returns the new effective `agent_assignment` so the caller can confirm the change took effect.
+- `app/ui/api_client.py` — `reload_config()` wrapper.
+- `app/ui/streamlit_app.py` — Settings page's `_save()` helper now calls `reload_config()` after every successful `put_config()`. Toast shows the new active assignment for `agents.*` keys: "Saved + applied. Active: scoring_agent → claude/claude-haiku-4-5-20251001". Caption text updated to reflect "no restart needed."
+- `docs/architecture/adr/ADR-053-pluggable-per-agent-provider-and-model-selection.md` — addendum 2026-05-05 documenting the reload path, what it picks up, and what still requires a real restart (prompt file changes, code changes).
+- 3 new tests in `tests/v2/test_api_config.py`: endpoint contract, error envelope on rebuild failure, idempotency.
+
+In-flight workflows are not disturbed — they hold a reference to the old graph and run to completion on the old assignment. Only NEW workflows pick up the change. Same semantics as a real restart, just without process exit.
+
+What still requires a process restart:
+- Prompt file changes (PromptLoader caches at first read)
+- Code changes
+- Provider client init bugs that need a fresh interpreter
+
+Tests: 500 passed (was 497), 1 skipped.
+
 ### Fixed — Observability gap: llm_calls and run_metrics tables were never populated
 
 Diagnosis triggered by hitting the Anthropic credit ceiling. Found that despite ~$20 of API spend reported by the provider, the local `llm_calls` table had 0 rows and `run_metrics` had 0 rows — so per-call cost attribution was impossible to reconcile against the billing console. Two real wiring bugs:

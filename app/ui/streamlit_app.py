@@ -1943,12 +1943,40 @@ elif view == "Settings":
     )
 
     def _save(key: str, value: object) -> None:
+        """Persist via PUT /config, then POST /config/reload so the backend
+        picks up the change without a manual restart (ADR-053 addendum)."""
         try:
             api.put_config(key, value)
-            st.success(f"Saved `{key}`")
             st.session_state.config_cache = None
         except Exception as exc:
             st.error(f"Save failed for `{key}`: {exc}")
+            return
+        # Reload the backend so the change is live for the next workflow run.
+        # Per-agent assignment changes especially need this — ModelRegistry
+        # caches one provider per (provider, model) at startup.
+        try:
+            reload_result = api.reload_config()
+            if key.startswith("agents."):
+                # Surface the new effective assignment so the user can confirm
+                # the agent now points at the chosen model.
+                assignment = (reload_result or {}).get("agent_assignment") or {}
+                # Extract the agent_name from "agents.{name}..." for the toast.
+                parts = key.split(".")
+                if len(parts) >= 2:
+                    a = parts[1]
+                    if a in assignment:
+                        m = assignment[a]
+                        st.success(
+                            f"Saved `{key}` and applied. "
+                            f"Active: **{a}** → `{m['provider']}/{m['model']}`"
+                        )
+                        return
+            st.success(f"Saved `{key}` and applied (no restart needed).")
+        except Exception as exc:
+            st.warning(
+                f"Saved `{key}` but the live reload failed: {exc}. "
+                "Restart `uvicorn` to apply the change."
+            )
 
     # ── Search ─────────────────────────────────────────────────────────────
     st.subheader("Search")
@@ -2019,8 +2047,9 @@ elif view == "Settings":
     st.subheader("Agent Models")
     st.caption(
         "Pick a provider and model per agent. Indicative cost shown per million tokens. "
-        "Saves take effect after the **backend restarts**. In-flight workflows keep "
-        "their original assignment."
+        "Saves trigger a live reload of the backend's agent bindings — no manual "
+        "restart needed for runtime overrides. In-flight workflows keep their "
+        "original assignment; only NEW workflows pick up the change."
     )
 
     with st.spinner("Loading provider catalog…"):

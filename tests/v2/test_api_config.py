@@ -119,3 +119,59 @@ def test_put_full_agent_assignment_validated(isolated_config):
     })
     assert r.status_code == 422
     assert r.json()["detail"]["error"] == "incomplete_assignment"
+
+
+# ── ADR-053 addendum: POST /config/reload ────────────────────────────────────
+# Reload supersedes restart for runtime-overridable settings. These tests pin
+# the contract: endpoint returns the live agent assignment after rebuild.
+
+def test_reload_endpoint_returns_status_and_assignment(isolated_config, monkeypatch):
+    """Smoke test the reload endpoint. Mocks reload_deps_and_graph so we don't
+    actually rebuild a real graph (no API key, no real provider clients)."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    fake_assignment = {
+        "research_agent":  {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+        "scoring_agent":   {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+    }
+    monkeypatch.setattr(
+        "app.api.dependencies.reload_deps_and_graph",
+        lambda: {"agent_assignment": fake_assignment},
+    )
+
+    client = TestClient(app)
+    r = client.post("/config/reload")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["status"] == "reloaded"
+    assert body["agent_assignment"] == fake_assignment
+
+
+def test_reload_endpoint_surfaces_rebuild_failure_as_500(isolated_config, monkeypatch):
+    """If reload_deps_and_graph raises, the endpoint must surface a 500 with
+    the standard error envelope (not a stack trace leak)."""
+    def _boom():
+        raise RuntimeError("provider client failed to start")
+    monkeypatch.setattr("app.api.dependencies.reload_deps_and_graph", _boom)
+
+    client = TestClient(app)
+    r = client.post("/config/reload")
+    assert r.status_code == 500
+    body = r.json()
+    assert body["detail"]["error"] == "reload_failed"
+    assert "provider client failed to start" in body["detail"]["message"]
+
+
+def test_reload_endpoint_idempotent(isolated_config, monkeypatch):
+    """Calling reload twice in a row must not break — each call rebuilds
+    cleanly. Counts the rebuild invocations to make sure both fire."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    call_count = {"n": 0}
+    def _track():
+        call_count["n"] += 1
+        return {"agent_assignment": {}}
+    monkeypatch.setattr("app.api.dependencies.reload_deps_and_graph", _track)
+
+    client = TestClient(app)
+    assert client.post("/config/reload").status_code == 200
+    assert client.post("/config/reload").status_code == 200
+    assert call_count["n"] == 2

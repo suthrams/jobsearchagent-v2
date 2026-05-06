@@ -52,6 +52,23 @@ def put_config(key: str, value: object) -> dict:
     return r.json()
 
 
+def reload_config() -> dict:
+    """Rebuild the backend's WorkflowDependencies + graph from the current
+    user_config, then return the now-effective per-agent assignment.
+
+    Use this after a put_config() that changes runtime-overridable settings
+    (per-agent provider/model picks). Replaces the previous "restart uvicorn
+    to apply" workflow. Reload itself takes ~50-100ms (provider client init).
+    Prompt/code changes still need a real process restart.
+    """
+    r = httpx.post(
+        f"{BASE_URL}/config/reload",
+        timeout=15.0,  # generous for cold-start client init
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def get_providers() -> dict:
     """Return registered providers + models + current per-agent assignment (ADR-053)."""
     r = httpx.get(f"{BASE_URL}/config/providers", timeout=_TIMEOUT_GET)

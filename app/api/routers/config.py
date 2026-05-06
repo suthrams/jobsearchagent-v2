@@ -84,6 +84,45 @@ def put_config(body: ConfigUpdate) -> dict:
     return {"key": body.key, "value": body.value, "status": "saved"}
 
 
+@router.post("/reload", status_code=200)
+def reload_config() -> dict:
+    """Rebuild the workflow graph + agent bindings from the current user_config.
+
+    ADR-053 addendum: previously a Settings save required a backend restart
+    because ModelRegistry caches one provider per (provider, model) at startup
+    and agents are wired with provider references baked in. This endpoint
+    automates the restart-style swap: rebuild deps + graph atomically, swap
+    the cached singletons, return the new effective agent assignment.
+
+    What this DOES pick up:
+      - agents.{name}.{provider,model} overrides (per-agent model assignment)
+      - any other user_config row read by ConfigService at deps build time
+
+    What this does NOT pick up (still requires process restart):
+      - prompt file changes (PromptLoader caches files at first read)
+      - code changes
+      - new env vars (e.g. setting OPENAI_API_KEY for the first time —
+        the registry only registers OpenAI providers when the key is
+        present at registry build time; if we rebuild AFTER setting it,
+        OpenAI becomes available, so this case actually IS covered)
+
+    In-flight workflows: continue using the OLD graph reference they hold;
+    only workflows started AFTER this call use the new assignment.
+    """
+    # Local import to avoid the circular dependencies (config router -> deps
+    # -> workflow graph -> nodes -> ... -> potentially config services).
+    from app.api.dependencies import reload_deps_and_graph
+    try:
+        result = reload_deps_and_graph()
+    except Exception as exc:
+        logger.exception("config: reload_deps_and_graph failed")
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "reload_failed", "message": str(exc)},
+        ) from exc
+    return {"status": "reloaded", **result}
+
+
 def _validate_agent_key(key: str, value: object) -> None:
     """Reject writes to agents.{name}.{provider,model} that don't resolve in the registry.
 

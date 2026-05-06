@@ -472,3 +472,76 @@ def get_deps() -> WorkflowDependencies:
             "WorkflowDependencies not initialised. build_and_cache_graph() must be called at startup."
         )
     return _deps
+
+
+def reload_deps_and_graph() -> dict:
+    """Atomically rebuild WorkflowDependencies and the graph from current user_config.
+
+    Used by POST /config/reload (ADR-053 addendum) so a UI Settings save can take
+    effect without a process restart. Steps:
+
+      1. Snapshot the old cleanup fn so the old SqliteSaver gets released after
+         the new one is wired up.
+      2. Run the same build path startup uses (`build_and_cache_graph`) — this
+         reads user_config fresh and produces a new ModelRegistry, agents, and
+         compiled graph.
+      3. Release the old SqliteSaver / connection holder.
+
+    In-flight workflows: their LangGraph runner already holds a reference to the
+    OLD graph + agents; it continues using them until the run completes. Only
+    workflows started AFTER this call use the new assignment.
+
+    Returns: { "agent_assignment": {agent: {provider, model}, ...} } so the
+    caller can show the new effective config without a follow-up GET.
+
+    Restart is still required for: prompt file changes (PromptLoader caches
+    files at first read), code changes, and provider client initialisation
+    bugs that need a fresh interpreter.
+    """
+    global _cleanup_fn
+    old_cleanup = _cleanup_fn
+    _cleanup_fn = None  # build_and_cache_graph will install the new one
+
+    build_and_cache_graph()
+
+    # Release the prior SqliteSaver only after the new graph is fully wired.
+    # Order matters: any new request landing during the rebuild will block on
+    # the FastAPI dependency injection until _graph / _deps are reassigned, so
+    # there is never a window where get_graph() returns None.
+    if old_cleanup is not None:
+        try:
+            old_cleanup()
+        except Exception:
+            logger.exception("reload_deps_and_graph: old cleanup_fn raised — continuing")
+
+    # Read the live assignment off each agent's provider so the response
+    # mirrors what the just-built graph will actually use. Tolerates mocked
+    # providers (test doubles) by skipping any agent whose provider doesn't
+    # expose provider_name / model_name.
+    assignment: dict[str, dict[str, str]] = {}
+    if _deps is not None:
+        for agent_name, attr in (
+            ("research_agent",   "research_agent"),
+            ("scoring_agent",    "scoring_agent"),
+            ("resume_critic",    "resume_critic"),
+            ("review_auditor",   "review_auditor"),
+            ("career_advisor",   "career_advisor"),
+            ("interview_coach",  "interview_coach"),
+            ("tailoring_agent",  "tailoring_agent"),
+            ("fidelity_reviewer","fidelity_reviewer"),
+        ):
+            try:
+                agent = getattr(_deps, attr, None)
+                if agent is None:
+                    continue
+                provider = getattr(agent, "_provider", None)
+                if provider is None:
+                    continue
+                pname = getattr(provider, "provider_name", None)
+                mname = getattr(provider, "model_name", None)
+                if pname and mname:
+                    assignment[agent_name] = {"provider": pname, "model": mname}
+            except Exception:
+                logger.exception("reload_deps_and_graph: could not read assignment for %s", agent_name)
+
+    return {"agent_assignment": assignment}
