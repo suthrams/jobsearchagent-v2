@@ -13,6 +13,7 @@ jobsearchagent-v2 is a multi-agent career intelligence system that helps users:
 This is a ground-up v2 refactor. v1 (`main.py`, `agents/`, `scrapers/`, `storage/`, `dashboard.py`) remains stable for reference — do not modify v1 files.
 
 For human-readable browseable documentation, see `docs/wiki.md`.
+Cost is a primary operational concern — when API spend surprises happen, see `docs/cost_troubleshooting.md`.
 
 ---
 
