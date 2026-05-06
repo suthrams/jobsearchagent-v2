@@ -57,12 +57,14 @@ v1 (`main.py` + three agents) established the core patterns that v2 built on. Un
 | Bounded ReAct | — | Research Agent (MAX_RESEARCH_STEPS = 2) | New |
 | Reflection Loop | — | Resume Critic → Review Auditor (MAX_REVIEW_ROUNDS = 3) | New |
 | Evaluator/Critic | — | Review Auditor scores Critic output | New |
-| Human-in-the-Loop | — | 7 checkpoints, state pause/resume via SqliteSaver | New |
-| Evidence-Bound Generation | — | TailoringAgent: every claim requires `supporting_evidence` | New |
-| Guardrail Agent | — | FidelityReviewer validates claims after every tailoring call | New |
+| Human-in-the-Loop | — | One active path: per-draft tailoring decisions (out-of-graph). Several in-graph checkpoints designed but later removed (ADR-054) or kept dark (ADR-055). | Reduced from original design |
+| Evidence-Bound Generation | — | TailoringAgent: every claim requires `supporting_evidence`; page-budget + section_label + impact_rationale enforced (ADR-056) | New, then tightened |
+| Guardrail Agent | — | FidelityReviewer validates claims, layout, rationale after every tailoring call | New |
 | Observability | Basic logging | 6-layer event tracking, per-call cost, security events | New |
 | Concurrent Scraping | — | ConcurrentAdzunaScraper (5 workers) | New |
 | Live/Mock Mode Gate | — | ANTHROPIC_API_KEY presence → real vs mocked deps | New |
+| Out-of-Graph Operations | `--tailor` CLI (no shared context) | On-demand tailoring router reads workflow checkpoint + repos; same agents, same fidelity contract (ADR-055) | New |
+| Pipeline Filter (input, not outcome) | v1 `excluded` flag on jobs | Restored as filter-only primitive (ADR-057); explicitly NOT application tracking | Restored from v1 |
 
 ---
 
@@ -78,11 +80,16 @@ v1 (`main.py` + three agents) established the core patterns that v2 built on. Un
 v1: main.py → profile_agent.load() → scoring_agent.score_batch() → [done]
 
 v2: LangGraph graph
-      discover_jobs → load_resume → [research + score concurrently]
-        → HITL: job selection
-        → deep_review loop → career_advisor → interview_coach
-        → HITL: tailoring approval
-        → tailoring → fidelity_review → report
+      register_run → discover_jobs → load_resume
+        → [research + score concurrently per job]
+        → auto-select qualifying jobs (ADR-054 — no HITL pause)
+        → [deep_review per selected job, concurrent]
+        → career_advisor → interview_coach (threshold-gated)
+        → generate_report
+
+      Tailoring is post-workflow + per-job (ADR-055):
+      POST /workflows/{wf}/jobs/{job}/tailorings
+        → TailoringAgent → FidelityReviewer → tailored_resumes
 ```
 
 **Why it matters:** State-driven execution enables HITL, error recovery, and workflow introspection. The graph topology is testable independently of agent quality.
@@ -186,27 +193,25 @@ Model assignment: **Haiku** — quality evaluation is a checking task, not a gen
 
 **v1:** None. `--tailor` was a separate CLI invocation after reviewing terminal output. No in-workflow pause/resume.
 
-**v2:** Seven explicit checkpoints embedded in the workflow. At each checkpoint:
-1. Backend sets `WorkflowState.status = waiting_for_user` and writes `pending_decision`
-2. SqliteSaver persists the paused state
-3. Backend serves the pending decision to the UI
-4. User submits a decision via the API
-5. Backend validates the decision and resumes the graph from the checkpoint
+**v2 (current state, post ADR-054 / ADR-055):** The HITL surface deliberately collapsed from the original 7-checkpoint design as we learned what users actually wanted to control. Two paths exist today:
 
-```
-HITL checkpoints:
-  1. Job Selection (after scoring)
-  2. Deep Review Approval
-  3. Interview Prep Decision
-  4. Tailoring Approval
-  5. Fidelity Review Resolution
-  6. Report Export Approval
-  7. Application Status Update
-```
+| Path | Status | What it does |
+|------|--------|--------------|
+| **In-graph interrupts** (`await_tailoring_approval`) | UI-dark, code retained | The original design: graph pauses, `WorkflowState.status = waiting_for_user`, SqliteSaver persists, UI serves `pending_decision`, API resumes graph on `POST /workflows/{id}/decisions`. Currently triggered only when `state["user_requested_tailoring"]=True` is set before run start, which the UI never does. |
+| **Out-of-graph decisions** (per draft, ADR-055) | Active | The current default for tailoring. After a workflow completes, the user generates drafts via `POST /workflows/{wf}/jobs/{job}/tailorings` and decides per draft via `POST /tailorings/{id}/decisions`. Decision lives on `tailored_resumes.decision` — there is no graph paused for the call. |
 
-**Key constraint:** The UI never auto-approves outputs. The backend validates every decision before resuming. The frontend renders state — it does not drive execution.
+What was removed and why:
 
-**References:** ADR-011 · ADR-047
+- **Job-selection HITL** (was checkpoint #1 in the original design): replaced by auto-select (ADR-054). Users found "pause to pick jobs" friction outweighed value when the threshold was already a meaningful filter.
+- **Deep-review approval, interview-prep gate, fidelity-review resolution, report-export approval, application-status update**: never wired. The first four were design intent that the rest of the pipeline never demanded; the last is out of scope per CLAUDE.md ("no application tracking features").
+
+**Key invariants that survived all the surface change:**
+- The UI never auto-approves outputs.
+- The backend validates every decision before persisting (out-of-graph) or resuming (in-graph).
+- The frontend renders state — it does not drive execution.
+- Per-job exclusion (ADR-057) is *not* HITL — it's a filter input the user gives at any time, not a graph pause.
+
+**References:** ADR-011 (in-graph pause primitive, retained for the dark path) · ADR-054 (auto-select replaced job HITL) · ADR-055 (out-of-graph tailoring decisions) · ADR-057 (exclusion is filter, not HITL).
 
 ---
 
@@ -290,20 +295,29 @@ MAX_LLM_CALLS_PER_RUN  = 200  # global budget — raised in ADR-054
 
 **v1:** `TailoringAgent` produced rewritten resume sections freely. No constraint on what Claude could claim. Gaps were listed but there was no mechanism to prevent fabrication.
 
-**v2:** Every tailored claim in `TailoredResumeDraft` must include a `supporting_evidence` field referencing the exact text in the original resume that supports the claim. The Fidelity Reviewer validates every claim against this evidence before the draft is persisted.
+**v2 (ADR-015 / ADR-016, tightened by ADR-056):** Every `TailoredBullet` in `TailoredResumeDraft` carries a structured contract that the Fidelity Reviewer enforces:
+
+| Field | Constraint |
+|-------|-----------|
+| `supporting_evidence` | Must quote text from the original resume (or be empty for `claim_type="gap"` / `"remove"`). Empty-with-content is a fabrication flag. |
+| `claim_type` | `reword \| emphasize \| gap \| remove`. `gap` surfaces missing experience without rewriting it; `remove` deletes a low-value bullet to free page space. |
+| `section_label` | Must match a real section of the candidate's `resume_profile` (`headline`, `summary`, `experience:<company>:<title>`, `skills`, ...). |
+| `impact_rationale` | One sentence (≤ 25 words) referencing a specific JD signal. Generic phrasing praise is rejected. |
+| `suggested_text` word count | Must fall in `[ceil(0.85·orig), floor(1.05·orig)]` for non-headline sections; `±3 words` for headline. Page-budget contract. |
 
 ```
-Tailoring Agent: claim + supporting_evidence (from original resume)
-  → Fidelity Reviewer: verifies each claim against its evidence
-    → pass: draft is shown to user
-    → fail: flagged claims surfaced at HITL checkpoint
+Tailoring Agent: bullet contract above + draft-level strategy summary
+  → Fidelity Reviewer: per-bullet evidence + length + section + rationale checks
+    → approved: draft is shown to user with all four checks passed
+    → revise:   diagnostic flags in required_revisions ("Bullet N: 28w > 18w original")
+    → reject:   unrecoverable fabrication or layout violation
 ```
 
-Missing experience is labeled as a gap — never rewritten as if it exists.
+Missing experience is labeled as a gap — never rewritten as if it exists. Excess length is rejected — the user's resume page count is preserved.
 
-**Why it matters:** Resume fabrication is a real risk in any AI tailoring system. Evidence binding makes fabrication structurally impossible within the prompt contract, and the fidelity guardrail makes it observable and stoppable even if the tailoring agent drifts.
+**Why it matters:** Resume fabrication is a real risk in any AI tailoring system. Evidence binding makes fabrication structurally impossible within the prompt contract, and the fidelity guardrail makes it observable and stoppable even if the tailoring agent drifts. ADR-056 extended the contract to also enforce *layout* fidelity — the most common reason candidates abandoned tailored output was that adopting suggestions blew the page count.
 
-**References:** ADR-015 · ADR-016 · ADR-017
+**References:** ADR-015 · ADR-016 · ADR-017 · ADR-056 (page-budget + section grouping + rationale + impact estimate)
 
 ---
 
@@ -423,11 +437,32 @@ Currently used for: on-demand resume tailoring (ADR-055). Decisions are recorded
 - Present → `_build_real_deps()`: real `ClaudeProvider`, `SqliteSaver`, real scrapers
 - Absent → `_build_mocked_deps()`: all 8 agents mocked, `MemorySaver`
 
-The graph topology is identical in both modes. The entire 389-test suite runs in mock mode — no API keys required for CI.
+The graph topology is identical in both modes. The full 470-test suite runs in mock mode — no API keys required for CI.
 
 **Why it matters:** Makes the system testable without API credentials and enables engineers to develop the UI and API layer without incurring LLM costs.
 
 **Reference:** ADR-048
+
+---
+
+### 21. Pipeline Filter (Filter Input, Not Outcome Tracking)
+
+**v1:** `dashboard.py::exclude_jobs_db` flipped an `excluded` flag on the `jobs` table; analytics views joined `WHERE excluded = 0`. Survived the lifetime of v1.
+
+**v2 (ADR-057):** Restored the same shape after dropping it during the v2 scope reset. The CLAUDE.md "no application tracking features" rule had inadvertently swept it out — but exclusion is fundamentally different from application tracking:
+
+| Concern | What it captures | Direction | Allowed? |
+|---|---|---|---|
+| **Pipeline filter** (this pattern) | "Hide this from my views and stop processing it" | Signal user gives TO the system | ✓ |
+| **Application tracking** | Apply date, recruiter, status transitions | Outcomes the system records ABOUT the user | ✗ — out of scope per CLAUDE.md |
+
+The schema captures only filter-shaped fields (`excluded`, `excluded_reason`, `excluded_at`). It does NOT capture `applied_at`, `application_status`, or any other behavior outcome. ADR-057 includes a code-review table that makes the line easy to police on future PRs.
+
+The cost-saving payoff comes for free via the existing dedup logic: `JobDiscoveryService.deduplicate()` already drops re-discovered URLs at `url_exists()`. An excluded job leaves its row in the DB; a future Adzuna run that surfaces the same URL with a fresh `source_job_id` is dropped before scoring without any extra logic.
+
+**Why it matters as a separate pattern:** Several obvious-looking features (saved searches, "remind me about this in 30 days", custom company block lists) are tempting to add but each is one step closer to becoming an ATS. Naming the filter-vs-tracker distinction up front makes it easier to evaluate future feature requests against the boundary.
+
+**References:** ADR-057 · CLAUDE.md "No application tracking features"
 
 ---
 
@@ -462,13 +497,21 @@ The graph topology is identical in both modes. The entire 389-test suite runs in
 
 ## Future Evolution
 
+Already shipped from the original "future" list:
+
+| Pattern | Where it landed |
+|---|---|
+| Parallel deep review | ADR-054 — `_DEEP_REVIEW_WORKERS=5` thread pool; section 18 |
+| Multi-provider support | ADR-053 — `ModelRegistry` with per-agent assignment via Settings UI |
+
 Items still ahead, in order of value:
 
 | Pattern | Trigger to introduce |
 |---|---|
-| Memory-driven personalization | After observability is mature and run history data is sufficient to validate suggestions |
-| Adaptive workflow routing | After the static plan has proven stable across 50+ real runs |
-| Parallel deep review | After concurrent scoring proves thread-safety in production |
-| Multi-provider support | When an alternative model meaningfully outperforms Claude on a specific agent task |
+| Memory-driven personalization | After observability is mature and run history data is sufficient to validate suggestions. Per-job exclusion (ADR-057) is the first piece of feedback signal the system captures — natural seed for "users who exclude X tend to also exclude Y" inference. |
+| Per-suggestion accept/reject in tailoring | Currently a draft is approved as a whole. Per-suggestion decisions need a new `tailored_resumes.suggestion_decisions_json` column and a UI redesign — captured as a follow-up to ADR-056. |
+| Iterative-revision context for tailoring | Calling `trigger_tailoring` again produces an amnesiac fresh draft. Carrying prior accept/reject decisions and a free-text revise note into the next call would close the loop. Depends on per-suggestion decisions above. |
+| Adaptive workflow routing | After the static plan has proven stable across 50+ real runs. |
+| Domain-aware ScoringAgent | The `domain_score` field is wired but the agent doesn't yet have JD-domain heuristics. After more runs land. |
 
 Introduce each only after: observability is mature, evaluation framework is established, and the existing workflow is stable.
