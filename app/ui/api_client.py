@@ -120,13 +120,24 @@ def get_report(workflow_id: str) -> dict:
 
 # ── On-demand resume tailoring ───────────────────────────────────────────────
 
-_TIMEOUT_TAILOR = 60.0  # tailoring + fidelity round-trip can take 10-20s with cold caches
+# Sized for the v5 tailoring prompts (ADR-056). Observed median latency for
+# Sonnet tailoring + Haiku fidelity is ~60-70s end-to-end with the larger
+# prompt + structured output (section_label + impact_rationale per bullet).
+# 180s gives headroom for one provider-level retry without false timeouts.
+# If the client DOES time out, the server typically still completes and
+# persists the draft — see _TimeoutMaybePersisted handling in the UI.
+_TIMEOUT_TAILOR = 180.0
 
 
 def trigger_tailoring(workflow_id: str, job_id: str) -> dict:
     """Run tailoring + fidelity for one (workflow, job). Synchronous; returns the draft.
 
     POSTs to the workflow-scoped tailorings collection — creates a new tailoring resource.
+
+    Note: if this raises httpx.ReadTimeout, the server-side work usually
+    completes and persists anyway (the synchronous path can outlast the
+    socket timeout). The Streamlit caller catches ReadTimeout specifically
+    and tells the user to refresh — the new draft will appear in the list.
     """
     r = httpx.post(
         f"{BASE_URL}/workflows/{workflow_id}/jobs/{job_id}/tailorings",

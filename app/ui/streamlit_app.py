@@ -26,6 +26,7 @@ from pathlib import Path
 # directory on sys.path[0], not the project root).
 sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
 
+import httpx
 import pandas as pd
 import plotly.express as px
 import streamlit as st
@@ -1373,11 +1374,20 @@ elif view == "Workflow Detail":
             with st.expander(label, expanded=False):
                 trig_col, _ = st.columns([1, 4])
                 if trig_col.button("✨ Generate new draft", key=f"trig_tail_{jid}"):
-                    with st.spinner("Tailoring + fidelity review…"):
+                    with st.spinner("Tailoring + fidelity review (~60-90s with v5 prompts)…"):
                         try:
                             api.trigger_tailoring(wf_id, jid)
                             _cached_list_tailorings.clear()
                             st.rerun()
+                        except httpx.ReadTimeout:
+                            # The synchronous server path can outlast the socket
+                            # timeout (180s). The draft typically lands in
+                            # tailored_resumes anyway -- check the list.
+                            _cached_list_tailorings.clear()
+                            st.warning(
+                                "Client timed out, but the server may have completed the draft anyway. "
+                                "Click the section header to collapse and reopen — the new draft should appear."
+                            )
                         except Exception as exc:
                             st.error(f"Tailoring failed: {exc}")
                 if not existing:
