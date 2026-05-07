@@ -411,25 +411,80 @@ def test_extract_usage_from_ai_message_metadata(tmp_path):
         usage_metadata={"input_tokens": 300, "output_tokens": 120, "total_tokens": 420},
     )
     raw = {"raw": ai_message, "parsed": _Score(result="x", score=1), "parsing_error": None}
-    tokens_in, tokens_out = provider._extract_usage(raw)
+    tokens_in, cache_creation, cache_read, tokens_out = provider._extract_usage(raw)
     assert tokens_in == 300
+    assert cache_creation == 0
+    assert cache_read == 0
     assert tokens_out == 120
 
 
 def test_extract_usage_returns_zeros_when_metadata_absent(tmp_path):
     provider = _make_provider(tmp_path)
-    # AIMessage with no usage_metadata — _extract_usage must return (0, 0) gracefully
+    # AIMessage with no usage_metadata — _extract_usage must return all-zeros gracefully
     raw = {"raw": MagicMock(spec=[]), "parsed": _Score(result="x", score=1)}
-    tokens_in, tokens_out = provider._extract_usage(raw)
-    assert tokens_in == 0
-    assert tokens_out == 0
+    assert provider._extract_usage(raw) == (0, 0, 0, 0)
+
+
+def test_extract_usage_reads_cache_tokens_from_input_token_details(tmp_path):
+    """LangChain v0.3+ exposes prompt-cache splits in usage_metadata.input_token_details."""
+    provider = _make_provider(tmp_path)
+    ai_message = AIMessage(
+        content="",
+        usage_metadata={
+            "input_tokens": 200,
+            "output_tokens": 50,
+            "total_tokens": 250,
+            "input_token_details": {"cache_creation": 1500, "cache_read": 4000},
+        },
+    )
+    raw = {"raw": ai_message, "parsed": _Score(result="x", score=1), "parsing_error": None}
+    tokens_in, cache_creation, cache_read, tokens_out = provider._extract_usage(raw)
+    assert (tokens_in, cache_creation, cache_read, tokens_out) == (200, 1500, 4000, 50)
+
+
+def test_extract_usage_falls_back_to_response_metadata_for_legacy_payloads(tmp_path):
+    """Older payload shapes carry cache counts on response_metadata.usage instead."""
+    provider = _make_provider(tmp_path)
+    ai_message = AIMessage(
+        content="",
+        usage_metadata={"input_tokens": 100, "output_tokens": 25, "total_tokens": 125},
+        response_metadata={
+            "usage": {
+                "cache_creation_input_tokens": 500,
+                "cache_read_input_tokens": 2000,
+            }
+        },
+    )
+    raw = {"raw": ai_message, "parsed": _Score(result="x", score=1), "parsing_error": None}
+    tokens_in, cache_creation, cache_read, tokens_out = provider._extract_usage(raw)
+    assert (tokens_in, cache_creation, cache_read, tokens_out) == (100, 500, 2000, 25)
 
 
 def test_estimate_cost_haiku(tmp_path):
     loader = PromptLoader(_write_prompts(tmp_path))
     provider = ClaudeProvider(loader, model_name="claude-haiku-4-5-20251001", _model=MagicMock())
     cost = provider.estimate_cost(1_000_000, 1_000_000)
-    assert abs(cost - 1.50) < 0.01  # 0.25 + 1.25 per million
+    assert abs(cost - 6.00) < 0.01  # $1.00 input + $5.00 output per million
+
+
+def test_estimate_cost_with_cache_applies_cache_modifiers(tmp_path):
+    """Cache writes bill at 1.25x input rate, cache reads at 0.10x. Without
+    these multipliers the rollup undercounts every cached call."""
+    loader = PromptLoader(_write_prompts(tmp_path))
+    provider = ClaudeProvider(loader, model_name="claude-haiku-4-5-20251001", _model=MagicMock())
+    # 1M regular input ($1.00) + 1M cache_creation (1.00 * 1.25 = $1.25)
+    # + 1M cache_read (1.00 * 0.10 = $0.10) + 1M output ($5.00) = $7.35
+    cost = provider._estimate_cost_with_cache(1_000_000, 1_000_000, 1_000_000, 1_000_000)
+    assert abs(cost - 7.35) < 0.01
+
+
+def test_estimate_cost_with_cache_zero_cache_matches_estimate_cost(tmp_path):
+    """When there's no cache activity, both cost paths must agree."""
+    loader = PromptLoader(_write_prompts(tmp_path))
+    provider = ClaudeProvider(loader, model_name="claude-sonnet-4-6", _model=MagicMock())
+    plain = provider.estimate_cost(500_000, 200_000)
+    cached = provider._estimate_cost_with_cache(500_000, 0, 0, 200_000)
+    assert abs(plain - cached) < 1e-9
 
 
 def test_estimate_cost_sonnet(tmp_path):
@@ -662,3 +717,50 @@ def test_make_resume_enhance_fn_calls_provider_complete(tmp_path):
     call_kwargs = mock_provider.complete.call_args.kwargs
     assert call_kwargs["agent_name"] == "resume_parser"
     assert result == {"name": "Jane"}
+
+
+def test_make_resume_enhance_fn_logs_llm_call_when_observability_and_workflow_id_present():
+    """With observability + workflow_id wired, the enhancement pass must write
+    an llm_calls audit row so the resume_parser cost is visible to the rollup."""
+    mock_provider = MagicMock(spec=LLMClient)
+    mock_provider.complete.return_value = {"name": "Jane"}
+    mock_provider.last_call_usage.return_value = (1234, 567, 0.0123)
+    mock_provider.provider_name = "claude"
+    mock_provider.model_name = "claude-sonnet-4-6"
+
+    obs = MagicMock()
+    fn = make_resume_enhance_fn(mock_provider, observability=obs)
+    fn("raw text here", {"name": "heuristic"}, "wf-001")
+
+    obs.log_llm_call.assert_called_once()
+    kwargs = obs.log_llm_call.call_args.kwargs
+    assert kwargs["workflow_id"] == "wf-001"
+    assert kwargs["agent_name"] == "resume_parser"
+    assert kwargs["provider"] == "claude"
+    assert kwargs["model"] == "claude-sonnet-4-6"
+    assert kwargs["tokens_input"] == 1234
+    assert kwargs["tokens_output"] == 567
+    assert kwargs["cost_usd"] == 0.0123
+
+
+def test_make_resume_enhance_fn_skips_log_without_workflow_id():
+    """No workflow_id → no audit row. The provider call still happens."""
+    mock_provider = MagicMock(spec=LLMClient)
+    mock_provider.complete.return_value = {}
+    mock_provider.last_call_usage.return_value = (1, 1, 0.0)
+    obs = MagicMock()
+    fn = make_resume_enhance_fn(mock_provider, observability=obs)
+    fn("text", {})  # no workflow_id
+    obs.log_llm_call.assert_not_called()
+
+
+def test_make_resume_enhance_fn_swallows_observability_failures():
+    """If log_llm_call raises, the enhancement result must still be returned."""
+    mock_provider = MagicMock(spec=LLMClient)
+    mock_provider.complete.return_value = {"name": "ok"}
+    mock_provider.last_call_usage.return_value = (10, 5, 0.0001)
+    obs = MagicMock()
+    obs.log_llm_call.side_effect = RuntimeError("audit DB exploded")
+    fn = make_resume_enhance_fn(mock_provider, observability=obs)
+    result = fn("text", {}, "wf-002")
+    assert result == {"name": "ok"}

@@ -121,3 +121,77 @@ def test_fetch_failure_recorded_as_error():
     errs = scraper.errors()
     assert len(errs) == 1
     assert "fetch failed" in errs[0]["reason"]
+
+
+# ── Observability — LLM fallback writes an llm_calls audit row ────────────────
+
+def _good_llm_payload() -> dict:
+    return {
+        "title": "Principal Engineer",
+        "company": "WidgetCo",
+        "location": "Remote",
+        "work_mode": "remote",
+        "description": "x" * 500,
+        "salary_min": None,
+        "salary_max": None,
+        "salary_currency": None,
+    }
+
+
+def test_llm_fallback_logs_llm_call_when_observability_and_workflow_id_present():
+    """Without this audit row the custom_url_extractor cost lands only in the
+    provider's thread-local last_usage and is invisible to the run rollup."""
+    llm = MagicMock()
+    llm.complete.return_value = _good_llm_payload()
+    llm.last_call_usage.return_value = (800, 200, 0.0042)
+    llm.provider_name = "claude"
+    llm.model_name = "claude-sonnet-4-6"
+
+    obs = MagicMock()
+    scraper = CustomUrlScraper(
+        ["https://example.com/job/x"],
+        llm_client=llm,
+        observability=obs,
+        workflow_id="wf-77",
+    )
+    with patch.object(scraper, "_fetch", return_value=_THIN_HTML):
+        scraper.scrape()
+
+    obs.log_llm_call.assert_called_once()
+    kwargs = obs.log_llm_call.call_args.kwargs
+    assert kwargs["workflow_id"] == "wf-77"
+    assert kwargs["agent_name"] == "custom_url_extractor"
+    assert kwargs["provider"] == "claude"
+    assert kwargs["model"] == "claude-sonnet-4-6"
+    assert kwargs["tokens_input"] == 800
+    assert kwargs["tokens_output"] == 200
+    assert kwargs["cost_usd"] == 0.0042
+
+
+def test_llm_fallback_skips_log_without_observability():
+    """Backward-compat: scrapers built without observability still work, just
+    without the audit row (matches the prior behavior)."""
+    llm = MagicMock()
+    llm.complete.return_value = _good_llm_payload()
+    scraper = CustomUrlScraper(["https://example.com/job/y"], llm_client=llm)
+    with patch.object(scraper, "_fetch", return_value=_THIN_HTML):
+        jobs = scraper.scrape()
+    assert len(jobs) == 1
+
+
+def test_llm_fallback_swallows_observability_failures():
+    """If log_llm_call raises, the scrape result must still come through."""
+    llm = MagicMock()
+    llm.complete.return_value = _good_llm_payload()
+    llm.last_call_usage.return_value = (1, 1, 0.0)
+    obs = MagicMock()
+    obs.log_llm_call.side_effect = RuntimeError("audit DB exploded")
+    scraper = CustomUrlScraper(
+        ["https://example.com/job/z"],
+        llm_client=llm,
+        observability=obs,
+        workflow_id="wf-99",
+    )
+    with patch.object(scraper, "_fetch", return_value=_THIN_HTML):
+        jobs = scraper.scrape()
+    assert len(jobs) == 1

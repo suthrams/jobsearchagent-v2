@@ -42,15 +42,20 @@ Under current limits (`MAX_JOBS_PER_RUN=10`, `MAX_SELECTED_JOBS=3`,
 
 | Phase | Model mix | Approximate cost |
 |---|---|---|
-| Discovery (10 jobs × research + scoring, both Haiku) | Haiku × 20 calls | ~$0.02 |
-| Deep review (3 jobs × up to 2 rounds, Haiku critic + auditor) | Haiku × ~12 calls | ~$0.03 |
+| Discovery (10 jobs × research + scoring, both Haiku) | Haiku × 20 calls | ~$0.08 |
+| Deep review (3 jobs × up to 2 rounds, Haiku critic + auditor) | Haiku × ~12 calls | ~$0.12 |
 | Career advice (3 jobs, Sonnet) | Sonnet × 3 | ~$0.06 |
 | Interview prep (3 jobs, Sonnet) | Sonnet × 3 | ~$0.06 |
-| **Subtotal — full run, no tailoring** | | **~$0.17** |
-| Per tailored draft (Sonnet tailoring + Haiku fidelity) | Sonnet + Haiku | ~$0.025 |
+| **Subtotal — full run, no tailoring** | | **~$0.32** |
+| Per tailored draft (Sonnet tailoring + Haiku fidelity) | Sonnet + Haiku | ~$0.03 |
 
-**$25 budget supports ~110-130 runs** at this baseline. Compare to
-$1.40/run before the cuts (~18 runs from the same budget).
+**$25 budget supports ~70-80 runs** at this baseline.
+
+> **Updated 2026-05-07:** prior projections of ~$0.17/run and ~110-130
+> runs/budget were computed against an outdated Haiku 4.5 rate
+> ($0.25/$1.25 per million); the rate table below has the corrected
+> $1.00/$5.00 figures. Re-baseline against your **Cost Dashboard** after
+> the next run.
 
 Verify your numbers in **Cost Dashboard** after the next run; if the
 totals match within 20% you're on the baseline.
@@ -61,7 +66,7 @@ totals match within 20% you're on the baseline.
 
 | Provider | Model | Input | Output | vs Sonnet (input) |
 |---|---|---:|---:|---|
-| Anthropic | `claude-haiku-4-5-20251001` | $0.25 | $1.25 | **12× cheaper** |
+| Anthropic | `claude-haiku-4-5-20251001` | $1.00 | $5.00 | **3× cheaper** |
 | Anthropic | `claude-sonnet-4-6` | $3.00 | $15.00 | baseline |
 | Anthropic | `claude-opus-4-7` | $15.00 | $75.00 | **5× more expensive** |
 | OpenAI | `gpt-4o-mini` | $0.15 | $0.60 | **20× cheaper** |
@@ -73,6 +78,20 @@ Rates live in
 and
 [`app/providers/openai_provider.py::_PRICING`](../app/providers/openai_provider.py).
 Update both files when provider rates change.
+
+### Prompt-cache modifiers (Anthropic ephemeral, 5-min)
+
+Cached calls are not billed at the flat input rate. The provider applies
+these multipliers to the per-model input rate when computing per-call cost:
+
+| Token category | Multiplier on input rate |
+|---|---:|
+| `cache_creation_input_tokens` (write) | 1.25× |
+| `cache_read_input_tokens` (read) | 0.10× |
+| Regular input tokens | 1.00× |
+
+Constants live in `app/providers/claude_provider.py`
+(`_CACHE_WRITE_MULTIPLIER`, `_CACHE_READ_MULTIPLIER`).
 
 ---
 

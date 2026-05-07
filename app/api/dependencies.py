@@ -330,8 +330,12 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     tailoring = TailoringAgent(registry.for_agent("tailoring_agent"), obs)
     fidelity = FidelityReviewer(registry.for_agent("fidelity_reviewer"), obs)
 
-    # ResumeParser uses its own assigned provider too
-    enhance_fn = make_resume_enhance_fn(registry.for_agent("resume_parser"))
+    # ResumeParser uses its own assigned provider too. Wire observability so the
+    # LLM enhancement pass writes an llm_calls audit row when invoked from a
+    # workflow run (the cost was previously dropped on the floor).
+    enhance_fn = make_resume_enhance_fn(
+        registry.for_agent("resume_parser"), observability=obs,
+    )
     resume_parser = ResumeParser(resume_repo, enhance_fn=enhance_fn)
 
     # ConfigService for the rest of the build (already loaded above for the registry)
@@ -346,9 +350,16 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     report_gen = ReportGenerator(score_repo, review_repo, advice_repo, tailoring_repo, report_repo, job_repo)
 
     # Custom URL scraper factory — built per workflow run with the user-supplied URLs.
+    # observability + workflow_id are forwarded so the LLM-fallback extraction
+    # writes to the run's llm_calls audit (otherwise its cost is invisible).
     from app.services.custom_url_scraper import CustomUrlScraper
     _custom_url_provider = registry.for_agent("custom_url_extractor")
-    custom_url_factory = lambda urls: CustomUrlScraper(urls, llm_client=_custom_url_provider)
+    custom_url_factory = lambda urls, workflow_id: CustomUrlScraper(
+        urls,
+        llm_client=_custom_url_provider,
+        observability=obs,
+        workflow_id=workflow_id,
+    )
 
     return WorkflowDependencies(
         research_agent=research,

@@ -42,9 +42,15 @@ _RETRYABLE_ERRORS = (
 # Update these constants when Anthropic changes pricing.
 _PRICING: dict[str, dict[str, float]] = {
     "claude-sonnet-4-6":          {"input": 3.00,  "output": 15.00},
-    "claude-haiku-4-5-20251001":  {"input": 0.25,  "output": 1.25},
+    "claude-haiku-4-5-20251001":  {"input": 1.00,  "output": 5.00},
 }
 _FALLBACK_PRICING: dict[str, float] = {"input": 3.00, "output": 15.00}
+
+# Anthropic ephemeral (5-minute) prompt-cache pricing modifiers, applied to the
+# base input rate. Without these, every cached call undercounts: cache writes
+# bill at 1.25x and cache reads at 0.10x, but neither shows up in input_tokens.
+_CACHE_WRITE_MULTIPLIER: float = 1.25
+_CACHE_READ_MULTIPLIER: float = 0.10
 
 
 class ClaudeProvider(LLMClient):
@@ -250,13 +256,51 @@ class ClaudeProvider(LLMClient):
             )
         return raw_result["parsed"].model_dump()
 
-    def _extract_usage(self, raw_result: dict) -> tuple[int, int]:
-        """Pull input/output token counts from the raw AIMessage's usage_metadata."""
+    def _extract_usage(self, raw_result: dict) -> tuple[int, int, int, int]:
+        """Pull token counts from the raw AIMessage.
+
+        Returns (input_tokens, cache_creation_tokens, cache_read_tokens, output_tokens).
+        Reads usage_metadata.input_token_details first (LangChain v0.3+ standard),
+        then falls back to response_metadata.usage with Anthropic's raw key names
+        for older payload shapes. The cache split is required to bill correctly:
+        cache writes cost 1.25x input, cache reads cost 0.10x input.
+        """
         ai_message = raw_result.get("raw")
         if not ai_message or not hasattr(ai_message, "usage_metadata"):
-            return 0, 0
+            return 0, 0, 0, 0
         usage = ai_message.usage_metadata or {}
-        return usage.get("input_tokens", 0), usage.get("output_tokens", 0)
+        input_tokens = int(usage.get("input_tokens", 0) or 0)
+        output_tokens = int(usage.get("output_tokens", 0) or 0)
+
+        details = usage.get("input_token_details") or {}
+        cache_creation = int(details.get("cache_creation", 0) or 0)
+        cache_read = int(details.get("cache_read", 0) or 0)
+
+        if cache_creation == 0 and cache_read == 0:
+            meta = getattr(ai_message, "response_metadata", None) or {}
+            raw_usage = meta.get("usage") or {}
+            cache_creation = int(raw_usage.get("cache_creation_input_tokens", 0) or 0)
+            cache_read = int(raw_usage.get("cache_read_input_tokens", 0) or 0)
+
+        return input_tokens, cache_creation, cache_read, output_tokens
+
+    def _estimate_cost_with_cache(
+        self,
+        tokens_in: int,
+        cache_creation: int,
+        cache_read: int,
+        tokens_out: int,
+    ) -> float:
+        """Cost in USD, including Anthropic prompt-cache write/read modifiers."""
+        pricing = _PRICING.get(self._model_name, _FALLBACK_PRICING)
+        in_rate = pricing["input"]
+        out_rate = pricing["output"]
+        return (
+            tokens_in * in_rate
+            + cache_creation * in_rate * _CACHE_WRITE_MULTIPLIER
+            + cache_read * in_rate * _CACHE_READ_MULTIPLIER
+            + tokens_out * out_rate
+        ) / 1_000_000
 
     # ── Logging ───────────────────────────────────────────────────────────────
 
@@ -265,16 +309,24 @@ class ClaudeProvider(LLMClient):
         return getattr(self._tlocal, "last_usage", (0, 0, 0.0))
 
     def _log_call(self, agent_name: str, raw_result: dict, elapsed_ms: int) -> None:
-        """Log token usage and prompt version to the Python logger, and save to thread-local."""
-        tokens_in, tokens_out = self._extract_usage(raw_result)
-        cost = self.estimate_cost(tokens_in, tokens_out)
-        self._tlocal.last_usage = (tokens_in, tokens_out, cost)
+        """Log token usage and prompt version to the Python logger, and save to thread-local.
+
+        last_usage stores total_input = regular + cache_creation + cache_read so the
+        llm_calls audit row reflects what Anthropic actually counted, not just the
+        non-cached slice. Cost is computed against each input category at its own rate.
+        """
+        tokens_in, cache_creation, cache_read, tokens_out = self._extract_usage(raw_result)
+        cost = self._estimate_cost_with_cache(tokens_in, cache_creation, cache_read, tokens_out)
+        total_input = tokens_in + cache_creation + cache_read
+        self._tlocal.last_usage = (total_input, tokens_out, cost)
         version = self._prompt_loader.get_version(agent_name)
         logger.info(
             "llm_call agent=%s model=%s prompt_version=%s "
-            "tokens_in=%d tokens_out=%d cost_usd=%.6f latency_ms=%d",
+            "tokens_in=%d (regular=%d cache_w=%d cache_r=%d) tokens_out=%d "
+            "cost_usd=%.6f latency_ms=%d",
             agent_name, self._model_name, version,
-            tokens_in, tokens_out, cost, elapsed_ms,
+            total_input, tokens_in, cache_creation, cache_read,
+            tokens_out, cost, elapsed_ms,
         )
 
 
@@ -293,30 +345,53 @@ class _ResumeEnhancement(BaseModel):
     certifications: list[CertificationEntry] = []
 
 
-def make_resume_enhance_fn(provider: LLMClient) -> Callable[[str, dict], dict]:
+def make_resume_enhance_fn(
+    provider: LLMClient,
+    observability: "ObservabilityService | None" = None,
+) -> Callable[..., dict]:
     """Return a bound callable compatible with ResumeParser.enhance_fn.
 
-    The orchestrator (Phase 5) calls this once at startup and passes the result
-    to ResumeParser. ResumeParser itself has no direct dependency on any provider.
+    The orchestrator calls this once at startup and passes the result to
+    ResumeParser. ResumeParser itself has no direct dependency on any provider.
 
-    The returned function:
-      - Receives raw_text (full resume text) and heuristic_fields (dict from
-        the heuristic parser pass)
-      - Asks Claude to verify and enrich the heuristic fields, not re-parse
-        from scratch — this keeps the output grounded in the actual resume text
-      - Returns a plain dict; ResumeParser merges it into the ResumeProfile
+    When ``observability`` is provided AND the parser forwards a non-empty
+    ``workflow_id`` to the closure, this writes an llm_calls audit row so the
+    resume_parser call shows up in the cost rollup. Without that wiring the
+    Sonnet enhancement pass billed by Anthropic was previously invisible to
+    ``compute_run_totals_from_llm_calls``.
 
-    Args:
-        provider: Any LLMClient implementation (ClaudeProvider in production,
-                  mock in tests).
-
-    Returns:
-        Callable[[str, dict], dict] matching the enhance_fn contract.
+    The closure accepts an optional third arg (``workflow_id``) so legacy
+    2-arg invocations from tests / non-workflow callers keep working.
     """
-    def enhance(raw_text: str, heuristic_fields: dict) -> dict:
-        return provider.complete(
-            agent_name="resume_parser",
+    agent = "resume_parser"
+
+    def enhance(raw_text: str, heuristic_fields: dict, workflow_id: str | None = None) -> dict:
+        t0 = time.monotonic()
+        result = provider.complete(
+            agent_name=agent,
             context={"raw_text": raw_text, "heuristic_fields": heuristic_fields},
             schema=_ResumeEnhancement,
         )
+        latency_ms = int((time.monotonic() - t0) * 1000)
+
+        if observability is not None and workflow_id:
+            try:
+                ti, to, cost = provider.last_call_usage()
+            except (AttributeError, TypeError, ValueError):
+                ti, to, cost = 0, 0, 0.0
+            try:
+                observability.log_llm_call(
+                    workflow_id=workflow_id,
+                    agent_name=agent,
+                    provider=getattr(provider, "provider_name", "unknown"),
+                    model=getattr(provider, "model_name", "unknown"),
+                    tokens_input=int(ti),
+                    tokens_output=int(to),
+                    cost_usd=float(cost),
+                    latency_ms=latency_ms,
+                )
+            except Exception:
+                logger.exception("make_resume_enhance_fn: log_llm_call failed")
+        return result
+
     return enhance

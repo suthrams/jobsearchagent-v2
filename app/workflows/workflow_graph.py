@@ -73,9 +73,11 @@ class WorkflowDependencies:
     # Cross-cutting
     observability: ObservabilityService
     checkpointer: SqliteSaver
-    # Optional per-run scraper factory; receives the URL list and returns a
-    # BaseScraper-compatible object. None disables custom URL ingestion.
-    custom_url_scraper_factory: Callable[[list[str]], Any] | None = None
+    # Optional per-run scraper factory; receives (urls, workflow_id) and returns
+    # a BaseScraper-compatible object. workflow_id is forwarded so the scraper
+    # can attribute its LLM-fallback cost to the run. None disables custom URL
+    # ingestion.
+    custom_url_scraper_factory: Callable[[list[str], str], Any] | None = None
 
 
 def build_graph(deps: WorkflowDependencies):

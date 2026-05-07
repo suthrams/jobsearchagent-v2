@@ -59,7 +59,9 @@ def make_load_resume_node(
                 "Parse the resume PDF first (e.g. via ResumeParser.parse_pdf) and "
                 "pass the returned resume_id to the workflow."
             )
-        profile = resume_parser.parse_pdf(str(resume_id), file_name=_resume_path.name)
+        profile = resume_parser.parse_pdf(
+            str(resume_id), file_name=_resume_path.name, workflow_id=workflow_id,
+        )
         logger.info("load_resume: parsed PDF %s for workflow %s", resume_id, workflow_id)
 
         return {

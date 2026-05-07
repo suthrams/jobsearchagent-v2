@@ -22,7 +22,7 @@ def make_discover_jobs_node(
     discovery_service: JobDiscoveryService,
     job_repo: JobRepository,
     observability: ObservabilityService,
-    custom_url_scraper_factory: Callable[[list[str]], Any] | None = None,
+    custom_url_scraper_factory: Callable[[list[str], str], Any] | None = None,
 ) -> Callable[[dict], dict]:
     def discover_jobs(state: dict) -> dict:
         workflow_id: str = state.get("workflow_id", "")
@@ -35,7 +35,7 @@ def make_discover_jobs_node(
         custom_scraper = None
         if custom_urls and custom_url_scraper_factory is not None:
             try:
-                custom_scraper = custom_url_scraper_factory(custom_urls)
+                custom_scraper = custom_url_scraper_factory(custom_urls, workflow_id)
                 extra_scrapers.append(custom_scraper)
             except Exception as exc:
                 logger.warning("discover_jobs: failed to build CustomUrlScraper: %s", exc)

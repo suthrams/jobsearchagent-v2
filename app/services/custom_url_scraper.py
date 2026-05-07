@@ -15,16 +15,20 @@ from __future__ import annotations
 import json
 import logging
 import re
+import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from types import SimpleNamespace
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
 from app.providers.llm_client import LLMClient, LLMProviderError
+
+if TYPE_CHECKING:
+    from app.services.observability_service import ObservabilityService
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +90,9 @@ class CustomUrlScraper:
         urls: list[str],
         llm_client: LLMClient | None = None,
         timeout_s: float = _DEFAULT_TIMEOUT_S,
+        *,
+        observability: "ObservabilityService | None" = None,
+        workflow_id: str | None = None,
     ) -> None:
         # Dedup, strip, drop empties, cap.
         seen: set[str] = set()
@@ -104,6 +111,11 @@ class CustomUrlScraper:
         self._llm = llm_client
         self._timeout = timeout_s
         self._errors: list[dict] = []
+        # Both required for the LLM-fallback call to write an llm_calls audit row;
+        # absent either, the call still runs but its cost lands only in the
+        # provider's thread-local last_usage and not in the run's cost rollup.
+        self._observability = observability
+        self._workflow_id = workflow_id
 
     # ── BaseScraper-compatible entry point ────────────────────────────────────
 
@@ -248,17 +260,49 @@ class CustomUrlScraper:
             return prior
         # Truncate to keep token cost bounded
         text = text[:_MAX_HTML_CHARS]
+
+        t0 = time.monotonic()
         result = self._llm.complete(
             agent_name="custom_url_extractor",
             context={"url": url, "page_text": text, "prior_heuristics": prior},
             schema=_CustomJobExtraction,
         )
+        latency_ms = int((time.monotonic() - t0) * 1000)
+        self._record_llm_call(latency_ms)
+
         # Merge: LLM wins where it produced a value, prior fills gaps
         merged = dict(prior)
         for key, value in result.items():
             if value not in (None, "", []):
                 merged[key] = value
         return merged
+
+    def _record_llm_call(self, latency_ms: int) -> None:
+        """Persist an llm_calls audit row for the LLM-fallback extraction.
+
+        No-op unless both observability and workflow_id were supplied at
+        construction. Failures are swallowed — observability must never crash
+        the scraper.
+        """
+        if self._observability is None or not self._workflow_id:
+            return
+        try:
+            ti, to, cost = self._llm.last_call_usage()
+        except (AttributeError, TypeError, ValueError):
+            ti, to, cost = 0, 0, 0.0
+        try:
+            self._observability.log_llm_call(
+                workflow_id=self._workflow_id,
+                agent_name="custom_url_extractor",
+                provider=getattr(self._llm, "provider_name", "unknown"),
+                model=getattr(self._llm, "model_name", "unknown"),
+                tokens_input=int(ti),
+                tokens_output=int(to),
+                cost_usd=float(cost),
+                latency_ms=latency_ms,
+            )
+        except Exception:
+            logger.exception("CustomUrlScraper: log_llm_call failed")
 
     @staticmethod
     def _html_to_text(html: str) -> str:

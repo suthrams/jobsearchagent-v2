@@ -66,21 +66,35 @@ class ResumeParser:
     def __init__(
         self,
         resume_repository: ResumeRepository,
-        enhance_fn: Callable[[str, dict], dict] | None = None,
+        enhance_fn: Callable[..., dict] | None = None,
     ) -> None:
         self._repo = resume_repository
+        # enhance_fn signature is (raw_text, heuristic_fields, workflow_id=None) -> dict.
+        # Older 2-arg callables still work because workflow_id has a default in the
+        # production factory and MagicMocks accept any args.
         self._enhance_fn = enhance_fn
 
-    def parse_pdf(self, file_path: str, file_name: str) -> ResumeProfile:
-        """Extract text from PDF, check cache, parse, and return ResumeProfile."""
+    def parse_pdf(
+        self, file_path: str, file_name: str, workflow_id: str | None = None
+    ) -> ResumeProfile:
+        """Extract text from PDF, check cache, parse, and return ResumeProfile.
+
+        ``workflow_id`` is forwarded to ``enhance_fn`` so the resulting LLM call
+        is recorded against the run's llm_calls audit. Pass None for ad-hoc
+        parses outside a workflow (e.g. resume upload endpoint) — cost is still
+        captured by the provider's thread-local last_usage but won't be linked
+        to a run.
+        """
         try:
             from pdfminer.high_level import extract_text  # noqa: PLC0415
             raw_text: str = extract_text(file_path) or ""
         except Exception as exc:
             raise ResumeParseError(f"Failed to read PDF '{file_path}': {exc}") from exc
-        return self.parse_text(raw_text, file_name)
+        return self.parse_text(raw_text, file_name, workflow_id=workflow_id)
 
-    def parse_text(self, raw_text: str, file_name: str) -> ResumeProfile:
+    def parse_text(
+        self, raw_text: str, file_name: str, workflow_id: str | None = None
+    ) -> ResumeProfile:
         """Parse pre-extracted text. Safe to call in tests without a real PDF."""
         if not raw_text or len(raw_text.strip()) < 50:
             raise ResumeParseError(
@@ -98,7 +112,7 @@ class ResumeParser:
 
         if self._enhance_fn is not None:
             try:
-                enhanced = self._enhance_fn(raw_text, fields)
+                enhanced = self._enhance_fn(raw_text, fields, workflow_id)
                 fields.update(enhanced)
             except Exception as exc:
                 raise ResumeParseError(f"Claude enhancement failed: {exc}") from exc
