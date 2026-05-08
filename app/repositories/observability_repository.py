@@ -28,16 +28,27 @@ class ObservabilityRepository:
 
     def create_llm_call(self, call_id: str, workflow_run_id: str, agent_name: str,
                         provider: str, model: str, tokens_input: int, tokens_output: int,
-                        estimated_cost: float, latency_ms: int) -> None:
+                        estimated_cost: float, latency_ms: int,
+                        cache_creation_tokens: int = 0,
+                        cache_read_tokens: int = 0) -> None:
+        """Insert one llm_calls row.
+
+        ``tokens_input`` is the union of regular + cache_creation + cache_read
+        (matches the BaseAgent contract). The ``cache_creation_tokens`` /
+        ``cache_read_tokens`` breakdown lets the Cost Dashboard surface the
+        prompt-cache hit ratio without re-deriving from the union total.
+        """
         now = utcnow_iso()
         with get_connection(self.db_path) as conn:
             conn.execute(
                 """INSERT INTO llm_calls
                    (id, workflow_run_id, agent_name, provider, model,
-                    tokens_input, tokens_output, estimated_cost, latency_ms, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    tokens_input, tokens_output, cache_creation_tokens,
+                    cache_read_tokens, estimated_cost, latency_ms, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (call_id, workflow_run_id, agent_name, provider, model,
-                 tokens_input, tokens_output, estimated_cost, latency_ms, now),
+                 tokens_input, tokens_output, int(cache_creation_tokens or 0),
+                 int(cache_read_tokens or 0), estimated_cost, latency_ms, now),
             )
 
     def create_run_metrics(self, metrics_id: str, workflow_run_id: str,

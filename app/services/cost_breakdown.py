@@ -58,6 +58,8 @@ def compute_breakdown(
                    COUNT(*)               AS calls,
                    SUM(tokens_input)      AS tokens_in,
                    SUM(tokens_output)     AS tokens_out,
+                   COALESCE(SUM(cache_creation_tokens), 0) AS cache_w,
+                   COALESCE(SUM(cache_read_tokens), 0)     AS cache_r,
                    SUM(estimated_cost)    AS cost,
                    AVG(latency_ms)        AS avg_latency
             FROM llm_calls
@@ -73,7 +75,9 @@ def compute_breakdown(
         conn.close()
 
     out_rows: list[dict] = []
-    for agent_name, model, calls, t_in, t_out, cost, avg_latency in rows:
+    for agent_name, model, calls, t_in, t_out, cache_w, cache_r, cost, avg_latency in rows:
+        cw = int(cache_w or 0)
+        cr = int(cache_r or 0)
         out_rows.append({
             "agent_name": agent_name or "?",
             "provider": _provider_for_model(model),
@@ -81,6 +85,9 @@ def compute_breakdown(
             "calls": int(calls or 0),
             "tokens_input": int(t_in or 0),
             "tokens_output": int(t_out or 0),
+            "cache_creation_tokens": cw,
+            "cache_read_tokens": cr,
+            "cache_hit_ratio": _cache_hit_ratio(int(t_in or 0), cw, cr),
             "cost_usd": float(cost or 0.0),
             "avg_latency_ms": float(avg_latency or 0.0),
         })
@@ -89,13 +96,33 @@ def compute_breakdown(
         "calls": sum(r["calls"] for r in out_rows),
         "tokens_input": sum(r["tokens_input"] for r in out_rows),
         "tokens_output": sum(r["tokens_output"] for r in out_rows),
+        "cache_creation_tokens": sum(r["cache_creation_tokens"] for r in out_rows),
+        "cache_read_tokens": sum(r["cache_read_tokens"] for r in out_rows),
         "cost_usd": sum(r["cost_usd"] for r in out_rows),
         "avg_latency_ms": (
             sum(r["avg_latency_ms"] * r["calls"] for r in out_rows)
             / sum(r["calls"] for r in out_rows)
         ) if out_rows else 0.0,
     }
+    agg["cache_hit_ratio"] = _cache_hit_ratio(
+        agg["tokens_input"], agg["cache_creation_tokens"], agg["cache_read_tokens"]
+    )
     return {"rows": out_rows, "aggregate": agg}
+
+
+def _cache_hit_ratio(tokens_input: int, cache_creation: int, cache_read: int) -> float:
+    """Cache reads as a fraction of total billable input tokens.
+
+    `tokens_input` here is the union of regular + cache_creation + cache_read
+    (the BaseAgent contract). Returns 0.0 when no input tokens were billed.
+    A value > 0.5 means most of your input is being served from cache, which
+    is the goal. A persistently low value means caching is configured but not
+    landing — check that prompts are stable across calls within the 5-minute
+    window.
+    """
+    if tokens_input <= 0:
+        return 0.0
+    return max(0.0, min(1.0, cache_read / tokens_input))
 
 
 def to_markdown(breakdown: dict) -> str:
@@ -130,6 +157,8 @@ def to_markdown(breakdown: dict) -> str:
 def _zero_aggregate() -> dict:
     return {
         "calls": 0, "tokens_input": 0, "tokens_output": 0,
+        "cache_creation_tokens": 0, "cache_read_tokens": 0,
+        "cache_hit_ratio": 0.0,
         "cost_usd": 0.0, "avg_latency_ms": 0.0,
     }
 
@@ -171,11 +200,13 @@ def compute_dashboard_aggregate(
     try:
         totals_row = conn.execute(
             f"""
-            SELECT COUNT(*)                       AS calls,
-                   COALESCE(SUM(tokens_input), 0)   AS tokens_in,
-                   COALESCE(SUM(tokens_output), 0)  AS tokens_out,
-                   COALESCE(SUM(estimated_cost), 0) AS cost,
-                   COUNT(DISTINCT workflow_run_id)  AS distinct_runs
+            SELECT COUNT(*)                                      AS calls,
+                   COALESCE(SUM(tokens_input), 0)                AS tokens_in,
+                   COALESCE(SUM(tokens_output), 0)               AS tokens_out,
+                   COALESCE(SUM(cache_creation_tokens), 0)       AS cache_w,
+                   COALESCE(SUM(cache_read_tokens), 0)           AS cache_r,
+                   COALESCE(SUM(estimated_cost), 0)              AS cost,
+                   COUNT(DISTINCT workflow_run_id)               AS distinct_runs
             FROM llm_calls
             {where}
             """,
@@ -183,10 +214,12 @@ def compute_dashboard_aggregate(
         agent_rows = conn.execute(
             f"""
             SELECT agent_name,
-                   COUNT(*)                         AS calls,
-                   COALESCE(SUM(tokens_input), 0)   AS tokens_in,
-                   COALESCE(SUM(tokens_output), 0)  AS tokens_out,
-                   COALESCE(SUM(estimated_cost), 0) AS cost
+                   COUNT(*)                                      AS calls,
+                   COALESCE(SUM(tokens_input), 0)                AS tokens_in,
+                   COALESCE(SUM(tokens_output), 0)               AS tokens_out,
+                   COALESCE(SUM(cache_creation_tokens), 0)       AS cache_w,
+                   COALESCE(SUM(cache_read_tokens), 0)           AS cache_r,
+                   COALESCE(SUM(estimated_cost), 0)              AS cost
             FROM llm_calls
             {where}
             GROUP BY agent_name
@@ -196,10 +229,12 @@ def compute_dashboard_aggregate(
         model_rows = conn.execute(
             f"""
             SELECT model,
-                   COUNT(*)                         AS calls,
-                   COALESCE(SUM(tokens_input), 0)   AS tokens_in,
-                   COALESCE(SUM(tokens_output), 0)  AS tokens_out,
-                   COALESCE(SUM(estimated_cost), 0) AS cost
+                   COUNT(*)                                      AS calls,
+                   COALESCE(SUM(tokens_input), 0)                AS tokens_in,
+                   COALESCE(SUM(tokens_output), 0)               AS tokens_out,
+                   COALESCE(SUM(cache_creation_tokens), 0)       AS cache_w,
+                   COALESCE(SUM(cache_read_tokens), 0)           AS cache_r,
+                   COALESCE(SUM(estimated_cost), 0)              AS cost
             FROM llm_calls
             {where}
             GROUP BY model
@@ -212,27 +247,40 @@ def compute_dashboard_aggregate(
     finally:
         conn.close()
 
+    totals_cache_w = int(totals_row[3] or 0)
+    totals_cache_r = int(totals_row[4] or 0)
+    totals_tokens_in = int(totals_row[1] or 0)
+
     return {
         "window_days": days,
         "totals": {
             "calls":         int(totals_row[0] or 0),
-            "tokens_input":  int(totals_row[1] or 0),
+            "tokens_input":  totals_tokens_in,
             "tokens_output": int(totals_row[2] or 0),
-            "cost_usd":      float(totals_row[3] or 0.0),
-            "distinct_runs": int(totals_row[4] or 0),
+            "cache_creation_tokens": totals_cache_w,
+            "cache_read_tokens": totals_cache_r,
+            "cache_hit_ratio": _cache_hit_ratio(totals_tokens_in, totals_cache_w, totals_cache_r),
+            "cost_usd":      float(totals_row[5] or 0.0),
+            "distinct_runs": int(totals_row[6] or 0),
         },
         "by_agent": [
             {"agent_name": a or "?", "calls": int(c or 0),
              "tokens_input": int(ti or 0), "tokens_output": int(to or 0),
+             "cache_creation_tokens": int(cw or 0),
+             "cache_read_tokens": int(cr or 0),
+             "cache_hit_ratio": _cache_hit_ratio(int(ti or 0), int(cw or 0), int(cr or 0)),
              "cost_usd": float(cost or 0.0)}
-            for a, c, ti, to, cost in agent_rows
+            for a, c, ti, to, cw, cr, cost in agent_rows
         ],
         "by_model": [
             {"model": m or "?", "provider": _provider_for_model(m),
              "calls": int(c or 0),
              "tokens_input": int(ti or 0), "tokens_output": int(to or 0),
+             "cache_creation_tokens": int(cw or 0),
+             "cache_read_tokens": int(cr or 0),
+             "cache_hit_ratio": _cache_hit_ratio(int(ti or 0), int(cw or 0), int(cr or 0)),
              "cost_usd": float(cost or 0.0)}
-            for m, c, ti, to, cost in model_rows
+            for m, c, ti, to, cw, cr, cost in model_rows
         ],
     }
 
@@ -406,6 +454,8 @@ def _empty_dashboard(days: int | None) -> dict:
     return {
         "window_days": days,
         "totals": {"calls": 0, "tokens_input": 0, "tokens_output": 0,
+                   "cache_creation_tokens": 0, "cache_read_tokens": 0,
+                   "cache_hit_ratio": 0.0,
                    "cost_usd": 0.0, "distinct_runs": 0},
         "by_agent": [],
         "by_model": [],

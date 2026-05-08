@@ -308,17 +308,26 @@ class ClaudeProvider(LLMClient):
         """Return (tokens_in, tokens_out, cost_usd) for the most recent call in this thread."""
         return getattr(self._tlocal, "last_usage", (0, 0, 0.0))
 
+    def last_call_cache_split(self) -> tuple[int, int]:
+        """Return (cache_creation_tokens, cache_read_tokens) for the most recent
+        call in this thread. (0, 0) if no call yet or the call had no cache activity.
+        """
+        return getattr(self._tlocal, "last_cache_split", (0, 0))
+
     def _log_call(self, agent_name: str, raw_result: dict, elapsed_ms: int) -> None:
         """Log token usage and prompt version to the Python logger, and save to thread-local.
 
         last_usage stores total_input = regular + cache_creation + cache_read so the
         llm_calls audit row reflects what Anthropic actually counted, not just the
         non-cached slice. Cost is computed against each input category at its own rate.
+        last_cache_split preserves the breakdown so callers can compute the cache-hit
+        ratio without re-deriving it.
         """
         tokens_in, cache_creation, cache_read, tokens_out = self._extract_usage(raw_result)
         cost = self._estimate_cost_with_cache(tokens_in, cache_creation, cache_read, tokens_out)
         total_input = tokens_in + cache_creation + cache_read
         self._tlocal.last_usage = (total_input, tokens_out, cost)
+        self._tlocal.last_cache_split = (cache_creation, cache_read)
         version = self._prompt_loader.get_version(agent_name)
         logger.info(
             "llm_call agent=%s model=%s prompt_version=%s "
@@ -379,6 +388,11 @@ def make_resume_enhance_fn(
                 ti, to, cost = provider.last_call_usage()
             except (AttributeError, TypeError, ValueError):
                 ti, to, cost = 0, 0, 0.0
+            cc, cr = 0, 0
+            try:
+                cc, cr = provider.last_call_cache_split()
+            except (AttributeError, TypeError, ValueError):
+                pass
             try:
                 observability.log_llm_call(
                     workflow_id=workflow_id,
@@ -389,6 +403,8 @@ def make_resume_enhance_fn(
                     tokens_output=int(to),
                     cost_usd=float(cost),
                     latency_ms=latency_ms,
+                    cache_creation_tokens=int(cc or 0),
+                    cache_read_tokens=int(cr or 0),
                 )
             except Exception:
                 logger.exception("make_resume_enhance_fn: log_llm_call failed")

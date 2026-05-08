@@ -73,11 +73,10 @@ class BaseAgent(ABC):
             llm_latency_ms = int((time.monotonic() - llm_t0) * 1000)
 
             self._tlocal.last_usage = usage
-            # Per-call audit row (ADR-pending observability fix). Without this the
-            # llm_calls table stays empty and cost attribution is impossible to
-            # reconcile against the provider's billing console. Best-effort: failures
-            # are swallowed by ObservabilityService so a broken audit trail never
-            # crashes a run.
+            # Per-call audit row. Without this the llm_calls table stays empty
+            # and cost attribution is impossible to reconcile against the
+            # provider's billing console. Best-effort: failures are swallowed by
+            # ObservabilityService so a broken audit trail never crashes a run.
             try:
                 self._observability.log_llm_call(
                     workflow_id=workflow_id,
@@ -88,6 +87,8 @@ class BaseAgent(ABC):
                     tokens_output=usage.tokens_output,
                     cost_usd=usage.cost_usd,
                     latency_ms=llm_latency_ms,
+                    cache_creation_tokens=usage.cache_creation_tokens,
+                    cache_read_tokens=usage.cache_read_tokens,
                 )
             except Exception:
                 # Already-defensive ObservabilityService logs and swallows; this

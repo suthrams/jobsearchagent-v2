@@ -2194,6 +2194,35 @@ elif view == "Cost Dashboard":
     h5.metric("Tokens in",  f"{totals['tokens_input']:,}")
     h6.metric("Tokens out", f"{totals['tokens_output']:,}")
 
+    # ── Cache effectiveness ───────────────────────────────────────────────────
+    # Anthropic ephemeral prompt cache: writes bill 1.25x input rate, reads 0.10x.
+    # A persistently low hit ratio means caching is configured but not landing —
+    # the prompt is changing across calls within the 5-min cache window.
+    cache_w = totals.get("cache_creation_tokens", 0)
+    cache_r = totals.get("cache_read_tokens", 0)
+    if cache_w or cache_r:
+        st.markdown("---")
+        st.subheader("⚡ Cache effectiveness")
+        st.caption("Reads served from prompt cache pay 10% of the input rate; "
+                   "writes pay 125%. A high read ratio is the goal.")
+        c1, c2, c3 = st.columns(3)
+        hit_pct = totals.get("cache_hit_ratio", 0.0) * 100
+        c1.metric("Cache-hit ratio", f"{hit_pct:.1f}%",
+                  help="Cache reads as a % of total billable input tokens.")
+        c2.metric("Cache reads",  f"{cache_r:,}",
+                  help="Tokens served from cache at 0.10x the input rate.")
+        c3.metric("Cache writes", f"{cache_w:,}",
+                  help="Tokens written into cache at 1.25x the input rate.")
+        if hit_pct < 30 and totals["calls"] >= 10:
+            st.warning(
+                "Cache-hit ratio is below 30% across "
+                f"{totals['calls']} calls. Either prompts are changing across "
+                "calls (check that the resume profile is stable and that no "
+                "per-call timestamps leak into the system message), or runs "
+                "are spaced more than 5 minutes apart so the ephemeral cache "
+                "expires before reuse."
+            )
+
     # ── Daily spend trend ─────────────────────────────────────────────────────
     if window_days:
         st.markdown("---")

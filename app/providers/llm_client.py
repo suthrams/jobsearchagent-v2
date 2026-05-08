@@ -20,10 +20,17 @@ class LLMUsage:
     Frozen so it can be cached / passed across thread boundaries safely.
     Fields are all required; defaults exist only for the zero-usage case
     (no call yet, or a failure path that didn't bill).
+
+    ``tokens_input`` is the union of regular + cache_creation + cache_read so
+    the audit row reflects what the provider counted. The cache breakdown is
+    kept separately so the Cost Dashboard can compute hit ratios without
+    re-deriving them.
     """
     tokens_input: int = 0
     tokens_output: int = 0
     cost_usd: float = 0.0
+    cache_creation_tokens: int = 0
+    cache_read_tokens: int = 0
 
     def as_tuple(self) -> tuple[int, int, float]:
         """Backward-compat shim for callers still using the legacy tuple shape."""
@@ -74,12 +81,30 @@ class LLMClient(ABC):
         """Call the LLM and return (validated_dict, usage) together — no side-channel race.
 
         Default implementation calls complete() then last_call_usage() for backward
-        compat. Concrete providers MAY override for efficiency or to fix the implicit
-        ordering contract. New callers should prefer this over the two-step dance.
+        compat, then enriches with the cache breakdown from last_call_cache_split()
+        when the provider exposes it. Concrete providers MAY override for efficiency.
         """
         data = self.complete(agent_name, context, schema)
         ti, to, cost = self.last_call_usage()
-        return data, LLMUsage(tokens_input=int(ti), tokens_output=int(to), cost_usd=float(cost))
+        cc, cr = 0, 0
+        try:
+            cc, cr = self.last_call_cache_split()
+        except (AttributeError, TypeError, ValueError):
+            pass
+        return data, LLMUsage(
+            tokens_input=int(ti),
+            tokens_output=int(to),
+            cost_usd=float(cost),
+            cache_creation_tokens=int(cc or 0),
+            cache_read_tokens=int(cr or 0),
+        )
+
+    def last_call_cache_split(self) -> tuple[int, int]:
+        """Return (cache_creation_tokens, cache_read_tokens) for the most recent
+        call in this thread. Defaults to (0, 0) — providers without prompt caching
+        (OpenAI today) keep the default; ClaudeProvider overrides.
+        """
+        return (0, 0)
 
     @abstractmethod
     def count_tokens(self, text: str) -> int:

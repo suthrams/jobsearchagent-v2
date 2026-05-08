@@ -104,6 +104,8 @@ class ObservabilityService:
         tokens_output: int,
         cost_usd: float,
         latency_ms: int,
+        cache_creation_tokens: int = 0,
+        cache_read_tokens: int = 0,
     ) -> None:
         try:
             self._obs.create_llm_call(
@@ -116,6 +118,8 @@ class ObservabilityService:
                 tokens_output=tokens_output,
                 estimated_cost=cost_usd,
                 latency_ms=latency_ms,
+                cache_creation_tokens=cache_creation_tokens,
+                cache_read_tokens=cache_read_tokens,
             )
         except Exception:
             logger.exception("ObservabilityService: log_llm_call failed")

@@ -20,19 +20,26 @@ from app.repositories.database import init_db
 
 
 def _seed_calls(db_path: Path, workflow_id: str, calls: list[dict]) -> None:
-    """Insert llm_call rows for a workflow."""
+    """Insert llm_call rows for a workflow.
+
+    Each call dict may include `cache_w` and `cache_r` for the prompt-cache
+    breakdown; both default to 0 when omitted so existing fixtures still work.
+    """
     conn = sqlite3.connect(str(db_path))
     try:
         for c in calls:
             conn.execute(
                 """INSERT INTO llm_calls
                    (id, workflow_run_id, agent_name, provider, model,
-                    tokens_input, tokens_output, estimated_cost, latency_ms,
+                    tokens_input, tokens_output, cache_creation_tokens,
+                    cache_read_tokens, estimated_cost, latency_ms,
                     created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (str(uuid.uuid4()), workflow_id, c["agent"],
                  _provider_for(c["model"]), c["model"],
-                 c["t_in"], c["t_out"], c["cost"], c["latency"],
+                 c["t_in"], c["t_out"],
+                 int(c.get("cache_w", 0)), int(c.get("cache_r", 0)),
+                 c["cost"], c["latency"],
                  "2026-05-02T00:00:00Z"),
             )
         conn.commit()
@@ -221,6 +228,76 @@ def test_dashboard_empty_when_no_calls(tmp_path):
     assert out["totals"]["calls"] == 0
     assert out["by_agent"] == []
     assert out["by_model"] == []
+    # Cache fields are present even on the empty path so the UI can render.
+    assert out["totals"]["cache_creation_tokens"] == 0
+    assert out["totals"]["cache_read_tokens"] == 0
+    assert out["totals"]["cache_hit_ratio"] == 0.0
+
+
+def test_breakdown_surfaces_cache_hit_ratio_per_agent(tmp_path):
+    """Per-agent rows must expose cache_creation_tokens, cache_read_tokens, and
+    a hit ratio so the Cost Dashboard can show whether prompt caching is
+    actually landing for each agent."""
+    db = tmp_path / "v2.db"
+    init_db(db)
+    wf = "wf-cache-001"
+    _seed_calls(db, wf, [
+        # research_agent: 80% reads, 20% writes — caching is working
+        {"agent": "research_agent", "model": "claude-haiku-4-5-20251001",
+         "t_in": 1000, "t_out": 50, "cost": 0.001, "latency": 1000,
+         "cache_w": 200, "cache_r": 800},
+        # career_advisor: no cache activity at all — caching not landing
+        {"agent": "career_advisor", "model": "claude-sonnet-4-6",
+         "t_in": 1000, "t_out": 200, "cost": 0.005, "latency": 4000,
+         "cache_w": 0, "cache_r": 0},
+    ])
+    out = compute_breakdown(workflow_id=wf, db_path=db)
+    rows = {r["agent_name"]: r for r in out["rows"]}
+
+    assert rows["research_agent"]["cache_creation_tokens"] == 200
+    assert rows["research_agent"]["cache_read_tokens"] == 800
+    # 800 reads / 1000 total billable input = 80%
+    assert rows["research_agent"]["cache_hit_ratio"] == pytest.approx(0.8)
+
+    assert rows["career_advisor"]["cache_hit_ratio"] == 0.0
+
+    # Aggregate sums + computes ratio across all calls
+    agg = out["aggregate"]
+    assert agg["cache_creation_tokens"] == 200
+    assert agg["cache_read_tokens"] == 800
+    # 800 / (1000 + 1000) = 0.4
+    assert agg["cache_hit_ratio"] == pytest.approx(0.4)
+
+
+def test_dashboard_aggregates_cache_tokens_across_runs(tmp_path):
+    """Cross-run aggregation must sum cache tokens and report a system-wide hit
+    ratio. The dashboard's 'cache effectiveness' panel reads these."""
+    db = tmp_path / "v2.db"
+    init_db(db)
+    _seed_calls(db, "wf-1", [
+        {"agent": "scoring_agent", "model": "claude-haiku-4-5-20251001",
+         "t_in": 2000, "t_out": 100, "cost": 0.002, "latency": 1000,
+         "cache_w": 500, "cache_r": 1500},
+    ])
+    _seed_calls(db, "wf-2", [
+        {"agent": "scoring_agent", "model": "claude-haiku-4-5-20251001",
+         "t_in": 1000, "t_out": 50, "cost": 0.001, "latency": 800,
+         "cache_w": 0, "cache_r": 1000},
+    ])
+    out = compute_dashboard_aggregate(days=None, db_path=db)
+    totals = out["totals"]
+    assert totals["cache_creation_tokens"] == 500
+    assert totals["cache_read_tokens"] == 2500
+    # 2500 reads / 3000 total billable input = 0.833...
+    assert totals["cache_hit_ratio"] == pytest.approx(2500 / 3000)
+
+
+def test_breakdown_cache_hit_ratio_is_zero_when_no_input(tmp_path):
+    """Defensive: hit ratio must not divide by zero when input tokens are 0."""
+    db = tmp_path / "v2.db"
+    init_db(db)
+    out = compute_breakdown(workflow_id="missing-run", db_path=db)
+    assert out["aggregate"]["cache_hit_ratio"] == 0.0
 
 
 def test_top_runs_by_cost_orders_descending(tmp_path):

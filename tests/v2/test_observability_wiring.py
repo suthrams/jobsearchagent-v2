@@ -112,6 +112,28 @@ def test_three_runs_produce_three_llm_call_rows(db_path, obs_service):
     assert len(repo.get_llm_calls_by_run("wf-test-2")) == 3
 
 
+def test_base_agent_persists_cache_token_breakdown(db_path, obs_service):
+    """BaseAgent must forward the prompt-cache split to log_llm_call so the Cost
+    Dashboard can compute the cache-hit ratio. Without this the cache columns
+    on llm_calls stay zero even when caching is active."""
+    usage = LLMUsage(
+        tokens_input=2000,
+        tokens_output=300,
+        cost_usd=0.0012,
+        cache_creation_tokens=400,
+        cache_read_tokens=1200,
+    )
+    agent = ScoringAgent(_make_provider(usage=usage), obs_service)
+    agent.run("wf-cache-1", _CONTEXT)
+
+    repo = ObservabilityRepository(db_path=db_path)
+    rows = repo.get_llm_calls_by_run("wf-cache-1")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["cache_creation_tokens"] == 400
+    assert row["cache_read_tokens"] == 1200
+
+
 def test_log_llm_call_failure_does_not_crash_agent(db_path):
     """Observability must never crash the run. If the obs repo raises, the
     agent still returns its result."""

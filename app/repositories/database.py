@@ -175,6 +175,8 @@ CREATE TABLE IF NOT EXISTS llm_calls (
     model TEXT,
     tokens_input INTEGER,
     tokens_output INTEGER,
+    cache_creation_tokens INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens INTEGER NOT NULL DEFAULT 0,
     estimated_cost REAL,
     latency_ms INTEGER,
     created_at TEXT NOT NULL
@@ -276,6 +278,17 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             "ALTER TABLE jobs ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE jobs ADD COLUMN excluded_reason TEXT",
             "ALTER TABLE jobs ADD COLUMN excluded_at TEXT",
+        ):
+            try:
+                conn.execute(col_ddl)
+            except Exception:
+                pass  # column already exists
+        # Migration (cost-tracking): cache token columns on llm_calls. Without
+        # these the Cost Dashboard cannot tell whether prompt caching is
+        # actually working — see docs/incidents/2026-05-07-cost-tracking-undercount.md.
+        for col_ddl in (
+            "ALTER TABLE llm_calls ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0",
+            "ALTER TABLE llm_calls ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
         ):
             try:
                 conn.execute(col_ddl)

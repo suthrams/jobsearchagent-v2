@@ -290,6 +290,11 @@ class CustomUrlScraper:
             ti, to, cost = self._llm.last_call_usage()
         except (AttributeError, TypeError, ValueError):
             ti, to, cost = 0, 0, 0.0
+        cc, cr = 0, 0
+        try:
+            cc, cr = self._llm.last_call_cache_split()
+        except (AttributeError, TypeError, ValueError):
+            pass
         try:
             self._observability.log_llm_call(
                 workflow_id=self._workflow_id,
@@ -300,6 +305,8 @@ class CustomUrlScraper:
                 tokens_output=int(to),
                 cost_usd=float(cost),
                 latency_ms=latency_ms,
+                cache_creation_tokens=int(cc or 0),
+                cache_read_tokens=int(cr or 0),
             )
         except Exception:
             logger.exception("CustomUrlScraper: log_llm_call failed")

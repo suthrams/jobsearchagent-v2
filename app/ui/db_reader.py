@@ -544,7 +544,7 @@ def load_job_pipeline(workflow_id: str, job_id: str) -> dict:
 
 @st.cache_data(ttl=5)
 def load_llm_calls(workflow_id: str) -> pd.DataFrame:
-    """Per-LLM-call detail (model, tokens, cost, latency) for a run."""
+    """Per-LLM-call detail (model, tokens, cache split, cost, latency) for a run."""
     if not DB_PATH.exists():
         return pd.DataFrame()
     conn = _connect()
@@ -552,6 +552,8 @@ def load_llm_calls(workflow_id: str) -> pd.DataFrame:
         df = pd.read_sql_query(
             """
             SELECT agent_name, model, tokens_input, tokens_output,
+                   COALESCE(cache_creation_tokens, 0) AS cache_creation_tokens,
+                   COALESCE(cache_read_tokens, 0)     AS cache_read_tokens,
                    estimated_cost, latency_ms, created_at
             FROM llm_calls
             WHERE workflow_run_id = ?
