@@ -32,6 +32,13 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+# Load .env so ANTHROPIC_API_KEY is picked up the same way uvicorn does.
+try:
+    from dotenv import load_dotenv  # noqa: E402
+    load_dotenv(_REPO_ROOT / ".env")
+except ImportError:
+    pass  # dotenv missing — caller must export the env var themselves
+
 from app.agents.career_advisor import CareerAdvisor  # noqa: E402
 from app.agents.interview_coach import InterviewCoach  # noqa: E402
 from app.providers.claude_provider import ClaudeProvider  # noqa: E402
@@ -105,10 +112,31 @@ def _pick_qualifying_job(conn: sqlite3.Connection,
 
 
 def _load_resume_profile(conn: sqlite3.Connection, resume_id: str) -> dict:
+    """Resolve the parsed profile by id, then by file_name, then by active flag.
+
+    job_scores.resume_id is sometimes a UUID (canonical) and sometimes a legacy
+    filename like "resume.pdf" depending on how the workflow was kicked off.
+    Walk the cascade so the harness works on either shape.
+    """
     row = conn.execute(
         "SELECT parsed_profile_json FROM resumes WHERE id = ?",
         (resume_id,),
     ).fetchone()
+    if not row:
+        # Fallback 1: treat resume_id as a filename, pick the active version.
+        row = conn.execute(
+            """SELECT parsed_profile_json FROM resumes
+               WHERE file_name = ? AND COALESCE(is_active, 0) = 1
+               ORDER BY created_at DESC LIMIT 1""",
+            (resume_id,),
+        ).fetchone()
+    if not row:
+        # Fallback 2: any active resume.
+        row = conn.execute(
+            """SELECT parsed_profile_json FROM resumes
+               WHERE COALESCE(is_active, 0) = 1
+               ORDER BY created_at DESC LIMIT 1"""
+        ).fetchone()
     if not row:
         raise SystemExit(f"Resume {resume_id} not found in DB.")
     return json.loads(row["parsed_profile_json"])
