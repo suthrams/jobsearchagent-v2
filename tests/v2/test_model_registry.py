@@ -8,10 +8,14 @@ import pytest
 from app.providers.claude_provider import ClaudeProvider
 from app.providers.model_registry import (
     DEFAULT_AGENT_ASSIGNMENT,
+    HIGH_VOLUME_AGENTS,
+    HIGH_VOLUME_SAFE_MODELS,
     KNOWN_MODELS,
     ModelRegistry,
     UnknownModelError,
     assignment_from_config,
+    is_cost_capped_agent,
+    is_high_volume_safe_model,
 )
 from app.providers.openai_provider import OpenAIProvider
 from app.providers.prompt_loader import PromptLoader
@@ -42,11 +46,12 @@ def test_build_uses_defaults_when_no_overrides(tmp_path):
 
 
 def test_build_applies_user_overrides(tmp_path):
+    """Overrides are honored for agents that aren't cost-capped."""
     overrides = {
-        "research_agent": {"provider": "claude", "model": "claude-sonnet-4-6"},
+        "career_advisor": {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
     }
     reg = ModelRegistry.build(_loader(tmp_path), overrides, openai_available=False)
-    assert reg.assignment()["research_agent"] == overrides["research_agent"]
+    assert reg.assignment()["career_advisor"] == overrides["career_advisor"]
 
 
 def test_build_falls_back_when_openai_unavailable(tmp_path, caplog):
@@ -115,3 +120,77 @@ def test_assignment_from_config_extracts_agents_block():
 def test_assignment_from_config_empty_when_no_agents_block():
     assert assignment_from_config({}) == {}
     assert assignment_from_config({"search": {}}) == {}
+
+
+# ── Cost-cap guardrail (high-volume agents pinned to cheap allowlist) ────────
+
+def test_high_volume_agents_are_research_and_scoring():
+    """Sanity: the cap covers exactly the per-job, multi-call agents."""
+    assert HIGH_VOLUME_AGENTS == frozenset({"research_agent", "scoring_agent"})
+    # Defaults must be safe.
+    for agent in HIGH_VOLUME_AGENTS:
+        assert DEFAULT_AGENT_ASSIGNMENT[agent]["model"] in HIGH_VOLUME_SAFE_MODELS
+
+
+def test_high_volume_safe_models_includes_haiku_and_gpt4o_mini():
+    """Allowlist tracks the cheapest models registered in either provider."""
+    assert "claude-haiku-4-5-20251001" in HIGH_VOLUME_SAFE_MODELS
+    assert "gpt-4o-mini" in HIGH_VOLUME_SAFE_MODELS
+    # Sonnet, Opus, gpt-4o, o1 are NOT high-volume safe.
+    assert "claude-sonnet-4-6" not in HIGH_VOLUME_SAFE_MODELS
+    assert "claude-opus-4-7" not in HIGH_VOLUME_SAFE_MODELS
+    assert "gpt-4o" not in HIGH_VOLUME_SAFE_MODELS
+
+
+def test_helpers_match_constants():
+    assert is_cost_capped_agent("scoring_agent") is True
+    assert is_cost_capped_agent("research_agent") is True
+    assert is_cost_capped_agent("career_advisor") is False
+    assert is_high_volume_safe_model("claude-haiku-4-5-20251001") is True
+    assert is_high_volume_safe_model("claude-sonnet-4-6") is False
+
+
+def test_build_snaps_high_volume_agent_back_when_assigned_sonnet(tmp_path, caplog):
+    """A user override pinning scoring_agent to Sonnet must be reverted to the
+    default Haiku, with a warning. This is the durable line of defense — if the
+    user bypasses the API/UI and writes directly to user_config, the registry
+    refuses to honor the assignment at next build."""
+    import logging
+    overrides = {
+        "scoring_agent": {"provider": "claude", "model": "claude-sonnet-4-6"},
+    }
+    with caplog.at_level(logging.WARNING, logger="app.providers.model_registry"):
+        reg = ModelRegistry.build(_loader(tmp_path), overrides, openai_available=False)
+    # Snapped back to default
+    assert reg.assignment()["scoring_agent"] == DEFAULT_AGENT_ASSIGNMENT["scoring_agent"]
+    # Warning logged with the agent name
+    assert "scoring_agent" in caplog.text
+    assert "high-volume" in caplog.text
+
+
+def test_build_keeps_high_volume_agent_when_assigned_safe_alternative(tmp_path, monkeypatch):
+    """gpt-4o-mini is in the allowlist (cheaper than Haiku) — the override sticks."""
+    monkeypatch.setenv("OPENAI_API_KEY", "sk-test-fake")
+    overrides = {
+        "research_agent": {"provider": "openai", "model": "gpt-4o-mini"},
+    }
+    reg = ModelRegistry.build(_loader(tmp_path), overrides, openai_available=True)
+    assert reg.assignment()["research_agent"]["model"] == "gpt-4o-mini"
+
+
+def test_build_does_not_constrain_low_volume_agents(tmp_path):
+    """career_advisor and friends remain freely configurable — the cap is
+    targeted at the multi-call-per-job agents only."""
+    overrides = {
+        "career_advisor": {"provider": "claude", "model": "claude-opus-4-7"},
+    }
+    reg = ModelRegistry.build(_loader(tmp_path), overrides, openai_available=False)
+    assert reg.assignment()["career_advisor"]["model"] == "claude-opus-4-7"
+
+
+def test_catalog_includes_cost_cap_metadata():
+    """UI needs the cap metadata to filter dropdowns without hard-coding constants."""
+    cat = ModelRegistry.catalog(openai_available=False)
+    meta = cat.get("_meta") or {}
+    assert set(meta.get("high_volume_agents") or []) == set(HIGH_VOLUME_AGENTS)
+    assert set(meta.get("high_volume_safe_models") or []) == set(HIGH_VOLUME_SAFE_MODELS)

@@ -121,6 +121,91 @@ def test_put_full_agent_assignment_validated(isolated_config):
     assert r.json()["detail"]["error"] == "incomplete_assignment"
 
 
+# ── Cost-cap enforcement on PUT /config ──────────────────────────────────────
+
+def test_put_agent_model_rejects_sonnet_for_scoring(isolated_config):
+    """Cost guardrail: scoring_agent is high-volume, Sonnet is not in the
+    allowlist. A direct API write must fail loudly with cost_cap_violation
+    rather than silently snap back at next reload."""
+    client = TestClient(app)
+    r = client.put("/config", json={
+        "key": "agents.scoring_agent.model",
+        "value": "claude-sonnet-4-6",
+    })
+    assert r.status_code == 422
+    body = r.json()
+    assert body["detail"]["error"] == "cost_cap_violation"
+    assert "scoring_agent" in body["detail"]["message"]
+
+
+def test_put_agent_model_rejects_sonnet_for_research(isolated_config):
+    client = TestClient(app)
+    r = client.put("/config", json={
+        "key": "agents.research_agent.model",
+        "value": "claude-opus-4-7",
+    })
+    assert r.status_code == 422
+    assert r.json()["detail"]["error"] == "cost_cap_violation"
+
+
+def test_put_agent_model_accepts_haiku_for_scoring(isolated_config):
+    """Haiku 4.5 is in the cost-cap allowlist, so the assignment goes through."""
+    client = TestClient(app)
+    r = client.put("/config", json={
+        "key": "agents.scoring_agent.model",
+        "value": "claude-haiku-4-5-20251001",
+    })
+    assert r.status_code == 200
+
+
+def test_put_agent_model_accepts_gpt4o_mini_for_scoring(isolated_config):
+    """gpt-4o-mini is also in the allowlist (cheaper than Haiku) — accepted."""
+    client = TestClient(app)
+    r = client.put("/config", json={
+        "key": "agents.scoring_agent.model",
+        "value": "gpt-4o-mini",
+    })
+    assert r.status_code == 200
+
+
+def test_put_full_assignment_rejects_sonnet_for_high_volume_agent(isolated_config):
+    """The combined-write form (PUT agents.{name} with full {provider, model})
+    must apply the cap as well — otherwise the per-key form is the only
+    enforcement and the combined form is a bypass."""
+    client = TestClient(app)
+    r = client.put("/config", json={
+        "key": "agents.scoring_agent",
+        "value": {"provider": "claude", "model": "claude-sonnet-4-6"},
+    })
+    assert r.status_code == 422
+    assert r.json()["detail"]["error"] == "cost_cap_violation"
+
+
+def test_put_agent_model_does_not_cap_low_volume_agents(isolated_config):
+    """career_advisor is not high-volume; it can still be assigned Sonnet."""
+    client = TestClient(app)
+    r = client.put("/config", json={
+        "key": "agents.career_advisor.model",
+        "value": "claude-sonnet-4-6",
+    })
+    assert r.status_code == 200
+
+
+def test_get_providers_includes_cost_cap_metadata(isolated_config, monkeypatch):
+    """UI consumes _meta to filter dropdowns; absence here would mean the
+    Settings page silently shows expensive options for capped agents."""
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    client = TestClient(app)
+    r = client.get("/config/providers")
+    assert r.status_code == 200
+    body = r.json()
+    meta = body["providers"].get("_meta") or {}
+    assert "scoring_agent" in (meta.get("high_volume_agents") or [])
+    assert "research_agent" in (meta.get("high_volume_agents") or [])
+    assert "claude-haiku-4-5-20251001" in (meta.get("high_volume_safe_models") or [])
+    assert "gpt-4o-mini" in (meta.get("high_volume_safe_models") or [])
+
+
 # ── ADR-053 addendum: POST /config/reload ────────────────────────────────────
 # Reload supersedes restart for runtime-overridable settings. These tests pin
 # the contract: endpoint returns the live agent assignment after rebuild.

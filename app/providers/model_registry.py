@@ -45,6 +45,37 @@ _KNOWN_MODELS: dict[str, list[str]] = {
     ],
 }
 
+# ── Cost guardrails ───────────────────────────────────────────────────────────
+# These agents run on every job (10-20 calls per workflow) and dominate per-run
+# token volume. Cost is a design decision: high-volume agents are restricted to
+# the cheapest tier so a Settings UI slip cannot make a typical run 5-10x more
+# expensive overnight. Expensive models are reserved for the low-volume agents
+# that produce user-facing analysis (advisor, coach, tailoring).
+#
+# Update HIGH_VOLUME_SAFE_MODELS only when a new model is registered whose
+# combined input+output rate is comparable to Haiku 4.5 ($6 / 1M combined) or
+# gpt-4o-mini ($0.75 / 1M combined). Sonnet 4.6 ($18 / 1M) and above are not
+# high-volume safe.
+HIGH_VOLUME_AGENTS: frozenset[str] = frozenset({"research_agent", "scoring_agent"})
+HIGH_VOLUME_SAFE_MODELS: frozenset[str] = frozenset({
+    "claude-haiku-4-5-20251001",
+    "gpt-4o-mini",
+})
+
+
+def is_cost_capped_agent(agent_name: str) -> bool:
+    """True if `agent_name` is in the high-volume tier (cheap-only allowlist)."""
+    return agent_name in HIGH_VOLUME_AGENTS
+
+
+def is_high_volume_safe_model(model_id: str) -> bool:
+    """True if `model_id` is in the cost-capped allowlist for high-volume agents."""
+    return model_id in HIGH_VOLUME_SAFE_MODELS
+
+
+class CostCapViolationError(ValueError):
+    """Raised when a cost-capped agent is assigned a model outside HIGH_VOLUME_SAFE_MODELS."""
+
 # Default per-agent assignment per ADR-051 (which ADR-053 supersedes for
 # *immutability*; the values themselves remain the recommended defaults).
 DEFAULT_AGENT_ASSIGNMENT: dict[str, dict[str, str]] = {
@@ -138,6 +169,19 @@ class ModelRegistry:
                         merged[agent]["provider"], merged[agent]["model"],
                     )
                     continue
+                # Cost guardrail: high-volume agents are pinned to a cheap allowlist.
+                # The Settings UI also filters its dropdowns, but this enforcement
+                # is the durable line of defense — it catches direct DB / API writes
+                # that bypass the UI.
+                if agent in HIGH_VOLUME_AGENTS and model not in HIGH_VOLUME_SAFE_MODELS:
+                    default = DEFAULT_AGENT_ASSIGNMENT[agent]
+                    logger.warning(
+                        "ModelRegistry: agent %r is high-volume and cannot use %s/%s "
+                        "(allowed: %s). Falling back to default %s/%s.",
+                        agent, provider, model, sorted(HIGH_VOLUME_SAFE_MODELS),
+                        default["provider"], default["model"],
+                    )
+                    continue
                 merged[agent] = {"provider": provider, "model": model}
 
         # Build one provider per unique (provider, model) referenced.
@@ -218,6 +262,12 @@ class ModelRegistry:
         return {
             "claude": {"available": True, "models": _entries("claude", _CLAUDE_PRICING)},
             "openai": {"available": openai_available, "models": _entries("openai", _OPENAI_PRICING)},
+            # Cost-cap metadata. Lets the Settings UI restrict the model picker
+            # for these agents without hard-coding the constants client-side.
+            "_meta": {
+                "high_volume_agents": sorted(HIGH_VOLUME_AGENTS),
+                "high_volume_safe_models": sorted(HIGH_VOLUME_SAFE_MODELS),
+            },
         }
 
 

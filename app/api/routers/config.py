@@ -14,6 +14,8 @@ from pydantic import BaseModel
 
 from app.providers.model_registry import (
     DEFAULT_AGENT_ASSIGNMENT,
+    HIGH_VOLUME_AGENTS,
+    HIGH_VOLUME_SAFE_MODELS,
     KNOWN_MODELS,
     ModelRegistry,
     assignment_from_config,
@@ -159,6 +161,7 @@ def _validate_agent_key(key: str, value: object) -> None:
                         "message": "Both provider and model are required."},
             )
         _check_known(provider, model)
+        _check_cost_cap(agent_name, model)
     elif parts[2] == "provider":
         if value not in KNOWN_MODELS:
             raise HTTPException(
@@ -174,11 +177,38 @@ def _validate_agent_key(key: str, value: object) -> None:
                 detail={"error": "unknown_model",
                         "message": f"Unknown model {value!r}. Known: {sorted(all_models)}"},
             )
+        _check_cost_cap(agent_name, value)
     else:
         raise HTTPException(
             status_code=422,
             detail={"error": "invalid_agent_key",
                     "message": f"agents.{agent_name}.{parts[2]} is not a recognized field."},
+        )
+
+
+def _check_cost_cap(agent_name: str, model: object) -> None:
+    """Reject writes that put a high-volume agent on a non-allowlist model.
+
+    The same guardrail also fires at registry build time (which would silently
+    snap the assignment back to default), but raising here gives the caller a
+    clear 422 with the allowlist instead of the surprise of "I saved Sonnet for
+    scoring but it's still running on Haiku."
+    """
+    if agent_name not in HIGH_VOLUME_AGENTS:
+        return
+    if model not in HIGH_VOLUME_SAFE_MODELS:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "cost_cap_violation",
+                "message": (
+                    f"Agent {agent_name!r} is high-volume (runs on every job) and "
+                    f"cannot be assigned {model!r}. Allowed models: "
+                    f"{sorted(HIGH_VOLUME_SAFE_MODELS)}. Cost is a design decision "
+                    "for this agent — expensive models are reserved for low-volume, "
+                    "high-fidelity agents."
+                ),
+            },
         )
 
 

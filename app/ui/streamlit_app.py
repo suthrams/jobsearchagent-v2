@@ -2086,6 +2086,9 @@ elif view == "Settings":
     if providers_payload:
         catalog = providers_payload.get("providers", {}) or {}
         agent_assignment = providers_payload.get("agent_assignment", {}) or {}
+        meta = catalog.get("_meta", {}) or {}
+        high_volume_agents = set(meta.get("high_volume_agents") or [])
+        high_volume_safe_models = set(meta.get("high_volume_safe_models") or [])
 
         if not catalog.get("openai", {}).get("available", False):
             st.info(
@@ -2094,19 +2097,43 @@ elif view == "Settings":
             )
 
         # One row per agent; provider dropdown then a model dropdown filtered by it.
-        for agent_name in sorted(agent_assignment.keys()):
+        # Iterate only over real agent names; the catalog's "_meta" key is sidecar metadata.
+        for agent_name in sorted(a for a in agent_assignment.keys() if not a.startswith("_")):
             assignment = agent_assignment[agent_name]
             current_provider = assignment.get("provider", "claude")
             current_model = assignment.get("model", "")
+            cost_capped = agent_name in high_volume_agents
 
             with st.expander(
-                f"`{agent_name}`  ·  current: **{current_provider}** / `{current_model}`",
+                f"`{agent_name}`  ·  current: **{current_provider}** / `{current_model}`"
+                + ("  ·  💰 cost-capped" if cost_capped else ""),
                 expanded=False,
             ):
-                # Provider options — only show those the server reports as available
+                if cost_capped:
+                    st.caption(
+                        "**Cost-capped agent.** This agent runs on every job (10-20 "
+                        "calls per workflow), so its model is restricted to the "
+                        f"cheapest tier: `{', '.join(sorted(high_volume_safe_models))}`. "
+                        "Cost here is a design decision; expensive models are "
+                        "reserved for low-volume, user-facing agents."
+                    )
+
+                # Provider options — only show those the server reports as available.
+                # For cost-capped agents, also restrict to providers that have at
+                # least one allowed model.
+                def _has_allowed_model(provider_id: str) -> bool:
+                    if not cost_capped:
+                        return True
+                    return any(
+                        m["id"] in high_volume_safe_models
+                        for m in (catalog.get(provider_id, {}).get("models") or [])
+                    )
+
                 provider_options = [
                     p for p, info in catalog.items()
-                    if info.get("available", False) or p == current_provider
+                    if not p.startswith("_")
+                    and (info.get("available", False) or p == current_provider)
+                    and _has_allowed_model(p)
                 ]
                 provider_choice = st.selectbox(
                     "Provider",
@@ -2115,8 +2142,10 @@ elif view == "Settings":
                     key=f"prov_{agent_name}",
                 )
 
-                # Model options for the chosen provider
+                # Model options for the chosen provider, filtered by cost cap.
                 model_entries = catalog.get(provider_choice, {}).get("models", []) or []
+                if cost_capped:
+                    model_entries = [m for m in model_entries if m["id"] in high_volume_safe_models]
                 model_ids = [m["id"] for m in model_entries]
                 model_idx = model_ids.index(current_model) if current_model in model_ids else 0
                 model_choice = st.selectbox(
