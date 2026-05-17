@@ -1,0 +1,159 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<link rel="stylesheet" href="theme.css">
+</head>
+<body>
+<div class="figure" id="figure"></div>
+
+<script>
+// The renderer injects the figure spec object on the line below.
+const SPEC = __SPEC_JSON__;
+
+const el = (t, c, html) => {
+  const n = document.createElement(t);
+  if (c) n.className = c;
+  if (html != null) n.innerHTML = html;
+  return n;
+};
+const esc = s => String(s)
+  .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+const accent = a => a ? (" a-" + a) : "";
+
+function node(item) {
+  const n = el("div", "node" + accent(item.accent) + (item.focal ? " a-amber" : ""));
+  n.appendChild(el("div", "n-title", esc(item.title)));
+  (item.meta || []).forEach(m => n.appendChild(el("div", "n-meta", esc(m))));
+  return n;
+}
+
+function renderRankedRows(body) {
+  const wrap = el("div", "panel");
+  if (SPEC.subtitle) wrap.appendChild(el("div", "tag", esc(SPEC.subtitle)));
+  const rows = el("div", "rows"); rows.style.marginTop = "14px";
+  const max = Math.max(...SPEC.rows.map(r => r.weight));
+  SPEC.rows.forEach(r => {
+    const row = el("div", "row" + (r.focal ? " focal" : ""));
+    const lab = el("div");
+    lab.appendChild(el("div", "r-label", esc(r.label)));
+    lab.appendChild(el("div", "r-meta", esc(r.meta)));
+    const bw = el("div", "bar-wrap");
+    const b = el("div", "bar"); b.style.width = (100 * r.weight / max) + "%";
+    bw.appendChild(b);
+    row.appendChild(lab); row.appendChild(bw);
+    row.appendChild(el("div", "r-value", esc(r.value)));
+    rows.appendChild(row);
+  });
+  wrap.appendChild(rows);
+  body.appendChild(wrap);
+}
+
+function renderBars(body) {
+  const wrap = el("div", "panel"); wrap.style.width = "100%";
+  const col = el("div"); col.style.display = "flex";
+  col.style.flexDirection = "column"; col.style.gap = "20px";
+  const max = Math.max(...SPEC.bars.map(b => b.weight));
+  SPEC.bars.forEach(b => {
+    const cb = el("div", "cbar " + (b.kind || ""));
+    cb.appendChild(el("div", "cb-name", esc(b.name)));
+    const track = el("div", "cb-track");
+    const fill = el("div", "cb-fill", esc(b.text));
+    fill.style.width = Math.max(14, 100 * b.weight / max) + "%";
+    track.appendChild(fill); cb.appendChild(track);
+    col.appendChild(cb);
+  });
+  wrap.appendChild(col);
+  if (SPEC.note) {
+    const nt = el("div", "edge-label", esc(SPEC.note));
+    nt.style.marginTop = "18px"; wrap.appendChild(nt);
+  }
+  body.appendChild(wrap);
+}
+
+function renderFlow(body) {
+  const flow = el("div", "flow");
+  SPEC.flow.forEach((step, i) => {
+    if (step.arrow) {
+      const a = el("div", "arrow");
+      a.innerHTML = "&rsaquo;".repeat(1) + "";
+      a.textContent = "->";
+      if (step.arrow !== true) {
+        const box = el("div");
+        box.style.display = "flex"; box.style.flexDirection = "column";
+        box.style.alignItems = "center"; box.style.gap = "6px";
+        box.appendChild(a);
+        box.appendChild(el("div", "edge-label", esc(step.arrow)));
+        flow.appendChild(box);
+      } else flow.appendChild(a);
+      return;
+    }
+    if (step.stack) {
+      const s = el("div", "stack" + accent(step.accent));
+      if (step.title) {
+        const h = el("div", "tag"); h.textContent = step.title;
+        s.appendChild(h);
+      }
+      step.stack.forEach(it => s.appendChild(node(it)));
+      flow.appendChild(s);
+      return;
+    }
+    flow.appendChild(node(step));
+  });
+  body.appendChild(flow);
+}
+
+function renderTiers(body) {
+  const tiers = el("div", "tiers");
+  const mk = t => {
+    const c = el("div", "tier");
+    c.appendChild(el("div", "tier-head", esc(t.head)));
+    const g = el("div", "tier-grid");
+    t.items.forEach(it => g.appendChild(node(it)));
+    c.appendChild(g);
+    return c;
+  };
+  tiers.appendChild(mk(SPEC.left));
+  if (SPEC.connector) {
+    const c = el("div", "connector");
+    c.appendChild(el("div", "dash"));
+    c.appendChild(el("div", null, esc(SPEC.connector)));
+    c.appendChild(el("div", "dash"));
+    tiers.appendChild(c);
+  }
+  tiers.appendChild(mk(SPEC.right));
+  body.appendChild(tiers);
+}
+
+function renderFooter(host) {
+  if (!SPEC.footer) return;
+  const f = el("div", "foot");
+  SPEC.footer.forEach(c => {
+    const cell = el("div", "cell");
+    if (typeof c === "string") cell.textContent = c;
+    else {
+      cell.appendChild(el("div", null, esc(c.main)));
+      cell.appendChild(el("div", "c-sub", esc(c.sub)));
+    }
+    f.appendChild(cell);
+  });
+  host.appendChild(f);
+}
+
+(function main() {
+  const fig = document.getElementById("figure");
+  const head = el("div", "fig-head");
+  head.appendChild(el("div", "fig-title", esc(SPEC.title)));
+  if (SPEC.headSub) head.appendChild(el("div", "fig-sub", esc(SPEC.headSub)));
+  fig.appendChild(head);
+
+  const body = el("div", "fig-body");
+  ({ ranked_rows: renderRankedRows, bars: renderBars,
+     flow: renderFlow, tiers: renderTiers }[SPEC.layout] || (()=>{}))(body);
+  fig.appendChild(body);
+
+  renderFooter(fig);
+})();
+</script>
+</body>
+</html>

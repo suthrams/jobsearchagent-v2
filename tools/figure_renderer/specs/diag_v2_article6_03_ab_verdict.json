@@ -1,0 +1,20 @@
+{
+  "id": "diag_v2_article6_03_ab_verdict",
+  "width": 1820,
+  "height": 480,
+  "title": "A 65 percent saving that did not survive the schema check",
+  "layout": "flow",
+  "flow": [
+    { "title": "A/B: career_advisor + interview_coach", "meta": ["on the cheap model"], "focal": true },
+    { "arrow": true },
+    { "title": "Cost axis", "stack": [
+      { "title": "Cheap model: about 65 percent", "meta": ["cheaper for the two agents", "(real, and tempting)"], "accent": "green" }
+    ]},
+    { "title": "Schema fidelity axis", "stack": [
+      { "title": "Strong model: returns a fixed", "meta": ["value  ->  apply_with_prep"], "accent": "green" },
+      { "title": "Cheap model: returns a", "meta": ["multi-paragraph essay", "contract break, no crash"], "accent": "red" }
+    ]},
+    { "arrow": "decides it" },
+    { "title": "VETO", "meta": ["schema fidelity is checked", "before the cost saving"], "accent": "red" }
+  ]
+}

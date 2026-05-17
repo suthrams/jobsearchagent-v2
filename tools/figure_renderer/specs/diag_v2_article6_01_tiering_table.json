@@ -1,0 +1,26 @@
+{
+  "id": "diag_v2_article6_01_tiering_table",
+  "width": 1760,
+  "height": 540,
+  "title": "The model follows the reasoning mode, not how much the agent matters",
+  "layout": "tiers",
+  "connector": "escalate only by reasoning need",
+  "left": {
+    "head": "Cheap model  -  pattern-matching, extraction, validation",
+    "items": [
+      { "title": "research_agent",   "meta": ["per-job extraction"], "accent": "green" },
+      { "title": "scoring_agent",    "meta": ["rubric scoring", "(biggest cost: volume)"], "focal": true },
+      { "title": "resume_critic",    "meta": ["rule-check audit"], "accent": "green" },
+      { "title": "review_auditor",   "meta": ["quality check"], "accent": "green" },
+      { "title": "fidelity_reviewer","meta": ["fabrication check"], "accent": "green" }
+    ]
+  },
+  "right": {
+    "head": "Strong model  -  synthesis, evidence-bound generation",
+    "items": [
+      { "title": "career_advisor",  "meta": ["positioning prose"], "accent": "magenta" },
+      { "title": "interview_coach",  "meta": ["plan synthesis"], "accent": "magenta" },
+      { "title": "tailoring_agent",  "meta": ["evidence-bound rewrite"], "accent": "magenta" }
+    ]
+  }
+}

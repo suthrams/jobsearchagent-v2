@@ -1,0 +1,12 @@
+{
+  "id": "diag_v2_article6_04_concurrency",
+  "width": 1560,
+  "height": 440,
+  "title": "Same tokens, same cost, a quarter of the wait",
+  "layout": "bars",
+  "bars": [
+    { "name": "Sequential", "text": "10 scoring calls back to back  -  about 75 seconds", "weight": 75, "kind": "slow" },
+    { "name": "Concurrent", "text": "10 in parallel  -  about 20 seconds", "weight": 20, "kind": "fast" }
+  ],
+  "note": "Identical token cost. The only lever in this article that is free."
+}

@@ -1,0 +1,18 @@
+{
+  "id": "diag_v2_article6_02_costcap_three_layers",
+  "width": 1780,
+  "height": 470,
+  "title": "One policy, enforced before the call, in three places",
+  "layout": "flow",
+  "flow": [
+    { "title": "Override attempt", "meta": ["scoring_agent", "-> strong model"], "accent": "red" },
+    { "arrow": "blocked at every layer" },
+    { "title": "Three enforcement layers, all before the call", "stack": [
+      { "title": "Layer 1  -  config API", "meta": ["PUT /config rejects the write", "422 cost_cap_violation"], "accent": "green" },
+      { "title": "Layer 2  -  model registry", "meta": ["build snaps the override", "back to the cheap model"], "accent": "green" },
+      { "title": "Layer 3  -  Settings UI", "meta": ["expensive option is", "not shown for these agents"], "accent": "green" }
+    ]},
+    { "arrow": "result" },
+    { "title": "High-volume agents cannot be made expensive", "accent": "blue" }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "id": "diag_v2_article6_05_cost_block",
+  "width": 1600,
+  "height": 420,
+  "title": "Real per-agent cost, one logged run (about USD 0.46 total)",
+  "layout": "ranked_rows",
+  "subtitle": "Ranked from the per-call audit rows",
+  "rows": [
+    { "label": "scoring_agent",   "meta": "Haiku x10",  "value": "USD 0.14", "weight": 0.14, "focal": true },
+    { "label": "resume_critic",   "meta": "Haiku x3",   "value": "USD 0.08", "weight": 0.08 },
+    { "label": "interview_coach", "meta": "Sonnet x1",  "value": "USD 0.07", "weight": 0.07 },
+    { "label": "review_auditor",  "meta": "Haiku x3",   "value": "USD 0.06", "weight": 0.06 },
+    { "label": "career_advisor",  "meta": "Sonnet x1",  "value": "USD 0.06", "weight": 0.06 },
+    { "label": "research_agent",  "meta": "Haiku x10",  "value": "USD 0.04", "weight": 0.04 }
+  ],
+  "footer": [
+    "Typical run about USD 0.41",
+    "Logged range USD 0.20 to 0.52",
+    "Roughly 50 to 60 runs per USD 25"
+  ]
+}
