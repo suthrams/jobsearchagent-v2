@@ -11,7 +11,6 @@ from unittest.mock import MagicMock
 import pytest
 from fastapi.testclient import TestClient
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.types import Command
 
 from app.agents.career_advisor import CareerAdvisor
 from app.agents.fidelity_reviewer import FidelityReviewer
@@ -209,7 +208,6 @@ def _initial_state(thread_id: str = "wf-test-001") -> dict:
         "interview_prep": None,
         "tailored_resume": None,
         "fidelity_review": None,
-        "pending_decision": None,
         "human_decisions": [],
         "report": None,
         "run_metrics": {
@@ -222,7 +220,6 @@ def _initial_state(thread_id: str = "wf-test-001") -> dict:
         "created_at": now,
         "updated_at": now,
         "user_requested_interview_prep": False,
-        "user_requested_tailoring": False,
     }
 
 
@@ -267,142 +264,16 @@ def test_get_workflow_not_found(client):
     assert body["detail"]["error"] == "workflow_not_found"
 
 
-def test_get_workflow_running_or_paused(client, mock_graph):
-    """Start a workflow, run it to interrupt, then GET — status is running or waiting_for_user."""
+def test_get_workflow_status_after_run(client, mock_graph):
+    """Start a workflow, run it, then GET. The graph runs end to end (no interrupt)."""
     thread_id = "wf-api-test-running"
     config = {"configurable": {"thread_id": thread_id}}
     state = _initial_state(thread_id)
 
-    # Run graph directly to get checkpoint created (catches interrupt)
-    try:
-        mock_graph.invoke(state, config)
-    except Exception:
-        pass
+    mock_graph.invoke(state, config)
 
     resp = client.get(f"/workflows/{thread_id}")
     assert resp.status_code == 200
     body = resp.json()
-    assert body["status"] in ("running", "waiting_for_user", "completed")
+    assert body["status"] in ("running", "completed")
     assert body["workflow_id"] == thread_id
-
-
-def test_decision_on_non_paused_workflow(client, mock_graph):
-    """Submitting a decision to a workflow with no active interrupt → 409."""
-    # Run the graph through HITL #1, then resume so it has no active interrupt.
-    thread_id = "wf-api-not-paused"
-    config = {"configurable": {"thread_id": thread_id}}
-    state = _initial_state(thread_id)
-
-    # First invocation — gets to await_job_selection interrupt
-    try:
-        mock_graph.invoke(state, config)
-    except Exception:
-        pass
-
-    # Resume with job selection to clear the interrupt
-    try:
-        mock_graph.invoke(Command(resume={"selected_job_ids": ["job-001"]}), config)
-    except Exception:
-        pass
-
-    # After resumption the graph will either pause at HITL #2 or complete.
-    # Either way, verify that if workflow is not paused (404/409) the API rejects it.
-    snapshot = mock_graph.get_state(config)
-    has_interrupts = any(
-        getattr(task, "interrupts", None)
-        for task in (snapshot.tasks or [])
-    ) if snapshot else False
-
-    if has_interrupts:
-        # Graph is at HITL #2 (tailoring approval) — skip: we can't easily test 409 here
-        pytest.skip("Graph re-paused at HITL #2, cannot test non-paused 409 path.")
-
-    # At this point the graph either completed or has no interrupts.
-    resp = client.post(
-        f"/workflows/{thread_id}/decisions",
-        json={
-            "decision_type": "select_jobs_for_deep_review",
-            "selected_job_ids": ["job-001"],
-        },
-    )
-    # Workflow exists but has no active interrupt → 409
-    assert resp.status_code == 409
-    assert resp.json()["detail"]["error"] == "workflow_not_paused"
-
-
-def test_invalid_decision_type(client, mock_graph):
-    """Submitting an unrecognised decision_type → Pydantic validation error (422)."""
-    # First create a workflow so we have something to submit to
-    thread_id = "wf-api-bad-type"
-    state = _initial_state(thread_id)
-    config = {"configurable": {"thread_id": thread_id}}
-    try:
-        mock_graph.invoke(state, config)
-    except Exception:
-        pass
-
-    resp = client.post(
-        f"/workflows/{thread_id}/decisions",
-        json={
-            "decision_type": "totally_wrong_type",
-            "selected_job_ids": ["job-001"],
-        },
-    )
-    assert resp.status_code == 422
-
-
-def test_valid_job_selection_resumes_workflow(client, mock_graph):
-    """After graph pauses at HITL #1, submit valid job selection → 202."""
-    thread_id = "wf-api-hitl-select"
-    config = {"configurable": {"thread_id": thread_id}}
-    state = _initial_state(thread_id)
-
-    # Run to HITL interrupt
-    try:
-        mock_graph.invoke(state, config)
-    except Exception:
-        pass
-
-    # Verify graph is paused
-    snapshot = mock_graph.get_state(config)
-    has_interrupts = any(
-        getattr(task, "interrupts", None)
-        for task in (snapshot.tasks or [])
-    )
-
-    if not has_interrupts:
-        pytest.skip("Graph did not pause at HITL — cannot test job selection resumption.")
-
-    resp = client.post(
-        f"/workflows/{thread_id}/decisions",
-        json={
-            "decision_type": "select_jobs_for_deep_review",
-            "selected_job_ids": ["job-001"],
-        },
-    )
-    assert resp.status_code == 202
-    assert resp.json()["workflow_id"] == thread_id
-
-
-def test_too_many_jobs_selected(client, mock_graph):
-    """Selecting > MAX_SELECTED_JOBS jobs in request body → Pydantic 422 (before reaching route)."""
-    thread_id = "wf-api-too-many"
-    config = {"configurable": {"thread_id": thread_id}}
-    state = _initial_state(thread_id)
-
-    try:
-        mock_graph.invoke(state, config)
-    except Exception:
-        pass
-
-    from app.workflows.limits import MAX_SELECTED_JOBS
-    too_many = [f"job-{i:03d}" for i in range(1, MAX_SELECTED_JOBS + 2)]
-    resp = client.post(
-        f"/workflows/{thread_id}/decisions",
-        json={
-            "decision_type": "select_jobs_for_deep_review",
-            "selected_job_ids": too_many,
-        },
-    )
-    # Pydantic enforces max_length=MAX_SELECTED_JOBS before the route handler runs
-    assert resp.status_code == 422

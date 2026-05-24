@@ -33,7 +33,6 @@ from app.services.report_generator import ReportGenerator
 from app.services.resume_parser import ResumeParser
 from app.workflows.graph_state import WorkflowGraphState
 from app.workflows.nodes.await_job_selection import make_await_job_selection_node
-from app.workflows.nodes.await_tailoring_approval import make_await_tailoring_approval_node
 from app.workflows.nodes.career_advice import make_career_advice_node
 from app.workflows.nodes.deep_review import make_deep_review_node
 from app.workflows.nodes.discover_jobs import make_discover_jobs_node
@@ -42,8 +41,7 @@ from app.workflows.nodes.interview_prep import make_interview_prep_node
 from app.workflows.nodes.load_resume import make_load_resume_node
 from app.workflows.nodes.register_run import make_register_run_node
 from app.workflows.nodes.score_jobs import make_score_jobs_node
-from app.workflows.nodes.tailoring import make_tailoring_node
-from app.workflows.routers import deep_review_gate, interview_router, tailoring_router
+from app.workflows.routers import deep_review_gate, interview_router
 
 
 @dataclass
@@ -56,6 +54,10 @@ class WorkflowDependencies:
     review_auditor: ReviewAuditor
     career_advisor: CareerAdvisor
     interview_coach: InterviewCoach
+    # Tailoring agents are not wired into the graph (tailoring is an out-of-graph
+    # operation per ADR-055; the in-graph path was retired in ADR-059). They are
+    # retained on the dependency bundle because the tailoring router resolves
+    # them via get_deps().
     tailoring_agent: TailoringAgent
     fidelity_reviewer: FidelityReviewer
     # Services
@@ -85,7 +87,9 @@ def build_graph(deps: WorkflowDependencies):
 
     Returns a CompiledStateGraph backed by the SqliteSaver checkpointer.
     Invoke with: graph.invoke(initial_state, {"configurable": {"thread_id": workflow_id}})
-    Resume with: graph.invoke(Command(resume=decision), {"configurable": {"thread_id": workflow_id}})
+
+    The graph runs end to end with no interrupt() pauses (ADR-059): job selection
+    auto-selects, and tailoring is an out-of-graph operation (ADR-055).
     """
     graph = StateGraph(WorkflowGraphState)
 
@@ -113,11 +117,6 @@ def build_graph(deps: WorkflowDependencies):
     graph.add_node("interview_prep", make_interview_prep_node(
         deps.interview_coach, deps.advice_repo, deps.observability))
 
-    graph.add_node("tailoring", make_tailoring_node(
-        deps.tailoring_agent, deps.fidelity_reviewer, deps.tailoring_repo, deps.observability))
-
-    graph.add_node("await_tailoring_approval", make_await_tailoring_approval_node())
-
     graph.add_node("generate_report", make_generate_report_node(
         deps.report_generator, deps.observability, deps.workflow_repo))
 
@@ -125,14 +124,12 @@ def build_graph(deps: WorkflowDependencies):
     graph.set_entry_point("register_run")
 
     # ── Sequential edges ──────────────────────────────────────────────────────
-    graph.add_edge("register_run",             "discover_jobs")
-    graph.add_edge("discover_jobs",            "load_resume")
-    graph.add_edge("load_resume",              "score_jobs")
-    graph.add_edge("score_jobs",               "await_job_selection")
-    graph.add_edge("deep_review",              "career_advice")
-    graph.add_edge("tailoring",                "await_tailoring_approval")
-    graph.add_edge("await_tailoring_approval", "generate_report")
-    graph.add_edge("generate_report",          END)
+    graph.add_edge("register_run",   "discover_jobs")
+    graph.add_edge("discover_jobs",  "load_resume")
+    graph.add_edge("load_resume",    "score_jobs")
+    graph.add_edge("score_jobs",     "await_job_selection")
+    graph.add_edge("deep_review",    "career_advice")
+    graph.add_edge("generate_report", END)
 
     # ── Conditional edges ─────────────────────────────────────────────────────
     # After auto-select: skip deep review entirely if no jobs qualified.
@@ -142,20 +139,12 @@ def build_graph(deps: WorkflowDependencies):
         {"deep_review": "deep_review", "generate_report": "generate_report"},
     )
 
-    # After career_advice: run InterviewCoach if score is high enough, else check tailoring
+    # After career_advice: run InterviewCoach if score is high enough, else finish.
     graph.add_conditional_edges(
         "career_advice",
         interview_router,
-        {"interview_prep": "interview_prep", "tailoring_check": "tailoring_check_node"},
+        {"interview_prep": "interview_prep", "generate_report": "generate_report"},
     )
-
-    # Intermediate routing node to check tailoring flag (after interview_prep or after career_advice skip)
-    graph.add_node("tailoring_check_node", lambda state: {})
-    graph.add_edge("interview_prep", "tailoring_check_node")
-    graph.add_conditional_edges(
-        "tailoring_check_node",
-        tailoring_router,
-        {"tailoring": "tailoring", "generate_report": "generate_report"},
-    )
+    graph.add_edge("interview_prep", "generate_report")
 
     return graph.compile(checkpointer=deps.checkpointer)

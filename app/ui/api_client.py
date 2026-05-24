@@ -89,29 +89,6 @@ def retry_workflow(workflow_id: str) -> dict:
     return r.json()
 
 
-def submit_job_selection(workflow_id: str, selected_job_ids: list[str]) -> dict:
-    r = httpx.post(
-        f"{BASE_URL}/workflows/{workflow_id}/decisions",
-        json={
-            "decision_type": "select_jobs_for_deep_review",
-            "selected_job_ids": selected_job_ids,
-        },
-        timeout=_TIMEOUT_POST,
-    )
-    r.raise_for_status()
-    return r.json()
-
-
-def submit_tailoring_approval(workflow_id: str, approval: str) -> dict:
-    r = httpx.post(
-        f"{BASE_URL}/workflows/{workflow_id}/decisions",
-        json={"decision_type": "approve_tailoring", "approval": approval},
-        timeout=_TIMEOUT_POST,
-    )
-    r.raise_for_status()
-    return r.json()
-
-
 def get_report(workflow_id: str) -> dict:
     r = httpx.get(f"{BASE_URL}/workflows/{workflow_id}/report", timeout=_TIMEOUT_GET)
     r.raise_for_status()

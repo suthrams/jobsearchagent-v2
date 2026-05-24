@@ -6,9 +6,8 @@ from pydantic import BaseModel, Field
 
 class WorkflowStatusResponse(BaseModel):
     workflow_id: str
-    status: str  # running | waiting_for_user | completed | failed
+    status: str  # running | completed | failed
     current_step: str | None = None
-    pending_decision: dict | None = None
     run_metrics: dict | None = None
     errors: list[dict] = []
     updated_at: str | None = None

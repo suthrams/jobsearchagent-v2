@@ -213,7 +213,6 @@ def _initial_state(thread_id: str = "wf-test-001", **overrides) -> dict:
         "effective_config": {"scoring": {"career_track": "all"}},
         "human_decisions": [],
         "user_requested_interview_prep": False,
-        "user_requested_tailoring": False,
         "created_at": utcnow_iso(),
         "updated_at": utcnow_iso(),
     }

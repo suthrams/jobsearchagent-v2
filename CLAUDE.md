@@ -89,13 +89,12 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 **Tailoring rules**
 - Every tailored claim must include `supporting_evidence` from the original resume
 - Missing experience is labeled as a gap — never rewritten as if present
-- Fidelity Reviewer must run after every Tailoring Agent call (both the in-graph node and the on-demand router enforce this)
+- Fidelity Reviewer must run after every Tailoring Agent call (the on-demand tailoring router enforces this; ADR-059 retired the in-graph path)
 - `tailored_resumes` carries `fidelity_review_json`, `decision`, `decided_at`, `approved` columns. `decision` ∈ {approve, revise, reject}; `approved=1` only when `decision="approve"`
 
-**HITL rules — two distinct tailoring paths**
-- **Path 1 (in-graph, currently UI-dark):** when `state["user_requested_tailoring"]` is `True` before run start, the tailoring node runs inside the LangGraph workflow and pauses at the `await_tailoring_approval` interrupt. Approval is sent to `POST /workflows/{id}/decisions`. The flag is currently never set by the UI; the path is reachable but unused.
-- **Path 2 (out-of-graph, ADR-055):** `POST /workflows/{wf}/jobs/{job}/tailorings` runs `TailoringAgent` + `FidelityReviewer` directly outside the graph for any selected job and persists to `tailored_resumes`. Decision is recorded via `POST /tailorings/{id}/decisions` with `approval ∈ {approve, revise, reject}`. This is the path the UI uses today.
-- Job-selection HITL has been removed entirely — the workflow auto-selects qualifying jobs (see Auto-selection rules) and runs end-to-end.
+**HITL rules — one tailoring approval path (ADR-055, ADR-059)**
+- **Out-of-graph curate-after:** `POST /workflows/{wf}/jobs/{job}/tailorings` runs `TailoringAgent` + `FidelityReviewer` directly outside the graph for any selected job and persists to `tailored_resumes`. The decision is recorded via `POST /tailorings/{id}/decisions` with `approval ∈ {approve, revise, reject}`. This is the only HITL pattern the system uses.
+- The in-graph interrupt path (in-graph tailoring node + `await_tailoring_approval` + `POST /workflows/{id}/decisions`) was retired in ADR-059. The workflow now runs end-to-end with no `interrupt()`: job selection auto-selects (see Auto-selection rules), and tailoring is the out-of-graph operation above. Reintroduce `interrupt()` only when a genuinely irreversible action (e.g. submitting an application) is added.
 - Backend always validates decisions before persisting; UI never auto-approves tailored outputs.
 
 **Auto-selection rules**
@@ -223,7 +222,7 @@ The split between `_run()` (infrastructure: timing, observability, provider disp
 |---|---|
 | Orchestration | LangGraph (stateful workflow graphs) + SqliteSaver |
 | Agent framework | LangChain + LangChain-Anthropic |
-| LLM | Claude + OpenAI (per-agent assignment via ModelRegistry — ADR-053). Defaults in `app/providers/model_registry.py::DEFAULT_AGENT_ASSIGNMENT` |
+| LLM | Claude + OpenAI (per-agent assignment via ModelRegistry — ADR-053, refined by ADR-058). Catalog, pricing, and defaults live in `config/config.yaml` (`models:` and `agents:` blocks); `HIGH_VOLUME_SAFE_MODELS` policy stays in code. |
 | Backend API | FastAPI + Uvicorn |
 | UI | Streamlit (thin control surface only) |
 | Persistence | SQLite (raw sqlite3, no SQLAlchemy) |

@@ -55,7 +55,6 @@ def make_await_job_selection_node() -> Callable[[dict], dict]:
 
         return {
             "selected_jobs": selected_jobs,
-            "pending_decision": None,
             "human_decisions": human_decisions,
             "current_step": "deep_review_in_progress" if selected_jobs else "no_qualifying_jobs",
             "updated_at": utcnow_iso(),

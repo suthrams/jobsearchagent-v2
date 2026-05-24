@@ -53,7 +53,7 @@ from pydantic import BaseModel, Field
 class TailoredBullet(BaseModel):
     original_text: str
     suggested_text: str  # empty for claim_type="remove" or claim_type="gap"
-    supporting_evidence: str  # must reference something in the original resume — never empty
+    supporting_evidence: str = Field(min_length=1)  # must reference something in the original resume — never empty (enforced, not just documented)
     claim_type: Literal["reword", "emphasize", "gap", "remove"]
     fidelity_risk: Literal["low", "medium", "high"]
     section_label: str = ""  # e.g. "summary", "experience:Acme:Staff Engineer", "skills"

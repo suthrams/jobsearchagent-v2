@@ -36,12 +36,14 @@ _RETRYABLE_ERRORS = (
     openai.InternalServerError,
 )
 
-# Per-million-token pricing. Indicative values; update when OpenAI changes pricing.
-_PRICING: dict[str, dict[str, float]] = {
-    "gpt-4o-mini": {"input": 0.15,  "output": 0.60},
-    "gpt-4o":      {"input": 2.50,  "output": 10.00},
-    "o1":          {"input": 15.00, "output": 60.00},
-}
+# Per-million-token pricing is INJECTED via the constructor per ADR-058.
+# The catalog lives in config/config.yaml under `models.providers.openai`,
+# parsed by `model_registry.catalog_from_config` and threaded through
+# `ModelRegistry._build_provider`. This module no longer hardcodes prices.
+#
+# `_FALLBACK_PRICING` remains as a safety net for tests or code paths that
+# construct an OpenAIProvider without going through the registry (and thus
+# without injecting pricing). The fallback approximates gpt-4o rates.
 _FALLBACK_PRICING: dict[str, float] = {"input": 2.50, "output": 10.00}
 
 
@@ -67,10 +69,15 @@ class OpenAIProvider(LLMClient):
         prompt_loader: PromptLoader,
         model_name: str = "gpt-4o-mini",
         *,
+        pricing: dict[str, dict[str, float]] | None = None,
         _client: Any = None,
     ) -> None:
         self._prompt_loader = prompt_loader
         self._model_name = model_name
+        # pricing is keyed by model_name -> {"input": $/M, "output": $/M}, injected
+        # by ModelRegistry from the config catalog. _FALLBACK_PRICING applies when
+        # the provider is constructed outside the registry path.
+        self._pricing = pricing or {}
         # _client is the real openai.OpenAI client unless tests inject a mock.
         self._client = _client if _client is not None else openai.OpenAI()
         self._tlocal = threading.local()
@@ -113,7 +120,7 @@ class OpenAIProvider(LLMClient):
             return max(1, len(text) // 4)
 
     def estimate_cost(self, tokens_in: int, tokens_out: int) -> float:
-        pricing = _PRICING.get(self._model_name, _FALLBACK_PRICING)
+        pricing = self._pricing.get(self._model_name, _FALLBACK_PRICING)
         return (tokens_in * pricing["input"] + tokens_out * pricing["output"]) / 1_000_000
 
     def last_call_usage(self) -> tuple[int, int, float]:

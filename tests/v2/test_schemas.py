@@ -412,6 +412,20 @@ def test_tailored_bullet_requires_supporting_evidence():
         )
 
 
+def test_tailored_bullet_rejects_empty_supporting_evidence():
+    """A claim with empty evidence is a malformed object, not a weak suggestion.
+    Enforces the 'no evidence, no claim' invariant at the schema boundary rather
+    than leaving the Fidelity Reviewer as the only line of defense."""
+    with pytest.raises(ValidationError):
+        TailoredBullet(
+            original_text="Led team",
+            suggested_text="Led cross-functional team of 8 engineers",
+            supporting_evidence="",  # empty -> must reject
+            claim_type="reword",
+            fidelity_risk="low",
+        )
+
+
 def test_tailored_bullet_valid():
     b = TailoredBullet(
         original_text="Led team",

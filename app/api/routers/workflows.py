@@ -1,31 +1,25 @@
-"""Workflow router — POST /workflows, GET /workflows/{id}, POST /workflows/{id}/decisions."""
+"""Workflow router — POST /workflows, GET /workflows/{id}, status + retry."""
 from __future__ import annotations
 
 import concurrent.futures
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Request
-from langgraph.types import Command
-from pydantic import TypeAdapter, ValidationError
-
-try:
-    from langgraph.errors import GraphInterrupt as _GraphInterrupt  # langgraph >= 0.2.x
-except ImportError:  # older builds expose it on langgraph.types or not at all
-    _GraphInterrupt = Exception  # type: ignore[assignment,misc]
+from fastapi import APIRouter, Depends, HTTPException
 
 from app.api.dependencies import get_graph
-from app.api.schemas.requests import (
-    DecisionRequest,
-    JobSelectionDecision,
-    StartWorkflowRequest,
-    TailoringDecision,
-)
+from app.api.schemas.requests import StartWorkflowRequest
 from app.api.schemas.responses import WorkflowStatusResponse
+from app.providers.model_registry import (
+    HIGH_VOLUME_AGENTS,
+    HIGH_VOLUME_SAFE_MODELS,
+    ModelConfigError,
+    catalog_from_config,
+    defaults_from_config,
+    known_models_from_catalog,
+)
 from app.repositories.database import utcnow_iso
-from app.workflows.limits import MAX_SELECTED_JOBS
-
-_decision_adapter = TypeAdapter(DecisionRequest)
+from app.services.config_service import ConfigService
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +53,6 @@ def _build_initial_state(req: StartWorkflowRequest, workflow_id: str) -> dict:
         "interview_prep": None,
         "tailored_resume": None,
         "fidelity_review": None,
-        "pending_decision": None,
         "human_decisions": [],
         "report": None,
         "run_metrics": {
@@ -76,16 +69,13 @@ def _build_initial_state(req: StartWorkflowRequest, workflow_id: str) -> dict:
         "created_at": now,
         "updated_at": now,
         "user_requested_interview_prep": False,
-        "user_requested_tailoring": False,
     }
 
 
 def _run_graph(graph, initial_state: dict, config: dict) -> None:
-    """Execute graph.invoke() in thread pool. GraphInterrupt is normal — not an error."""
+    """Execute graph.invoke() in thread pool."""
     try:
         graph.invoke(initial_state, config)
-    except _GraphInterrupt:
-        logger.debug("Graph paused at HITL interrupt for thread %s", config)
     except Exception as exc:
         logger.exception("Unhandled error in graph thread for config %s", config)
         try:
@@ -103,8 +93,6 @@ def _retry_graph(graph, config: dict) -> None:
     """Re-invoke a workflow from its last checkpoint after a server restart."""
     try:
         graph.invoke(None, config)
-    except _GraphInterrupt:
-        logger.debug("Graph paused at HITL interrupt for thread %s", config)
     except Exception as exc:
         logger.exception("Unhandled error retrying graph for config %s", config)
         try:
@@ -117,25 +105,6 @@ def _retry_graph(graph, config: dict) -> None:
             logger.exception("Failed to write failed status after retry for %s", config)
 
 
-def _resume_graph(graph, decision_payload: dict, config: dict) -> None:
-    """Resume a paused graph with a human decision."""
-    try:
-        graph.invoke(Command(resume=decision_payload), config)
-    except _GraphInterrupt:
-        logger.debug("Graph paused again at HITL interrupt for thread %s", config)
-    except Exception as exc:
-        logger.exception("Unhandled error resuming graph for config %s", config)
-        try:
-            from app.repositories.database import utcnow_iso
-            graph.update_state(config, {
-                "status": "failed",
-                "errors": [{"stage": "graph_resume", "error_type": type(exc).__name__, "message": str(exc), "recoverable": False}],
-                "updated_at": utcnow_iso(),
-            })
-        except Exception:
-            logger.exception("Failed to write failed status to graph state for %s", config)
-
-
 def _read_status(graph, workflow_id: str) -> WorkflowStatusResponse | None:
     """Read current workflow status from graph checkpoint. Returns None if not found."""
     config = {"configurable": {"thread_id": workflow_id}}
@@ -146,24 +115,7 @@ def _read_status(graph, workflow_id: str) -> WorkflowStatusResponse | None:
 
     state = snapshot.values
 
-    # Determine status from interrupt / next / state
-    pending_decision: dict | None = None
-    status: str
-
-    # Check for active interrupts (waiting_for_user)
-    has_interrupts = any(
-        getattr(task, "interrupts", None)
-        for task in (snapshot.tasks or [])
-    )
-    if has_interrupts:
-        status = "waiting_for_user"
-        # Extract interrupt payload from first task that has interrupts
-        for task in snapshot.tasks:
-            interrupts = getattr(task, "interrupts", None)
-            if interrupts:
-                pending_decision = interrupts[0].value
-                break
-    elif snapshot.next:
+    if snapshot.next:
         status = "running"
     else:
         status = state.get("status", "completed")
@@ -172,7 +124,6 @@ def _read_status(graph, workflow_id: str) -> WorkflowStatusResponse | None:
         workflow_id=workflow_id,
         status=status,
         current_step=state.get("current_step"),
-        pending_decision=pending_decision,
         run_metrics=state.get("run_metrics"),
         errors=state.get("errors") or [],
         updated_at=state.get("updated_at"),
@@ -184,7 +135,27 @@ def start_workflow(
     body: StartWorkflowRequest,
     graph=Depends(get_graph),
 ) -> dict:
-    """Start a new workflow. Returns 202 immediately; execution is async in thread pool."""
+    """Start a new workflow. Returns 202 immediately; execution is async in thread pool.
+
+    Per ADR-058, snapshots the effective per-agent assignment into the run state
+    so the workflow_runs row records exactly which (provider, model) ran each
+    agent. Accepts an optional `agent_overrides` map to vary the assignment for
+    this run only; overrides are validated against the catalog + cost cap.
+
+    Phase 1 note: overrides are persisted in the snapshot but the runtime
+    agents still resolve through the global registry. The response includes a
+    `warnings` array surfacing this gap when overrides are supplied.
+    """
+    warnings: list[str] = []
+    snapshot_agents, override_warnings = _resolve_agent_snapshot(body.agent_overrides)
+    warnings.extend(override_warnings)
+
+    # Merge the agents snapshot into the incoming effective_config so register_run
+    # writes the full picture to workflow_runs.
+    effective_with_agents = dict(body.effective_config or {})
+    effective_with_agents["agents"] = snapshot_agents
+    body = body.model_copy(update={"effective_config": effective_with_agents})
+
     workflow_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": workflow_id}}
     initial_state = _build_initial_state(body, workflow_id)
@@ -196,7 +167,112 @@ def start_workflow(
         "workflow_id": workflow_id,
         "status": "running",
         "created_at": initial_state["created_at"],
+        "agent_assignment": snapshot_agents,
+        "warnings": warnings,
     }
+
+
+def _resolve_agent_snapshot(
+    overrides: dict[str, dict[str, str]],
+) -> tuple[dict[str, dict[str, str]], list[str]]:
+    """Compute the per-workflow agent assignment snapshot.
+
+    Reads the global effective config (YAML defaults + user_config overrides)
+    via ConfigService, then layers the kickoff `overrides` on top after
+    validation. Returns (snapshot, warnings). Raises HTTPException on invalid
+    override input.
+
+    Tolerates a config without the `agents:` / `models:` blocks (returns an
+    empty snapshot and a warning). Lets older configs and test environments
+    keep working until they are migrated to ADR-058 shape.
+    """
+    eff = ConfigService().get_effective_config()
+    try:
+        catalog = catalog_from_config(eff)
+        defaults = defaults_from_config(eff)
+    except ModelConfigError as exc:
+        if overrides:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "config_missing_agents_or_models",
+                    "message": (
+                        "agent_overrides was supplied but config.yaml is missing "
+                        f"the required block: {exc}. Add the agents and models "
+                        "blocks per config.example.yaml."
+                    ),
+                },
+            )
+        logger.info(
+            "_resolve_agent_snapshot: config missing agents/models block (%s); "
+            "starting without an agent snapshot. Update config.yaml per "
+            "config.example.yaml to enable per-workflow snapshot.", exc,
+        )
+        return {}, ["agent assignment snapshot unavailable: config.yaml is missing "
+                    "the `agents:` and/or `models:` blocks (see config.example.yaml)."]
+    known_models = known_models_from_catalog(catalog)
+
+    snapshot: dict[str, dict[str, str]] = {a: dict(v) for a, v in defaults.items()}
+    warnings: list[str] = []
+
+    if not overrides:
+        return snapshot, warnings
+
+    for agent_name, pick in overrides.items():
+        if agent_name not in defaults:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "unknown_agent",
+                    "message": f"Unknown agent {agent_name!r}. Known: {sorted(defaults)}",
+                },
+            )
+        if not isinstance(pick, dict):
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "invalid_override",
+                        "message": f"agent_overrides.{agent_name} must be {{provider, model}}"},
+            )
+        provider = pick.get("provider")
+        model = pick.get("model")
+        if not provider or not model:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "incomplete_assignment",
+                        "message": "Both provider and model are required."},
+            )
+        if provider not in known_models:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "unknown_provider",
+                        "message": f"Unknown provider {provider!r}. Known: {sorted(known_models)}"},
+            )
+        if model not in known_models[provider]:
+            raise HTTPException(
+                status_code=422,
+                detail={"error": "unknown_model",
+                        "message": f"Unknown model {model!r} for provider {provider!r}. "
+                                   f"Known: {known_models[provider]}"},
+            )
+        if agent_name in HIGH_VOLUME_AGENTS and model not in HIGH_VOLUME_SAFE_MODELS:
+            raise HTTPException(
+                status_code=422,
+                detail={
+                    "error": "cost_cap_violation",
+                    "message": (
+                        f"Agent {agent_name!r} is high-volume and cannot be assigned "
+                        f"{model!r}. Allowed models: {sorted(HIGH_VOLUME_SAFE_MODELS)}."
+                    ),
+                },
+            )
+        snapshot[agent_name] = {"provider": str(provider), "model": str(model)}
+
+    warnings.append(
+        "agent_overrides accepted and persisted to the workflow snapshot, but per-run "
+        "runtime agent swap is Phase 9 (ADR-058). Agents in this run will still "
+        "resolve through the global registry assignment."
+    )
+    return snapshot, warnings
 
 
 @router.get("/{workflow_id}", response_model=WorkflowStatusResponse)
@@ -225,8 +301,7 @@ def retry_workflow(
 ) -> dict:
     """Re-submit a workflow that was interrupted by a server restart.
 
-    Valid only when snapshot.next is non-empty and there is no active HITL interrupt.
-    Use POST /decisions for workflows paused at a user decision point.
+    Valid only when snapshot.next is non-empty (there are pending steps to resume).
     """
     config = {"configurable": {"thread_id": workflow_id}}
     snapshot = graph.get_state(config)
@@ -234,17 +309,6 @@ def retry_workflow(
         raise HTTPException(
             status_code=404,
             detail={"error": "workflow_not_found", "message": f"Workflow {workflow_id!r} not found.", "workflow_id": workflow_id},
-        )
-
-    has_interrupts = any(getattr(task, "interrupts", None) for task in (snapshot.tasks or []))
-    if has_interrupts:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "workflow_waiting_for_user",
-                "message": "Workflow is paused for user input — use POST /decisions instead.",
-                "workflow_id": workflow_id,
-            },
         )
 
     if not snapshot.next:
@@ -262,109 +326,3 @@ def retry_workflow(
     return {"workflow_id": workflow_id, "status": "running", "resuming_from": list(snapshot.next)}
 
 
-@router.post("/{workflow_id}/decisions", status_code=202)
-async def submit_decision(
-    workflow_id: str,
-    request: Request,
-    graph=Depends(get_graph),
-) -> dict:
-    """Submit a HITL decision to resume a paused workflow. Returns 202 immediately."""
-    # Parse and validate the request body using the discriminated union adapter.
-    # This surfaces Pydantic validation errors as 422 before any business logic runs.
-    raw = await request.json()
-    try:
-        body = _decision_adapter.validate_python(raw)
-    except ValidationError as exc:
-        raise HTTPException(status_code=422, detail=exc.errors()) from exc
-
-    config = {"configurable": {"thread_id": workflow_id}}
-
-    # 1. Workflow exists?
-    snapshot = graph.get_state(config)
-    if snapshot is None or not snapshot.values:
-        raise HTTPException(
-            status_code=404,
-            detail={
-                "error": "workflow_not_found",
-                "message": f"Workflow {workflow_id!r} not found.",
-                "workflow_id": workflow_id,
-            },
-        )
-
-    # 2. Has active interrupts (waiting_for_user)?
-    has_interrupts = any(
-        getattr(task, "interrupts", None)
-        for task in (snapshot.tasks or [])
-    )
-    if not has_interrupts:
-        raise HTTPException(
-            status_code=409,
-            detail={
-                "error": "workflow_not_paused",
-                "message": "Workflow is not waiting for a user decision.",
-                "workflow_id": workflow_id,
-            },
-        )
-
-    # 3. decision_type matches interrupt payload?
-    interrupt_payload: dict = {}
-    for task in snapshot.tasks:
-        interrupts = getattr(task, "interrupts", None)
-        if interrupts:
-            interrupt_payload = interrupts[0].value or {}
-            break
-
-    expected_type = interrupt_payload.get("decision_type")
-    if body.decision_type != expected_type:
-        raise HTTPException(
-            status_code=422,
-            detail={
-                "error": "decision_type_mismatch",
-                "message": (
-                    f"Expected decision_type {expected_type!r}, "
-                    f"got {body.decision_type!r}."
-                ),
-                "workflow_id": workflow_id,
-            },
-        )
-
-    # 4 & 5. Validate job selection specifics
-    if isinstance(body, JobSelectionDecision):
-        eligible_jobs = interrupt_payload.get("eligible_jobs", [])
-        eligible_ids = {j.get("job_id") for j in eligible_jobs}
-        invalid = [jid for jid in body.selected_job_ids if jid not in eligible_ids]
-        if invalid:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "invalid_job_ids",
-                    "message": f"Job IDs not in eligible set: {invalid}",
-                    "workflow_id": workflow_id,
-                },
-            )
-        if len(body.selected_job_ids) > MAX_SELECTED_JOBS:
-            raise HTTPException(
-                status_code=422,
-                detail={
-                    "error": "too_many_jobs_selected",
-                    "message": (
-                        f"Cannot select more than {MAX_SELECTED_JOBS} jobs. "
-                        f"Got {len(body.selected_job_ids)}."
-                    ),
-                    "workflow_id": workflow_id,
-                },
-            )
-        decision_payload = {"selected_job_ids": body.selected_job_ids}
-    elif isinstance(body, TailoringDecision):
-        decision_payload = {"decision_value": body.approval}
-    else:
-        decision_payload = {}
-
-    _executor.submit(_resume_graph, graph, decision_payload, config)
-
-    logger.info(
-        "Decision %r submitted for workflow %s, resuming in thread pool.",
-        body.decision_type,
-        workflow_id,
-    )
-    return {"workflow_id": workflow_id, "status": "running"}

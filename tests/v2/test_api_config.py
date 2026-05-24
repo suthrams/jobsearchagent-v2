@@ -20,6 +20,31 @@ def isolated_config(tmp_path, monkeypatch):
     cfg_path.write_text(yaml.safe_dump({
         "search": {"titles": ["Engineer"], "locations": ["Remote"], "max_jobs": 10},
         "scoring": {"min_match_score": 75},
+        # ADR-058: per-agent defaults + model catalog live in YAML.
+        "agents": {
+            "research_agent":    {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+            "scoring_agent":     {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+            "resume_critic":     {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+            "review_auditor":    {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+            "fidelity_reviewer": {"provider": "claude", "model": "claude-haiku-4-5-20251001"},
+            "career_advisor":    {"provider": "claude", "model": "claude-sonnet-4-6"},
+            "interview_coach":   {"provider": "claude", "model": "claude-sonnet-4-6"},
+            "tailoring_agent":   {"provider": "claude", "model": "claude-sonnet-4-6"},
+        },
+        "models": {
+            "providers": {
+                "claude": [
+                    {"id": "claude-haiku-4-5-20251001", "input_per_m": 1.00, "output_per_m": 5.00},
+                    {"id": "claude-sonnet-4-6",         "input_per_m": 3.00, "output_per_m": 15.00},
+                    {"id": "claude-opus-4-7",           "input_per_m": 15.00, "output_per_m": 75.00},
+                ],
+                "openai": [
+                    {"id": "gpt-4o-mini", "input_per_m": 0.15, "output_per_m": 0.60},
+                    {"id": "gpt-4o",      "input_per_m": 2.50, "output_per_m": 10.00},
+                    {"id": "o1",          "input_per_m": 15.00, "output_per_m": 60.00},
+                ],
+            },
+        },
     }), encoding="utf-8")
 
     db_path = tmp_path / "v2.db"

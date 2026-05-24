@@ -23,7 +23,7 @@ def deep_review_gate(state: dict) -> str:
 
 
 def interview_router(state: dict) -> str:
-    """Route after career_advice: run InterviewCoach if any selected job qualifies, else skip.
+    """Route after career_advice: run InterviewCoach if any selected job qualifies, else finish.
 
     A job qualifies if any of its track scores (technical/architecture/leadership)
     meets the per-run min_match_score, or if the user explicitly requested coaching.
@@ -33,11 +33,4 @@ def interview_router(state: dict) -> str:
     top_track = max((best_track_score(j) for j in selected if isinstance(j, dict)), default=0)
     if top_track >= threshold or state.get("user_requested_interview_prep"):
         return "interview_prep"
-    return "tailoring_check"
-
-
-def tailoring_router(state: dict) -> str:
-    """Route after interview_prep (or from career_advice when skipping coach): run Tailoring or go to report."""
-    if state.get("user_requested_tailoring"):
-        return "tailoring"
     return "generate_report"

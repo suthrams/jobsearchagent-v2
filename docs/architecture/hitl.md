@@ -2,6 +2,18 @@
 
 ---
 
+> **Status note (ADR-059).** This document describes the original interrupt-resume
+> HITL model, which has been **retired**. The workflow graph no longer calls
+> `interrupt()` and there is no `waiting_for_user` pause: job selection auto-selects,
+> and the single remaining HITL pattern is the **out-of-graph tailoring decision**
+> (`POST /tailorings/{id}/decisions`, approve / revise / reject) where the agent
+> recommends and a human decides. Sections below that describe in-graph interrupts,
+> `waiting_for_user`, and `POST /workflows/{id}/decisions` are retained for historical
+> context only. See `CLAUDE.md` (HITL rules), `api_reference.md`, and ADR-055 / ADR-059
+> for the current model.
+
+---
+
 ## 1. Purpose
 
 This document defines the **Human-in-the-Loop (HITL) model** for `jobsearchagent-v2`.

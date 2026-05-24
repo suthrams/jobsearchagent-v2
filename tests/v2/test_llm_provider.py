@@ -462,7 +462,10 @@ def test_extract_usage_falls_back_to_response_metadata_for_legacy_payloads(tmp_p
 
 def test_estimate_cost_haiku(tmp_path):
     loader = PromptLoader(_write_prompts(tmp_path))
-    provider = ClaudeProvider(loader, model_name="claude-haiku-4-5-20251001", _model=MagicMock())
+    provider = ClaudeProvider(
+        loader, model_name="claude-haiku-4-5-20251001",
+        pricing=_TEST_CLAUDE_PRICING, _model=MagicMock(),
+    )
     cost = provider.estimate_cost(1_000_000, 1_000_000)
     assert abs(cost - 6.00) < 0.01  # $1.00 input + $5.00 output per million
 
@@ -471,7 +474,10 @@ def test_estimate_cost_with_cache_applies_cache_modifiers(tmp_path):
     """Cache writes bill at 1.25x input rate, cache reads at 0.10x. Without
     these multipliers the rollup undercounts every cached call."""
     loader = PromptLoader(_write_prompts(tmp_path))
-    provider = ClaudeProvider(loader, model_name="claude-haiku-4-5-20251001", _model=MagicMock())
+    provider = ClaudeProvider(
+        loader, model_name="claude-haiku-4-5-20251001",
+        pricing=_TEST_CLAUDE_PRICING, _model=MagicMock(),
+    )
     # 1M regular input ($1.00) + 1M cache_creation (1.00 * 1.25 = $1.25)
     # + 1M cache_read (1.00 * 0.10 = $0.10) + 1M output ($5.00) = $7.35
     cost = provider._estimate_cost_with_cache(1_000_000, 1_000_000, 1_000_000, 1_000_000)
@@ -481,7 +487,10 @@ def test_estimate_cost_with_cache_applies_cache_modifiers(tmp_path):
 def test_estimate_cost_with_cache_zero_cache_matches_estimate_cost(tmp_path):
     """When there's no cache activity, both cost paths must agree."""
     loader = PromptLoader(_write_prompts(tmp_path))
-    provider = ClaudeProvider(loader, model_name="claude-sonnet-4-6", _model=MagicMock())
+    provider = ClaudeProvider(
+        loader, model_name="claude-sonnet-4-6",
+        pricing=_TEST_CLAUDE_PRICING, _model=MagicMock(),
+    )
     plain = provider.estimate_cost(500_000, 200_000)
     cached = provider._estimate_cost_with_cache(500_000, 0, 0, 200_000)
     assert abs(plain - cached) < 1e-9
@@ -489,7 +498,10 @@ def test_estimate_cost_with_cache_zero_cache_matches_estimate_cost(tmp_path):
 
 def test_estimate_cost_sonnet(tmp_path):
     loader = PromptLoader(_write_prompts(tmp_path))
-    provider = ClaudeProvider(loader, model_name="claude-sonnet-4-6", _model=MagicMock())
+    provider = ClaudeProvider(
+        loader, model_name="claude-sonnet-4-6",
+        pricing=_TEST_CLAUDE_PRICING, _model=MagicMock(),
+    )
     cost = provider.estimate_cost(1_000_000, 1_000_000)
     assert abs(cost - 18.00) < 0.01  # 3.00 + 15.00 per million
 
@@ -528,10 +540,26 @@ def _make_openai_response(payload_dict: dict, *, tokens_in: int = 100, tokens_ou
     return response
 
 
+# Per ADR-058: pricing is injected at construction time (no module-level _PRICING).
+# Tests that exercise cost computation must pass `pricing` explicitly.
+_TEST_OPENAI_PRICING = {
+    "gpt-4o-mini": {"input": 0.15,  "output": 0.60},
+    "gpt-4o":      {"input": 2.50,  "output": 10.00},
+    "o1":          {"input": 15.00, "output": 60.00},
+}
+
+_TEST_CLAUDE_PRICING = {
+    "claude-haiku-4-5-20251001": {"input": 1.00, "output": 5.00},
+    "claude-sonnet-4-6":         {"input": 3.00, "output": 15.00},
+    "claude-opus-4-7":           {"input": 15.00, "output": 75.00},
+}
+
+
 def _openai_provider(tmp_path, model="gpt-4o-mini"):
     return OpenAIProvider(
         PromptLoader(_write_prompts(tmp_path)),
         model_name=model,
+        pricing=_TEST_OPENAI_PRICING,
         _client=MagicMock(),
     )
 

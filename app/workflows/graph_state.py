@@ -4,9 +4,8 @@ Mirrors WorkflowState (Pydantic) but uses plain Python types only so LangGraph
 can serialize/deserialize via its checkpointer without Pydantic dependency.
 All fields are optional (total=False) because nodes return partial updates.
 
-Two routing flags are added:
+One routing flag remains:
   user_requested_interview_prep — set by API layer before workflow starts
-  user_requested_tailoring      — set by API layer before or during workflow
 """
 from __future__ import annotations
 
@@ -48,8 +47,7 @@ class WorkflowGraphState(TypedDict, total=False):
     tailored_resume: dict | None
     fidelity_review: dict | None
 
-    # ── HITL ──────────────────────────────────────────────────────────────────
-    pending_decision: dict | None
+    # ── HITL audit trail (auto-selection records here; no interrupt machinery) ─
     human_decisions: list[dict]
 
     # ── Report ────────────────────────────────────────────────────────────────
@@ -66,4 +64,3 @@ class WorkflowGraphState(TypedDict, total=False):
 
     # ── Routing flags (set by API layer, never by nodes) ─────────────────────
     user_requested_interview_prep: bool
-    user_requested_tailoring: bool

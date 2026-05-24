@@ -277,7 +277,11 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     from pathlib import Path
 
     from app.providers.claude_provider import ClaudeProvider, make_resume_enhance_fn
-    from app.providers.model_registry import ModelRegistry, assignment_from_config
+    from app.providers.model_registry import (
+        ModelRegistry,
+        catalog_from_config,
+        defaults_from_config,
+    )
     from app.providers.prompt_loader import PromptLoader
 
     # Anchor all paths to the project root (two levels up from app/api/dependencies.py)
@@ -311,10 +315,13 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     )
     _eff = config_svc_for_models.get_effective_config()
 
-    # Per-agent provider/model assignment (ADR-053). Defaults from ModelRegistry,
-    # overrides from effective_config.agents.*.
-    agent_assignment = assignment_from_config(_eff)
-    registry = ModelRegistry.build(loader, agent_assignment)
+    # Per-agent provider/model assignment (ADR-053 + ADR-058). Catalog, pricing,
+    # and per-agent defaults all come from config (config.yaml `models:` and
+    # `agents:` blocks). User overrides via the Settings UI are already merged
+    # into _eff by ConfigService.
+    catalog = catalog_from_config(_eff)
+    agent_assignment = defaults_from_config(_eff)
+    registry = ModelRegistry.build(loader, catalog, agent_assignment)
     logger.info("ModelRegistry built; agent assignment: %s", registry.assignment())
 
     # Observability service

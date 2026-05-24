@@ -39,8 +39,7 @@ from app.workflows.nodes.discover_jobs import make_discover_jobs_node
 from app.workflows.nodes.generate_report import make_generate_report_node
 from app.workflows.nodes.interview_prep import make_interview_prep_node
 from app.workflows.nodes.score_jobs import make_score_jobs_node
-from app.workflows.nodes.tailoring import make_tailoring_node
-from app.workflows.routers import interview_router, tailoring_router
+from app.workflows.routers import interview_router
 
 
 # ── Shared fixtures ────────────────────────────────────────────────────────────
@@ -558,43 +557,8 @@ def _make_fidelity_reviewer(result: dict | None = None) -> MagicMock:
     return mock
 
 
-def test_tailoring_happy_path_fidelity_always_runs():
-    state = _base_state(
-        selected_jobs=[_make_job("job-001")],
-        final_resume_review=_review_result(),
-    )
-    ta = _make_tailoring_agent()
-    fr = _make_fidelity_reviewer()
-    node = make_tailoring_node(ta, fr, _tailoring_repo(), _obs())
-    result = node(state)
-
-    assert result["tailored_resume"] is not None
-    assert result["fidelity_review"] is not None
-    ta.run.assert_called_once()
-    fr.run.assert_called_once()
-
-
-def test_tailoring_fidelity_runs_even_after_tailoring_succeeds():
-    """FidelityReviewer must always run — never conditionally skipped."""
-    state = _base_state(selected_jobs=[_make_job("job-001")])
-    fr = _make_fidelity_reviewer()
-    node = make_tailoring_node(_make_tailoring_agent(), fr, _tailoring_repo(), _obs())
-    node(state)
-    fr.run.assert_called_once()
-
-
-def test_tailoring_agent_error_returns_none_no_fidelity():
-    ta = MagicMock(spec=TailoringAgent)
-    ta.run.side_effect = LLMProviderError("tailoring fail")
-    fr = _make_fidelity_reviewer()
-
-    state = _base_state(selected_jobs=[_make_job("job-001")])
-    node = make_tailoring_node(ta, fr, _tailoring_repo(), _obs())
-    result = node(state)
-
-    assert result["tailored_resume"] is None
-    # Fidelity should NOT run if tailoring failed (no draft to review)
-    fr.run.assert_not_called()
+# Tailoring is an out-of-graph operation (ADR-055); the in-graph tailoring node
+# was retired in ADR-059. Its behavior is covered by tests/v2/test_tailoring_router.py.
 
 
 # ── generate_report ────────────────────────────────────────────────────────────
@@ -628,12 +592,12 @@ def test_interview_router_high_track_score_returns_interview_prep():
     assert interview_router(state) == "interview_prep"
 
 
-def test_interview_router_low_score_returns_tailoring_check():
+def test_interview_router_low_score_returns_generate_report():
     state = {
         "selected_jobs": [{"technical_score": 40, "architecture_score": 40, "leadership_score": 40}],
         "user_requested_interview_prep": False,
     }
-    assert interview_router(state) == "tailoring_check"
+    assert interview_router(state) == "generate_report"
 
 
 def test_interview_router_user_request_overrides_score():
@@ -652,11 +616,3 @@ def test_interview_router_respects_custom_threshold():
     assert interview_router(state) == "interview_prep"
 
 
-def test_tailoring_router_user_request_returns_tailoring():
-    state = {"user_requested_tailoring": True}
-    assert tailoring_router(state) == "tailoring"
-
-
-def test_tailoring_router_no_request_returns_generate_report():
-    state = {"user_requested_tailoring": False}
-    assert tailoring_router(state) == "generate_report"

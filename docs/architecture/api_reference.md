@@ -14,7 +14,6 @@
 - [Endpoints](#endpoints)
   - [POST /workflows](#post-workflows)
   - [GET /workflows/{workflow_id}](#get-workflowsworkflow_id)
-  - [POST /workflows/{workflow_id}/decisions](#post-workflowsworkflow_iddecisions)
   - [GET /workflows/{workflow_id}/jobs](#get-workflowsworkflow_idjobs)
   - [GET /workflows/{workflow_id}/report](#get-workflowsworkflow_idreport)
 - [On-Demand Tailoring](#on-demand-tailoring)
@@ -43,7 +42,6 @@ progress.
 POST /workflows                                → start a run (202, async)
 GET  /workflows/{id}                           → poll status
 POST /workflows/{id}/retry                     → re-submit a workflow after a server restart (202)
-POST /workflows/{id}/decisions                 → submit an in-graph HITL decision (legacy tailoring approval path)
 GET  /workflows/{id}/jobs                      → list scored jobs
 GET  /workflows/{id}/report                    → fetch the final report
 POST /workflows/{wf}/jobs/{job}/tailorings     → create a tailoring draft (run tailoring + fidelity, 200)
@@ -56,14 +54,13 @@ PUT  /config                                   → upsert one user-config overri
 
 **URL convention notes.** Tailorings use a workflow-scoped path for create + list (a tailoring is created in the context of a workflow + job) and a top-level path for fetch + decision (the `tailoring_id` is a globally unique UUID, so once you have it, the workflow scope is redundant — same pattern as GitHub's `/repos/.../issues` for list vs `/issues/{id}` for fetch). `POST /workflows/{id}/retry` is an action verb, not a resource — accepted as a documented exception because the operation has no clean resource form.
 
-> **Behaviour note.** The previous `select_jobs_for_deep_review` HITL pause has
-> been removed. The graph now auto-selects up to `MAX_SELECTED_JOBS` (10) top
+> **Behaviour note.** The workflow graph runs end-to-end with no `interrupt()`
+> pauses (ADR-059). Job selection auto-selects up to `MAX_SELECTED_JOBS` top
 > scoring jobs where any track score (technical / architecture / leadership)
-> meets `effective_config.scoring.min_match_score` (default 75). Workflows run
-> end-to-end without any required user input. The `POST /decisions` endpoint
-> still validates `select_jobs_for_deep_review` payloads for backwards-compat
-> with older clients but the graph will no longer be in a state that accepts
-> them — the call returns 409 `workflow_not_paused`.
+> meets `effective_config.scoring.min_match_score` (default 75). The only HITL
+> in the system is the out-of-graph tailoring decision
+> (`POST /tailorings/{id}/decisions`). The former in-graph
+> `POST /workflows/{id}/decisions` endpoint was removed in ADR-059.
 
 ---
 
@@ -71,26 +68,23 @@ PUT  /config                                   → upsert one user-config overri
 
 ### Asynchronous execution
 
-`POST /workflows` and `POST /workflows/{id}/decisions` both return **202 Accepted**
-immediately. The graph runs in a thread pool. Poll `GET /workflows/{id}` until
-`status` is no longer `"running"`.
+`POST /workflows` returns **202 Accepted** immediately. The graph runs in a
+thread pool. Poll `GET /workflows/{id}` until `status` is no longer `"running"`.
 
 ### Polling
 
 ```
 while True:
     r = GET /workflows/{id}
-    if r.status == "waiting_for_user":  # HITL — submit decision
     if r.status in ("completed", "failed"):  # done
     sleep(2)
 ```
 
-### HITL sequence
+### Tailoring + decision (out-of-graph HITL)
 
-1. Poll until `status == "waiting_for_user"`.
-2. Read `pending_decision.decision_type` to know which decision to submit.
-3. `POST /workflows/{id}/decisions` with the matching body.
-4. Resume polling.
+1. After a run completes, `POST /workflows/{wf}/jobs/{job}/tailorings` to create a draft.
+2. Review the draft and its fidelity flags.
+3. `POST /tailorings/{id}/decisions` with `approval` in `{approve, revise, reject}`.
 
 ---
 
@@ -111,11 +105,8 @@ All error responses share this structure:
 | HTTP | `error` code | Meaning |
 |------|--------------|---------|
 | 404 | `workflow_not_found` | No checkpoint exists for that `workflow_id` |
-| 409 | `workflow_not_paused` | Decision submitted but graph has no active interrupt |
 | 409 | `workflow_not_completed` | Report requested but workflow not yet `completed` |
-| 422 | `decision_type_mismatch` | `decision_type` in body does not match the active interrupt |
-| 422 | `invalid_job_ids` | One or more `selected_job_ids` are not in the eligible set |
-| 422 | `too_many_jobs_selected` | More than `MAX_SELECTED_JOBS` (10) IDs submitted |
+| 404 | `tailoring_not_found` | No tailoring draft exists for that `tailoring_id` |
 | 422 | `validation_error` | Request body / path / query fails schema validation. Pydantic field errors appear in `detail.details` (a list). Normalised by a global handler in `app/api/main.py` so the consumer reads errors uniformly across all endpoints. |
 
 ---
@@ -232,61 +223,6 @@ GET /workflows/{workflow_id}
 | `updated_at` | string \| null | ISO-8601 timestamp of last state write |
 
 **Response — 404** workflow not found.
-
----
-
-### POST /workflows/{workflow_id}/decisions
-
-Submit a human-in-the-loop decision to resume a paused workflow.
-
-**Request**
-
-```
-POST /workflows/{workflow_id}/decisions
-Content-Type: application/json
-```
-
-Body is a **discriminated union** on `decision_type`. See [Decision Types](#decision-types).
-
-**Example — job selection**
-
-```json
-{
-  "decision_type": "select_jobs_for_deep_review",
-  "selected_job_ids": ["job-001", "job-003"]
-}
-```
-
-**Example — tailoring approval**
-
-```json
-{
-  "decision_type": "approve_tailoring",
-  "approval": "approve"
-}
-```
-
-**Response — 202 Accepted**
-
-```json
-{
-  "workflow_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "status": "running"
-}
-```
-
-Graph resumes in background. Resume polling.
-
-**Error responses**
-
-| Status | Condition |
-|--------|-----------|
-| 404 | Workflow not found |
-| 409 | Workflow exists but has no active interrupt (`workflow_not_paused`) |
-| 422 | `decision_type` does not match the active interrupt |
-| 422 | `selected_job_ids` contains IDs not in the eligible set |
-| 422 | More than 3 jobs selected |
-| 422 | Body fails Pydantic schema validation |
 
 ---
 
@@ -713,30 +649,17 @@ Valid `career_track` values: `"ic"` | `"architect"` | `"management"` | `"all"` (
 
 ---
 
-#### JobSelectionDecision
+#### TailoringDecisionRequest (`POST /tailorings/{id}/decisions`)
 
 ```
-decision_type    "select_jobs_for_deep_review"   (literal, required)
-selected_job_ids array[string]                   min 1, max 3 items
-```
-
-`selected_job_ids` must be a subset of the `eligible_jobs[].job_id` values
-from `pending_decision` in the status response.
-
----
-
-#### TailoringDecision
-
-```
-decision_type    "approve_tailoring"          (literal, required)
 approval         "approve" | "revise" | "reject"   (required)
 ```
 
 | Value | Effect |
 |-------|--------|
-| `"approve"` | Accept the tailored resume draft; workflow proceeds to report |
-| `"revise"` | Request another tailoring pass (within `MAX_REVIEW_ROUNDS`) |
-| `"reject"` | Discard the tailored draft; workflow proceeds to report without it |
+| `"approve"` | Accept the tailored resume draft as-is; `approved` flips to 1 |
+| `"revise"` | Mark the draft as needing changes (re-run tailoring on demand) |
+| `"reject"` | Discard the tailored draft |
 
 ---
 
@@ -748,37 +671,9 @@ approval         "approve" | "revise" | "reject"   (required)
 workflow_id       string
 status            string            See Status Values
 current_step      string | null     Last completed graph node name
-pending_decision  object | null     Present only when waiting_for_user
 run_metrics       object | null     See RunMetrics
 errors            array[ErrorEntry] Non-fatal per-job errors
 updated_at        string | null     ISO-8601
-```
-
-**`pending_decision` when `decision_type == "select_jobs_for_deep_review"`**
-
-```json
-{
-  "decision_type": "select_jobs_for_deep_review",
-  "eligible_jobs": [
-    {
-      "job_id": "job-001",
-      "title": "Staff Engineer",
-      "company": "Acme Corp",
-      "overall_score": 82,
-      "match_summary": "Strong technical fit."
-    }
-  ]
-}
-```
-
-**`pending_decision` when `decision_type == "approve_tailoring"`**
-
-```json
-{
-  "decision_type": "approve_tailoring",
-  "job_id": "job-001",
-  "fidelity_risk_summary": "Low risk. All claims are supported."
-}
 ```
 
 ---
@@ -827,17 +722,15 @@ completed_at          string | null
 
 ### Decision Types
 
-The `POST /workflows/{id}/decisions` body is a **discriminated union** on `decision_type`.
-The active `decision_type` is always available in `pending_decision.decision_type` from
-the status endpoint.
+The only decision in the system is the out-of-graph tailoring decision,
+recorded via `POST /tailorings/{id}/decisions`:
 
-| `decision_type` | Body schema | Graph node that raised it |
-|-----------------|-------------|--------------------------|
-| `select_jobs_for_deep_review` | `JobSelectionDecision` | `await_job_selection` |
-| `approve_tailoring` | `TailoringDecision` | `await_tailoring_approval` |
+| Field | Value |
+|-------|-------|
+| `approval` | `approve` \| `revise` \| `reject` |
 
-Submitting a `decision_type` that does not match the active interrupt returns
-`422 decision_type_mismatch`.
+The former in-graph decision union (`select_jobs_for_deep_review`,
+`approve_tailoring`) was removed in ADR-059.
 
 ---
 
@@ -848,7 +741,6 @@ Submitting a `decision_type` that does not match the active interrupt returns
 | Value | Meaning |
 |-------|---------|
 | `running` | Graph is executing in the background thread pool |
-| `waiting_for_user` | Graph has hit a `interrupt()` — `pending_decision` is populated |
 | `completed` | All nodes finished; report is available |
 | `failed` | Unrecoverable error; check `errors` array |
 
@@ -911,39 +803,27 @@ and the workflow proceeds to `await_job_selection` with whatever jobs are alread
 ```
 POST /workflows
         │
-        ▼ (background)
-   discover_jobs
+        ▼ (background, no interrupts — ADR-059)
+   discover_jobs → load_resume → score_jobs
         │
-   load_resume
+   await_job_selection      (auto-selects qualifying jobs; no pause)
         │
-   score_jobs  ──── budget exhausted ──▶ (skip remaining)
+   deep_review (per selected job) → career_advice
         │
-   await_job_selection  ◀─── status: waiting_for_user
+   interview_prep?           (score >= threshold or user requested)
         │
-   POST /workflows/{id}/decisions  (decision_type: select_jobs_for_deep_review)
-        │
-        ▼ (background)
-   deep_review  (per selected job)
-        │
-   career_advice
-        │
-   interview_prep?  (score ≥ 75 or user requested)
-        │
-   tailoring_check
-        │
-   await_tailoring_approval?  ◀─── status: waiting_for_user (if user requested)
-        │
-   POST /workflows/{id}/decisions  (decision_type: approve_tailoring)
-        │
-        ▼ (background)
-   fidelity_review
-        │
-   generate_report
-        │
-   status: completed
+   generate_report → status: completed
         │
    GET /workflows/{id}/report
 ```
 
-Workflows that do not trigger tailoring skip `await_tailoring_approval` and
-proceed directly to `generate_report`.
+Tailoring is never part of the graph run. It is an out-of-graph operation
+(ADR-055) the user invokes on demand after a run, with its own decision:
+
+```
+   POST /workflows/{wf}/jobs/{job}/tailorings   (run tailoring + fidelity)
+        │
+   review draft + fidelity flags
+        │
+   POST /tailorings/{id}/decisions   { approval: approve|revise|reject }
+```

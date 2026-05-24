@@ -433,16 +433,15 @@ Generate improved resume suggestions aligned with a specific job.
 
 ---
 
-### Trigger Paths
+### Trigger Path
 
-Tailoring is reachable via two paths (ADR-055). Both run the same agents with the same fidelity contract.
+Tailoring runs via a single out-of-graph path (ADR-055; the in-graph path was retired in ADR-059).
 
 | Path | Trigger | When | Approval mechanism |
 |------|---------|------|--------------------|
-| In-graph node | `state["user_requested_tailoring"] = True` set before run start | During the workflow run, after `interview_prep` (or `career_advice` skip) | LangGraph `interrupt()` at `await_tailoring_approval` |
-| Out-of-graph router | `POST /workflows/{wf}/jobs/{job}/tailor` | Post-workflow, per job, on demand | `POST /tailorings/{id}/decision` writes the `decision` column |
+| Out-of-graph router | `POST /workflows/{wf}/jobs/{job}/tailorings` | Post-workflow, per job, on demand | `POST /tailorings/{id}/decisions` writes the `decision` column |
 
-The out-of-graph path exists because tailoring intent is per-job, post-hoc, and repeatable — properties that don't fit a single-shot graph lifecycle.
+The out-of-graph path is the only path because tailoring intent is per-job, post-hoc, and repeatable — properties that don't fit a single-shot graph lifecycle. There is no in-graph tailoring node and no `interrupt()` in the workflow.
 
 ---
 
@@ -470,7 +469,7 @@ The out-of-graph path exists because tailoring intent is per-job, post-hoc, and 
 2. Generate suggestions (every claim carries supporting_evidence)
 3. Call Fidelity Reviewer (always — never skipped)
 4. Persist draft + fidelity review to tailored_resumes
-5. Surface to user (HITL — interrupt for in-graph, REST for out-of-graph)
+5. Surface to user (out-of-graph REST decision; no graph interrupt)
 6. Record decision
 ```
 

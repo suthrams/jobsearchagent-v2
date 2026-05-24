@@ -1,11 +1,7 @@
 """API request schemas — Pydantic v2 models for all incoming HTTP request bodies."""
 from __future__ import annotations
 
-from typing import Annotated, Literal
-
 from pydantic import BaseModel, Field
-
-from app.workflows.limits import MAX_SELECTED_JOBS
 
 
 class StartWorkflowRequest(BaseModel):
@@ -16,19 +12,12 @@ class StartWorkflowRequest(BaseModel):
     # User-supplied job posting URLs (LinkedIn, company career pages, etc.)
     # Scraped per run by CustomUrlScraper, additive to standard scrapers.
     custom_urls: list[str] = Field(default_factory=list, max_length=25)
-
-
-class JobSelectionDecision(BaseModel):
-    decision_type: Literal["select_jobs_for_deep_review"]
-    selected_job_ids: list[str] = Field(min_length=1, max_length=MAX_SELECTED_JOBS)
-
-
-class TailoringDecision(BaseModel):
-    decision_type: Literal["approve_tailoring"]
-    approval: Literal["approve", "revise", "reject"]
-
-
-DecisionRequest = Annotated[
-    JobSelectionDecision | TailoringDecision,
-    Field(discriminator="decision_type"),
-]
+    # Per-workflow agent override hook (ADR-058). When non-empty, this map
+    # records `{agent_name: {provider, model}}` into the run's persisted
+    # state for reproducibility. NOTE: Phase 1 of ADR-058 records the override
+    # in the workflow snapshot but does NOT swap the runtime provider — agents
+    # in this run still resolve through the global registry assignment. Phase 9
+    # closes that gap by introducing per-run agent rebuild or lazy provider
+    # resolution. The server returns a warning in the response when overrides
+    # are present.
+    agent_overrides: dict[str, dict[str, str]] = Field(default_factory=dict)

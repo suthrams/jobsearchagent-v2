@@ -38,12 +38,14 @@ _RETRYABLE_ERRORS = (
     anthropic.InternalServerError,
 )
 
-# Per-million-token pricing used by estimate_cost().
-# Update these constants when Anthropic changes pricing.
-_PRICING: dict[str, dict[str, float]] = {
-    "claude-sonnet-4-6":          {"input": 3.00,  "output": 15.00},
-    "claude-haiku-4-5-20251001":  {"input": 1.00,  "output": 5.00},
-}
+# Per-million-token pricing is INJECTED via the constructor per ADR-058.
+# The catalog lives in config/config.yaml under `models.providers.claude`,
+# parsed by `model_registry.catalog_from_config` and threaded through
+# `ModelRegistry._build_provider`. This module no longer hardcodes prices.
+#
+# `_FALLBACK_PRICING` remains as a safety net for tests or code paths that
+# construct a ClaudeProvider without going through the registry (and thus
+# without injecting pricing). The fallback approximates Sonnet rates.
 _FALLBACK_PRICING: dict[str, float] = {"input": 3.00, "output": 15.00}
 
 # Anthropic ephemeral (5-minute) prompt-cache pricing modifiers, applied to the
@@ -75,10 +77,16 @@ class ClaudeProvider(LLMClient):
         prompt_loader: PromptLoader,
         model_name: str = "claude-haiku-4-5-20251001",
         *,
+        pricing: dict[str, dict[str, float]] | None = None,
         _model: Any = None,  # inject a mock in tests; production builds ChatAnthropic
     ) -> None:
         self._prompt_loader = prompt_loader
         self._model_name = model_name
+        # pricing is keyed by model_name -> {"input": $/M, "output": $/M}, injected
+        # by ModelRegistry from the config catalog. When not provided (legacy or
+        # test path), _FALLBACK_PRICING is used and a warning is logged on first
+        # cost computation.
+        self._pricing = pricing or {}
         # _build_chat_model is only imported when _model is not injected,
         # so tests never need langchain_anthropic installed if they inject a mock.
         self._model = _model if _model is not None else self._build_chat_model(model_name)
@@ -139,8 +147,8 @@ class ClaudeProvider(LLMClient):
         return max(1, len(text) // 4)
 
     def estimate_cost(self, tokens_in: int, tokens_out: int) -> float:
-        """Return estimated USD cost using per-model pricing table."""
-        pricing = _PRICING.get(self._model_name, _FALLBACK_PRICING)
+        """Return estimated USD cost using injected per-model pricing."""
+        pricing = self._pricing.get(self._model_name, _FALLBACK_PRICING)
         return (tokens_in * pricing["input"] + tokens_out * pricing["output"]) / 1_000_000
 
     # ── Chain construction ────────────────────────────────────────────────────
@@ -292,7 +300,7 @@ class ClaudeProvider(LLMClient):
         tokens_out: int,
     ) -> float:
         """Cost in USD, including Anthropic prompt-cache write/read modifiers."""
-        pricing = _PRICING.get(self._model_name, _FALLBACK_PRICING)
+        pricing = self._pricing.get(self._model_name, _FALLBACK_PRICING)
         in_rate = pricing["input"]
         out_rate = pricing["output"]
         return (

@@ -108,8 +108,7 @@ class WorkflowState(BaseModel):
     tailored_resume: dict | None = None
     fidelity_review: dict | None = None
 
-    # HITL
-    pending_decision: dict | None = None
+    # HITL audit trail (auto-selection records here; no interrupt machinery)
     human_decisions: list[HumanDecision] = Field(default_factory=list)
 
     # Report

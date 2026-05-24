@@ -129,10 +129,57 @@ staleness:
 
 # ─── v2 LLM Settings ─────────────────────────────────────────────────────────
 # PROTECTED — never overridden by user_config DB entries
+# (legacy keys; the per-agent assignment in `agents:` below is the v2 path)
 llm:
   default_model: claude-sonnet-4-6
   scoring_model: claude-haiku-4-5-20251001
   provider: anthropic
+
+# ─── v2 Per-Agent Model Assignment (ADR-053 + ADR-058) ───────────────────────
+# Each agent's default (provider, model). User overrides via the Settings UI
+# write to the user_config DB table and merge over these defaults at backend
+# startup.
+#
+# Cost-capped agents (research_agent, scoring_agent) cannot be assigned a
+# model outside the HIGH_VOLUME_SAFE_MODELS allowlist defined in
+# app/providers/model_registry.py. That allowlist is a policy boundary,
+# enforced in code at registry build time — it is NOT configuration.
+agents:
+  research_agent:       {provider: claude, model: claude-haiku-4-5-20251001}
+  scoring_agent:        {provider: claude, model: claude-haiku-4-5-20251001}
+  resume_critic:        {provider: claude, model: claude-haiku-4-5-20251001}
+  review_auditor:       {provider: claude, model: claude-haiku-4-5-20251001}
+  fidelity_reviewer:    {provider: claude, model: claude-haiku-4-5-20251001}
+  career_advisor:       {provider: claude, model: claude-sonnet-4-6}
+  interview_coach:      {provider: claude, model: claude-sonnet-4-6}
+  tailoring_agent:      {provider: claude, model: claude-sonnet-4-6}
+  resume_parser:        {provider: claude, model: claude-sonnet-4-6}
+  custom_url_extractor: {provider: claude, model: claude-sonnet-4-6}
+
+# ─── v2 Model Catalog + Pricing (ADR-058) ────────────────────────────────────
+# The catalog of registered (provider, model) pairs and their per-million-token
+# pricing in USD. Editing this file is how the system learns about new models
+# or new prices — no code release required.
+#
+# input_per_m  = USD per 1,000,000 input tokens
+# output_per_m = USD per 1,000,000 output tokens
+#
+# Validation: ConfigService validates this block on load. Any agent assigned
+# above must reference a (provider, model) pair listed here. Provider class
+# dispatch is in code (`ModelRegistry._build_provider`); adding a new provider
+# (not a new model) still requires a provider implementation.
+models:
+  providers:
+    claude:
+      - {id: claude-haiku-4-5-20251001, input_per_m: 1.00,  output_per_m: 5.00}
+      - {id: claude-sonnet-4-6,         input_per_m: 3.00,  output_per_m: 15.00}
+      - {id: claude-opus-4-7,           input_per_m: 15.00, output_per_m: 75.00}
+    openai:
+      # TODO: refresh against the current OpenAI pricing page when the catalog
+      # is reviewed. The 2024 models below are stale; o1 was superseded by o3.
+      - {id: gpt-4o-mini, input_per_m: 0.15,  output_per_m: 0.60}
+      - {id: gpt-4o,      input_per_m: 2.50,  output_per_m: 10.00}
+      - {id: o1,          input_per_m: 15.00, output_per_m: 60.00}
 
 # ─── v2 Search Limits ────────────────────────────────────────────────────────
 # max_jobs can be lowered by user preference but never raised above 20

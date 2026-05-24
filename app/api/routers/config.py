@@ -3,22 +3,26 @@
 Protected keys (LLM models, hard execution limits, retention windows) are read-only:
 ConfigService silently ignores any user_config row whose key matches _PROTECTED_KEYS,
 and PUT /config rejects writes to those keys with 422.
+
+ADR-058: the catalog of known (provider, model) pairs now lives in config.yaml
+(`models.providers`). This router reads it via ConfigService rather than from
+in-module constants.
 """
 from __future__ import annotations
 
 import logging
-import uuid
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from app.providers.model_registry import (
-    DEFAULT_AGENT_ASSIGNMENT,
     HIGH_VOLUME_AGENTS,
     HIGH_VOLUME_SAFE_MODELS,
-    KNOWN_MODELS,
     ModelRegistry,
     assignment_from_config,
+    catalog_from_config,
+    defaults_from_config,
+    known_models_from_catalog,
 )
 from app.repositories.config_repository import ConfigRepository
 from app.repositories.database import DEFAULT_DB_PATH
@@ -33,6 +37,23 @@ class ConfigUpdate(BaseModel):
     """One PUT body — sets a single dotted key to a JSON value (any type)."""
     key: str
     value: object
+
+
+def _load_known_models() -> dict[str, list[str]]:
+    """Read the catalog from config.yaml and return the legacy `{provider: [model_id]}` shape.
+
+    Loaded on each request rather than cached, so config edits + /config/reload
+    immediately reflect in validation behavior.
+    """
+    eff = ConfigService().get_effective_config()
+    catalog = catalog_from_config(eff)
+    return known_models_from_catalog(catalog)
+
+
+def _load_known_agents() -> set[str]:
+    """Read the default agent names from config.yaml. Used for validating writes."""
+    eff = ConfigService().get_effective_config()
+    return set(defaults_from_config(eff).keys())
 
 
 @router.get("")
@@ -66,7 +87,7 @@ def put_config(body: ConfigUpdate) -> dict:
             detail={"error": "invalid_key", "message": "key must be a non-empty dotted path."},
         )
 
-    # ADR-053: per-agent provider/model writes are validated against the registry.
+    # ADR-053/058: per-agent provider/model writes are validated against the catalog.
     if body.key.startswith("agents."):
         _validate_agent_key(body.key, body.value)
 
@@ -111,8 +132,7 @@ def reload_config() -> dict:
     In-flight workflows: continue using the OLD graph reference they hold;
     only workflows started AFTER this call use the new assignment.
     """
-    # Local import to avoid the circular dependencies (config router -> deps
-    # -> workflow graph -> nodes -> ... -> potentially config services).
+    # Local import to avoid circular dependencies.
     from app.api.dependencies import reload_deps_and_graph
     try:
         result = reload_deps_and_graph()
@@ -126,23 +146,26 @@ def reload_config() -> dict:
 
 
 def _validate_agent_key(key: str, value: object) -> None:
-    """Reject writes to agents.{name}.{provider,model} that don't resolve in the registry.
+    """Reject writes to agents.{name}.{provider,model} that don't resolve in the catalog.
 
     Accepts forms:
-      - agents.{name}                       → value must be {provider, model}
-      - agents.{name}.provider              → value in {claude, openai}
-      - agents.{name}.model                 → value in KNOWN_MODELS[provider]
+      - agents.{name}                       -> value must be {provider, model}
+      - agents.{name}.provider              -> value in catalog providers
+      - agents.{name}.model                 -> value in catalog[provider]
     """
+    known_models = _load_known_models()
+    known_agents = _load_known_agents()
+
     parts = key.split(".")
     if len(parts) < 2 or parts[0] != "agents":
         return
     agent_name = parts[1]
-    if agent_name not in DEFAULT_AGENT_ASSIGNMENT:
+    if agent_name not in known_agents:
         raise HTTPException(
             status_code=422,
             detail={
                 "error": "unknown_agent",
-                "message": f"Unknown agent {agent_name!r}. Known: {sorted(DEFAULT_AGENT_ASSIGNMENT)}",
+                "message": f"Unknown agent {agent_name!r}. Known: {sorted(known_agents)}",
             },
         )
     if len(parts) == 2:
@@ -160,17 +183,17 @@ def _validate_agent_key(key: str, value: object) -> None:
                 detail={"error": "incomplete_assignment",
                         "message": "Both provider and model are required."},
             )
-        _check_known(provider, model)
+        _check_known(provider, model, known_models)
         _check_cost_cap(agent_name, model)
     elif parts[2] == "provider":
-        if value not in KNOWN_MODELS:
+        if value not in known_models:
             raise HTTPException(
                 status_code=422,
                 detail={"error": "unknown_provider",
-                        "message": f"Unknown provider {value!r}. Known: {sorted(KNOWN_MODELS)}"},
+                        "message": f"Unknown provider {value!r}. Known: {sorted(known_models)}"},
             )
     elif parts[2] == "model":
-        all_models = [m for ms in KNOWN_MODELS.values() for m in ms]
+        all_models = [m for ms in known_models.values() for m in ms]
         if value not in all_models:
             raise HTTPException(
                 status_code=422,
@@ -205,26 +228,26 @@ def _check_cost_cap(agent_name: str, model: object) -> None:
                     f"Agent {agent_name!r} is high-volume (runs on every job) and "
                     f"cannot be assigned {model!r}. Allowed models: "
                     f"{sorted(HIGH_VOLUME_SAFE_MODELS)}. Cost is a design decision "
-                    "for this agent — expensive models are reserved for low-volume, "
+                    "for this agent - expensive models are reserved for low-volume, "
                     "high-fidelity agents."
                 ),
             },
         )
 
 
-def _check_known(provider: object, model: object) -> None:
-    if provider not in KNOWN_MODELS:
+def _check_known(provider: object, model: object, known_models: dict[str, list[str]]) -> None:
+    if provider not in known_models:
         raise HTTPException(
             status_code=422,
             detail={"error": "unknown_provider",
-                    "message": f"Unknown provider {provider!r}. Known: {sorted(KNOWN_MODELS)}"},
+                    "message": f"Unknown provider {provider!r}. Known: {sorted(known_models)}"},
         )
-    if model not in KNOWN_MODELS[provider]:
+    if model not in known_models[provider]:
         raise HTTPException(
             status_code=422,
             detail={"error": "unknown_model",
                     "message": f"Unknown model {model!r} for provider {provider!r}. "
-                               f"Known: {KNOWN_MODELS[provider]}"},
+                               f"Known: {known_models[provider]}"},
         )
 
 
@@ -237,14 +260,16 @@ def get_providers() -> dict:
     is missing on the server.
     """
     eff = ConfigService().get_effective_config()
+    catalog = catalog_from_config(eff)
+    defaults = defaults_from_config(eff)
     user_assignment = assignment_from_config(eff)
     # Merge with defaults so every agent has an entry
-    merged: dict[str, dict[str, str]] = {a: dict(v) for a, v in DEFAULT_AGENT_ASSIGNMENT.items()}
+    merged: dict[str, dict[str, str]] = {a: dict(v) for a, v in defaults.items()}
     for agent, assignment in user_assignment.items():
         if agent in merged:
             merged[agent].update(assignment)
 
     return {
-        "providers": ModelRegistry.catalog(),
+        "providers": ModelRegistry.catalog_for_ui(catalog),
         "agent_assignment": merged,
     }
