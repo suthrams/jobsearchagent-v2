@@ -121,10 +121,14 @@ def get_report(workflow_id: str) -> dict:
 _TIMEOUT_TAILOR = 180.0
 
 
-def trigger_tailoring(workflow_id: str, job_id: str) -> dict:
+def trigger_tailoring(workflow_id: str, job_id: str,
+                      auto_deep_review: bool = True) -> dict:
     """Run tailoring + fidelity for one (workflow, job). Synchronous; returns the draft.
 
     POSTs to the workflow-scoped tailorings collection — creates a new tailoring resource.
+
+    ADR-061: when the job has no deep-review yet and auto_deep_review is true
+    (default), the server runs the critic+auditor loop for it first.
 
     Note: if this raises httpx.ReadTimeout, the server-side work usually
     completes and persists anyway (the synchronous path can outlast the
@@ -133,6 +137,35 @@ def trigger_tailoring(workflow_id: str, job_id: str) -> dict:
     """
     r = httpx.post(
         f"{BASE_URL}/workflows/{workflow_id}/jobs/{job_id}/tailorings",
+        params={"auto_deep_review": str(auto_deep_review).lower()},
+        timeout=_TIMEOUT_TAILOR,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def trigger_deep_review(workflow_id: str, job_id: str) -> dict:
+    """ADR-061: run the critic+auditor reflection loop for one scored job on demand.
+
+    Synchronous; can take ~20-40s (up to MAX_REVIEW_ROUNDS rounds). Persists the
+    review so a later tailoring call reuses it instead of re-reviewing.
+    """
+    r = httpx.post(
+        f"{BASE_URL}/workflows/{workflow_id}/jobs/{job_id}/deep-review",
+        timeout=_TIMEOUT_TAILOR,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def trigger_interview_prep(workflow_id: str, job_id: str) -> dict:
+    """ADR-061: run the InterviewCoach for one chosen scored job on demand.
+
+    Synchronous; ~10-20s. Persists the prep so it appears in the interview
+    readiness section.
+    """
+    r = httpx.post(
+        f"{BASE_URL}/workflows/{workflow_id}/jobs/{job_id}/interview-prep",
         timeout=_TIMEOUT_TAILOR,
     )
     r.raise_for_status()

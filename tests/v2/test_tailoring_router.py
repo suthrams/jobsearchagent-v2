@@ -122,7 +122,10 @@ def _make_deps(graph) -> WorkflowDependencies:
     job_repo.get_by_id.return_value = None  # state is enough for happy path
 
     review_repo = MagicMock(spec=ReviewRepository)
-    review_repo.get_review_by_run_job.return_value = None
+    # The job is in selected_jobs, i.e. it was deep-reviewed — return a review so
+    # the ADR-061 deep-review-on-demand path is skipped (that path is covered by
+    # its own tests). An empty review_json parses to {} for tailoring context.
+    review_repo.get_review_by_run_job.return_value = {"review_json": "{}"}
 
     advice_repo = MagicMock(spec=AdviceRepository)
     advice_repo.get_advice_by_run_job.return_value = None
@@ -358,3 +361,115 @@ def test_get_tailoring_round_trip(client):
     body = resp.json()
     assert body["tailoring_id"] == tid
     assert body["tailored"] is not None
+
+
+# ── ADR-061: deep-review-on-demand + on-demand interview prep ─────────────────
+
+def _configure_review_agents(deps, *, audit_score: int = 88) -> None:
+    """Wire deps.resume_critic / review_auditor to return usable mock outputs so
+    review_one_job runs a single round and stops (stop_recommendation=True)."""
+    critic = MagicMock()
+    review_obj = MagicMock()
+    review_obj.model_dump.return_value = {"job_id": JOB_ID, "fit_summary": "solid"}
+    critic.run.return_value = review_obj
+    deps.resume_critic = critic
+
+    auditor = MagicMock()
+    audit_obj = MagicMock()
+    audit_obj.model_dump.return_value = {"audit_score": audit_score}
+    audit_obj.audit_score = audit_score
+    audit_obj.stop_reason = "quality_met"
+    audit_obj.stop_recommendation = True
+    audit_obj.recommended_revision_instructions = []
+    auditor.run.return_value = audit_obj
+    deps.review_auditor = auditor
+
+
+def test_deep_review_on_demand_returns_review(graph_with_job, deps_for_graph):
+    _configure_review_agents(deps_for_graph)
+    app.dependency_overrides[get_graph] = lambda: graph_with_job
+    app.dependency_overrides[get_deps] = lambda: deps_for_graph
+    try:
+        with TestClient(app) as c:
+            resp = c.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/deep-review")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["job_id"] == JOB_ID
+            assert body["review"] == {"job_id": JOB_ID, "fit_summary": "solid"}
+            assert body["rounds"] == 1
+            deps_for_graph.resume_critic.run.assert_called_once()
+            deps_for_graph.review_auditor.run.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_tailoring_runs_deep_review_when_no_review(graph_with_job, deps_for_graph):
+    # No existing review -> ADR-061 deep-review-on-demand should fire before tailoring.
+    deps_for_graph.review_repo.get_review_by_run_job.return_value = None
+    _configure_review_agents(deps_for_graph)
+    app.dependency_overrides[get_graph] = lambda: graph_with_job
+    app.dependency_overrides[get_deps] = lambda: deps_for_graph
+    try:
+        with TestClient(app) as c:
+            resp = c.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings")
+            assert resp.status_code == 200
+            deps_for_graph.resume_critic.run.assert_called_once()
+            # Tailoring still produced a draft
+            assert resp.json()["tailored"] is not None
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_tailoring_skips_deep_review_when_auto_false(graph_with_job, deps_for_graph):
+    deps_for_graph.review_repo.get_review_by_run_job.return_value = None
+    _configure_review_agents(deps_for_graph)
+    app.dependency_overrides[get_graph] = lambda: graph_with_job
+    app.dependency_overrides[get_deps] = lambda: deps_for_graph
+    try:
+        with TestClient(app) as c:
+            resp = c.post(
+                f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings",
+                params={"auto_deep_review": "false"},
+            )
+            assert resp.status_code == 200
+            deps_for_graph.resume_critic.run.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_interview_prep_on_demand_returns_prep(graph_with_job, deps_for_graph):
+    coach = MagicMock()
+    prep_obj = MagicMock()
+    prep_obj.model_dump.return_value = {"job_id": JOB_ID, "likely_topics": ["scaling"]}
+    coach.run.return_value = prep_obj
+    deps_for_graph.interview_coach = coach
+    app.dependency_overrides[get_graph] = lambda: graph_with_job
+    app.dependency_overrides[get_deps] = lambda: deps_for_graph
+    try:
+        with TestClient(app) as c:
+            resp = c.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/interview-prep")
+            assert resp.status_code == 200
+            body = resp.json()
+            assert body["job_id"] == JOB_ID
+            assert body["prep"] == {"job_id": JOB_ID, "likely_topics": ["scaling"]}
+            deps_for_graph.interview_coach.run.assert_called_once()
+            deps_for_graph.advice_repo.create_prep.assert_called_once()
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_interview_prep_409_when_resume_profile_missing(graph_with_job, deps_for_graph):
+    bare_state = _state_with_job()
+    bare_state["resume_profile"] = None
+    graph_with_job.get_state.return_value = SimpleNamespace(
+        values=bare_state, tasks=[], next=None
+    )
+    app.dependency_overrides[get_graph] = lambda: graph_with_job
+    app.dependency_overrides[get_deps] = lambda: deps_for_graph
+    try:
+        with TestClient(app) as c:
+            resp = c.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/interview-prep")
+            assert resp.status_code == 409
+            assert resp.json()["detail"]["error"] == "resume_profile_missing"
+    finally:
+        app.dependency_overrides.clear()

@@ -10,13 +10,13 @@ from __future__ import annotations
 from typing import Any
 
 from app.workflows.limits import (
-    MAX_JOBS_PER_RUN,
     MAX_LLM_CALLS_PER_JOB,
     MAX_LLM_CALLS_PER_RUN,
     MAX_REVIEW_ROUNDS,
     MAX_SELECTED_JOBS,
     MIN_MATCH_SCORE_DEFAULT,
     best_track_score,
+    get_max_scored,
 )
 
 
@@ -38,16 +38,18 @@ def analyze(state: dict, agent_events: list[dict] | None = None) -> list[dict]:
 
     cfg = state.get("effective_config") or {}
     threshold = int((cfg.get("scoring") or {}).get("min_match_score", MIN_MATCH_SCORE_DEFAULT))
-    max_jobs_cfg = int((cfg.get("search") or {}).get("max_jobs", MAX_JOBS_PER_RUN))
+    # ADR-061: the meaningful processing cap is the scored-jobs limit.
+    max_jobs_cfg = get_max_scored(state)
 
-    # ── max_jobs cap ───────────────────────────────────────────────────────────
+    # ── scored-jobs cap ──────────────────────────────────────────────────────
     if len(raw_jobs) >= max_jobs_cfg:
         findings.append({
             "kind": "max_jobs_cap",
             "severity": "info",
             "message": (
-                f"{len(raw_jobs)} jobs surfaced from scrapers — capped at search.max_jobs="
-                f"{max_jobs_cfg}. Increase max_jobs in settings to see more candidates."
+                f"{len(raw_jobs)} jobs surfaced from scrapers — scoring is capped at "
+                f"scoring.max_scored={max_jobs_cfg}. Increase max_scored in settings "
+                "to score more candidates."
             ),
         })
 

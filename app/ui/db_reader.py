@@ -382,7 +382,12 @@ def load_persisted_workflow_runs(limit: int = 50) -> pd.DataFrame:
                    json_extract(wr.state_json, '$.search_criteria.roles')         AS roles_json,
                    json_extract(wr.state_json, '$.search_criteria.locations')     AS locations_json,
                    json_extract(wr.state_json, '$.effective_config.scoring.min_match_score') AS threshold,
-                   json_extract(wr.state_json, '$.effective_config.search.max_jobs') AS max_jobs,
+                   -- ADR-061: prefer the scored-jobs cap; fall back to the legacy
+                   -- search.max_jobs for runs recorded before the rename.
+                   COALESCE(
+                     json_extract(wr.state_json, '$.effective_config.scoring.max_scored'),
+                     json_extract(wr.state_json, '$.effective_config.search.max_jobs')
+                   ) AS max_jobs,
                    json_array_length(json_extract(wr.state_json, '$.custom_urls')) AS custom_url_count,
                    json_array_length(json_extract(wr.state_json, '$.normalized_jobs')) AS normalized_count,
                    json_array_length(json_extract(wr.state_json, '$.selected_jobs'))   AS selected_count,

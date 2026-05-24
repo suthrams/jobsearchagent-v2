@@ -38,7 +38,12 @@ _PROTECTED_KEYS = {
     "retention.jobs_days",
 }
 
-_SYSTEM_MAX_JOBS = 20
+# ADR-061: this is the discovery-SERVICE backstop (how many postings the scraper
+# layer may return), raised to the discovery ceiling so it no longer throttles
+# the manual-mode wide net. The precise per-run discovery and scoring caps are
+# applied in the discover_jobs / score_jobs nodes via get_max_discovered_jobs /
+# get_max_scored. Kept numerically in sync with MAX_DISCOVERED_JOBS.
+_SYSTEM_MAX_JOBS = 50
 
 
 class ConfigService:
@@ -84,11 +89,33 @@ class ConfigService:
         return result
 
     def _enforce_limits(self, config: dict) -> dict:
+        # Import here to avoid any import-time coupling between the config and
+        # workflow packages; the ceilings live with the workflow limits.
+        from app.workflows.limits import MAX_DISCOVERED_JOBS, MAX_SCORED_CEILING
+
         search = config.setdefault("search", {})
         search["max_jobs"] = min(
             int(search.get("max_jobs", _SYSTEM_MAX_JOBS)),
             _SYSTEM_MAX_JOBS,
         )
+        # ADR-061: clamp the configurable funnel-width knobs to their hard
+        # ceilings. Mirrors the limits.py helper clamps; this keeps the
+        # system-wide effective config (and what the Settings UI shows) clean.
+        if "max_discovered" in search:
+            try:
+                search["max_discovered"] = max(
+                    1, min(int(search["max_discovered"]), MAX_DISCOVERED_JOBS)
+                )
+            except (TypeError, ValueError):
+                del search["max_discovered"]
+        scoring = config.setdefault("scoring", {})
+        if "max_scored" in scoring:
+            try:
+                scoring["max_scored"] = max(
+                    1, min(int(scoring["max_scored"]), MAX_SCORED_CEILING)
+                )
+            except (TypeError, ValueError):
+                del scoring["max_scored"]
         return config
 
     @staticmethod

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app.api.dependencies import get_graph
 from app.api.schemas.requests import StartWorkflowRequest
 from app.api.schemas.responses import WorkflowStatusResponse
-from app.workflows.limits import MAX_JOBS_PER_RUN
+from app.workflows.limits import get_max_scored
 from app.providers.model_registry import (
     HIGH_VOLUME_AGENTS,
     HIGH_VOLUME_SAFE_MODELS,
@@ -345,8 +345,9 @@ def submit_scoring_selection(
     Valid only while the workflow is `awaiting_scoring_selection` (phase 1 of a
     manual-selection run parked at `await_scoring_selection`). Re-enters the same
     graph/thread at `score_jobs` with `phase="scoring"` and the selected subset
-    (capped at MAX_JOBS_PER_RUN), so research+scoring spend is paid only on the
-    jobs the user kept. Everything persists under the same workflow_id.
+    (capped at the run's scoring.max_scored, ADR-061), so research+scoring spend
+    is paid only on the jobs the user kept. Everything persists under the same
+    workflow_id.
     """
     config = {"configurable": {"thread_id": workflow_id}}
     snapshot = graph.get_state(config)
@@ -387,7 +388,7 @@ def submit_scoring_selection(
             },
         )
 
-    capped = selected[:MAX_JOBS_PER_RUN]
+    capped = selected[: get_max_scored(state)]
     phase2_state = {
         "phase": "scoring",
         "normalized_jobs": capped,

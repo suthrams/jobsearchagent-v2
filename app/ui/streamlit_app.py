@@ -1461,18 +1461,26 @@ elif view == "Workflow Detail":
 
     # ── Prep — resume tailoring (on-demand per job, the action surface) ───────
     st.markdown("---")
-    st.subheader("✨ Prep — tailored resume drafts")
+    st.subheader("✨ Prep — tailored resume drafts + interview")
     st.caption(
-        "Pick a deep-reviewed job and generate evidence-bound section suggestions. "
-        "Every suggestion cites the original line in your resume; missing experience "
-        "is labelled as a gap, never rewritten as if present. Approve, edit, revise, "
-        "or reject each draft to record your decision."
+        "Pick ANY scored job (ADR-061) and generate evidence-bound section "
+        "suggestions, or prep for the interview. Every suggestion cites the "
+        "original line in your resume; missing experience is labelled as a gap, "
+        "never rewritten as if present. A job that was not auto-selected for deep "
+        "review is deep-reviewed on demand first, so the cost includes a critic "
+        "pass. Approve, edit, revise, or reject each draft to record your decision."
     )
 
-    selected_jobs_state = state.get("selected_jobs") or []
-    if not selected_jobs_state:
-        st.info("No deep-reviewed jobs in this run — tailoring needs the per-job critic + advice context. "
-                "Lower the threshold or broaden the search to qualify more jobs.")
+    # ADR-061: tailoring + interview prep are available for any scored job, not
+    # only the auto-selected top-3. Fall back to selected_jobs for older runs
+    # whose state predates scored_jobs being carried through.
+    scored_jobs_state = [
+        j for j in (state.get("scored_jobs") or [])
+        if j.get("status") == "scored"
+    ] or (state.get("selected_jobs") or [])
+    if not scored_jobs_state:
+        st.info("No scored jobs in this run yet — tailoring and interview prep "
+                "need at least one scored job.")
     else:
         try:
             with st.spinner("Loading tailoring drafts…"):
@@ -1494,7 +1502,11 @@ elif view == "Workflow Detail":
             except Exception as exc:
                 st.error(f"Decision failed: {exc}")
 
-        for sj in selected_jobs_state:
+        selected_ids = {
+            (sj.get("job_id") or sj.get("id"))
+            for sj in (state.get("selected_jobs") or [])
+        }
+        for sj in scored_jobs_state:
             jid = sj.get("job_id") or sj.get("id") or ""
             if not jid:
                 continue
@@ -1502,12 +1514,19 @@ elif view == "Workflow Detail":
             jcompany = sj.get("company") or ""
             existing = by_job.get(jid, [])
             label = f"**{jtitle}** @ {jcompany}  ·  job `{jid[:8]}…`"
+            if jid in selected_ids:
+                label += "  ·  auto-selected"
             if existing:
                 label += f"  ·  {len(existing)} draft(s)"
             with st.expander(label, expanded=False):
-                trig_col, _ = st.columns([1, 4])
+                if jid not in selected_ids:
+                    st.caption(
+                        "Not auto-selected for deep review — generating a draft "
+                        "will run a deep-review pass on demand first (extra cost)."
+                    )
+                trig_col, prep_col, _ = st.columns([1, 1, 3])
                 if trig_col.button("✨ Generate new draft", key=f"trig_tail_{jid}"):
-                    with st.spinner("Tailoring + fidelity review (~60-90s with v5 prompts)…"):
+                    with st.spinner("Tailoring + fidelity review (~60-90s, longer if deep-reviewing first)…"):
                         try:
                             api.trigger_tailoring(wf_id, jid)
                             _cached_list_tailorings.clear()
@@ -1523,6 +1542,16 @@ elif view == "Workflow Detail":
                             )
                         except Exception as exc:
                             st.error(f"Tailoring failed: {exc}")
+                if prep_col.button("🎤 Prep for interview", key=f"trig_prep_{jid}"):
+                    with st.spinner("Interview coach (~10-20s)…"):
+                        try:
+                            api.trigger_interview_prep(wf_id, jid)
+                            st.success("Interview prep generated — see the readiness section above.")
+                            st.rerun()
+                        except httpx.ReadTimeout:
+                            st.warning("Client timed out, but the prep may have completed. Reload to check.")
+                        except Exception as exc:
+                            st.error(f"Interview prep failed: {exc}")
                 if not existing:
                     st.caption("No drafts yet for this job. Click **Generate new draft** to create one.")
                 else:
@@ -1847,11 +1876,13 @@ elif view == "Start New Run":
                 step=5,
                 help="Any track score (tech/arch/lead) at or above this triggers deep review + prep.",
             )
-            max_jobs = st.number_input(
-                "Max jobs to surface",
-                min_value=1, max_value=50,
-                value=int(search_cfg.get("max_jobs", 10)),
-                help="Hard cap on how many discovered jobs the workflow processes.",
+            max_scored = st.number_input(
+                "Max jobs to score",
+                min_value=1, max_value=25,
+                value=int(scoring_cfg.get("max_scored", 10)),
+                help="ADR-061: how many jobs get research + scoring (the funnel's "
+                     "scored width). Default 10, ceiling 25. In auto mode this is "
+                     "also the discovery cap.",
             )
             manual_scoring = st.checkbox(
                 "Let me pick which jobs to score (review before scoring)",
@@ -1859,6 +1890,13 @@ elif view == "Start New Run":
                 help="ADR-060: discover a wider net, then choose which jobs are "
                      "worth the research + scoring spend. Only the jobs you pick "
                      "are scored; the rest are skipped at no cost.",
+            )
+            max_discovered = st.number_input(
+                "Discovery net width (manual mode only)",
+                min_value=1, max_value=50,
+                value=int(search_cfg.get("max_discovered", 50)),
+                help="ADR-061: how many jobs to surface for triage when manual "
+                     "selection is on. Default 50, ceiling 50. Ignored in auto mode.",
             )
             persist_prefs = st.checkbox(
                 "Save these settings as my defaults for future runs",
@@ -1888,16 +1926,19 @@ elif view == "Start New Run":
                 "career_track": "all",
                 "min_match_score": int(run_threshold),
                 "manual_selection": bool(manual_scoring),
+                "max_scored": int(max_scored),
             },
             "search": {
-                "max_jobs": int(max_jobs),
+                "max_discovered": int(max_discovered),
             },
         }
 
         if persist_prefs:
             try:
                 api.put_config("scoring.min_match_score", int(run_threshold))
-                api.put_config("search.max_jobs", int(max_jobs))
+                api.put_config("scoring.manual_selection", bool(manual_scoring))
+                api.put_config("scoring.max_scored", int(max_scored))
+                api.put_config("search.max_discovered", int(max_discovered))
                 api.put_config("search.titles", search_criteria["roles"])
                 api.put_config("search.locations", search_criteria["locations"])
                 st.session_state.config_cache = None  # invalidate
@@ -2151,12 +2192,15 @@ elif view == "Settings":
         _save("search.locations",
               [l.strip() for l in locations_str.split(",") if l.strip()])
 
-    max_jobs = st.number_input(
-        "search.max_jobs", min_value=1, max_value=50,
-        value=int(search.get("max_jobs", 10)),
+    max_discovered = st.number_input(
+        "search.max_discovered (manual-mode discovery net width)",
+        min_value=1, max_value=50,
+        value=int(search.get("max_discovered", 50)),
+        help="ADR-061: how many jobs to surface for triage when manual selection "
+             "is on. Default 50, ceiling 50. Ignored in auto mode.",
     )
-    if st.button("Save max_jobs"):
-        _save("search.max_jobs", int(max_jobs))
+    if st.button("Save max_discovered"):
+        _save("search.max_discovered", int(max_discovered))
 
     # ── Scoring ────────────────────────────────────────────────────────────
     st.subheader("Scoring")
@@ -2169,6 +2213,27 @@ elif view == "Settings":
     )
     if st.button("Save min_match_score"):
         _save("scoring.min_match_score", int(threshold))
+
+    max_scored = st.number_input(
+        "scoring.max_scored (how many jobs get research + scoring)",
+        min_value=1, max_value=25,
+        value=int(scoring.get("max_scored", 10)),
+        help="ADR-061: the funnel's scored width. Default 10, ceiling 25. In auto "
+             "mode this is also the discovery cap; runs can override it.",
+    )
+    if st.button("Save max_scored"):
+        _save("scoring.max_scored", int(max_scored))
+
+    manual_selection_default = st.checkbox(
+        "scoring.manual_selection (review discovered jobs before paying to score them)",
+        value=bool(scoring.get("manual_selection", False)),
+        help="ADR-060: when on, discovery casts a wider net and runs park at a "
+             "selection screen so you choose which jobs are worth the research + "
+             "scoring spend. This sets the default; each run can still override it "
+             "on the Start New Run form.",
+    )
+    if st.button("Save manual_selection"):
+        _save("scoring.manual_selection", bool(manual_selection_default))
 
     # ── Salary ─────────────────────────────────────────────────────────────
     st.subheader("Salary")

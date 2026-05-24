@@ -9,11 +9,21 @@ from app.repositories.database import utcnow_iso
 
 # ── Execution limits ──────────────────────────────────────────────────────────
 
+# ADR-061: MAX_JOBS_PER_RUN is now the *default* scored-jobs cap, overridable
+# per run via effective_config['scoring']['max_scored'] up to MAX_SCORED_CEILING.
+# Read it through get_max_scored(state) — never inline the constant for the
+# scored cap.
 MAX_JOBS_PER_RUN = 10
+# Hard ceiling for scoring.max_scored (ADR-061). The user owns the scored width
+# within this cost-safe envelope; MAX_LLM_CALLS_PER_RUN is the absolute backstop
+# (25 scored jobs = at most 50 research+scoring calls, well inside 200).
+MAX_SCORED_CEILING = 25
 # ADR-060: in manual-selection mode, discovery casts a wider net (this cap) and
-# the user picks which jobs to score; MAX_JOBS_PER_RUN still bounds how many of
-# the selected jobs are scored per phase-2 trigger, so the cost ceiling holds.
-# Only effective when effective_config['scoring']['manual_selection'] is true.
+# the user picks which jobs to score; the scored cap (get_max_scored) still
+# bounds how many of the selected jobs are scored per phase-2 trigger, so the
+# cost ceiling holds. ADR-061 makes the net width configurable via
+# effective_config['search']['max_discovered'] up to this value, which is both
+# the default and the hard ceiling. Only effective when manual_selection is true.
 MAX_DISCOVERED_JOBS = 50
 # Cost cut: lowered from 10 (ADR-054) to 3 to cap deep-review fan-out.
 # ADR-054's design intent (every qualifying job reaches deep review) still
@@ -154,9 +164,43 @@ def get_manual_selection(state: dict) -> bool:
     return bool(scoring.get("manual_selection", False))
 
 
+def get_max_scored(state: dict) -> int:
+    """Per-run cap on how many jobs get scored (ADR-061).
+
+    Read from effective_config['scoring']['max_scored']; defaults to
+    MAX_JOBS_PER_RUN and is clamped to [1, MAX_SCORED_CEILING] for cost safety.
+    This is the authoritative gate: per-run effective_config can arrive
+    un-clamped (the UI builds it directly, bypassing ConfigService), so the
+    clamp must live here as well as in ConfigService._enforce_limits.
+    """
+    cfg = state.get("effective_config") or {}
+    scoring = cfg.get("scoring") or {}
+    raw = scoring.get("max_scored", MAX_JOBS_PER_RUN)
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        return MAX_JOBS_PER_RUN
+    return max(1, min(val, MAX_SCORED_CEILING))
+
+
 def get_max_discovered_jobs(state: dict) -> int:
-    """Discovery cap for this run: the wider net in manual mode, else MAX_JOBS_PER_RUN."""
-    return MAX_DISCOVERED_JOBS if get_manual_selection(state) else MAX_JOBS_PER_RUN
+    """Discovery cap for this run (ADR-060 + ADR-061).
+
+    Manual-selection mode: the wide net from effective_config['search']
+    ['max_discovered'], defaulting to and clamped at MAX_DISCOVERED_JOBS.
+    Auto mode: equals the scored cap — there is no point discovering more jobs
+    than we will score, since auto mode scores every discovered job.
+    """
+    if not get_manual_selection(state):
+        return get_max_scored(state)
+    cfg = state.get("effective_config") or {}
+    search = cfg.get("search") or {}
+    raw = search.get("max_discovered", MAX_DISCOVERED_JOBS)
+    try:
+        val = int(raw)
+    except (TypeError, ValueError):
+        return MAX_DISCOVERED_JOBS
+    return max(1, min(val, MAX_DISCOVERED_JOBS))
 
 
 def best_track_score(scored_job: dict) -> int:

@@ -24,6 +24,7 @@ from app.services.observability_service import ObservabilityService
 from app.workflows.limits import (
     MAX_LLM_CALLS_PER_RUN,
     add_llm_calls_bulk,
+    get_max_scored,
     get_metrics,
     safe_agent_usage_typed,
 )
@@ -49,6 +50,11 @@ def make_score_jobs_node(
 
         metrics = get_metrics(state)
         errors = list(state.get("errors") or [])
+
+        # ADR-061: cap at the configurable scored-jobs limit first. In auto mode
+        # discovery already capped to this number, so this is a no-op there; in
+        # manual mode the phase-2 endpoint also caps, so this is defense in depth.
+        normalized_jobs = normalized_jobs[: get_max_scored(state)]
 
         # Pre-flight budget check: cap jobs to what the remaining call budget allows.
         # Each job costs at most 2 successful LLM calls (research + scoring).

@@ -69,8 +69,9 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 ## Key Invariants
 
 **Execution limits — never exceed without reviewing cost impact**
-- `MAX_JOBS_PER_RUN = 10`
-- `MAX_DISCOVERED_JOBS = 50` (ADR-060; only used in manual-selection mode — the wider discovery net. `MAX_JOBS_PER_RUN` still caps how many selected jobs are scored per phase-2 trigger)
+- `MAX_JOBS_PER_RUN = 10` (ADR-061: now the *default* scored cap; per-run override via `scoring.max_scored`, clamped to `MAX_SCORED_CEILING`. Read via `get_max_scored(state)` — never inline for the scored cap)
+- `MAX_SCORED_CEILING = 25` (ADR-061; hard ceiling for `scoring.max_scored`)
+- `MAX_DISCOVERED_JOBS = 50` (ADR-060/061; manual-selection wide net — now configurable via `search.max_discovered` up to this value, which is both default and ceiling. In auto mode the discovery cap equals the scored cap. Read via `get_max_discovered_jobs(state)`)
 - `MAX_SELECTED_JOBS = 3` (lowered from 10 as a cost cut; ADR-054's "every qualifying job reaches deep review" still applies — this only caps how many qualifying jobs we pay for per run)
 - `MAX_RESEARCH_STEPS = 2`
 - `MAX_REVIEW_ROUNDS = 2` (lowered from 3 as a cost cut; reflection loop usually converges by round 2)
@@ -94,7 +95,8 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - `tailored_resumes` carries `fidelity_review_json`, `decision`, `decided_at`, `approved`, `edited_json` columns. `decision` ∈ {approve, revise, reject, edit}; `approved=1` when `decision` is `approve` or `edit`. An `edit` stores the human-authored draft in `edited_json` (the agent's original `tailored_json` is retained)
 
 **HITL rules — one tailoring approval path (ADR-055, ADR-059)**
-- **Out-of-graph curate-after:** `POST /workflows/{wf}/jobs/{job}/tailorings` runs `TailoringAgent` + `FidelityReviewer` directly outside the graph for any selected job and persists to `tailored_resumes`. The decision is recorded via `POST /tailorings/{id}/decisions` with `approval ∈ {approve, revise, reject, edit}` (`edit` carries the human-authored final draft, trusted as-is and not re-reviewed). This is the only HITL pattern the system uses.
+- **Out-of-graph curate-after:** `POST /workflows/{wf}/jobs/{job}/tailorings` runs `TailoringAgent` + `FidelityReviewer` directly outside the graph for any **scored** job (ADR-061 widened this from selected-only) and persists to `tailored_resumes`. If the job has no deep-review row yet, the endpoint runs the critic+auditor loop on demand first (`auto_deep_review=true`, default). The decision is recorded via `POST /tailorings/{id}/decisions` with `approval ∈ {approve, revise, reject, edit}` (`edit` carries the human-authored final draft, trusted as-is and not re-reviewed). This is the only HITL pattern the system uses.
+- **Other out-of-graph on-demand operations (ADR-061):** `POST /workflows/{wf}/jobs/{job}/deep-review` (single-job critic+auditor loop via the shared `app/services/deep_review_runner.py::review_one_job`) and `POST /workflows/{wf}/jobs/{job}/interview-prep` (single-job `InterviewCoach`). Both mirror the tailoring shape: read state from the checkpointer, run agents directly, persist via repos. No `interrupt()`.
 - The in-graph interrupt path (in-graph tailoring node + `await_tailoring_approval` + `POST /workflows/{id}/decisions`) was retired in ADR-059. The workflow now runs end-to-end with no `interrupt()`: job selection auto-selects (see Auto-selection rules), and tailoring is the out-of-graph operation above. Reintroduce `interrupt()` only when a genuinely irreversible action (e.g. submitting an application) is added.
 - Backend always validates decisions before persisting; UI never auto-approves tailored outputs.
 

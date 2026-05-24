@@ -94,7 +94,27 @@ def test_user_cannot_exceed_max_jobs(service, db_path):
     repo = ConfigRepository(db_path)
     repo.upsert("cfg_003", "user_1", "search.max_jobs", 999)
     config = service.get_effective_config(user_id="user_1")
-    assert config["search"]["max_jobs"] == 20  # capped at system max
+    # ADR-061: the discovery-service ceiling was raised to the discovery cap (50)
+    # so it no longer throttles the manual-mode wide net.
+    assert config["search"]["max_jobs"] == 50  # capped at system max
+
+
+def test_max_scored_clamped_to_ceiling(service, db_path):
+    """ADR-061: scoring.max_scored cannot exceed MAX_SCORED_CEILING (25)."""
+    from app.workflows.limits import MAX_SCORED_CEILING
+    repo = ConfigRepository(db_path)
+    repo.upsert("cfg_ms", "user_1", "scoring.max_scored", 999)
+    config = service.get_effective_config(user_id="user_1")
+    assert config["scoring"]["max_scored"] == MAX_SCORED_CEILING
+
+
+def test_max_discovered_clamped_to_ceiling(service, db_path):
+    """ADR-061: search.max_discovered cannot exceed MAX_DISCOVERED_JOBS (50)."""
+    from app.workflows.limits import MAX_DISCOVERED_JOBS
+    repo = ConfigRepository(db_path)
+    repo.upsert("cfg_md", "user_1", "search.max_discovered", 999)
+    config = service.get_effective_config(user_id="user_1")
+    assert config["search"]["max_discovered"] == MAX_DISCOVERED_JOBS
 
 
 def test_user_cannot_override_llm_model(service, db_path):

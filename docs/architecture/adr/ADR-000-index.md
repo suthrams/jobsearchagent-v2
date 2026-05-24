@@ -66,3 +66,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-058 | [Model Config to YAML with Per-Workflow Snapshot](ADR-058-model-config-to-yaml-with-per-workflow-snapshot.md) | Accepted |
 | ADR-059 | [Retire In-Graph HITL; Add a Human Edit Decision](ADR-059-retire-in-graph-hitl-and-add-human-edit-decision.md) | Accepted |
 | ADR-060 | [Human Triage Before Scoring (Widen Discovery, Score Only Selected)](ADR-060-human-triage-before-scoring.md) | Accepted |
+| ADR-061 | [Configurable Funnel Width + On-Demand Deep Review and Interview Prep](ADR-061-configurable-funnel-width.md) | Accepted |

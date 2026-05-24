@@ -113,6 +113,26 @@ def get_effective_config(user_id: str) -> dict:
 
 ---
 
+## 7b. Configurable funnel-width keys (ADR-061)
+
+Three keys control how wide the discover -> score -> tailor funnel is. All three
+are merged the standard three-tier way (yaml default -> user_config system-wide
+-> per-run `effective_config`) and clamped to a hard ceiling for cost safety.
+
+| Key | Meaning | Default | Hard ceiling |
+|---|---|---|---|
+| `scoring.max_scored` | How many jobs get research + scoring. In auto mode this is also the discovery cap. | 10 (`MAX_JOBS_PER_RUN`) | 25 (`MAX_SCORED_CEILING`) |
+| `search.max_discovered` | Manual-selection (ADR-060) wide discovery net. Ignored in auto mode. | 50 | 50 (`MAX_DISCOVERED_JOBS`) |
+| `search.max_jobs` | Discovery-SERVICE backstop (how many postings the scraper layer returns). Not a user-facing knob; the precise per-run caps are applied in the nodes. | 50 | 50 (`_SYSTEM_MAX_JOBS`) |
+
+Clamping happens in two places: `ConfigService._enforce_limits` (system-wide
+merged config) and the `app/workflows/limits.py` helpers `get_max_scored()` /
+`get_max_discovered_jobs()` (authoritative workflow gate — per-run config can
+arrive un-clamped because the UI builds it directly). `MAX_LLM_CALLS_PER_RUN`
+remains the absolute backstop.
+
+---
+
 ## 8. Guardrails
 
 The backend must enforce limits:

@@ -45,7 +45,9 @@ POST /workflows/{id}/retry                     → re-submit a workflow after a 
 POST /workflows/{id}/scoring                   → ADR-060 phase 2: score selected jobs from a manual-selection run (202, async)
 GET  /workflows/{id}/jobs                      → list scored jobs
 GET  /workflows/{id}/report                    → fetch the final report
-POST /workflows/{wf}/jobs/{job}/tailorings     → create a tailoring draft (run tailoring + fidelity, 200)
+POST /workflows/{wf}/jobs/{job}/tailorings     → create a tailoring draft for ANY scored job; deep-reviews on demand first if needed (ADR-061; run tailoring + fidelity, 200)
+POST /workflows/{wf}/jobs/{job}/deep-review    → run the critic+auditor loop for one scored job on demand (ADR-061, 200)
+POST /workflows/{wf}/jobs/{job}/interview-prep → run the interview coach for one scored job on demand (ADR-061, 200)
 GET  /workflows/{wf}/tailorings                → list tailoring drafts for a workflow
 GET  /tailorings/{id}                          → fetch a single tailoring draft (top-level: ID is globally unique)
 POST /tailorings/{id}/decisions                → record approve / revise / reject / edit for a draft
@@ -337,13 +339,23 @@ The flow:
 
 Run the Tailoring Agent and the Fidelity Reviewer for one job. Synchronous — typically 5–15 s wall clock (~6 LLM calls). The resulting draft is persisted to `tailored_resumes`. Repeated calls for the same `(workflow_id, job_id)` produce additional rows; the caller decides whether to use the latest.
 
+ADR-061: tailoring is available for **any scored job**, not only the auto-selected top-3. If the job has no deep-review row yet and `auto_deep_review` is true (the default), the critic+auditor reflection loop runs for that one job first (adding ~20–40 s and a critic pass), so the Tailoring Agent gets real review context.
+
 **Request**
 
 ```
-POST /workflows/{workflow_id}/jobs/{job_id}/tailorings
+POST /workflows/{workflow_id}/jobs/{job_id}/tailorings?auto_deep_review=true
 ```
 
-No body. The router pulls everything it needs from the workflow's checkpoint (`resume_profile`, `selected_jobs`) and the relational repos (`final_resume_review`, `career_advice`).
+Optional query param `auto_deep_review` (default `true`). No body. The router pulls everything it needs from the workflow's checkpoint (`resume_profile`, `scored_jobs`) and the relational repos (`final_resume_review`, `career_advice`).
+
+### POST /workflows/{workflow_id}/jobs/{job_id}/deep-review
+
+ADR-061. Run the ResumeCritic + ReviewAuditor reflection loop for one scored job on demand, out-of-graph (same shared loop the `deep_review` node uses). Persists rounds + the final review via `ReviewRepository`. Returns `{workflow_id, job_id, review, rounds, llm_calls, errors}`. 409 if `resume_profile` is missing; 502 if the loop fails.
+
+### POST /workflows/{workflow_id}/jobs/{job_id}/interview-prep
+
+ADR-061. Run the InterviewCoach for one chosen scored job on demand, out-of-graph, regardless of threshold. Career-advice and final-review context are sourced from the repos. Persists via `AdviceRepository.create_prep`. Returns `{workflow_id, job_id, prep}`. 409 if `resume_profile` is missing; 502 if the coach fails.
 
 **Response — 200 OK**
 
