@@ -34,16 +34,24 @@ class TailoringRepository:
                 (tailoring_id,),
             )
 
-    def set_decision(self, tailoring_id: str, decision: str) -> None:
-        """Persist the user's approve/revise/reject choice. Flips approved=1 only on approve."""
-        approved = 1 if decision == "approve" else 0
+    def set_decision(self, tailoring_id: str, decision: str,
+                     edited: dict | None = None) -> None:
+        """Persist the user's approve/revise/reject/edit choice.
+
+        approved flips to 1 on approve or edit (edit = accept with the user's own
+        wording). For an edit, the human-authored draft is stored in edited_json;
+        the agent's original tailored_json is left intact for the audit trail.
+        """
+        approved = 1 if decision in ("approve", "edit") else 0
         now = utcnow_iso()
         with get_connection(self.db_path) as conn:
             conn.execute(
                 """UPDATE tailored_resumes
-                   SET decision = ?, decided_at = ?, approved = ?
+                   SET decision = ?, decided_at = ?, approved = ?, edited_json = ?
                    WHERE id = ?""",
-                (decision, now, approved, tailoring_id),
+                (decision, now, approved,
+                 json.dumps(edited) if edited is not None else None,
+                 tailoring_id),
             )
 
     def get_by_id(self, tailoring_id: str) -> dict | None:
@@ -91,4 +99,11 @@ class TailoringRepository:
                 d["fidelity_review"] = None
         else:
             d["fidelity_review"] = None
+        if d.get("edited_json"):
+            try:
+                d["edited"] = json.loads(d["edited_json"])
+            except Exception:
+                d["edited"] = None
+        else:
+            d["edited"] = None
         return d

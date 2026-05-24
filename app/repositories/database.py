@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS tailored_resumes (
     decision TEXT,
     decided_at TEXT,
     approved INTEGER DEFAULT 0,
+    edited_json TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -267,6 +268,7 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             "ALTER TABLE tailored_resumes ADD COLUMN fidelity_review_json TEXT",
             "ALTER TABLE tailored_resumes ADD COLUMN decision TEXT",
             "ALTER TABLE tailored_resumes ADD COLUMN decided_at TEXT",
+            "ALTER TABLE tailored_resumes ADD COLUMN edited_json TEXT",
         ):
             try:
                 conn.execute(col_ddl)

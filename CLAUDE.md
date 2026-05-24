@@ -87,13 +87,13 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - Never send raw resume text to agents — use the parsed profile
 
 **Tailoring rules**
-- Every tailored claim must include `supporting_evidence` from the original resume
+- Every tailored claim must include `supporting_evidence` from the original resume. This binds **agent-authored** claims; a human `edit` decision is owner-authored and is not subject to the evidence schema (ADR-059)
 - Missing experience is labeled as a gap — never rewritten as if present
-- Fidelity Reviewer must run after every Tailoring Agent call (the on-demand tailoring router enforces this; ADR-059 retired the in-graph path)
-- `tailored_resumes` carries `fidelity_review_json`, `decision`, `decided_at`, `approved` columns. `decision` ∈ {approve, revise, reject}; `approved=1` only when `decision="approve"`
+- Fidelity Reviewer must run after every Tailoring Agent call (the on-demand tailoring router enforces this; ADR-059 retired the in-graph path). A human `edit` is NOT re-reviewed — the reviewer polices the agent, not the accountable human
+- `tailored_resumes` carries `fidelity_review_json`, `decision`, `decided_at`, `approved`, `edited_json` columns. `decision` ∈ {approve, revise, reject, edit}; `approved=1` when `decision` is `approve` or `edit`. An `edit` stores the human-authored draft in `edited_json` (the agent's original `tailored_json` is retained)
 
 **HITL rules — one tailoring approval path (ADR-055, ADR-059)**
-- **Out-of-graph curate-after:** `POST /workflows/{wf}/jobs/{job}/tailorings` runs `TailoringAgent` + `FidelityReviewer` directly outside the graph for any selected job and persists to `tailored_resumes`. The decision is recorded via `POST /tailorings/{id}/decisions` with `approval ∈ {approve, revise, reject}`. This is the only HITL pattern the system uses.
+- **Out-of-graph curate-after:** `POST /workflows/{wf}/jobs/{job}/tailorings` runs `TailoringAgent` + `FidelityReviewer` directly outside the graph for any selected job and persists to `tailored_resumes`. The decision is recorded via `POST /tailorings/{id}/decisions` with `approval ∈ {approve, revise, reject, edit}` (`edit` carries the human-authored final draft, trusted as-is and not re-reviewed). This is the only HITL pattern the system uses.
 - The in-graph interrupt path (in-graph tailoring node + `await_tailoring_approval` + `POST /workflows/{id}/decisions`) was retired in ADR-059. The workflow now runs end-to-end with no `interrupt()`: job selection auto-selects (see Auto-selection rules), and tailoring is the out-of-graph operation above. Reintroduce `interrupt()` only when a genuinely irreversible action (e.g. submitting an application) is added.
 - Backend always validates decisions before persisting; UI never auto-approves tailored outputs.
 

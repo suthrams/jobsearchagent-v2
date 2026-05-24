@@ -135,7 +135,7 @@ def _make_deps(graph) -> WorkflowDependencies:
         store[tid] = {
             "id": tid, "workflow_run_id": wf_id, "job_id": jid, "resume_id": rid,
             "tailored": tailored, "fidelity_review": fidelity_review,
-            "decision": None, "decided_at": None, "approved": 0,
+            "decision": None, "decided_at": None, "approved": 0, "edited": None,
             "created_at": utcnow_iso(),
         }
 
@@ -145,11 +145,12 @@ def _make_deps(graph) -> WorkflowDependencies:
     def _list(wf_id):
         return [r for r in store.values() if r["workflow_run_id"] == wf_id]
 
-    def _set_decision(tid, decision):
+    def _set_decision(tid, decision, edited=None):
         if tid in store:
             store[tid]["decision"] = decision
             store[tid]["decided_at"] = utcnow_iso()
-            store[tid]["approved"] = 1 if decision == "approve" else 0
+            store[tid]["approved"] = 1 if decision in ("approve", "edit") else 0
+            store[tid]["edited"] = edited
 
     tailoring_repo.create.side_effect = _create
     tailoring_repo.get_by_id.side_effect = _get
@@ -296,6 +297,36 @@ def test_decision_revise_keeps_approved_false(client):
     body = resp.json()
     assert body["decision"] == "revise"
     assert body["approved"] is False
+
+
+def test_decision_edit_flips_approved_and_stores_edited(client):
+    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings").json()
+    tid = trig["tailoring_id"]
+
+    edited_draft = {
+        "summary_suggestions": [{"suggested_text": "My own wording, authored by me."}],
+        "human_edited": True,
+    }
+    resp = client.post(
+        f"/tailorings/{tid}/decisions",
+        json={"approval": "edit", "edited": edited_draft},
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["decision"] == "edit"
+    assert body["approved"] is True       # edit accepts with the user's wording
+    assert body["edited"] == edited_draft  # human-authored draft round-trips
+    assert body["decided_at"]
+
+
+def test_decision_edit_without_edited_body_422(client):
+    trig = client.post(f"/workflows/{WF_ID}/jobs/{JOB_ID}/tailorings").json()
+    tid = trig["tailoring_id"]
+
+    # approval == "edit" requires the edited draft; the model_validator rejects it.
+    resp = client.post(f"/tailorings/{tid}/decisions", json={"approval": "edit"})
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error"] == "validation_error"
 
 
 def test_decision_invalid_value_422(client):

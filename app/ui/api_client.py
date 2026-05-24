@@ -136,14 +136,20 @@ def get_tailoring(tailoring_id: str) -> dict:
     return r.json()
 
 
-def submit_tailoring_decision(tailoring_id: str, approval: str) -> dict:
-    """approval ∈ {approve, revise, reject}.
+def submit_tailoring_decision(tailoring_id: str, approval: str,
+                              edited: dict | None = None) -> dict:
+    """approval in {approve, revise, reject, edit}.
 
-    POSTs to the decisions collection on the tailoring — appends a new decision.
+    For an edit, pass the human-authored draft in `edited`; it is recorded as the
+    final, owner-authored version (not re-reviewed). POSTs to the decisions
+    collection on the tailoring.
     """
+    payload: dict = {"approval": approval}
+    if edited is not None:
+        payload["edited"] = edited
     r = httpx.post(
         f"{BASE_URL}/tailorings/{tailoring_id}/decisions",
-        json={"approval": approval},
+        json=payload,
         timeout=_TIMEOUT_POST,
     )
     r.raise_for_status()

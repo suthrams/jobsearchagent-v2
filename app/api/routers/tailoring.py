@@ -26,7 +26,7 @@ import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 from app.api.dependencies import get_deps, get_graph
 from app.api.schemas.responses import TailoringListResponse, TailoringResponse
@@ -44,9 +44,25 @@ router = APIRouter(tags=["tailoring"])
 
 
 class TailoringDecisionRequest(BaseModel):
-    approval: Literal["approve", "revise", "reject"] = Field(
-        description="approve = use this draft as-is; revise = needs changes; reject = discard"
+    approval: Literal["approve", "revise", "reject", "edit"] = Field(
+        description=(
+            "approve = use this draft as-is; revise = needs changes; "
+            "reject = discard; edit = accept with the user's own wording"
+        )
     )
+    # Present only when approval == "edit": the human-authored final draft.
+    # A human edit is trusted as final and is NOT re-run through the Fidelity
+    # Reviewer (ADR-059) -- the reviewer polices the agent, not the accountable
+    # human. The agent's original draft is retained separately for the audit trail.
+    edited: dict | None = Field(default=None)
+
+    @model_validator(mode="after")
+    def _require_edited_on_edit(self) -> "TailoringDecisionRequest":
+        if self.approval == "edit" and not self.edited:
+            raise ValueError(
+                "`edited` (the human-authored draft) is required when approval is 'edit'"
+            )
+        return self
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
@@ -110,6 +126,7 @@ def _serialize_row(row: dict) -> TailoringResponse:
         fidelity_review=row.get("fidelity_review"),
         decision=row.get("decision"),
         approved=bool(row.get("approved")),
+        edited=row.get("edited"),
         decided_at=row.get("decided_at"),
         created_at=row.get("created_at"),
     )
@@ -291,6 +308,6 @@ def submit_tailoring_decision(
                 "tailoring_id": tailoring_id,
             },
         )
-    deps.tailoring_repo.set_decision(tailoring_id, body.approval)
+    deps.tailoring_repo.set_decision(tailoring_id, body.approval, edited=body.edited)
     updated = deps.tailoring_repo.get_by_id(tailoring_id)
     return _serialize_row(updated or row)

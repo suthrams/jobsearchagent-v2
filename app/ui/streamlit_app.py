@@ -339,7 +339,7 @@ _CLAIM_BADGE = {
 _FIDELITY_RISK_BADGE = {"low": "🟢 low risk", "medium": "🟡 medium risk", "high": "🔴 high risk"}
 _FIDELITY_STATUS_BADGE = {"pass": "🟢 fidelity pass", "needs_revision": "🟡 needs revision",
                           "fail": "🔴 fidelity fail"}
-_DECISION_BADGE = {"approve": "🟢 approved", "revise": "🟡 needs revision", "reject": "🔴 rejected"}
+_DECISION_BADGE = {"approve": "🟢 approved", "revise": "🟡 needs revision", "reject": "🔴 rejected", "edit": "✍️ edited & accepted"}
 
 
 def _word_count(text: str | None) -> int:
@@ -769,6 +769,38 @@ def _render_tailoring_card(t: dict, on_decision, resume_profile: dict | None = N
             on_decision(tid, "revise")
         if b3.button("🚫 Reject", key=f"tail_rej_{tid}"):
             on_decision(tid, "reject")
+
+        # Edit and accept as final: the human rewrites the suggested wording and
+        # owns it. Saved as authored by the user (decision="edit"), not re-run
+        # through the Fidelity Reviewer -- the reviewer polices the agent, not
+        # the accountable human (ADR-059).
+        with st.expander("Edit and accept as final (your wording, not the agent's)", expanded=False):
+            import copy
+            st.caption(
+                "Edit any suggested line below and save. The saved text is recorded "
+                "as authored by you and is not re-checked by the Fidelity Reviewer -- "
+                "you own these words."
+            )
+            edited_draft = copy.deepcopy(draft)
+            has_editable = False
+            for field, value in edited_draft.items():
+                if isinstance(value, list) and value and all(isinstance(b, dict) for b in value):
+                    bullets = [b for b in value if "suggested_text" in b]
+                    if not bullets:
+                        continue
+                    has_editable = True
+                    st.markdown(f"**{field.replace('_', ' ').title()}**")
+                    for i, b in enumerate(bullets):
+                        b["suggested_text"] = st.text_area(
+                            b.get("original_text") or f"{field} #{i + 1}",
+                            value=b.get("suggested_text") or "",
+                            key=f"edit_{tid}_{field}_{i}",
+                        )
+            if has_editable and st.button("Save edited draft (accept as final)", key=f"tail_edit_{tid}"):
+                edited_draft["human_edited"] = True
+                on_decision(tid, "edit", edited_draft)
+            elif not has_editable:
+                st.caption("This draft has no editable suggestions to revise.")
 
 
 def render_track_table(df: pd.DataFrame, score_col: str, min_score: int) -> None:
@@ -1368,9 +1400,9 @@ elif view == "Workflow Detail":
         for t in tail_index:
             by_job.setdefault(t.get("job_id", ""), []).append(t)
 
-        def _decide(tid: str, choice: str) -> None:
+        def _decide(tid: str, choice: str, edited: dict | None = None) -> None:
             try:
-                api.submit_tailoring_decision(tid, choice)
+                api.submit_tailoring_decision(tid, choice, edited=edited)
                 _cached_list_tailorings.clear()
                 st.success(f"Decision saved: {choice}")
                 st.rerun()

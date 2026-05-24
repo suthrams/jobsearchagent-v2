@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Request
+from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -47,7 +48,10 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
             "detail": {
                 "error": "validation_error",
                 "message": "Request failed schema validation.",
-                "details": exc.errors(),
+                # jsonable_encoder mirrors FastAPI's default handler: a custom
+                # validator can put a non-serializable exception in ctx, which a
+                # bare exc.errors() would fail to JSON-encode.
+                "details": jsonable_encoder(exc.errors()),
             }
         },
     )

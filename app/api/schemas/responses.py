@@ -45,8 +45,9 @@ class TailoringResponse(BaseModel):
     resume_id: str
     tailored: dict | None = None          # TailoredResumeDraft fields
     fidelity_review: dict | None = None   # FidelityReview fields
-    decision: str | None = None           # approve | revise | reject (None until user decides)
-    approved: bool = False                 # legacy boolean; True only when decision == "approve"
+    decision: str | None = None           # approve | revise | reject | edit (None until user decides)
+    approved: bool = False                 # True when decision is approve or edit
+    edited: dict | None = None            # human-authored final draft (present only on an edit decision)
     decided_at: str | None = None
     created_at: str | None = None
 

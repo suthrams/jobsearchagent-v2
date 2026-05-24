@@ -501,6 +501,7 @@ CREATE TABLE tailored_resumes (
     decision             TEXT,
     decided_at           TEXT,
     approved             INTEGER DEFAULT 0,
+    edited_json          TEXT,
     created_at           TEXT NOT NULL
 );
 ```
@@ -515,9 +516,10 @@ CREATE TABLE tailored_resumes (
 | `resume_id`            | TEXT        | FK → `resumes.id`. |
 | `tailored_json`        | TEXT (JSON) | `TailoredResumeDraft` (ADR-056). Includes `headline_suggestions[]`, `summary_suggestions[]`, `experience_bullet_suggestions[]`, `skills_section_suggestions[]`, `overall_tailoring_notes` (strategy summary), `fidelity_risk_summary`. Each `TailoredBullet` carries `claim_type` (`reword \| emphasize \| gap \| remove`), `section_label`, `impact_rationale`, `supporting_evidence`. |
 | `fidelity_review_json` | TEXT (JSON) | `FidelityReview` Pydantic. NULL only if Fidelity Reviewer raised an `LLMProviderError`. |
-| `decision`             | TEXT        | `"approve"` \| `"revise"` \| `"reject"`. NULL until user decides. |
+| `decision`             | TEXT        | `"approve"` \| `"revise"` \| `"reject"` \| `"edit"`. NULL until user decides. |
 | `decided_at`           | TEXT        | ISO 8601 UTC. |
-| `approved`             | INT         | Legacy boolean. Flips to `1` only when `decision = "approve"`. |
+| `approved`             | INT         | Flips to `1` when `decision` is `"approve"` or `"edit"`. |
+| `edited_json`          | TEXT (JSON) | Human-authored final draft, present only on an `edit` decision (ADR-059). Stored alongside the agent's original `tailored_json`, which is retained. NOT re-run through the Fidelity Reviewer. NULL otherwise. |
 | `created_at`           | TEXT        | ISO 8601 UTC of draft creation. |
 
 ### Workflow usage

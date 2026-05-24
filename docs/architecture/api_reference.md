@@ -47,7 +47,7 @@ GET  /workflows/{id}/report                    → fetch the final report
 POST /workflows/{wf}/jobs/{job}/tailorings     → create a tailoring draft (run tailoring + fidelity, 200)
 GET  /workflows/{wf}/tailorings                → list tailoring drafts for a workflow
 GET  /tailorings/{id}                          → fetch a single tailoring draft (top-level: ID is globally unique)
-POST /tailorings/{id}/decisions                → record approve / revise / reject for a draft
+POST /tailorings/{id}/decisions                → record approve / revise / reject / edit for a draft
 GET  /config                                   → effective merged config + protected key list
 PUT  /config                                   → upsert one user-config override (rejects protected keys)
 ```
@@ -84,7 +84,7 @@ while True:
 
 1. After a run completes, `POST /workflows/{wf}/jobs/{job}/tailorings` to create a draft.
 2. Review the draft and its fidelity flags.
-3. `POST /tailorings/{id}/decisions` with `approval` in `{approve, revise, reject}`.
+3. `POST /tailorings/{id}/decisions` with `approval` in `{approve, revise, reject, edit}` (`edit` also sends the human-authored draft).
 
 ---
 
@@ -317,7 +317,7 @@ The flow:
                  ▼  returns { tailoring_id, tailored, fidelity_review }
                  │
                  ▼  user reviews diffs + evidence
-   POST /tailorings/{tailoring_id}/decisions  { approval: approve|revise|reject }
+   POST /tailorings/{tailoring_id}/decisions  { approval: approve|revise|reject|edit }
                  │
                  ▼
    tailored_resumes.decision = ..., approved = (decision == 'approve')
@@ -443,21 +443,27 @@ Fetch a single draft by ID. Same shape as the trigger endpoint response.
 
 ### POST /tailorings/{tailoring_id}/decisions
 
-Record the user's approve / revise / reject choice. Idempotent: re-submitting overwrites the previous decision and updates `decided_at`. Updates `tailored_resumes.decision`, `decided_at`, and the legacy `approved` flag (1 only when `approval == "approve"`).
+Record the user's approve / revise / reject / edit choice. Idempotent: re-submitting overwrites the previous decision and updates `decided_at`. Updates `tailored_resumes.decision`, `decided_at`, the `approved` flag (1 when `approval` is `"approve"` or `"edit"`), and `edited_json` (the human-authored draft) on an edit.
 
 **Request**
 
 ```json
 {
-  "approval": "approve | revise | reject"
+  "approval": "approve | revise | reject | edit",
+  "edited": { "...": "human-authored draft; required only when approval == edit" }
 }
 ```
 
-**Response — 200 OK** — the updated draft (same shape as the trigger response).
+`edit` means the user accepted the draft with their own wording. The `edited`
+draft is stored as authored by the user and is **not** re-run through the
+Fidelity Reviewer (ADR-059) — the reviewer polices the agent, not the
+accountable human. The agent's original draft is retained in `tailored_json`.
+
+**Response — 200 OK** — the updated draft (same shape as the trigger response), including `edited` when present.
 
 **Response — 404** `tailoring_not_found`.
 
-**Response — 422** Pydantic validation — `approval` must be one of the three literals.
+**Response — 422** Pydantic validation — `approval` must be one of the four literals; `edited` is required when `approval == "edit"`.
 
 ---
 
@@ -652,7 +658,8 @@ Valid `career_track` values: `"ic"` | `"architect"` | `"management"` | `"all"` (
 #### TailoringDecisionRequest (`POST /tailorings/{id}/decisions`)
 
 ```
-approval         "approve" | "revise" | "reject"   (required)
+approval         "approve" | "revise" | "reject" | "edit"   (required)
+edited           object | null   (required only when approval == "edit"; the human-authored draft)
 ```
 
 | Value | Effect |
@@ -727,7 +734,8 @@ recorded via `POST /tailorings/{id}/decisions`:
 
 | Field | Value |
 |-------|-------|
-| `approval` | `approve` \| `revise` \| `reject` |
+| `approval` | `approve` \| `revise` \| `reject` \| `edit` |
+| `edited` | object (the human-authored draft) — required only when `approval == "edit"` |
 
 The former in-graph decision union (`select_jobs_for_deep_review`,
 `approve_tailoring`) was removed in ADR-059.
@@ -825,5 +833,5 @@ Tailoring is never part of the graph run. It is an out-of-graph operation
         │
    review draft + fidelity flags
         │
-   POST /tailorings/{id}/decisions   { approval: approve|revise|reject }
+   POST /tailorings/{id}/decisions   { approval: approve|revise|reject|edit }
 ```
