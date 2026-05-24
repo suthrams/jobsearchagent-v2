@@ -19,6 +19,41 @@ Tests: 562 passed (new `tests/v2/test_funnel_limits.py`; cap-clamp, deep-review-
 
 ---
 
+## 2026-05-23
+
+### Added — Manual scoring selection: widen discovery, score only the selected (ADR-060)
+
+Opt-in human triage step between discovery and scoring. Research + scoring was being paid on every discovered job, including the many a human discards on sight and that fall below threshold anyway. This is a targeted cap (score only what is kept) replacing ADR-052's blunt cap (narrow discovery), so the net can widen again at lower spend.
+
+- When `effective_config.scoring.manual_selection` is true (default off), discovery casts a wider net (`MAX_DISCOVERED_JOBS=50`) and the graph parks at a new `await_scoring_selection` node (status `awaiting_scoring_selection`) WITHOUT scoring.
+- `POST /workflows/{id}/scoring` re-enters the SAME graph/thread at `score_jobs` via a conditional entry point (`phase="scoring"`) and scores only the selected subset (capped at `MAX_JOBS_PER_RUN`), then continues auto-select -> deep review -> report. One `workflow_id`, two phases.
+- Shape: out-of-graph / phased (no `interrupt()`), preserving ADR-059's "graph runs end to end" property — the human choice sits between two phases, like out-of-graph tailoring (ADR-055).
+- `app/workflows/{limits.py,routers.py,graph_state.py,workflow_graph.py}`, `app/workflows/nodes/{await_scoring_selection.py,discover_jobs.py}`, `app/api/routers/workflows.py`, UI kickoff toggle + selection screen + `api_client`. Auto mode unchanged.
+
+Tests: 546 passed (phase-1 parks without scoring; phase-2 same-thread re-entry scores only selected; endpoint 404/409/422/happy-path).
+
+### Added — Human `edit` decision on the tailoring path (ADR-059 decision 2)
+
+The out-of-graph tailoring decision model gained an `edit` verb alongside approve / revise / reject. An edit is an acceptance with the user's own wording: it carries the human-authored draft, flips `approved=1`, and is recorded as owner-authored. Per the ADR a human edit is trusted as final and is NOT re-run through the Fidelity Reviewer — the reviewer polices the agent, not the accountable human. The agent's original draft is retained in `tailored_json`; the human draft lands in a new `edited_json` column.
+
+- `TailoringDecisionRequest` gains `edit` + an `edited` body (validator requires `edited` when `approval == "edit"`); `TailoringRepository.set_decision(edited=...)`; additive `edited_json` column with a try/except ALTER migration; `TailoringResponse` surfaces `edited`; UI edit-and-accept-as-final affordance on the tailoring card.
+- Fixed: the global `RequestValidationError` handler now wraps `exc.errors()` in `jsonable_encoder` (a custom validator can put a non-serializable exception in `ctx` that bare `exc.errors()` failed to encode — a latent bug the new validator surfaced).
+- UI follow-up (commit 582dc31): a "Before you decide" consequence summary above the approve/edit/revise/reject controls (reviewer recommendation + confidence, unresolved fidelity-flag count, one-line consequence per choice). Pure presentation, no schema/API change.
+
+Tests: 540 passed (two new edit-decision cases).
+
+### Changed — Retire the dead in-graph HITL subsystem (ADR-059 decision 1)
+
+Job-selection HITL was already removed (auto-select) and tailoring approval moved out-of-graph (ADR-055), which left the in-graph tailoring node, the `await_tailoring_approval` interrupt, the tailoring routing shim, `POST /workflows/{id}/decisions`, the JobSelection/Tailoring decision schemas, and the `pending_decision` / `user_requested_tailoring` state fields all unreachable. Removed: the graph now runs end to end with no `interrupt()`. The only remaining HITL pattern is the out-of-graph curate-after tailoring decision. `human_decisions` (the auto-select audit trail) is kept. Docs reconciled: `CLAUDE.md`, `api_reference.md`, `hitl.md` (status banner), `workflow_model.md`.
+
+### Changed — Model catalog, pricing, and default assignment move to YAML (ADR-058)
+
+Supersedes the in-code catalog and default-assignment constants of ADR-053. The model catalog, per-million-token pricing, and default per-agent `(provider, model)` assignment now live in `config/config.yaml` (`models:` and `agents:` blocks) — editing that file is how the system learns about new models or prices, no code release. The cost-cap allowlist (`HIGH_VOLUME_SAFE_MODELS`) stays in code as a policy boundary. Per-workflow assignment is snapshotted at kickoff with an override hook (runtime per-workflow swap remains future work). Touches `model_registry`, both providers, dependency wiring, the config router, and `config.example.yaml`.
+
+Tests: 538 passed.
+
+---
+
 ## 2026-05-05
 
 ### Changed — Cost cuts for the high-cost agents (advisor + coach + tailoring)
