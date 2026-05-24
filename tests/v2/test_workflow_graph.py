@@ -306,6 +306,65 @@ def test_graph_per_job_error_does_not_abort_run():
     assert checkpoint is not None
 
 
+def test_manual_mode_phase1_parks_without_scoring():
+    """ADR-060: with manual_selection on, phase 1 discovers jobs and stops at
+    awaiting_scoring_selection WITHOUT spending research/scoring calls."""
+    saver = MemorySaver()
+    deps = _make_deps(checkpointer=saver)
+    graph = build_graph(deps)
+
+    config = {"configurable": {"thread_id": "wf-manual-001"}}
+    state = _initial_state(
+        "wf-manual-001",
+        effective_config={"scoring": {"career_track": "all", "manual_selection": True}},
+    )
+    graph.invoke(state, config)
+
+    # No spend in phase 1.
+    deps.research_agent.run.assert_not_called()
+    deps.scoring_agent.run.assert_not_called()
+
+    snap = graph.get_state(config)
+    assert snap.values.get("status") == "awaiting_scoring_selection"
+    assert len(snap.values.get("normalized_jobs") or []) >= 1, \
+        "discovered jobs must be parked for the user to triage"
+
+
+def test_manual_mode_phase2_reentry_scores_on_same_thread():
+    """ADR-060 core mechanism: phase 2 re-invokes the SAME thread with
+    phase='scoring' and the selected subset; the conditional entry point must
+    re-enter at score_jobs (not re-run discovery) and run scoring + downstream."""
+    saver = MemorySaver()
+    deps = _make_deps(checkpointer=saver, override_scoring_score=80)
+    graph = build_graph(deps)
+
+    config = {"configurable": {"thread_id": "wf-manual-002"}}
+    state = _initial_state(
+        "wf-manual-002",
+        effective_config={"scoring": {"career_track": "all", "manual_selection": True}},
+    )
+    # Phase 1: park.
+    graph.invoke(state, config)
+    deps.scoring_agent.run.assert_not_called()
+
+    # User selects job-001. Phase 2: same thread, phase='scoring', selected subset.
+    discovered = (graph.get_state(config).values.get("normalized_jobs") or [])
+    selected = [j for j in discovered if j.get("id") == "job-001"]
+    assert selected, "fixture should have produced job-001 in discovery"
+
+    graph.invoke(
+        {"phase": "scoring", "normalized_jobs": selected, "status": "running"},
+        config,
+    )
+
+    # Re-entry hit score_jobs, and downstream ran for the qualifying job.
+    deps.scoring_agent.run.assert_called()
+    deps.resume_critic.run.assert_called()
+    deps.report_generator.generate_run_summary.assert_called()
+    snap = graph.get_state(config)
+    assert snap.values.get("status") in ("completed", "completed_with_errors")
+
+
 def test_graph_budget_exhaustion_skips_remaining_jobs():
     """When budget is at the limit before scoring, jobs should be marked budget_skipped."""
     from app.workflows.limits import MAX_LLM_CALLS_PER_RUN

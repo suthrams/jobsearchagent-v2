@@ -36,6 +36,21 @@ def start_workflow(
     return r.json()
 
 
+def submit_scoring_selection(workflow_id: str, selected_job_ids: list[str]) -> dict:
+    """ADR-060 phase 2: tell the backend which discovered jobs to score.
+
+    Valid only while the workflow is awaiting_scoring_selection (a manual-selection
+    run parked after discovery). Returns 202 with the count being scored.
+    """
+    r = httpx.post(
+        f"{BASE_URL}/workflows/{workflow_id}/scoring",
+        json={"selected_job_ids": selected_job_ids},
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def get_config() -> dict:
     r = httpx.get(f"{BASE_URL}/config", timeout=_TIMEOUT_GET)
     r.raise_for_status()

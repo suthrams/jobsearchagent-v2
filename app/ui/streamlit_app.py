@@ -1168,7 +1168,8 @@ elif view == "Workflow Detail":
     status = (record or {}).get("status", "unknown")
 
     # Status header
-    icon = {"running": "🔵", "completed": "🟢", "failed": "🔴", "completed_with_errors": "🟠"}.get(status, "⚪")
+    icon = {"running": "🔵", "completed": "🟢", "failed": "🔴", "completed_with_errors": "🟠",
+            "awaiting_scoring_selection": "🟡"}.get(status, "⚪")
     h1, h2 = st.columns([3, 1])
     h1.markdown(f"### {icon} `{status}`")
     h2.caption(f"Started: {(record or {}).get('started_at', '—')}")
@@ -1184,6 +1185,52 @@ elif view == "Workflow Detail":
     g6.metric("Tokens in", f"{metrics['tokens_input']:,}")
     g7.metric("Tokens out", f"{metrics['tokens_output']:,}")
     g8.metric("Review rounds", metrics["review_rounds"])
+
+    # ── Manual scoring selection (ADR-060) ────────────────────────────────────
+    # When a manual-selection run is parked after discovery, let the user pick
+    # which discovered jobs are worth the research + scoring spend. Only the
+    # selected jobs are scored; the rest are skipped.
+    if status == "awaiting_scoring_selection":
+        st.markdown("---")
+        st.subheader("🧭 Select jobs to score")
+        st.caption(
+            "Manual selection is on for this run. Discovery cast a wide net; pick "
+            "the jobs worth the research + scoring spend. Only the jobs you select "
+            "are scored -- the rest are skipped, at no cost."
+        )
+        discovered = state.get("normalized_jobs") or []
+        if not discovered:
+            st.info("No jobs were discovered for this run.")
+        else:
+            options: dict[str, str] = {}
+            for j in discovered:
+                jid = j.get("id") or j.get("source_job_id") or ""
+                if not jid:
+                    continue
+                options[jid] = (f"{j.get('title') or '(untitled)'} — "
+                                f"{j.get('company') or '?'} ({j.get('location') or '?'})")
+            picked = st.multiselect(
+                f"{len(options)} discovered job(s)",
+                options=list(options.keys()),
+                format_func=lambda jid: options.get(jid, jid),
+                key=f"score_select_{wf_id}",
+            )
+            b_sel, cap_sel = st.columns([1, 3])
+            if b_sel.button("Score selected", type="primary",
+                            disabled=not picked, key=f"score_btn_{wf_id}"):
+                try:
+                    resp = api.submit_scoring_selection(wf_id, picked)
+                    st.success(
+                        f"Scoring {resp.get('scoring_count', len(picked))} selected "
+                        "job(s). Switch to Live Run Monitor to watch progress, or "
+                        "reopen this run when it finishes."
+                    )
+                except Exception as exc:
+                    st.error(f"Could not start scoring: {exc}")
+            cap_sel.caption(
+                f"{len(picked)} selected. Unselected jobs are skipped (not scored)."
+            )
+        st.stop()
 
     # ── Find & Score — Pipeline table (jobs × stages) ─────────────────────────
     st.markdown("---")
@@ -1806,6 +1853,13 @@ elif view == "Start New Run":
                 value=int(search_cfg.get("max_jobs", 10)),
                 help="Hard cap on how many discovered jobs the workflow processes.",
             )
+            manual_scoring = st.checkbox(
+                "Let me pick which jobs to score (review before scoring)",
+                value=bool(scoring_cfg.get("manual_selection", False)),
+                help="ADR-060: discover a wider net, then choose which jobs are "
+                     "worth the research + scoring spend. Only the jobs you pick "
+                     "are scored; the rest are skipped at no cost.",
+            )
             persist_prefs = st.checkbox(
                 "Save these settings as my defaults for future runs",
                 value=False,
@@ -1833,6 +1887,7 @@ elif view == "Start New Run":
             "scoring": {
                 "career_track": "all",
                 "min_match_score": int(run_threshold),
+                "manual_selection": bool(manual_scoring),
             },
             "search": {
                 "max_jobs": int(max_jobs),

@@ -13,7 +13,7 @@ from app.repositories.database import utcnow_iso
 from app.repositories.job_repository import JobRepository
 from app.services.job_discovery_service import JobDiscoveryService
 from app.services.observability_service import ObservabilityService
-from app.workflows.limits import MAX_JOBS_PER_RUN, append_error
+from app.workflows.limits import append_error, get_max_discovered_jobs
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +46,9 @@ def make_discover_jobs_node(
             postings = discovery_service.discover(
                 workflow_id, search_criteria, extra_scrapers=extra_scrapers,
             )
-            postings = postings[:MAX_JOBS_PER_RUN]
+            # ADR-060: manual-selection mode casts a wider net (the user triages
+            # before any scoring spend); otherwise cap at MAX_JOBS_PER_RUN.
+            postings = postings[:get_max_discovered_jobs(state)]
         except Exception as exc:
             logger.error("discover_jobs: discovery failed: %s", exc)
             errors = append_error(state, "job_discovery", "discovery_error", str(exc), recoverable=True,

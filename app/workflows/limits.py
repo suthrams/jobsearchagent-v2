@@ -10,6 +10,11 @@ from app.repositories.database import utcnow_iso
 # ── Execution limits ──────────────────────────────────────────────────────────
 
 MAX_JOBS_PER_RUN = 10
+# ADR-060: in manual-selection mode, discovery casts a wider net (this cap) and
+# the user picks which jobs to score; MAX_JOBS_PER_RUN still bounds how many of
+# the selected jobs are scored per phase-2 trigger, so the cost ceiling holds.
+# Only effective when effective_config['scoring']['manual_selection'] is true.
+MAX_DISCOVERED_JOBS = 50
 # Cost cut: lowered from 10 (ADR-054) to 3 to cap deep-review fan-out.
 # ADR-054's design intent (every qualifying job reaches deep review) still
 # holds; this only changes the budget cap for how many qualifying jobs we'll
@@ -135,6 +140,23 @@ def get_min_match_score(state: dict) -> int:
         return int(raw)
     except (TypeError, ValueError):
         return MIN_MATCH_SCORE_DEFAULT
+
+
+def get_manual_selection(state: dict) -> bool:
+    """Return whether manual scoring selection is enabled for this run (ADR-060).
+
+    When true, the graph discovers a wider net of jobs and stops for the user to
+    pick which ones to score, instead of auto-scoring every discovered job.
+    Read from effective_config['scoring']['manual_selection']; default False.
+    """
+    cfg = state.get("effective_config") or {}
+    scoring = cfg.get("scoring") or {}
+    return bool(scoring.get("manual_selection", False))
+
+
+def get_max_discovered_jobs(state: dict) -> int:
+    """Discovery cap for this run: the wider net in manual mode, else MAX_JOBS_PER_RUN."""
+    return MAX_DISCOVERED_JOBS if get_manual_selection(state) else MAX_JOBS_PER_RUN
 
 
 def best_track_score(scored_job: dict) -> int:

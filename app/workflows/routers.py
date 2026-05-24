@@ -7,8 +7,27 @@ from __future__ import annotations
 
 from app.workflows.limits import (
     best_track_score,
+    get_manual_selection,
     get_min_match_score,
 )
+
+
+def entry_router(state: dict) -> str:
+    """Conditional entry point (ADR-060).
+
+    A normal kickoff starts at register_run. The phase-2 scoring trigger
+    re-invokes the same graph with phase="scoring" and the selected job subset;
+    it must re-enter at score_jobs, not re-run discovery. Keying on `phase`
+    keeps both phases inside one compiled graph and one workflow_id.
+    """
+    return "score_jobs" if state.get("phase") == "scoring" else "register_run"
+
+
+def scoring_mode_gate(state: dict) -> str:
+    """After load_resume: in manual-selection mode (ADR-060) stop for the user to
+    pick which jobs to score; otherwise score every discovered job as before.
+    """
+    return "await_scoring_selection" if get_manual_selection(state) else "score_jobs"
 
 
 def deep_review_gate(state: dict) -> str:

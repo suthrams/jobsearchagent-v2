@@ -70,6 +70,7 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 
 **Execution limits — never exceed without reviewing cost impact**
 - `MAX_JOBS_PER_RUN = 10`
+- `MAX_DISCOVERED_JOBS = 50` (ADR-060; only used in manual-selection mode — the wider discovery net. `MAX_JOBS_PER_RUN` still caps how many selected jobs are scored per phase-2 trigger)
 - `MAX_SELECTED_JOBS = 3` (lowered from 10 as a cost cut; ADR-054's "every qualifying job reaches deep review" still applies — this only caps how many qualifying jobs we pay for per run)
 - `MAX_RESEARCH_STEPS = 2`
 - `MAX_REVIEW_ROUNDS = 2` (lowered from 3 as a cost cut; reflection loop usually converges by round 2)
@@ -102,6 +103,11 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - A job qualifies for deep review when ANY of `{technical_score, architecture_score, leadership_score} >= threshold` — never just `overall_score`. Use `qualifies_for_deep_review()` / `best_track_score()` helpers; do not inline the comparison
 - `await_job_selection` node auto-selects up to `MAX_SELECTED_JOBS` qualifying jobs (highest best-track score wins). It does NOT call `interrupt()`
 - `deep_review_gate` router skips deep review → ... → tailoring entirely when `selected_jobs` is empty, jumping straight to `generate_report`
+
+**Manual scoring selection — opt-in curate-before-scoring (ADR-060)**
+- Default off. When `effective_config.scoring.manual_selection` is true, discovery casts a wider net (`MAX_DISCOVERED_JOBS`) and the graph parks at `await_scoring_selection` (status `awaiting_scoring_selection`) WITHOUT scoring — no `interrupt()`. The human picks which jobs to score so research+scoring spend (2 LLM calls/job) is paid only on kept jobs
+- Two phases, one `workflow_id`: phase 1 `register_run → discover_jobs → load_resume → await_scoring_selection → END`; phase 2 is triggered by `POST /workflows/{wf}/scoring` `{selected_job_ids}`, which re-enters the **same** graph/thread at `score_jobs` via the conditional entry point (`phase="scoring"`), scoring only the selected subset (capped at `MAX_JOBS_PER_RUN`) then continuing through auto-select → deep review → report
+- The conditional entry point routes `phase=="scoring" → score_jobs`, else `register_run`. The `scoring_mode_gate` on the `load_resume` edge routes manual runs to `await_scoring_selection`, else `score_jobs`. This preserves ADR-059's "no `interrupt()` in the graph" property — the human choice sits between two phases, like out-of-graph tailoring (ADR-055)
 
 **Scraper rules**
 - `ConcurrentAdzunaScraper` wraps v1 `AdzunaScraper` — do not modify v1 scrapers directly

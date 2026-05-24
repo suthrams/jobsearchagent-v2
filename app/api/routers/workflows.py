@@ -6,10 +6,12 @@ import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_graph
 from app.api.schemas.requests import StartWorkflowRequest
 from app.api.schemas.responses import WorkflowStatusResponse
+from app.workflows.limits import MAX_JOBS_PER_RUN
 from app.providers.model_registry import (
     HIGH_VOLUME_AGENTS,
     HIGH_VOLUME_SAFE_MODELS,
@@ -324,5 +326,85 @@ def retry_workflow(
     _executor.submit(_retry_graph, graph, config)
     logger.info("Workflow %s re-submitted for retry, resuming from: %s", workflow_id, list(snapshot.next))
     return {"workflow_id": workflow_id, "status": "running", "resuming_from": list(snapshot.next)}
+
+
+class ScoreSelectedRequest(BaseModel):
+    """Phase-2 trigger body (ADR-060): the job ids the user chose to score."""
+    selected_job_ids: list[str] = Field(min_length=1)
+
+
+@router.post("/{workflow_id}/scoring", status_code=202)
+def submit_scoring_selection(
+    workflow_id: str,
+    body: ScoreSelectedRequest,
+    graph=Depends(get_graph),
+) -> dict:
+    """ADR-060 phase 2: score only the jobs the user selected from a
+    manual-selection run.
+
+    Valid only while the workflow is `awaiting_scoring_selection` (phase 1 of a
+    manual-selection run parked at `await_scoring_selection`). Re-enters the same
+    graph/thread at `score_jobs` with `phase="scoring"` and the selected subset
+    (capped at MAX_JOBS_PER_RUN), so research+scoring spend is paid only on the
+    jobs the user kept. Everything persists under the same workflow_id.
+    """
+    config = {"configurable": {"thread_id": workflow_id}}
+    snapshot = graph.get_state(config)
+    if snapshot is None or not snapshot.values:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "workflow_not_found",
+                    "message": f"Workflow {workflow_id!r} not found.",
+                    "workflow_id": workflow_id},
+        )
+
+    state = snapshot.values
+    if state.get("status") != "awaiting_scoring_selection":
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "not_awaiting_scoring_selection",
+                "message": (
+                    f"Workflow status is {state.get('status')!r}; scoring selection "
+                    "is only valid while a manual-selection run is "
+                    "awaiting_scoring_selection."
+                ),
+                "workflow_id": workflow_id,
+            },
+        )
+
+    discovered = state.get("normalized_jobs") or []
+    by_id = {j.get("id"): j for j in discovered if j.get("id")}
+    selected = [by_id[jid] for jid in body.selected_job_ids if jid in by_id]
+    if not selected:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "no_valid_jobs_selected",
+                "message": ("None of the selected_job_ids match jobs discovered for "
+                            "this workflow."),
+                "workflow_id": workflow_id,
+            },
+        )
+
+    capped = selected[:MAX_JOBS_PER_RUN]
+    phase2_state = {
+        "phase": "scoring",
+        "normalized_jobs": capped,
+        "status": "running",
+        "current_step": "scoring",
+        "updated_at": utcnow_iso(),
+    }
+    _executor.submit(_run_graph, graph, phase2_state, config)
+
+    logger.info(
+        "Workflow %s: scoring %d selected job(s) (phase 2).", workflow_id, len(capped),
+    )
+    return {
+        "workflow_id": workflow_id,
+        "status": "running",
+        "scoring_count": len(capped),
+        "skipped_over_cap": max(0, len(selected) - len(capped)),
+    }
 
 

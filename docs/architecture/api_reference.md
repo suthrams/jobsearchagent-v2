@@ -42,6 +42,7 @@ progress.
 POST /workflows                                → start a run (202, async)
 GET  /workflows/{id}                           → poll status
 POST /workflows/{id}/retry                     → re-submit a workflow after a server restart (202)
+POST /workflows/{id}/scoring                   → ADR-060 phase 2: score selected jobs from a manual-selection run (202, async)
 GET  /workflows/{id}/jobs                      → list scored jobs
 GET  /workflows/{id}/report                    → fetch the final report
 POST /workflows/{wf}/jobs/{job}/tailorings     → create a tailoring draft (run tailoring + fidelity, 200)
@@ -61,6 +62,15 @@ PUT  /config                                   → upsert one user-config overri
 > in the system is the out-of-graph tailoring decision
 > (`POST /tailorings/{id}/decisions`). The former in-graph
 > `POST /workflows/{id}/decisions` endpoint was removed in ADR-059.
+>
+> **Manual scoring selection (ADR-060, opt-in).** When
+> `effective_config.scoring.manual_selection` is true, a run discovers a wider
+> net and parks at status `awaiting_scoring_selection` without scoring.
+> `POST /workflows/{id}/scoring` with `{"selected_job_ids": [...]}` then scores
+> only the chosen jobs (re-entering the same graph/thread at `score_jobs`).
+> Valid only while `awaiting_scoring_selection` (else `409`); ids that were not
+> discovered for the run yield `422`. This is curate-before-scoring and adds no
+> `interrupt()` — the human choice sits between two phases of one `workflow_id`.
 
 ---
 

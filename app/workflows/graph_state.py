@@ -64,3 +64,7 @@ class WorkflowGraphState(TypedDict, total=False):
 
     # ── Routing flags (set by API layer, never by nodes) ─────────────────────
     user_requested_interview_prep: bool
+    # Phase routing (ADR-060). Empty/absent on a normal kickoff. Set to "scoring"
+    # by the phase-2 trigger so the conditional entry point jumps straight to
+    # score_jobs (manual-selection mode: discover -> await selection -> score).
+    phase: str

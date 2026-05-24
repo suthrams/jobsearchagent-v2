@@ -202,6 +202,12 @@ limits:
 scoring:
   deep_review_threshold: 70       # minimum overall_score to qualify for deep review
   interview_prep_threshold: 75    # minimum overall_score to qualify for interview prep
+  # ADR-060: when true, discovery casts a wider net (MAX_DISCOVERED_JOBS) and the
+  # workflow stops for you to pick which jobs to score, instead of auto-scoring
+  # every discovered job. Research + scoring spend is then paid only on the jobs
+  # you keep. Default false (auto-score all discovered jobs, capped at
+  # MAX_JOBS_PER_RUN). Per-run override via effective_config.scoring.manual_selection.
+  manual_selection: false
 
 # ─── v2 Tailoring Preferences ────────────────────────────────────────────────
 # User-adjustable via settings screen

@@ -33,6 +33,7 @@ from app.services.report_generator import ReportGenerator
 from app.services.resume_parser import ResumeParser
 from app.workflows.graph_state import WorkflowGraphState
 from app.workflows.nodes.await_job_selection import make_await_job_selection_node
+from app.workflows.nodes.await_scoring_selection import make_await_scoring_selection_node
 from app.workflows.nodes.career_advice import make_career_advice_node
 from app.workflows.nodes.deep_review import make_deep_review_node
 from app.workflows.nodes.discover_jobs import make_discover_jobs_node
@@ -41,7 +42,12 @@ from app.workflows.nodes.interview_prep import make_interview_prep_node
 from app.workflows.nodes.load_resume import make_load_resume_node
 from app.workflows.nodes.register_run import make_register_run_node
 from app.workflows.nodes.score_jobs import make_score_jobs_node
-from app.workflows.routers import deep_review_gate, interview_router
+from app.workflows.routers import (
+    deep_review_gate,
+    entry_router,
+    interview_router,
+    scoring_mode_gate,
+)
 
 
 @dataclass
@@ -108,6 +114,10 @@ def build_graph(deps: WorkflowDependencies):
 
     graph.add_node("await_job_selection", make_await_job_selection_node())
 
+    # Manual-selection mode (ADR-060): phase-1 terminal that parks discovered
+    # jobs for the user to triage before any scoring spend.
+    graph.add_node("await_scoring_selection", make_await_scoring_selection_node(deps.workflow_repo))
+
     graph.add_node("deep_review", make_deep_review_node(
         deps.resume_critic, deps.review_auditor, deps.review_repo, deps.observability))
 
@@ -121,17 +131,30 @@ def build_graph(deps: WorkflowDependencies):
         deps.report_generator, deps.observability, deps.workflow_repo))
 
     # ── Entry point ───────────────────────────────────────────────────────────
-    graph.set_entry_point("register_run")
+    # Conditional (ADR-060): a normal kickoff starts at register_run; the phase-2
+    # scoring trigger re-enters the same graph at score_jobs via phase="scoring".
+    graph.set_conditional_entry_point(
+        entry_router,
+        {"register_run": "register_run", "score_jobs": "score_jobs"},
+    )
 
     # ── Sequential edges ──────────────────────────────────────────────────────
     graph.add_edge("register_run",   "discover_jobs")
     graph.add_edge("discover_jobs",  "load_resume")
-    graph.add_edge("load_resume",    "score_jobs")
     graph.add_edge("score_jobs",     "await_job_selection")
     graph.add_edge("deep_review",    "career_advice")
+    graph.add_edge("await_scoring_selection", END)
     graph.add_edge("generate_report", END)
 
     # ── Conditional edges ─────────────────────────────────────────────────────
+    # After load_resume: manual-selection mode parks for user triage (ADR-060);
+    # otherwise score every discovered job as before.
+    graph.add_conditional_edges(
+        "load_resume",
+        scoring_mode_gate,
+        {"score_jobs": "score_jobs", "await_scoring_selection": "await_scoring_selection"},
+    )
+
     # After auto-select: skip deep review entirely if no jobs qualified.
     graph.add_conditional_edges(
         "await_job_selection",

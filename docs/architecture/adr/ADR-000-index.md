@@ -63,3 +63,6 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-055 | [On-Demand Tailoring as an Out-of-Graph Operation](ADR-055-on-demand-tailoring-as-out-of-graph-operation.md) | Accepted |
 | ADR-056 | [Tailoring Page-Budget Contract and Section-Grouped Suggestions](ADR-056-tailoring-page-budget-and-section-grouping.md) | Accepted |
 | ADR-057 | [Restore Per-Job Exclusion (v1 Design) as a Pipeline Filter](ADR-057-restore-per-job-exclusion.md) | Accepted |
+| ADR-058 | [Model Config to YAML with Per-Workflow Snapshot](ADR-058-model-config-to-yaml-with-per-workflow-snapshot.md) | Accepted |
+| ADR-059 | [Retire In-Graph HITL; Add a Human Edit Decision](ADR-059-retire-in-graph-hitl-and-add-human-edit-decision.md) | Accepted |
+| ADR-060 | [Human Triage Before Scoring (Widen Discovery, Score Only Selected)](ADR-060-human-triage-before-scoring.md) | Accepted |

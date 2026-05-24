@@ -264,6 +264,66 @@ def test_get_workflow_not_found(client):
     assert body["detail"]["error"] == "workflow_not_found"
 
 
+def _manual_state(thread_id: str) -> dict:
+    s = _initial_state(thread_id)
+    s["effective_config"] = {"scoring": {"career_track": "all", "manual_selection": True}}
+    return s
+
+
+def test_scoring_selection_workflow_not_found(client):
+    resp = client.post("/workflows/nope/scoring", json={"selected_job_ids": ["x"]})
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["error"] == "workflow_not_found"
+
+
+def test_scoring_selection_rejected_when_not_awaiting(client, mock_graph):
+    """A normal (auto) run completes; it is never awaiting_scoring_selection -> 409."""
+    tid = "wf-scoring-409"
+    mock_graph.invoke(_initial_state(tid), {"configurable": {"thread_id": tid}})
+    resp = client.post(f"/workflows/{tid}/scoring", json={"selected_job_ids": ["job-001"]})
+    assert resp.status_code == 409
+    assert resp.json()["detail"]["error"] == "not_awaiting_scoring_selection"
+
+
+def test_scoring_selection_rejects_unknown_job_ids(client, mock_graph):
+    """Manual phase 1 parks at awaiting; selecting ids that were not discovered -> 422."""
+    tid = "wf-scoring-422"
+    mock_graph.invoke(_manual_state(tid), {"configurable": {"thread_id": tid}})
+    resp = client.post(f"/workflows/{tid}/scoring", json={"selected_job_ids": ["nope-123"]})
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error"] == "no_valid_jobs_selected"
+
+
+def test_scoring_selection_happy_path_scores_only_selected():
+    """Manual phase 1 parks without scoring; the scoring trigger runs phase 2 on
+    the selected job only (ADR-060)."""
+    saver = MemorySaver()
+    deps = _make_deps(checkpointer=saver)
+    graph = build_graph(deps)
+    app.dependency_overrides[get_graph] = lambda: graph
+    try:
+        with TestClient(app) as c:
+            tid = "wf-scoring-ok"
+            graph.invoke(_manual_state(tid), {"configurable": {"thread_id": tid}})
+            assert deps.scoring_agent.run.call_count == 0, "phase 1 must not score"
+
+            resp = c.post(f"/workflows/{tid}/scoring",
+                          json={"selected_job_ids": ["job-001"]})
+            assert resp.status_code == 202
+            body = resp.json()
+            assert body["scoring_count"] == 1
+            assert body["status"] == "running"
+
+            # Phase 2 runs in the threadpool; wait for it to score.
+            for _ in range(80):
+                if deps.scoring_agent.run.called:
+                    break
+                time.sleep(0.05)
+            assert deps.scoring_agent.run.called, "phase 2 must score the selected job"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def test_get_workflow_status_after_run(client, mock_graph):
     """Start a workflow, run it, then GET. The graph runs end to end (no interrupt)."""
     thread_id = "wf-api-test-running"
