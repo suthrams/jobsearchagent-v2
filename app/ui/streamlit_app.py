@@ -762,6 +762,44 @@ def _render_tailoring_card(t: dict, on_decision, resume_profile: dict | None = N
     # Decision buttons
     if not decision and tid:
         st.markdown("---")
+
+        # Before you decide: a consequence summary at the decision point. The
+        # HITL literature names "too little context to the reviewer" as the
+        # common failure mode, so surface the reviewer's recommendation, the
+        # unresolved risk, and what each choice actually does -- right next to
+        # the buttons, not scattered up the card.
+        _rec = (fidelity or {}).get("approval_recommendation")
+        _conf = (fidelity or {}).get("confidence")
+        _flag_total = sum(
+            len((fidelity or {}).get(fk) or [])
+            for fk in (
+                "unsupported_claims", "fabricated_metrics", "inflated_scope_flags",
+                "unsupported_technology_flags", "unsupported_certification_flags",
+                "required_removals", "required_revisions",
+            )
+        )
+        _n_suggestions = sum(
+            len(v) for v in draft.values()
+            if isinstance(v, list) and v and all(isinstance(b, dict) for b in v)
+        )
+        _rec_line = f"Reviewer recommends **{_rec}**" if _rec else "Reviewer made no recommendation"
+        if _conf is not None:
+            try:
+                _rec_line += f" (confidence {int(_conf)}%)"
+            except (TypeError, ValueError):
+                pass
+        if _flag_total:
+            _rec_line += f"  ·  **{_flag_total}** unresolved fidelity flag(s)"
+        st.markdown(f"**Before you decide** — {_rec_line}")
+        st.markdown(
+            f"- **Approve**: accept all {_n_suggestions} suggestion(s) as-is"
+            + (f", including the {_flag_total} the reviewer flagged" if _flag_total else "")
+            + ".\n"
+            "- **Edit**: rewrite and accept your own wording (you author it; not re-checked).\n"
+            "- **Request revision**: ask for another tailoring pass.\n"
+            "- **Reject**: discard this draft; your resume is unchanged."
+        )
+
         b1, b2, b3 = st.columns(3)
         if b1.button("✅ Approve", key=f"tail_app_{tid}"):
             on_decision(tid, "approve")
@@ -1380,8 +1418,8 @@ elif view == "Workflow Detail":
     st.caption(
         "Pick a deep-reviewed job and generate evidence-bound section suggestions. "
         "Every suggestion cites the original line in your resume; missing experience "
-        "is labelled as a gap, never rewritten as if present. Approve / revise / "
-        "reject each draft to record your decision."
+        "is labelled as a gap, never rewritten as if present. Approve, edit, revise, "
+        "or reject each draft to record your decision."
     )
 
     selected_jobs_state = state.get("selected_jobs") or []
