@@ -37,8 +37,12 @@ This baseline matches the current `DEFAULT_AGENT_ASSIGNMENT` in
 
 ## Estimated cost per run with this baseline
 
-Under current limits (`MAX_JOBS_PER_RUN=10`, `MAX_SELECTED_JOBS=3`,
-`MAX_REVIEW_ROUNDS=2`):
+Under the **default** funnel width (`scoring.max_scored=10`, `MAX_SELECTED_JOBS=3`,
+`MAX_REVIEW_ROUNDS=2`). ADR-061 makes the width configurable: raising
+`scoring.max_scored` (up to 25) scales the discovery+scoring line roughly
+linearly (~2 Haiku calls per added job), and each on-demand operation adds cost
+on top — a `POST .../tailorings` on a not-yet-reviewed job also pays a deep-review
+pass first. `MAX_LLM_CALLS_PER_RUN=200` remains the absolute backstop.
 
 | Phase | Model mix | Approximate cost |
 |---|---|---|

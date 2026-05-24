@@ -4,6 +4,21 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-05-24
+
+### Added — Configurable funnel width + on-demand deep review and interview prep (ADR-061)
+
+The discover -> score -> tailor -> interview funnel is now user-steered within hard cost ceilings, and any scored job (not just the auto-selected top-3) can be carried to the narrow end.
+
+- **Configurable caps.** New config keys `scoring.max_scored` (default 10, ceiling `MAX_SCORED_CEILING=25`) and `search.max_discovered` (default/ceiling `MAX_DISCOVERED_JOBS=50`), merged the standard three-tier way (yaml -> user_config system-wide -> per-run `effective_config`). `app/workflows/limits.py` gains `get_max_scored()` and a rewritten `get_max_discovered_jobs()` that clamp to the ceiling; `ConfigService._enforce_limits` clamps the merged config and `_SYSTEM_MAX_JOBS` was raised 20 -> 50 so the discovery-service backstop no longer throttles the manual-mode wide net. `search.max_jobs` retired as a user-facing knob (now an internal backstop). Settings + Start New Run UI expose the two new knobs.
+- **Ad-hoc tailoring for any scored job.** UI picker widened from `selected_jobs` to `scored_jobs`. The single-job critic+auditor reflection loop was extracted to `app/services/deep_review_runner.py::review_one_job` (shared by the `deep_review` node and the new endpoint). `POST /workflows/{wf}/jobs/{job}/tailorings` gains `auto_deep_review` (default true): a scored-but-unreviewed job is deep-reviewed first.
+- **New out-of-graph endpoints.** `POST /workflows/{wf}/jobs/{job}/deep-review` and `POST /workflows/{wf}/jobs/{job}/interview-prep`, plus a per-job "Prep for interview" button in Workflow Detail. Both follow the ADR-055 out-of-graph shape; no `interrupt()` is introduced (ADR-059 property preserved). `MAX_LLM_CALLS_PER_RUN=200` stays the absolute backstop.
+- Docs: ADR-061 + index, `config_model.md` (funnel-width keys), `api_reference.md` (two new endpoints + `auto_deep_review`), `workflow_model.md` (new Mermaid funnel diagram + auto-selection/on-demand sections), `wiki.md` (corrected limits table + ADR list 057-061), `architecture_overview.md`, `hitl.md`, `patterns.md`, `agent_model.md`, cost docs, `CLAUDE.md` invariants.
+
+Tests: 562 passed (new `tests/v2/test_funnel_limits.py`; cap-clamp, deep-review-on-demand, and interview-prep router tests; updated tailoring/config tests for the new defaults).
+
+---
+
 ## 2026-05-05
 
 ### Changed — Cost cuts for the high-cost agents (advisor + coach + tailoring)

@@ -71,6 +71,13 @@ This keeps coordination centralized and avoids uncontrolled agent-to-agent behav
 | Tailoring Agent         | Suggest evidence-bound resume improvements         | Controlled generation  |
 | Fidelity Reviewer Agent | Detect unsupported tailoring claims                | Validation / Guardrail |
 
+> ADR-061: the Tailoring Agent, Fidelity Reviewer, Resume Critic + Review Auditor
+> (deep review), and Interview Coach are all also reachable **out-of-graph, on
+> demand, for any scored job** — not only the auto-selected top-3 — via the
+> `POST /workflows/{wf}/jobs/{job}/{tailorings,deep-review,interview-prep}`
+> endpoints. The single-job deep-review loop is shared with the in-graph node
+> (`app/services/deep_review_runner.py`).
+
 ---
 
 ## 5. Shared Rules for All Agents

@@ -67,13 +67,17 @@
 
 **Execution limits (enforced in `app/workflows/limits.py`):**
 
-| Limit | Value | Purpose |
+The funnel's width is configurable within hard ceilings (ADR-061); the rest are fixed cost guards.
+
+| Limit / config key | Value | Purpose |
 |---|---|---|
-| `MAX_JOBS_PER_RUN` | 10 | Volume cap — primary cost lever (reduced from 20 in Phase 9) |
-| `MAX_SELECTED_JOBS` | 10 | Deep review candidates (raised from 3 in ADR-054 — every qualifying job reaches deep review) |
+| `scoring.max_scored` | default 10, ceiling `MAX_SCORED_CEILING` = 25 | How many jobs get research + scoring. In auto mode this is also the discovery cap. Per-run + system-wide configurable (ADR-061) |
+| `search.max_discovered` | default/ceiling `MAX_DISCOVERED_JOBS` = 50 | Manual-selection (ADR-060) wide discovery net. Ignored in auto mode |
+| `MAX_JOBS_PER_RUN` | 10 | Default value behind `scoring.max_scored` |
+| `MAX_SELECTED_JOBS` | 3 | Jobs that auto-qualify for in-graph deep review (lowered from 10 as a cost cut; the human can push more through out-of-graph on-demand) |
 | `MAX_RESEARCH_STEPS` | 2 | ReAct loop cap on Research Agent |
-| `MAX_REVIEW_ROUNDS` | 3 | Reflection loop cap |
-| `MAX_LLM_CALLS_PER_RUN` | 200 | Global run budget (raised from 100 in ADR-054 to accommodate up to 10 deep-reviewed jobs) |
+| `MAX_REVIEW_ROUNDS` | 2 | Reflection loop cap (lowered from 3 — usually converges by round 2) |
+| `MAX_LLM_CALLS_PER_RUN` | 200 | Global run budget — the absolute cost backstop |
 
 ---
 
@@ -260,6 +264,11 @@
 | [054](architecture/adr/ADR-054-allow-deep-review-for-all-qualifying-jobs.md) | Allow deep review for all qualifying jobs — raise MAX_SELECTED_JOBS to 10 | post-9 |
 | [055](architecture/adr/ADR-055-on-demand-tailoring-as-out-of-graph-operation.md) | On-demand tailoring as an out-of-graph REST operation | post-9 |
 | [056](architecture/adr/ADR-056-tailoring-page-budget-and-section-grouping.md) | Tailoring page-budget contract + section-grouped suggestions (with three addenda: per-suggestion rationale, headline section + impactful strategy summary, directional per-track impact estimate) | post-9 |
+| [057](architecture/adr/ADR-057-restore-per-job-exclusion.md) | Restore per-job exclusion (filter input, not outcome tracking) | post-9 |
+| [058](architecture/adr/ADR-058-model-config-to-yaml-with-per-workflow-snapshot.md) | Model catalog/pricing/defaults to config.yaml + per-workflow snapshot | post-9 |
+| [059](architecture/adr/ADR-059-retire-in-graph-hitl-and-add-human-edit-decision.md) | Retire in-graph HITL; add a human edit decision (human as final author) | post-9 |
+| [060](architecture/adr/ADR-060-human-triage-before-scoring.md) | Human triage before scoring — widen discovery, score only selected | post-9 |
+| [061](architecture/adr/ADR-061-configurable-funnel-width.md) | Configurable funnel width + on-demand deep review and interview prep | post-9 |
 
 ---
 

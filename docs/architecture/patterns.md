@@ -63,7 +63,8 @@ v1 (`main.py` + three agents) established the core patterns that v2 built on. Un
 | Observability | Basic logging | 6-layer event tracking, per-call cost, security events | New |
 | Concurrent Scraping | — | ConcurrentAdzunaScraper (5 workers) | New |
 | Live/Mock Mode Gate | — | ANTHROPIC_API_KEY presence → real vs mocked deps | New |
-| Out-of-Graph Operations | `--tailor` CLI (no shared context) | On-demand tailoring router reads workflow checkpoint + repos; same agents, same fidelity contract (ADR-055) | New |
+| Out-of-Graph Operations | `--tailor` CLI (no shared context) | On-demand tailoring router reads workflow checkpoint + repos; same agents, same fidelity contract (ADR-055). Extended to deep-review + interview-prep for ANY scored job, with deep-review-on-demand before tailoring (ADR-061) | New, then extended |
+| Configurable Funnel Width | Fixed caps | `scoring.max_scored` (ceiling 25) + `search.max_discovered` (50) — system-wide default + per-run override, clamped in two places; the human owns the width inside a cost ceiling (ADR-061) | New |
 | Pipeline Filter (input, not outcome) | v1 `excluded` flag on jobs | Restored as filter-only primitive (ADR-057); explicitly NOT application tracking | Restored from v1 |
 
 ---
@@ -79,17 +80,21 @@ v1 (`main.py` + three agents) established the core patterns that v2 built on. Un
 ```
 v1: main.py → profile_agent.load() → scoring_agent.score_batch() → [done]
 
-v2: LangGraph graph
-      register_run → discover_jobs → load_resume
-        → [research + score concurrently per job]
-        → auto-select qualifying jobs (ADR-054 — no HITL pause)
+v2: LangGraph graph (configurable funnel width — ADR-061)
+      register_run → discover_jobs (≤ max_discovered manual / max_scored auto)
+        → load_resume
+        → [optional manual scoring triage between phases, ADR-060]
+        → [research + score concurrently, ≤ scoring.max_scored (≤25)]
+        → auto-select qualifying jobs (ADR-054/059 — no HITL pause; top 3)
         → [deep_review per selected job, concurrent]
         → career_advisor → interview_coach (threshold-gated)
         → generate_report
 
-      Tailoring is post-workflow + per-job (ADR-055):
-      POST /workflows/{wf}/jobs/{job}/tailorings
-        → TailoringAgent → FidelityReviewer → tailored_resumes
+      On-demand, post-workflow, per scored job (ADR-055/061):
+      POST /workflows/{wf}/jobs/{job}/tailorings   → TailoringAgent → FidelityReviewer
+        (deep-reviews on demand first if the job was never auto-selected)
+      POST /workflows/{wf}/jobs/{job}/deep-review   → ResumeCritic + ReviewAuditor
+      POST /workflows/{wf}/jobs/{job}/interview-prep → InterviewCoach
 ```
 
 **Why it matters:** State-driven execution enables HITL, error recovery, and workflow introspection. The graph topology is testable independently of agent quality.

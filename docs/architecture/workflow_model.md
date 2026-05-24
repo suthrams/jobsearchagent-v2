@@ -21,45 +21,73 @@ This document is the **execution blueprint** for the system.
 
 ## 2. Workflow Strategy
 
-The system follows this execution philosophy:
+The system is a **funnel**: it casts wide at discovery and narrows, stage by
+stage, to a small set of jobs that receive the most expensive treatment. The
+funnel gets narrower — and the per-job accuracy and focus get higher — from left
+to right.
 
 ```text
-Score many jobs cheaply → Deeply analyze selected jobs
+Discover many cheaply → score the worthwhile → deeply analyze the few
 ```
+
+The funnel's width is a **human decision bounded by a cost ceiling** (ADR-061),
+not a fixed cap:
+
+* `scoring.max_scored` (default 10, ceiling 25) — how many jobs get scored.
+* `search.max_discovered` (default/ceiling 50) — the manual-mode wide net.
+* `MAX_SELECTED_JOBS` (3) — how many auto-qualify for in-graph deep review.
+* `MAX_LLM_CALLS_PER_RUN` (200) — the absolute per-run cost backstop.
 
 All workflows are:
 
 * orchestrator-driven
 * state-based
-* bounded
+* bounded (by the caps above)
 * observable
-* interruptible via HITL
+* **non-interruptible** — the graph runs end to end with no `interrupt()`
+  (ADR-059). Human involvement happens *between phases* (manual scoring triage,
+  ADR-060) or *out of the graph* (on-demand tailoring / deep review / interview,
+  ADR-055/061), never as an in-graph pause.
 
 ---
 
 ## 3. Primary Execution Flow
 
-```text
-User provides search criteria (+ optional resume)
-        ↓
-Job Discovery Workflow
-        ↓
-Resume Profile Workflow
-        ↓
-Scoring Workflow (batch)
-        ↓
-Shortlist + HITL Selection
-        ↓
-Deep Review Workflow (per selected job)
-        ↓
-Optional Interview Prep
-        ↓
-Optional Tailoring + Fidelity Validation
-        ↓
-Reporting Workflow
-        ↓
-Persist + Display Results
+In-graph the workflow runs straight through. Off the graph, the human can pull
+**any scored job** through tailoring, deep review, or interview prep on demand —
+the funnel's narrow end is owner-driven, not limited to the auto-selected few.
+
+```mermaid
+flowchart TD
+    SC[/"Search criteria + resume"/] --> DISC
+
+    subgraph ingraph["In-graph workflow — runs end to end, no interrupt (ADR-059)"]
+        DISC["1 - DISCOVER<br/>auto: up to scoring.max_scored<br/>manual: up to search.max_discovered (&le;50)"]
+        DISC --> MAN{"manual_selection?<br/>(ADR-060)"}
+        MAN -- "yes" --> TRIAGE["Human triage between phases:<br/>pick which jobs to score"]
+        MAN -- "no" --> SCORE
+        TRIAGE --> SCORE["2 - SCORE<br/>research + scoring<br/>up to scoring.max_scored (&le;25)"]
+        SCORE --> SEL["3 - AUTO-SELECT<br/>top-3 qualifying by best track score<br/>(MAX_SELECTED_JOBS = 3)"]
+        SEL --> DEEP["4 - DEEP REVIEW<br/>critic + auditor reflection loop"]
+        DEEP --> ADV["5 - CAREER ADVICE"]
+        ADV --> INT["6 - INTERVIEW PREP<br/>(if top track score &ge; threshold)"]
+        INT --> REP["7 - REPORT"]
+    end
+
+    SCORE -. "any scored job, on demand" .-> OND
+
+    subgraph OND["Out-of-graph on-demand (ADR-055/061) — for ANY scored job"]
+        direction LR
+        ODR["POST .../deep-review"]
+        OTAIL["POST .../tailorings<br/>(deep-reviews first if needed)<br/>+ fidelity review"]
+        OINT["POST .../interview-prep"]
+    end
 ```
+
+The narrowing, in numbers: discover up to 50, score up to 25, auto-select 3 for
+in-graph deep review — while the human can additionally push any scored job
+through the out-of-graph operations. Each step to the right costs more per job
+and produces higher-fidelity output.
 
 ---
 
@@ -220,51 +248,58 @@ Evaluate multiple jobs against the resume profile.
 
 ---
 
-## 7. Shortlist + HITL Selection
+## 7. Auto-Selection (no HITL pause)
 
 ### Purpose
 
-Allow the user to select jobs for deep analysis.
+Pick which scored jobs receive in-graph deep review — **automatically**, with no
+workflow pause. The in-graph `interrupt()`-before-selection model described in
+earlier drafts was retired in ADR-059; the graph now runs end to end.
 
 ---
 
 ### Inputs
 
-* ranked job list
+* scored job list (with per-track scores)
 
 ---
 
 ### Outputs
 
-* selected job(s)
+* `selected_jobs` — up to `MAX_SELECTED_JOBS` (3) jobs that qualify
 
 ---
 
 ### Steps
 
 ```text
-1. Present ranked jobs to user
-2. Highlight top candidates
-3. Request user selection
-4. Pause workflow (HITL)
-5. Receive user decision
-6. Update workflow state
+1. Filter to jobs where ANY track score (technical/architecture/leadership)
+   >= effective_config.scoring.min_match_score (default 75)
+   — use qualifies_for_deep_review() / best_track_score(), never overall_score
+2. Sort qualifying jobs by best track score, descending
+3. Keep the top MAX_SELECTED_JOBS (3)
+4. If none qualify, deep_review_gate skips straight to generate_report
 ```
+
+The `await_job_selection` node does NOT call `interrupt()`.
 
 ---
 
-### HITL Pattern
+### Where the human still chooses
 
-```text
-Pause → Ask User → Resume
-```
+* **Before scoring (ADR-060):** when `scoring.manual_selection` is on, the run
+  parks between phases at `awaiting_scoring_selection` and the human picks which
+  discovered jobs to score. This is a phase boundary, not an in-graph pause.
+* **After scoring (ADR-055/061):** the human can pull **any scored job** — not
+  just the auto-selected 3 — through out-of-graph tailoring, deep review, or
+  interview prep (see Section 11 + the on-demand operations).
 
 ---
 
 ### Stop Conditions
 
-* user selects at least one job
-* user cancels workflow
+* up to `MAX_SELECTED_JOBS` qualifying jobs selected, or
+* no qualifying jobs → deep review (and everything downstream) is skipped
 
 ---
 
@@ -439,9 +474,11 @@ Tailoring runs via a single out-of-graph path (ADR-055; the in-graph path was re
 
 | Path | Trigger | When | Approval mechanism |
 |------|---------|------|--------------------|
-| Out-of-graph router | `POST /workflows/{wf}/jobs/{job}/tailorings` | Post-workflow, per job, on demand | `POST /tailorings/{id}/decisions` writes the `decision` column |
+| Out-of-graph router | `POST /workflows/{wf}/jobs/{job}/tailorings` | Post-workflow, per **scored** job, on demand | `POST /tailorings/{id}/decisions` writes the `decision` column |
 
 The out-of-graph path is the only path because tailoring intent is per-job, post-hoc, and repeatable — properties that don't fit a single-shot graph lifecycle. There is no in-graph tailoring node and no `interrupt()` in the workflow.
+
+ADR-061: tailoring is available for **any scored job**, not only the auto-selected 3. If the chosen job has no deep-review row yet, the endpoint runs the critic+auditor loop on demand first (`auto_deep_review=true`, default) so the Tailoring Agent gets real review context.
 
 ---
 
@@ -479,6 +516,24 @@ The out-of-graph path is the only path because tailoring intent is per-job, post
 
 * Tailoring Agent
 * Fidelity Reviewer
+
+---
+
+## 11b. On-Demand Operations (ADR-061)
+
+Three out-of-graph operations let the human carry **any scored job** to the
+narrow end of the funnel, regardless of whether it was auto-selected. All three
+follow the ADR-055 shape: read state from the checkpointer, run agents directly,
+persist via repos, no `interrupt()`.
+
+| Endpoint | Runs | Persists |
+|---|---|---|
+| `POST /workflows/{wf}/jobs/{job}/deep-review` | ResumeCritic + ReviewAuditor reflection loop (shared `app/services/deep_review_runner.py::review_one_job`) | `resume_reviews` (rounds + final) |
+| `POST /workflows/{wf}/jobs/{job}/tailorings` | TailoringAgent + FidelityReviewer (deep-reviews first if needed) | `tailored_resumes` |
+| `POST /workflows/{wf}/jobs/{job}/interview-prep` | InterviewCoach | `career_advice` (prep row) |
+
+The single-job reflection loop is shared with the in-graph `deep_review` node so
+both run identical logic.
 
 ---
 

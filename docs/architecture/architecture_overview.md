@@ -319,18 +319,25 @@ Ethical constraints:
 
 ## 12. Performance Strategy
 
-The system follows:
+The system is a **funnel** that narrows from many cheap jobs to a few expensive
+ones, with the width owner-controlled inside hard ceilings (ADR-061):
 
 ```text
-Score many → Deep review few
+Discover many (<=50) -> score the worthwhile (<=25) -> deep-review the few (3)
 ```
 
 Guardrails:
 
-* bounded research steps
-* bounded review loops
-* bounded LLM usage
-* bounded cost per run
+* configurable scored width (`scoring.max_scored`, ceiling 25) and discovery net
+  (`search.max_discovered`, ceiling 50) — system-wide default + per-run override
+* bounded research steps and review loops
+* bounded auto-selection (`MAX_SELECTED_JOBS` = 3 reach in-graph deep review)
+* `MAX_LLM_CALLS_PER_RUN` = 200 as the absolute per-run cost backstop
+
+Beyond the in-graph funnel, the human can pull **any scored job** through
+out-of-graph on-demand operations (deep review, tailoring, interview prep;
+ADR-055/061) — the narrow end is owner-driven, not limited to the auto-selected
+few.
 
 SQLite is sufficient for current scale due to bounded execution.
 

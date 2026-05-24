@@ -206,6 +206,7 @@ LIMIT 5;
 | Symptom | Lever | How to apply |
 |---|---|---|
 | One agent on Sonnet dominates cost | Move that agent to Haiku | Settings → Agent Models, pick `claude-haiku-4-5-20251001`, restart backend |
+| Scoring too many jobs per run (ADR-061) | Lower `scoring.max_scored` | Settings → Scoring, set a smaller value (down to 1), no restart needed |
 | Many low-quality jobs reach deep review | Raise `min_match_score` | Settings → Scoring, set 80 or 85, no restart needed |
 | Deep review fans out to too many jobs | Lower `MAX_SELECTED_JOBS` | Edit `app/workflows/limits.py`, restart backend |
 | Reflection loop runs 3 rounds rarely changing verdict | Lower `MAX_REVIEW_ROUNDS` to 2 | Edit `app/workflows/limits.py`, restart backend |

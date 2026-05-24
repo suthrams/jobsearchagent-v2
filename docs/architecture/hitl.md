@@ -2,15 +2,23 @@
 
 ---
 
-> **Status note (ADR-059).** This document describes the original interrupt-resume
-> HITL model, which has been **retired**. The workflow graph no longer calls
-> `interrupt()` and there is no `waiting_for_user` pause: job selection auto-selects,
-> and the single remaining HITL pattern is the **out-of-graph tailoring decision**
-> (`POST /tailorings/{id}/decisions`, approve / revise / reject) where the agent
-> recommends and a human decides. Sections below that describe in-graph interrupts,
-> `waiting_for_user`, and `POST /workflows/{id}/decisions` are retained for historical
-> context only. See `CLAUDE.md` (HITL rules), `api_reference.md`, and ADR-055 / ADR-059
-> for the current model.
+> **Status note (ADR-059, extended by ADR-060/061).** This document describes the
+> original interrupt-resume HITL model, which has been **retired**. The workflow
+> graph no longer calls `interrupt()` and there is no `waiting_for_user` pause.
+> Human involvement now takes three out-of-graph / between-phase forms:
+> 1. **Auto-selection** of jobs for in-graph deep review (no pause).
+> 2. **Manual scoring triage between phases** (ADR-060): when
+>    `scoring.manual_selection` is on, the run parks at `awaiting_scoring_selection`
+>    and the human picks which discovered jobs to score via `POST /workflows/{id}/scoring`.
+> 3. **Out-of-graph on-demand operations** for **any scored job** (ADR-055/061):
+>    tailoring (`POST .../tailorings`) with its approve/revise/reject/edit decision
+>    (`POST /tailorings/{id}/decisions`), on-demand deep review (`POST .../deep-review`),
+>    and on-demand interview prep (`POST .../interview-prep`).
+>
+> Sections below that describe in-graph interrupts, `waiting_for_user`, and
+> `POST /workflows/{id}/decisions` are retained for historical context only. See
+> `CLAUDE.md` (HITL rules), `api_reference.md`, and ADR-055 / ADR-059 / ADR-060 /
+> ADR-061 for the current model.
 
 ---
 
