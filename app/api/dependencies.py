@@ -19,7 +19,7 @@ from app.agents.review_auditor import ReviewAuditor
 from app.agents.scoring_agent import ScoringAgent
 from app.agents.tailoring_agent import TailoringAgent
 from app.repositories.advice_repository import AdviceRepository
-from app.repositories.database import DEFAULT_DB_PATH, utcnow_iso
+from app.repositories.database import DEFAULT_DB_PATH, DEFAULT_USER_ID, utcnow_iso
 from app.repositories.decision_repository import DecisionRepository
 from app.repositories.job_repository import JobRepository
 from app.repositories.observability_repository import ObservabilityRepository
@@ -30,6 +30,7 @@ from app.repositories.score_repository import ScoreRepository
 from app.repositories.security_repository import SecurityRepository
 from app.repositories.step_repository import StepRepository
 from app.repositories.tailoring_repository import TailoringRepository
+from app.repositories.user_repository import UserRepository
 from app.repositories.workflow_repository import WorkflowRepository
 from app.schemas.career_advice import CareerAdvice
 from app.schemas.fidelity_review import FidelityReview
@@ -293,6 +294,12 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     from app.repositories.database import init_db
     init_db(db_path)
 
+    # ADR-062: wire the identity seam's existence validator to this DB so a
+    # bogus user_id query param fails fast in production. Mock mode never reaches
+    # here, so unit/mock tests keep accepting any id (validator stays unset).
+    from app.api.identity import set_user_validator
+    set_user_validator(UserRepository(db_path).exists)
+
     # Repositories — each manages its own connection via get_connection()
     job_repo = JobRepository(db_path)
     score_repo = ScoreRepository(db_path)
@@ -313,7 +320,11 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
         config_path=_project_root / "config" / "config.yaml",
         db_path=db_path,
     )
-    _eff = config_svc_for_models.get_effective_config()
+    # ADR-062: the startup registry uses the default profile's config. With
+    # sequential use, per-active-user agent assignment is applied at run kickoff
+    # (the per-workflow snapshot reads the acting user's config) and on profile
+    # switch via reload; this is the sensible default base.
+    _eff = config_svc_for_models.get_effective_config(DEFAULT_USER_ID)
 
     # Per-agent provider/model assignment (ADR-053 + ADR-058). Catalog, pricing,
     # and per-agent defaults all come from config (config.yaml `models:` and
