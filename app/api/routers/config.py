@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
+from app.api.identity import get_current_user_id
 from app.providers.model_registry import (
     HIGH_VOLUME_AGENTS,
     HIGH_VOLUME_SAFE_MODELS,
@@ -57,18 +58,23 @@ def _load_known_agents() -> set[str]:
 
 
 @router.get("")
-def get_config() -> dict:
-    """Return the effective merged config + the list of protected keys for UI labelling."""
+def get_config(user_id: str = Depends(get_current_user_id)) -> dict:
+    """Return the acting profile's effective merged config + the list of protected
+    keys for UI labelling."""
     svc = ConfigService()
     return {
-        "effective_config": svc.get_effective_config(),
+        "effective_config": svc.get_effective_config(user_id),
         "protected_keys": sorted(_PROTECTED_KEYS),
     }
 
 
 @router.put("", status_code=200)
-def put_config(body: ConfigUpdate) -> dict:
-    """Set or update a user_config override for a single dotted key."""
+def put_config(
+    body: ConfigUpdate,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """Set or update a user_config override for a single dotted key, scoped to
+    the acting profile."""
     if body.key in _PROTECTED_KEYS:
         raise HTTPException(
             status_code=422,
@@ -92,11 +98,12 @@ def put_config(body: ConfigUpdate) -> dict:
         _validate_agent_key(body.key, body.value)
 
     repo = ConfigRepository(DEFAULT_DB_PATH)
-    # user_id=None == single-user setup (current default).
-    # Use a stable id derived from key so repeated PUTs upsert in place.
-    config_id = f"user_None__{body.key}"
+    # ADR-062: override is owned by the acting profile. Stable id derived from
+    # (user_id, key) so repeated PUTs upsert in place. The migration rewrote the
+    # legacy "user_None__" ids to "user_0__" so user 0's re-saves update in place.
+    config_id = f"user_{user_id}__{body.key}"
     try:
-        repo.upsert(config_id, None, body.key, body.value)
+        repo.upsert(config_id, user_id, body.key, body.value)
     except Exception as exc:
         logger.exception("config: upsert failed for key=%s", body.key)
         raise HTTPException(
@@ -252,14 +259,15 @@ def _check_known(provider: object, model: object, known_models: dict[str, list[s
 
 
 @router.get("/providers", tags=["config"])
-def get_providers() -> dict:
-    """Return the registered providers + models with pricing, plus the current per-agent assignment.
+def get_providers(user_id: str = Depends(get_current_user_id)) -> dict:
+    """Return the registered providers + models with pricing, plus the acting
+    profile's current per-agent assignment.
 
     Used by the Settings UI to populate per-agent dropdowns. Models are gated by
     API-key presence: openai entries report `available=false` if OPENAI_API_KEY
     is missing on the server.
     """
-    eff = ConfigService().get_effective_config()
+    eff = ConfigService().get_effective_config(user_id)
     catalog = catalog_from_config(eff)
     defaults = defaults_from_config(eff)
     user_assignment = assignment_from_config(eff)

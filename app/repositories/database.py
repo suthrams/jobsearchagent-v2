@@ -346,6 +346,16 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             "UPDATE user_config   SET user_id = '0' WHERE user_id IS NULL",
         ):
             conn.execute(backfill_sql)
+        # The config router keyed pre-existing rows by id "user_None__{key}".
+        # Rewrite the id prefix to "user_0__{key}" so that when the UI (acting as
+        # user 0) re-saves a key, the upsert updates in place instead of inserting
+        # a duplicate row for the same (user_id, key). Idempotent: after the
+        # rewrite no id matches the LIKE pattern.
+        conn.execute(
+            "UPDATE user_config "
+            "SET id = 'user_0__' || substr(id, length('user_None__') + 1) "
+            "WHERE id LIKE 'user_None__%'"
+        )
 
 
 def purge_old_data(db_path: Path = DEFAULT_DB_PATH, config: dict | None = None) -> dict[str, int]:

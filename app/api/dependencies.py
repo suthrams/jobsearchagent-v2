@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from unittest.mock import MagicMock
 
 from app.agents.career_advisor import CareerAdvisor
@@ -487,6 +488,17 @@ def get_graph():
             "Workflow graph not initialised. build_and_cache_graph() must be called at startup."
         )
     return _graph
+
+
+def get_user_repo() -> UserRepository:
+    """FastAPI dependency returning a UserRepository for the app's database.
+
+    Anchored to the same project-root data/v2.db that _build_real_deps uses, so
+    the /users endpoints read/write the same profiles the identity seam validates
+    against. Tests override this dependency to point at a temp DB.
+    """
+    project_root = Path(__file__).resolve().parents[2]
+    return UserRepository(project_root / "data" / "v2.db")
 
 
 def get_deps() -> WorkflowDependencies:
