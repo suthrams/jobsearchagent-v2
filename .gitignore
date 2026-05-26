@@ -24,6 +24,8 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/*.db-journal
+# Timestamped DB backups taken before migrations (e.g. v2.db.bak-20260526-154813)
+data/*.bak*
 
 # Tailored resumes and run logs — contain personal content
 output/
