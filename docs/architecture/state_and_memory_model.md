@@ -115,7 +115,9 @@ class WorkflowState:
     status: str
     current_step: str
 
-    user_id: str | None
+    user_id: str | None  # ADR-062: owning profile; set at kickoff from the
+                         # identity seam, threaded into the resume load and every
+                         # memory write so learning stays isolated per profile.
 
     resume_id: str | None
     resume_profile: dict | None
@@ -494,6 +496,13 @@ It should help the system personalize future scoring, advice, and recommendation
 Memory is not free-form chat history.
 
 Memory must be structured.
+
+**Memory is isolated per profile (ADR-062).** `memory_items` carries a `user_id`
+and every `MemoryRepository` method filters by it; item ids are namespaced per
+user to avoid key collisions. One person's learned fit patterns and preferences
+never seed another profile's runs — a correctness and privacy property, not just
+a convenience. Writes use `WorkflowState.user_id` (populated at kickoff).
+Pre-existing memory was backfilled to the default profile `"0"`.
 
 ---
 
