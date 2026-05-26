@@ -13,6 +13,13 @@ from pathlib import Path
 DEFAULT_DB_PATH = Path("data/v2.db")
 
 _SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,   -- ADR-062: 0 reserved for pre-existing data; new profiles auto-increment from 1
+    name TEXT NOT NULL,       -- display name shown in the profile selector
+    note TEXT,                -- optional human-only label; never parsed or acted on
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS workflow_runs (
     id TEXT PRIMARY KEY,
     workflow_type TEXT NOT NULL,
@@ -46,6 +53,7 @@ CREATE TABLE IF NOT EXISTS jobs (
 
 CREATE TABLE IF NOT EXISTS resumes (
     id TEXT PRIMARY KEY,
+    user_id TEXT,                          -- ADR-062: owning profile (decimal-string users.id); '0' = pre-existing
     file_name TEXT,
     raw_text TEXT,
     raw_text_hash TEXT,
@@ -207,6 +215,7 @@ CREATE TABLE IF NOT EXISTS security_events (
 
 CREATE TABLE IF NOT EXISTS memory_items (
     id TEXT PRIMARY KEY,
+    user_id TEXT,                          -- ADR-062: owning profile (decimal-string users.id); '0' = pre-existing
     memory_type TEXT NOT NULL,
     memory_key TEXT,
     memory_value_json TEXT NOT NULL,
@@ -232,7 +241,11 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_created_at     ON llm_calls(created_at)
 CREATE INDEX IF NOT EXISTS idx_memory_type              ON memory_items(memory_type);
 CREATE INDEX IF NOT EXISTS idx_memory_updated_at        ON memory_items(updated_at);
 CREATE INDEX IF NOT EXISTS idx_security_created_at      ON security_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_workflow_runs_user       ON workflow_runs(user_id);
 """
+# Indexes on user_id columns that are added by ALTER in init_db (resumes,
+# memory_items) cannot live in _SCHEMA_SQL: executescript runs before the ALTERs,
+# so on a pre-existing DB the column would not yet exist. Created post-ALTER below.
 
 
 def utcnow_iso() -> str:
@@ -296,6 +309,38 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
                 conn.execute(col_ddl)
             except Exception:
                 pass  # column already exists
+        # Migration (ADR-062): multi-user profiles. Additive + idempotent.
+        # 1. Add user_id to the two tables that lacked it (workflow_runs and
+        #    user_config already have it from earlier schemas).
+        for col_ddl in (
+            "ALTER TABLE resumes ADD COLUMN user_id TEXT",
+            "ALTER TABLE memory_items ADD COLUMN user_id TEXT",
+        ):
+            try:
+                conn.execute(col_ddl)
+            except Exception:
+                pass  # column already exists
+        # 2. Indexes on the just-added columns (see note by _SCHEMA_SQL above).
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_resumes_user ON resumes(user_id)")
+        conn.execute("CREATE INDEX IF NOT EXISTS idx_memory_user  ON memory_items(user_id)")
+        # 3. Seed the default profile (id=0) that owns all pre-existing data.
+        #    Guarded on id=0 so re-running init_db is a no-op.
+        conn.execute(
+            "INSERT INTO users (id, name, note, created_at) "
+            "SELECT 0, 'Primary', NULL, ? "
+            "WHERE NOT EXISTS (SELECT 1 FROM users WHERE id = 0)",
+            (utcnow_iso(),),
+        )
+        # 4. Backfill all pre-existing rows to user '0' (decimal-string form).
+        #    Only touches rows predating multi-user (user_id IS NULL), so it is
+        #    safe and idempotent.
+        for backfill_sql in (
+            "UPDATE resumes       SET user_id = '0' WHERE user_id IS NULL",
+            "UPDATE memory_items  SET user_id = '0' WHERE user_id IS NULL",
+            "UPDATE workflow_runs SET user_id = '0' WHERE user_id IS NULL",
+            "UPDATE user_config   SET user_id = '0' WHERE user_id IS NULL",
+        ):
+            conn.execute(backfill_sql)
 
 
 def purge_old_data(db_path: Path = DEFAULT_DB_PATH, config: dict | None = None) -> dict[str, int]:

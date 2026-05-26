@@ -23,7 +23,7 @@ def db_path(tmp_path):
 # ─── Schema / init ───────────────────────────────────────────────────────────
 
 _EXPECTED_TABLES = {
-    "workflow_runs", "jobs", "resumes", "job_scores",
+    "users", "workflow_runs", "jobs", "resumes", "job_scores",
     "review_rounds", "resume_reviews", "career_advice", "interview_prep",
     "tailored_resumes", "reports", "human_decisions", "user_config",
     "step_executions", "agent_events", "llm_calls", "run_metrics",
@@ -31,7 +31,7 @@ _EXPECTED_TABLES = {
 }
 
 
-def test_all_18_tables_created(db_path):
+def test_all_tables_created(db_path):
     conn = sqlite3.connect(str(db_path))
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
@@ -39,6 +39,79 @@ def test_all_18_tables_created(db_path):
     conn.close()
     created = {r[0] for r in rows}
     assert _EXPECTED_TABLES == created
+
+
+# ─── ADR-062: multi-user migration ───────────────────────────────────────────
+
+def _columns(db_path, table):
+    conn = sqlite3.connect(str(db_path))
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    conn.close()
+    return cols
+
+
+def test_default_user_zero_seeded(db_path):
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute("SELECT id, name FROM users WHERE id = 0").fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] == 0
+    assert row[1] == "Primary"
+
+
+def test_resumes_and_memory_have_user_id(db_path):
+    assert "user_id" in _columns(db_path, "resumes")
+    assert "user_id" in _columns(db_path, "memory_items")
+
+
+def test_new_users_autoincrement_from_one(db_path):
+    """User 0 is reserved; the first profile created afterward gets id 1."""
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "INSERT INTO users (name, note, created_at) VALUES (?, ?, ?)",
+        ("Son", "new-grad SWE", utcnow_iso()),
+    )
+    conn.commit()
+    new_id = conn.execute("SELECT id FROM users WHERE name = 'Son'").fetchone()[0]
+    conn.close()
+    assert new_id == 1
+
+
+def test_backfill_assigns_preexisting_rows_to_user_zero(db_path):
+    """Rows inserted with a NULL user_id (legacy data) are ported to '0' on the
+    next init_db run. Idempotent: re-running does not change already-ported rows."""
+    conn = sqlite3.connect(str(db_path))
+    now = utcnow_iso()
+    # Simulate legacy rows with no owner.
+    conn.execute(
+        "INSERT INTO resumes (id, file_name, raw_text, version, is_active, created_at) "
+        "VALUES ('legacy_resume', 'old.pdf', 'text', 1, 1, ?)", (now,),
+    )
+    conn.execute(
+        "INSERT INTO memory_items (id, memory_type, memory_value_json, created_at, updated_at) "
+        "VALUES ('legacy_mem', 'pref', '{}', ?, ?)", (now, now),
+    )
+    conn.execute(
+        "INSERT INTO workflow_runs (id, workflow_type, status, state_json, started_at, updated_at) "
+        "VALUES ('legacy_wf', 'full', 'completed', '{}', ?, ?)", (now, now),
+    )
+    conn.execute(
+        "INSERT INTO user_config (id, config_key, config_value_json, created_at, updated_at) "
+        "VALUES ('legacy_cfg', 'search.roles', '[]', ?, ?)", (now, now),
+    )
+    conn.commit()
+    conn.close()
+
+    init_db(db_path)  # re-run triggers the backfill
+
+    conn = sqlite3.connect(str(db_path))
+    assert conn.execute("SELECT user_id FROM resumes WHERE id='legacy_resume'").fetchone()[0] == "0"
+    assert conn.execute("SELECT user_id FROM memory_items WHERE id='legacy_mem'").fetchone()[0] == "0"
+    assert conn.execute("SELECT user_id FROM workflow_runs WHERE id='legacy_wf'").fetchone()[0] == "0"
+    assert conn.execute("SELECT user_id FROM user_config WHERE id='legacy_cfg'").fetchone()[0] == "0"
+    # Idempotent: still exactly one user-0 row after repeated init.
+    assert conn.execute("SELECT COUNT(*) FROM users WHERE id=0").fetchone()[0] == 1
+    conn.close()
 
 
 def test_utcnow_iso_format():

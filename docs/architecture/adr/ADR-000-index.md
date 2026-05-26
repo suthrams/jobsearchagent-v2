@@ -67,3 +67,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-059 | [Retire In-Graph HITL; Add a Human Edit Decision](ADR-059-retire-in-graph-hitl-and-add-human-edit-decision.md) | Accepted |
 | ADR-060 | [Human Triage Before Scoring (Widen Discovery, Score Only Selected)](ADR-060-human-triage-before-scoring.md) | Accepted |
 | ADR-061 | [Configurable Funnel Width + On-Demand Deep Review and Interview Prep](ADR-061-configurable-funnel-width.md) | Accepted |
+| ADR-062 | [Multi-User Profiles with a Single Swappable Identity Seam](ADR-062-multi-user-profiles.md) | Accepted |
