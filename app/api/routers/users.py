@@ -11,12 +11,16 @@ access boundary attaches later.
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
-from app.api.dependencies import get_user_repo
+from app.api.dependencies import get_deps, get_user_repo
 from app.repositories.user_repository import UserRepository
+from app.workflows.workflow_graph import WorkflowDependencies
 
 logger = logging.getLogger(__name__)
 
@@ -59,3 +63,50 @@ def create_user(
         ) from exc
     created = repo.get_by_id(new_id)
     return {"user": created}
+
+
+@router.post("/{user_id}/resume", status_code=201)
+def upload_resume(
+    user_id: int,
+    file: UploadFile = File(...),
+    repo: UserRepository = Depends(get_user_repo),
+    deps: WorkflowDependencies = Depends(get_deps),
+) -> dict:
+    """Onboarding step 2: upload a PDF resume for a profile.
+
+    Saves the upload to a temp file, parses it via ResumeParser (which stores the
+    parsed profile under this user_id and marks it the profile's active resume),
+    then deletes the temp file. Returns the new resume id.
+    """
+    if not repo.exists(user_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "unknown_user", "message": f"No profile with id {user_id}."},
+        )
+    filename = file.filename or "resume.pdf"
+    suffix = Path(filename).suffix or ".pdf"
+    tmp_path: str | None = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
+            tmp.write(file.file.read())
+            tmp_path = tmp.name
+        profile = deps.resume_parser.parse_pdf(
+            tmp_path, file_name=filename, user_id=str(user_id),
+        )
+    except Exception as exc:
+        logger.exception("upload_resume failed for user_id=%s", user_id)
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "resume_parse_failed", "message": str(exc)},
+        ) from exc
+    finally:
+        if tmp_path:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+    return {
+        "resume_id": profile.resume_id,
+        "file_name": profile.file_name,
+        "name": profile.name,
+    }

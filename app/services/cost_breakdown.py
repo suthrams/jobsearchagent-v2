@@ -178,9 +178,34 @@ def _window_clause(days: int | None) -> str:
     return f"WHERE created_at >= datetime('now', '-{int(days)} days')"
 
 
+def _scope_clause(days: int | None, user_id: str | None) -> tuple[str, tuple]:
+    """Build a combined WHERE clause for an `llm_calls` query, scoping by time
+    window and (ADR-062) owning profile.
+
+    llm_calls carries no user_id; ownership is the user_id of the workflow_runs
+    row its workflow_run_id points at. A correlated subquery resolves it and
+    COALESCEs orphan calls (no workflow_runs row — e.g. ad-hoc resume parses) to
+    '0', so they count toward the default profile and never toward a new one.
+    user_id=None means no profile filter (all-time, all profiles).
+    """
+    clauses: list[str] = []
+    params: list = []
+    if days is not None and days > 0:
+        clauses.append(f"created_at >= datetime('now', '-{int(days)} days')")
+    if user_id is not None:
+        clauses.append(
+            "COALESCE((SELECT wr.user_id FROM workflow_runs wr "
+            "WHERE wr.id = llm_calls.workflow_run_id), '0') = ?"
+        )
+        params.append(str(user_id))
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
+    return where, tuple(params)
+
+
 def compute_dashboard_aggregate(
     days: int | None = None,
     db_path: Path = DEFAULT_DB_PATH,
+    user_id: str | None = None,
 ) -> dict:
     """Total spend + per-agent + per-model rollups for the time window.
 
@@ -196,7 +221,7 @@ def compute_dashboard_aggregate(
     if not Path(db_path).exists():
         return _empty_dashboard(days)
     conn = sqlite3.connect(str(db_path))
-    where = _window_clause(days)
+    where, sp = _scope_clause(days, user_id)
     try:
         totals_row = conn.execute(
             f"""
@@ -210,6 +235,7 @@ def compute_dashboard_aggregate(
             FROM llm_calls
             {where}
             """,
+            sp,
         ).fetchone()
         agent_rows = conn.execute(
             f"""
@@ -225,6 +251,7 @@ def compute_dashboard_aggregate(
             GROUP BY agent_name
             ORDER BY cost DESC
             """,
+            sp,
         ).fetchall()
         model_rows = conn.execute(
             f"""
@@ -240,6 +267,7 @@ def compute_dashboard_aggregate(
             GROUP BY model
             ORDER BY cost DESC
             """,
+            sp,
         ).fetchall()
     except sqlite3.OperationalError:
         conn.close()
@@ -288,12 +316,14 @@ def compute_dashboard_aggregate(
 def daily_spend_trend(
     days: int = 30,
     db_path: Path = DEFAULT_DB_PATH,
+    user_id: str | None = None,
 ) -> list[dict]:
     """One row per day for the last N days. Days with zero spend are omitted —
     the UI fills in zeros if needed."""
     if not Path(db_path).exists():
         return []
     conn = sqlite3.connect(str(db_path))
+    where, sp = _scope_clause(days, user_id)
     try:
         rows = conn.execute(
             f"""
@@ -301,10 +331,11 @@ def daily_spend_trend(
                    COUNT(*)                      AS calls,
                    COALESCE(SUM(estimated_cost), 0) AS cost
             FROM llm_calls
-            WHERE created_at >= datetime('now', '-{int(days)} days')
+            {where}
             GROUP BY DATE(created_at)
             ORDER BY day ASC
             """,
+            sp,
         ).fetchall()
     except sqlite3.OperationalError:
         conn.close()
@@ -321,12 +352,13 @@ def top_runs_by_cost(
     n: int = 5,
     days: int | None = None,
     db_path: Path = DEFAULT_DB_PATH,
+    user_id: str | None = None,
 ) -> list[dict]:
     """Top N most expensive runs in the window. Useful for spotting outliers."""
     if not Path(db_path).exists():
         return []
     conn = sqlite3.connect(str(db_path))
-    where = _window_clause(days)
+    where, sp = _scope_clause(days, user_id)
     try:
         rows = conn.execute(
             f"""
@@ -342,7 +374,7 @@ def top_runs_by_cost(
             ORDER BY cost DESC
             LIMIT ?
             """,
-            (int(n),),
+            (*sp, int(n)),
         ).fetchall()
     except sqlite3.OperationalError:
         conn.close()
@@ -365,13 +397,14 @@ def top_runs_by_cost(
 def all_runs_by_cost(
     days: int | None = None,
     db_path: Path = DEFAULT_DB_PATH,
+    user_id: str | None = None,
 ) -> list[dict]:
     """Every run in the window, ordered by cost descending. Same shape as
     top_runs_by_cost but no LIMIT — used by the dashboard's full-list table."""
     if not Path(db_path).exists():
         return []
     conn = sqlite3.connect(str(db_path))
-    where = _window_clause(days)
+    where, sp = _scope_clause(days, user_id)
     try:
         rows = conn.execute(
             f"""
@@ -386,6 +419,7 @@ def all_runs_by_cost(
             GROUP BY workflow_run_id
             ORDER BY cost DESC
             """,
+            sp,
         ).fetchall()
     except sqlite3.OperationalError:
         conn.close()
@@ -409,13 +443,14 @@ def top_calls_by_cost(
     n: int = 10,
     days: int | None = None,
     db_path: Path = DEFAULT_DB_PATH,
+    user_id: str | None = None,
 ) -> list[dict]:
     """Top N most expensive single LLM calls. Catches latency-tail outliers
     and individual prompts that ate a disproportionate share of the budget."""
     if not Path(db_path).exists():
         return []
     conn = sqlite3.connect(str(db_path))
-    where = _window_clause(days)
+    where, sp = _scope_clause(days, user_id)
     try:
         rows = conn.execute(
             f"""
@@ -427,7 +462,7 @@ def top_calls_by_cost(
             ORDER BY estimated_cost DESC
             LIMIT ?
             """,
-            (int(n),),
+            (*sp, int(n)),
         ).fetchall()
     except sqlite3.OperationalError:
         conn.close()

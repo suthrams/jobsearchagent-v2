@@ -23,17 +23,71 @@ def _connect() -> sqlite3.Connection:
     return sqlite3.connect(str(DB_PATH))
 
 
+# ── ADR-062: per-user read scoping ───────────────────────────────────────────
+# History and cross-run analytics show only the active profile's data. Scoping is
+# cooperative (Decision E): it filters which rows a view reads, it is not an
+# authorization boundary. user_id=None means "no filter" (legacy / tests).
+#
+# Ownership of every per-run row falls out of workflow_runs.user_id via the
+# workflow_run_id foreign key. Pre-existing rows were backfilled to '0' by the
+# init_db migration; rows with no workflow_runs row (very old data) COALESCE to
+# '0' so they remain visible under the default profile and stay hidden from new
+# profiles. The string form ("0", "1", ...) matches how the identity seam resolves.
+
+
 @st.cache_data(ttl=30)
-def load_scored_jobs(include_excluded: bool = False) -> pd.DataFrame:
+def load_user_resumes(user_id: str) -> pd.DataFrame:
+    """A profile's resumes, newest first — backs the Start New Run resume picker.
+
+    The active resume (is_active=1) is flagged so the picker can default to it.
+    """
+    if not DB_PATH.exists():
+        return pd.DataFrame()
+    conn = _connect()
+    try:
+        df = pd.read_sql_query(
+            """
+            SELECT id            AS resume_id,
+                   file_name,
+                   COALESCE(is_active, 0) AS is_active,
+                   version,
+                   created_at
+            FROM resumes
+            WHERE COALESCE(user_id, '0') = ?
+            ORDER BY is_active DESC, created_at DESC
+            """,
+            conn,
+            params=(str(user_id),),
+        )
+    except Exception:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
+    return df
+
+
+@st.cache_data(ttl=30)
+def load_scored_jobs(include_excluded: bool = False,
+                     user_id: str | None = None) -> pd.DataFrame:
     """All scored jobs joined with posting metadata. Extracts scores from score_json blob.
 
     ADR-057: rows with `jobs.excluded = 1` are filtered out by default.
     Pass include_excluded=True to surface them (the "Include excluded jobs"
     sidebar toggle).
+
+    ADR-062: when user_id is given, only jobs scored by that profile's runs are
+    returned (via the workflow_runs owner of each score). None = all profiles.
     """
     if not DB_PATH.exists():
         return pd.DataFrame()
-    where = "" if include_excluded else "WHERE (j.excluded = 0 OR j.excluded IS NULL)"
+    clauses = []
+    params: list = []
+    if not include_excluded:
+        clauses.append("(j.excluded = 0 OR j.excluded IS NULL)")
+    if user_id is not None:
+        clauses.append("COALESCE(wr.user_id, '0') = ?")
+        params.append(str(user_id))
+    where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     conn = _connect()
     try:
         df = pd.read_sql_query(
@@ -56,10 +110,12 @@ def load_scored_jobs(include_excluded: bool = False) -> pd.DataFrame:
                    js.workflow_run_id                                     AS workflow_id
             FROM jobs j
             JOIN job_scores js ON j.id = js.job_id
+            LEFT JOIN workflow_runs wr ON wr.id = js.workflow_run_id
             {where}
             ORDER BY js.overall_score DESC
             """,
             conn,
+            params=tuple(params),
         )
     except Exception:
         df = pd.DataFrame()
@@ -69,25 +125,38 @@ def load_scored_jobs(include_excluded: bool = False) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=30)
-def load_workflow_runs() -> pd.DataFrame:
-    """Run history derived from job_scores (workflow_runs table is not written by the graph)."""
+def load_workflow_runs(user_id: str | None = None) -> pd.DataFrame:
+    """Run history derived from job_scores (legacy fallback when workflow_runs is empty).
+
+    ADR-062: when user_id is given, scope to that profile via the workflow_runs
+    owner. Scores whose run has no workflow_runs row COALESCE to '0' so legacy
+    data stays visible under the default profile.
+    """
     if not DB_PATH.exists():
         return pd.DataFrame()
+    where = ""
+    params: tuple = ()
+    if user_id is not None:
+        where = "WHERE COALESCE(wr.user_id, '0') = ?"
+        params = (str(user_id),)
     conn = _connect()
     try:
         df = pd.read_sql_query(
-            """
-            SELECT workflow_run_id                          AS id,
+            f"""
+            SELECT js.workflow_run_id                       AS id,
                    COUNT(*)                                AS jobs_scored,
-                   MAX(overall_score)                      AS best_score,
-                   ROUND(AVG(CAST(overall_score AS REAL)), 1) AS avg_score,
-                   MIN(created_at)                         AS started_at,
-                   MAX(created_at)                         AS updated_at
-            FROM job_scores
-            GROUP BY workflow_run_id
+                   MAX(js.overall_score)                   AS best_score,
+                   ROUND(AVG(CAST(js.overall_score AS REAL)), 1) AS avg_score,
+                   MIN(js.created_at)                      AS started_at,
+                   MAX(js.created_at)                      AS updated_at
+            FROM job_scores js
+            LEFT JOIN workflow_runs wr ON wr.id = js.workflow_run_id
+            {where}
+            GROUP BY js.workflow_run_id
             ORDER BY started_at DESC
             """,
             conn,
+            params=params,
         )
     except Exception:
         df = pd.DataFrame()
@@ -350,7 +419,8 @@ def load_workflow_jobs(workflow_id: str, include_excluded: bool = True) -> pd.Da
 
 
 @st.cache_data(ttl=10)
-def load_persisted_workflow_runs(limit: int = 50) -> pd.DataFrame:
+def load_persisted_workflow_runs(limit: int = 50,
+                                 user_id: str | None = None) -> pd.DataFrame:
     """Workflow runs with status, timestamps, settings used, and pipeline progress counts.
 
     Pulls roles, locations, threshold, custom-URL count, max_jobs, and the
@@ -367,10 +437,15 @@ def load_persisted_workflow_runs(limit: int = 50) -> pd.DataFrame:
     """
     if not DB_PATH.exists():
         return pd.DataFrame()
+    user_where = ""
+    user_params: tuple = ()
+    if user_id is not None:
+        user_where = "WHERE COALESCE(wr.user_id, '0') = ?"
+        user_params = (str(user_id),)
     conn = _connect()
     try:
         df = pd.read_sql_query(
-            """
+            f"""
             SELECT wr.id                              AS workflow_id,
                    wr.workflow_type,
                    wr.status,
@@ -414,12 +489,13 @@ def load_persisted_workflow_runs(limit: int = 50) -> pd.DataFrame:
                    ROUND(AVG(CAST(js.overall_score AS REAL)), 1) AS avg_score
             FROM workflow_runs wr
             LEFT JOIN job_scores js ON js.workflow_run_id = wr.id
+            {user_where}
             GROUP BY wr.id
             ORDER BY wr.started_at DESC
             LIMIT ?
             """,
             conn,
-            params=(limit,),
+            params=(*user_params, limit),
         )
     except Exception:
         df = pd.DataFrame()
