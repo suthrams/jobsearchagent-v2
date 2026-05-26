@@ -22,8 +22,8 @@
 | [architecture/agent_model.md](architecture/agent_model.md) | Per-agent input/output contracts, patterns, constraints, observability |
 | [architecture/workflow_model.md](architecture/workflow_model.md) | Complete workflow execution blueprint for all sub-workflows |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState schema, ownership rules, memory service |
-| [architecture/data_model.md](architecture/data_model.md) | All 17 SQLite table definitions, indexing, JSON conventions |
-| [architecture/config_model.md](architecture/config_model.md) | Hybrid config — YAML defaults + DB overrides, locked limits |
+| [architecture/data_model.md](architecture/data_model.md) | All 19 SQLite table definitions (incl. `users`, ADR-062), indexing, JSON conventions |
+| [architecture/config_model.md](architecture/config_model.md) | Hybrid config — YAML defaults + per-profile DB overrides (ADR-062), locked limits |
 | [architecture/observability.md](architecture/observability.md) | 6-layer observability stack, event types, cost tracking |
 | [architecture/hitl.md](architecture/hitl.md) | 7 HITL checkpoints, decision types, state transitions |
 | [architecture/security.model.md](architecture/security.model.md) | PII minimization, untrusted input handling, ethics guardrails |

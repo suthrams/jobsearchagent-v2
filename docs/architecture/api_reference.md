@@ -53,7 +53,18 @@ GET  /tailorings/{id}                          → fetch a single tailoring draf
 POST /tailorings/{id}/decisions                → record approve / revise / reject / edit for a draft
 GET  /config                                   → effective merged config + protected key list
 PUT  /config                                   → upsert one user-config override (rejects protected keys)
+GET  /users                                    → list profiles (ADR-062; default user 0 first)
+POST /users                                    → create a profile, returns its assigned id (201)
+POST /users/{id}/resume                        → upload + parse a PDF resume for a profile (ADR-062, 201)
 ```
+
+**Identity (ADR-062).** Every endpoint resolves the acting profile through a
+single dependency, `get_current_user_id`, which reads an optional `?user_id=`
+**query parameter** (no HTTP headers). Absent → falls back to `"0"`, the
+pre-existing-data profile (backward compatible). The id is validated against the
+`users` table. Reads (config, history) and writes (config overrides, run owner)
+are scoped to the resolved id. Isolation is cooperative, not enforced — see
+`security.model.md` and ADR-062 Decision E.
 
 **URL convention notes.** Tailorings use a workflow-scoped path for create + list (a tailoring is created in the context of a workflow + job) and a top-level path for fetch + decision (the `tailoring_id` is a globally unique UUID, so once you have it, the workflow scope is redundant — same pattern as GitHub's `/repos/.../issues` for list vs `/issues/{id}` for fetch). `POST /workflows/{id}/retry` is an action verb, not a resource — accepted as a documented exception because the operation has no clean resource form.
 
@@ -634,6 +645,72 @@ GET /config/providers
 `available: false` indicates the provider's API key isn't set on the server
 (e.g. missing `OPENAI_API_KEY`). The UI should disable that provider's
 options and show the reason.
+
+> **Per-profile config (ADR-062).** `GET /config`, `PUT /config`, and
+> `GET /config/providers` all resolve the acting profile via `?user_id=` and
+> operate on that profile's overrides. `PUT /config` keys each row
+> `user_{user_id}__{config_key}` so re-saves upsert in place; protected-key and
+> cost-cap rejection are unchanged. A new profile (id ≥ 1) starts with no
+> overrides and runs on pure YAML defaults until it sets its own.
+
+---
+
+## Users (ADR-062)
+
+Profile management for multi-user use. No authentication — creating and listing
+profiles is open, consistent with the cooperative-isolation model.
+
+### GET /users
+
+List all profiles, default user (`id 0`) first. Backs the sidebar selector.
+
+**Response — 200 OK**
+
+```json
+{
+  "users": [
+    {"id": 0, "name": "Primary", "note": null, "created_at": "2026-05-26T00:00:00Z"},
+    {"id": 1, "name": "Alex",    "note": "new-grad SWE", "created_at": "2026-05-26T15:00:00Z"}
+  ]
+}
+```
+
+### POST /users
+
+Create a profile. The id is assigned by the database (auto-increment from 1;
+`0` is the reserved pre-existing-data profile).
+
+**Request**
+
+```json
+{"name": "Alex", "note": "new-grad SWE, west coast"}
+```
+
+`name` is required (1–120 chars, non-blank after trim). `note` is optional
+(≤500 chars), human-only metadata the system never acts on.
+
+**Response — 201 Created**
+
+```json
+{"user": {"id": 1, "name": "Alex", "note": "new-grad SWE, west coast", "created_at": "..."}}
+```
+
+**Errors**: `422 invalid_name` (blank name), `500 persist_failed`.
+
+### POST /users/{id}/resume
+
+Onboarding step 2: upload a PDF resume for a profile. The file is parsed via the
+existing `ResumeParser` path scoped to `{id}`, becoming that profile's active
+resume. `multipart/form-data` with a single `file` field.
+
+**Response — 201 Created**
+
+```json
+{"resume_id": "…", "file_name": "cv.pdf", "name": "Alex Candidate"}
+```
+
+**Errors**: `404 unknown_user` (no such profile), `422 resume_parse_failed`
+(parse/extract failure).
 
 ---
 

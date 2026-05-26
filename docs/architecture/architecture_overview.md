@@ -197,8 +197,16 @@ SQLite stores:
 * human decisions
 * metrics and reports
 * memory items
+* profiles (`users`, ADR-062)
 
 The system stores workflows, not just results.
+
+**Multi-user (ADR-062).** The app serves multiple profiles from one install under
+sequential use, each with its own resume, config, memory, cost view, and history.
+Identity is resolved by a single seam — backend `get_current_user_id` (a
+`?user_id=` query parameter, default `"0"`) and the UI's mirror — so adding real
+authentication later changes one function, not the data model. Isolation is
+cooperative, not enforced (see §11 / `security.model.md` §4.1).
 
 ---
 
@@ -278,7 +286,8 @@ Long-term learning:
 
 State is authoritative for execution.
 
-Memory is used selectively.
+Memory is used selectively, and is **isolated per profile** (ADR-062) — one
+person's learned patterns never seed another's runs.
 
 ---
 

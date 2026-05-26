@@ -85,6 +85,20 @@ def test_put_config_persists_override(isolated_config):
     assert follow_up["effective_config"]["scoring"]["min_match_score"] == 65
 
 
+def test_put_config_is_isolated_per_user(isolated_config):
+    """ADR-062: a config override set under one profile is invisible to another."""
+    client = TestClient(app)
+    r = client.put("/config", params={"user_id": "1"},
+                   json={"key": "scoring.min_match_score", "value": 65})
+    assert r.status_code == 200
+
+    # Profile 1 sees its override; profile 2 sees the YAML default (75).
+    as_user1 = client.get("/config", params={"user_id": "1"}).json()
+    as_user2 = client.get("/config", params={"user_id": "2"}).json()
+    assert as_user1["effective_config"]["scoring"]["min_match_score"] == 65
+    assert as_user2["effective_config"]["scoring"]["min_match_score"] == 75
+
+
 def test_put_config_rejects_protected_key(isolated_config):
     client = TestClient(app)
     response = client.put("/config", json={"key": "llm.default_model", "value": "claude-haiku-4-5"})

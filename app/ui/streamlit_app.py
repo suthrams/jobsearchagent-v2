@@ -56,6 +56,7 @@ from app.ui.db_reader import (
     load_recent_workflows,
     load_scored_jobs,
     load_step_executions,
+    load_user_resumes,
     load_workflow_jobs,
     load_workflow_run,
     load_workflow_runs,
@@ -89,6 +90,15 @@ def _cached_get_providers() -> dict | None:
         return None
 
 
+@st.cache_data(ttl=30)
+def _cached_list_users() -> list[dict]:
+    """Profiles for the sidebar selector (ADR-062). Default user 0 first."""
+    try:
+        return api.list_users().get("users") or []
+    except Exception:
+        return []
+
+
 # ── Page config ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
@@ -108,9 +118,16 @@ for _key, _default in (
     ("detail_job_id", None),
     ("config_cache", None),
     ("sidebar_view", "Workflow History"),
+    ("current_user_id", "0"),  # ADR-062: active profile; default = pre-existing data
+    ("onboard_step", 1),       # onboarding wizard cursor
+    ("onboard_new_user_id", None),
 ):
     if _key not in st.session_state:
         st.session_state[_key] = _default
+
+# ADR-062: mirror the active profile onto the API client before any request fires
+# this rerun. The sidebar selector may change it below, after which we re-set it.
+api.set_user_id(st.session_state.current_user_id)
 
 
 def _navigate(view_name: str, **state_updates) -> None:
@@ -881,6 +898,43 @@ if st.session_state.get("_pending_nav"):
 
 with st.sidebar:
     st.title("Job Search Agent v2")
+
+    # ── Profile selector (ADR-062) ───────────────────────────────────────────
+    # Picks whose search this is. Re-scopes every history / analytics read and
+    # the resume picker, and tags new runs with this owner. No auth — this is a
+    # cooperative selector, not an access boundary (ADR-062 Decision E).
+    _users = _cached_list_users()
+    if _users:
+        _id_to_label = {str(u["id"]): f"{u['name']}  (#{u['id']})" for u in _users}
+        _ids = list(_id_to_label.keys())
+        _cur = st.session_state.current_user_id
+        if _cur not in _ids:
+            _cur = _ids[0]
+        _chosen = st.selectbox(
+            "Profile",
+            _ids,
+            index=_ids.index(_cur),
+            format_func=lambda i: _id_to_label.get(i, i),
+            key="_profile_select",
+            help="Whose search this is. Switching re-scopes history, analytics, "
+                 "and the resume picker to that profile.",
+        )
+        if _chosen != st.session_state.current_user_id:
+            st.session_state.current_user_id = _chosen
+            api.set_user_id(_chosen)
+            st.cache_data.clear()
+            st.session_state.config_cache = None
+            st.rerun()
+        _note = next((u.get("note") for u in _users if str(u["id"]) == _chosen), None)
+        if _note:
+            st.caption(_note)
+    else:
+        st.caption("No profiles found (backend offline?).")
+    if st.button("＋ Add profile", use_container_width=True):
+        st.session_state.onboard_step = 1
+        st.session_state.onboard_new_user_id = None
+        _navigate("Profiles")
+
     st.markdown("---")
     view = st.radio(
         "View",
@@ -892,6 +946,7 @@ with st.sidebar:
             "Live Run Monitor",
             "Run Report",
             "Settings",
+            "Profiles",
             "─── Cross-Run Analytics ───",
             "Cost Dashboard",
             "Top Matches",
@@ -960,13 +1015,14 @@ if view == "Workflow History":
     st.caption("All workflow runs, newest first. **Select a row, then click Open detail** "
                "(or just click a different row to switch).")
 
-    df = load_persisted_workflow_runs()
+    _uid = st.session_state.current_user_id
+    df = load_persisted_workflow_runs(user_id=_uid)
 
     # Fall back to the derived view (job_scores aggregation) if workflow_runs is still empty
     # — this keeps old runs visible while new ones populate the table.
     using_legacy = False
     if df.empty:
-        df_legacy = load_workflow_runs()
+        df_legacy = load_workflow_runs(user_id=_uid)
         if df_legacy.empty:
             st.info("No workflow runs yet. Start one from **Start New Run**.")
             st.stop()
@@ -1856,10 +1912,30 @@ elif view == "Start New Run":
     with st.form("start_run"):
         c1, c2 = st.columns(2)
         with c1:
-            resume_id = st.text_input(
-                "Resume ID", value="resume.pdf",
-                help="Enter 'resume.pdf' on first run. Subsequent runs use the cached parsed profile.",
-            )
+            # ADR-062: pick from this profile's stored resumes instead of typing a
+            # raw id. Falls back to a text box if the profile has no resumes yet
+            # (e.g. before onboarding step 2) so a run is still possible.
+            _resumes = load_user_resumes(st.session_state.current_user_id)
+            if not _resumes.empty:
+                _rid_options = list(_resumes["resume_id"])
+                _rid_labels = {
+                    r["resume_id"]: (f"{r['file_name'] or r['resume_id']}"
+                                     + ("  ·  active" if r["is_active"] else ""))
+                    for _, r in _resumes.iterrows()
+                }
+                resume_id = st.selectbox(
+                    "Resume",
+                    _rid_options,
+                    format_func=lambda i: _rid_labels.get(i, i),
+                    help="This profile's resumes. The active one is listed first. "
+                         "Add more via Profiles > Add profile, or Settings.",
+                )
+            else:
+                resume_id = st.text_input(
+                    "Resume ID", value="resume.pdf",
+                    help="This profile has no stored resume yet. Enter 'resume.pdf' "
+                         "to parse a file in the project root, or add one via Profiles.",
+                )
             roles = st.text_input(
                 "Roles (comma-separated)",
                 value=_default_roles or "Staff Engineer, Principal Engineer",
@@ -2371,6 +2447,128 @@ elif view == "Settings":
 # CROSS-RUN ANALYTICS
 # ══════════════════════════════════════════════════════════════════════════════
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PROFILES — onboarding wizard (ADR-062)
+# ══════════════════════════════════════════════════════════════════════════════
+
+elif view == "Profiles":
+    st.header("Profiles")
+    st.caption(
+        "A profile is one job-seeker served from this install. Each has its own "
+        "resume, search defaults, config, memory, cost view, and history. There "
+        "is no login — switching profiles in the sidebar re-scopes what you see."
+    )
+
+    # Existing profiles
+    _users = _cached_list_users()
+    if _users:
+        st.subheader("Existing profiles")
+        st.dataframe(
+            pd.DataFrame([
+                {"ID": u["id"], "Name": u["name"], "Note": u.get("note") or "",
+                 "Created": _fmt_ts(u.get("created_at"))}
+                for u in _users
+            ]),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+    st.markdown("---")
+    st.subheader("Add a profile")
+
+    step = st.session_state.onboard_step
+
+    # ── Step 1: identity ──────────────────────────────────────────────────────
+    if step == 1:
+        st.markdown("**Step 1 of 3 — Identity**")
+        with st.form("onboard_identity"):
+            name = st.text_input("Display name", placeholder="e.g. Alex (son)")
+            note = st.text_input(
+                "Note (optional)",
+                placeholder="e.g. New-grad SWE, west coast — human-only label",
+                help="Descriptive only. The system never acts on this.",
+            )
+            go = st.form_submit_button("Create profile", type="primary")
+        if go:
+            if not name.strip():
+                st.error("A display name is required.")
+            else:
+                try:
+                    resp = api.create_user(name.strip(), note.strip() or None)
+                    new = resp.get("user") or {}
+                    st.session_state.onboard_new_user_id = new.get("id")
+                    st.session_state.onboard_step = 2
+                    _cached_list_users.clear()
+                    st.success(f"Created profile #{new.get('id')} — {new.get('name')}.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Could not create profile: {exc}")
+
+    # ── Step 2: resume ────────────────────────────────────────────────────────
+    elif step == 2:
+        new_uid = st.session_state.onboard_new_user_id
+        st.markdown(f"**Step 2 of 3 — Resume** (profile #{new_uid})")
+        st.caption("Upload a PDF resume for this profile. It becomes the profile's "
+                   "active resume. You can skip and add one later.")
+        up = st.file_uploader("Resume PDF", type=["pdf"], key="onboard_resume_file")
+        c1, c2 = st.columns(2)
+        if c1.button("Upload and continue", type="primary", disabled=up is None):
+            try:
+                with st.spinner("Parsing resume (this can take a moment)…"):
+                    resp = api.upload_resume(new_uid, up.getvalue(), up.name)
+                st.success(f"Stored resume `{resp.get('resume_id')}` for "
+                           f"{resp.get('name') or 'this profile'}.")
+                st.session_state.onboard_step = 3
+                st.rerun()
+            except Exception as exc:
+                st.error(f"Resume upload failed: {exc}")
+        if c2.button("Skip for now"):
+            st.session_state.onboard_step = 3
+            st.rerun()
+
+    # ── Step 3: default search criteria ───────────────────────────────────────
+    elif step == 3:
+        new_uid = st.session_state.onboard_new_user_id
+        st.markdown(f"**Step 3 of 3 — Default search criteria** (profile #{new_uid})")
+        st.caption("Saved as this profile's defaults; Start New Run pre-fills from "
+                   "them. Skippable — you can set them later in Settings.")
+        with st.form("onboard_search"):
+            roles = st.text_input("Roles (comma-separated)",
+                                  placeholder="Staff Engineer, Principal Engineer")
+            locations = st.text_input("Locations (comma-separated)",
+                                      placeholder="Remote, Atlanta")
+            cs1, cs2 = st.columns(2)
+            save = cs1.form_submit_button("Save and finish", type="primary")
+            skip = cs2.form_submit_button("Skip and finish")
+        if save or skip:
+            if save:
+                # Persist as the NEW profile's user_config defaults. Temporarily
+                # point the client at that profile so the writes are owned by it,
+                # then restore the active profile.
+                _prev = st.session_state.current_user_id
+                try:
+                    api.set_user_id(str(new_uid))
+                    role_list = [r.strip() for r in roles.split(",") if r.strip()]
+                    loc_list = [l.strip() for l in locations.split(",") if l.strip()]
+                    if role_list:
+                        api.put_config("search.titles", role_list)
+                    if loc_list:
+                        api.put_config("search.locations", loc_list)
+                except Exception as exc:
+                    st.warning(f"Could not save search defaults: {exc}")
+                finally:
+                    api.set_user_id(_prev)
+            st.session_state.onboard_step = 1
+            st.success(f"Profile #{new_uid} is ready. Select it in the sidebar to use it.")
+            _cached_list_users.clear()
+
+    if step != 1:
+        if st.button("Cancel / start over"):
+            st.session_state.onboard_step = 1
+            st.session_state.onboard_new_user_id = None
+            st.rerun()
+
+
 # ── Cost Dashboard — system-wide spend visibility ────────────────────────────
 # Mirrors the queries in docs/cost_troubleshooting.md so the UI surfaces the
 # same numbers a developer would compute by hand. Click-through into Workflow
@@ -2382,15 +2580,25 @@ elif view == "Cost Dashboard":
                "`llm_calls` audit table. See `docs/cost_troubleshooting.md` for the "
                "lever decision matrix and reconciliation guide.")
 
-    window_choice = st.radio(
-        "Time window",
-        ["Last 7 days", "Last 30 days", "All time"],
-        horizontal=True, label_visibility="collapsed",
-    )
+    wc1, wc2 = st.columns([3, 2])
+    with wc1:
+        window_choice = st.radio(
+            "Time window",
+            ["Last 7 days", "Last 30 days", "All time"],
+            horizontal=True, label_visibility="collapsed",
+        )
+    with wc2:
+        # ADR-062: spend is attributable per profile. Default to this profile;
+        # tick to see system-wide spend across every profile.
+        all_profiles = st.checkbox(
+            "All profiles (system-wide)", value=False,
+            help="Off: only the active profile's runs. On: every profile.",
+        )
     window_map = {"Last 7 days": 7, "Last 30 days": 30, "All time": None}
     window_days = window_map[window_choice]
+    cost_uid = None if all_profiles else st.session_state.current_user_id
 
-    dash = compute_dashboard_aggregate(days=window_days)
+    dash = compute_dashboard_aggregate(days=window_days, user_id=cost_uid)
     totals = dash["totals"]
 
     if totals["calls"] == 0:
@@ -2446,7 +2654,7 @@ elif view == "Cost Dashboard":
     if window_days:
         st.markdown("---")
         st.subheader("📈 Daily spend trend")
-        trend_rows = daily_spend_trend(days=window_days)
+        trend_rows = daily_spend_trend(days=window_days, user_id=cost_uid)
         if trend_rows:
             trend_df = pd.DataFrame(trend_rows)
             fig = px.line(
@@ -2535,7 +2743,7 @@ elif view == "Cost Dashboard":
     st.subheader("🔥 Top 5 most expensive runs")
     st.caption("Click a row to open that run's full detail (per-job pipeline, per-agent "
                "cost, fidelity flags).")
-    runs = top_runs_by_cost(n=5, days=window_days)
+    runs = top_runs_by_cost(n=5, days=window_days, user_id=cost_uid)
     if runs:
         runs_df = pd.DataFrame(runs)
         runs_df["ID"] = runs_df["workflow_run_id"].apply(lambda s: (s[:8] + "…") if len(s) > 8 else s)
@@ -2566,7 +2774,7 @@ elif view == "Cost Dashboard":
     st.caption("Every workflow in the selected window, sourced from `llm_calls` "
                "(the truth source — see `docs/cost_troubleshooting.md` Step 4 for "
                "why this differs from `state_json` estimates). Click a row to drill in.")
-    all_runs = all_runs_by_cost(days=window_days)
+    all_runs = all_runs_by_cost(days=window_days, user_id=cost_uid)
     if all_runs:
         all_df = pd.DataFrame(all_runs)
         all_df["ID"] = all_df["workflow_run_id"].apply(lambda s: (s[:8] + "…") if len(s) > 8 else s)
@@ -2597,7 +2805,7 @@ elif view == "Cost Dashboard":
     st.subheader("⚡ Top 10 most expensive single calls")
     st.caption("Outliers worth looking at — high token count, high latency, or both. A single "
                "call >$0.10 usually means a long prompt + Sonnet/Opus combination.")
-    calls = top_calls_by_cost(n=10, days=window_days)
+    calls = top_calls_by_cost(n=10, days=window_days, user_id=cost_uid)
     if calls:
         calls_df = pd.DataFrame(calls)
         calls_df["Run"] = calls_df["workflow_run_id"].apply(lambda s: (s[:8] + "…") if len(s) > 8 else s)
@@ -2650,7 +2858,7 @@ elif view == "Cost Dashboard":
 
 elif view == "Top Matches":
     st.header("Top Matches (across all runs)")
-    df = load_scored_jobs(include_excluded=include_excluded)
+    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "results will populate this view automatically.")
@@ -2671,7 +2879,7 @@ elif view == "Top Matches":
 
 elif view == "IC Track":
     st.header("IC Engineering Track")
-    df = load_scored_jobs(include_excluded=include_excluded)
+    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the IC track will appear here.")
@@ -2681,7 +2889,7 @@ elif view == "IC Track":
 
 elif view == "Architect Track":
     st.header("Architect Track")
-    df = load_scored_jobs(include_excluded=include_excluded)
+    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the Architect track will appear here.")
@@ -2691,7 +2899,7 @@ elif view == "Architect Track":
 
 elif view == "Management Track":
     st.header("Management Track")
-    df = load_scored_jobs(include_excluded=include_excluded)
+    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the Management track will appear here.")
@@ -2701,7 +2909,7 @@ elif view == "Management Track":
 
 elif view == "Companies":
     st.header("Top Target Companies")
-    df = load_scored_jobs(include_excluded=include_excluded)
+    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "this view aggregates the best score per company across all runs.")

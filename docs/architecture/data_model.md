@@ -1,7 +1,7 @@
 # Data Model — jobsearchagent-v2
 
 This document is the authoritative reference for the SQLite schema in `data/v2.db`.
-For each of the 18 tables you get the SQL DDL, a per-column data dictionary,
+For each of the 19 tables (18 original + `users`, ADR-062) you get the SQL DDL, a per-column data dictionary,
 and a "workflow usage" block describing which agent / service / endpoint
 writes the rows and which UI helper / endpoint / report reads them.
 
@@ -16,7 +16,7 @@ this document.
 
 This document defines:
 
-* the 18 SQLite tables, their columns and types
+* the 19 SQLite tables (18 original + `users`, ADR-062), their columns and types
 * per-column descriptions (the data dictionary)
 * who writes each table and when (workflow usage)
 * who reads each table and how (UI / endpoint / report)
@@ -73,7 +73,8 @@ workflow_runs (one per run)
    ├── run_metrics           (one per workflow; aggregated rollup)
    └── security_events       (many; injection, redaction, blocked tool)
 
-memory_items                 (cross-run; long-term learning store)
+users                        (ADR-062; profile identities — id 0 = pre-existing data)
+memory_items                 (per user_id; long-term learning store, isolated per profile)
 user_config                  (per user_id; preference overrides)
 ```
 
@@ -127,7 +128,7 @@ CREATE TABLE workflow_runs (
 | `status`          | TEXT    | `running` \| `waiting_for_user` \| `completed` \| `completed_with_errors` \| `failed`. |
 | `current_step`    | TEXT    | Name of the most recently entered LangGraph node. Drives the History "Stage" column. |
 | `state_json`      | TEXT    | Serialized `WorkflowState` — the entire run snapshot, restorable. |
-| `user_id`         | TEXT    | Forward-compat for multi-user. Always `null` today. |
+| `user_id`         | TEXT    | ADR-062: the run's owner, written at `register_run` from `state["user_id"]` (decimal-string `users.id`). Per-run tables inherit ownership transitively via `workflow_run_id`. Pre-existing rows backfilled to `"0"`. |
 | `resume_id`       | TEXT    | FK → `resumes.id`. The resume the run loaded. |
 | `selected_job_id` | TEXT    | Legacy; the in-graph HITL job-pick used to write here. Auto-select (ADR-054) leaves it null. |
 | `started_at`      | TEXT    | ISO 8601 UTC. |
@@ -213,6 +214,49 @@ CREATE TABLE jobs (
 
 ---
 
+## 4.2.1 users (ADR-062)
+
+### Purpose
+
+Profile identities for multi-user use. A profile is just an identity row; the
+data it *uses* (resume, config, memory, history) lives in those tables keyed by
+`user_id`. Deliberately minimal so adding authentication later is "attach a
+credential to an existing row," not a data-model migration.
+
+### Schema
+
+```sql
+CREATE TABLE users (
+    id          INTEGER PRIMARY KEY,  -- 0 reserved for pre-existing data; new users auto-increment from 1
+    name        TEXT NOT NULL,        -- display name shown in the profile selector
+    note        TEXT,                 -- optional human-only label; never acted on
+    created_at  TEXT NOT NULL
+);
+```
+
+### Column dictionary
+
+| Column       | Type        | Description |
+|--------------|-------------|-------------|
+| `id`         | INTEGER PK  | `0` is seeded by the migration as the owner of all pre-existing data. SQLite assigns the next rowid as `max(id)+1`, so `POST /users` profiles get `1, 2, 3, ...`. Stringified at the identity-seam boundary (reference columns store `"0"`, `"1"`, ...). |
+| `name`       | TEXT        | Display name for the sidebar selector. Required. |
+| `note`       | TEXT        | Optional human-friendly label (e.g. "New-grad SWE, west coast"). Descriptive only — the system never parses or acts on it. |
+| `created_at` | TEXT        | ISO 8601 UTC. |
+
+### Workflow usage
+
+- **Written by**: the `init_db` migration (seeds `id = 0`, guarded) and
+  `POST /users` (`UserRepository.create`, append-only).
+- **Read by**: the identity seam `app/api/identity.py::get_current_user_id`
+  (validates an incoming `user_id` exists) and the UI profile selector
+  (`GET /users`).
+- **Isolation is cooperative, not enforced** (ADR-062 Decision E): naming a
+  `user_id` selects which data a request reads/writes; without authentication it
+  does not *prevent* a caller from naming another profile's id. The seam is where
+  a real boundary attaches if auth is added.
+
+---
+
 ## 4.3 resumes
 
 ### Purpose
@@ -225,6 +269,7 @@ re-uploads of the same file skip the parser.
 ```sql
 CREATE TABLE resumes (
     id                  TEXT PRIMARY KEY,
+    user_id             TEXT,                 -- ADR-062: owning profile (decimal-string users.id); '0' = pre-existing
     file_name           TEXT,
     raw_text            TEXT,
     raw_text_hash       TEXT,
@@ -240,12 +285,13 @@ CREATE TABLE resumes (
 | Column                | Type        | Description |
 |-----------------------|-------------|-------------|
 | `id`                  | TEXT PK     | UUID; the `resume_id` referenced by `workflow_runs` and per-stage tables. |
+| `user_id`             | TEXT        | ADR-062: the owning profile, as the decimal-string form of `users.id` (`"0"`, `"1"`, ...). Pre-existing rows were backfilled to `"0"`. |
 | `file_name`           | TEXT        | Original filename (e.g. `resume.pdf`). |
 | `raw_text`            | TEXT        | Extracted plain text. **Source of truth for the Fidelity Reviewer** (ADR-015 / ADR-056) — never widely exposed to agents. |
-| `raw_text_hash`       | TEXT        | SHA-256 of `raw_text`. Lookup key for the parser cache. |
+| `raw_text_hash`       | TEXT        | SHA-256 of `raw_text`. Lookup key for the parser cache (now scoped per `user_id`). |
 | `parsed_profile_json` | TEXT (JSON) | Serialized `ResumeProfile` (`name`, `headline`, `summary`, `experience[]`, `skills[]`, `education[]`, `certifications[]`). What agents consume. |
 | `version`             | INT         | Monotonically increasing per resume_id. Reserved for re-parse versioning. |
-| `is_active`           | INT         | `1` = the current canonical resume; `0` = superseded. |
+| `is_active`           | INT         | `1` = the current canonical resume **for that profile**; `0` = superseded. ADR-062: `create(user_id, ...)` only deactivates the same profile's prior resumes, so each profile has its own active resume. |
 | `created_at`          | TEXT        | ISO 8601 UTC. |
 
 ### Workflow usage
@@ -654,7 +700,7 @@ CREATE TABLE user_config (
 | Column              | Type        | Description |
 |---------------------|-------------|-------------|
 | `id`                | TEXT PK     | UUID. |
-| `user_id`           | TEXT        | Forward-compat for multi-user; always null today. |
+| `user_id`           | TEXT        | ADR-062: the profile this override belongs to (`"0"`, `"1"`, ...). `ConfigService.get_effective_config(user_id)` merges this layer over the YAML defaults. The legacy `user_id IS NULL` "system-wide" layer was migrated to `"0"`. |
 | `config_key`        | TEXT        | Dotted path, e.g. `"scoring.min_match_score"`, `"agents.tailoring_agent.model"`. |
 | `config_value_json` | TEXT (JSON) | Override value (always JSON-serialized for type-safety on read-back). |
 | `created_at`        | TEXT        | ISO 8601 UTC. |
@@ -929,6 +975,7 @@ purges of workflow data.
 ```sql
 CREATE TABLE memory_items (
     id                     TEXT PRIMARY KEY,
+    user_id                TEXT,              -- ADR-062: owning profile; memory is isolated per profile
     memory_type            TEXT NOT NULL,
     memory_key             TEXT,
     memory_value_json      TEXT NOT NULL,
@@ -943,7 +990,8 @@ CREATE TABLE memory_items (
 
 | Column                   | Type        | Description |
 |--------------------------|-------------|-------------|
-| `id`                     | TEXT PK     | UUID. |
+| `id`                     | TEXT PK     | UUID, namespaced per `user_id` to avoid key collisions across profiles. |
+| `user_id`                | TEXT        | ADR-062: owning profile (`"0"`, `"1"`, ...). All `MemoryRepository` methods filter by it, so one person's learned patterns never seed another's runs. Pre-existing rows backfilled to `"0"`. |
 | `memory_type`            | TEXT        | Domain bucket, e.g. `"tailoring_preference"`, `"job_dismissal_pattern"`. |
 | `memory_key`             | TEXT        | Optional sub-key for upsert semantics. |
 | `memory_value_json`      | TEXT (JSON) | Structured value. **Never raw LLM text** — must be normalized. |
@@ -986,6 +1034,12 @@ CREATE INDEX idx_llm_calls_created_at     ON llm_calls(created_at);
 CREATE INDEX idx_memory_type              ON memory_items(memory_type);
 CREATE INDEX idx_memory_updated_at        ON memory_items(updated_at);
 CREATE INDEX idx_security_created_at      ON security_events(created_at);
+-- ADR-062: per-user read scoping. workflow_runs index lives in the base schema;
+-- the resumes / memory_items indexes are created AFTER their additive ALTER
+-- (executescript runs before the ALTERs on a pre-existing DB).
+CREATE INDEX idx_workflow_runs_user       ON workflow_runs(user_id);
+CREATE INDEX idx_resumes_user             ON resumes(user_id);
+CREATE INDEX idx_memory_user              ON memory_items(user_id);
 ```
 
 There is intentionally no index on `jobs.url` — `JobDiscoveryService.deduplicate`

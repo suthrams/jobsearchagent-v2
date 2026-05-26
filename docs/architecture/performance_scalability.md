@@ -64,7 +64,7 @@ Sequential execution
 
 * simpler to implement
 * easier to debug
-* sufficient for single-user SQLite system
+* sufficient for the SQLite system under sequential use (incl. multiple profiles, ADR-062)
 
 ---
 
@@ -237,7 +237,7 @@ MAX_RESEARCH_STEPS = 2
 
 SQLite is sufficient for:
 
-* single-user workloads
+* sequential workloads (a single run at a time, across one or more profiles — ADR-062)
 * local execution
 * moderate data volumes
 
@@ -350,8 +350,15 @@ Generating report...
 ### Current State
 
 ```text
-Single-user, SQLite-based system
+SQLite-based system; multiple profiles under SEQUENTIAL use (ADR-062)
 ```
+
+The system serves multiple profiles (one resume / config / memory / history per
+profile), but use is sequential: one person's search runs at a time and you
+switch profiles between runs. This lets the global singletons (compiled graph,
+WorkflowDependencies, agent registry) stay as-is and be rebuilt on profile switch
+/ run kickoff rather than partitioned per user. Concurrent multi-user execution
+is still future work.
 
 ---
 
@@ -361,7 +368,7 @@ Single-user, SQLite-based system
 SQLite → Postgres
 Local execution → API-based backend
 Sequential → parallel execution
-Single-user → multi-user
+Sequential multi-profile (ADR-062) → concurrent multi-user (auth + per-user runtime)
 ```
 
 ---

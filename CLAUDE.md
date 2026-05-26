@@ -124,6 +124,13 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - The langgraph SqliteSaver `checkpoints` table is for resumption only — query `workflow_runs` for UI / history reads
 - Schema changes to `data/v2.db` require updating BOTH the repository layer AND `app/ui/db_reader.py` (the UI read-path bypasses the API for performance — documented in `db_reader.py` header)
 
+**Identity / multi-user rules (ADR-062)**
+- Identity is resolved in exactly ONE place per side of the wire: backend `app/api/identity.py::get_current_user_id` (reads a `?user_id=` query param, defaults to `"0"`, validates against `users`); frontend `app/ui/api_client.py::set_user_id` (attaches the param) + `db_reader` (takes `user_id` and filters). No router parses identity itself; no HTTP headers. Adding auth later changes only `get_current_user_id`'s body
+- `users.id` is INTEGER (`0` = all pre-existing data; new profiles auto-increment from `1`). Every reference column (`workflow_runs.user_id`, `user_config.user_id`, `resumes.user_id`, `memory_items.user_id`) stores the decimal-STRING form (`"0"`, `"1"`, ...) — compare string-to-string
+- Config is TWO layers: `yaml -> user_config (per-user)`. There is no `user_id IS NULL` system-wide layer (migrated to `"0"`). Read via `ConfigService.get_effective_config(user_id)`
+- Resumes are per-user active (`create(user_id, ...)` only deactivates that user's prior resumes); memory is isolated per user; history/analytics/cost reads are scoped by the active profile via the `workflow_runs.user_id` join, with orphan/legacy rows COALESCEd to `"0"`
+- Isolation is COOPERATIVE, not enforced (no auth). Do NOT add ownership-authorization checks — they are meaningful only once identity is authenticated (see `security.model.md` 4.1)
+
 **Provider rules**
 - Both providers (`ClaudeProvider`, `OpenAIProvider`) implement `LLMClient`. Agents depend only on `LLMClient` — never on a concrete provider class
 - `LLMClient.complete(schema=...)` must always receive a Pydantic `BaseModel` subclass — never a builtin like `dict`
@@ -139,7 +146,8 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 ```
 app/
   api/              ← FastAPI endpoints + dependency wiring (Phase 7 gate)
-    routers/        ← workflows.py, jobs.py, reports.py, config.py, tailoring.py
+    routers/        ← workflows.py, jobs.py, reports.py, config.py, tailoring.py, users.py
+    identity.py     ← get_current_user_id seam (ADR-062)
   workflows/        ← LangGraph workflow graphs (orchestrator)
   agents/           ← 8 specialized agents (all inherit BaseAgent)
   services/         ← deterministic services (no LLM)
@@ -185,7 +193,7 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 - `agent_model.md` — per-agent input/output contracts and constraints
 - `workflow_model.md` — complete workflow execution blueprint
 - `state_and_memory_model.md` — WorkflowState schema and memory rules
-- `data_model.md` — all 18 SQLite table definitions, per-column data dictionary, and per-table workflow usage
+- `data_model.md` — all 19 SQLite table definitions (incl. `users`, ADR-062), per-column data dictionary, and per-table workflow usage
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
 - `adr/` — 56 Architecture Decision Records
 

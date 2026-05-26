@@ -49,9 +49,9 @@
 | 7 | Live agents — real Claude, SqliteSaver | ✓ complete |
 | 8 | Performance — concurrent scoring + scraping | ✓ complete |
 | 9 | Cost optimization — model tiering, volume caps | ✓ complete |
-| post-9 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + section grouping + headline + strategy summary + impact estimate (ADR-056) | ✓ complete |
+| post-9 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + section grouping + headline + strategy summary + impact estimate (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062) | ✓ complete |
 
-**Test count:** 456 passing, 1 skipped (mock mode, no real API calls in CI)
+**Test count:** 599 passing (mock mode, no real API calls in CI)
 
 ---
 
@@ -86,7 +86,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | Document | What it covers |
 |---|---|
 | [architecture/architecture_overview.md](architecture/architecture_overview.md) | System boundary, 7 system layers, 10 core design principles, input model, core workflows, agentic pattern strategy |
-| [architecture/data_model.md](architecture/data_model.md) | All 18 SQLite tables — core (workflow_runs, jobs, job_scores, reviews, advice, tailoring, reports, decisions, user_config), observability (step_executions, agent_events, llm_calls, run_metrics), security (security_events), memory (memory_items); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
+| [architecture/data_model.md](architecture/data_model.md) | All 19 SQLite tables — core (workflow_runs, jobs, job_scores, reviews, advice, tailoring, reports, decisions, user_config), observability (step_executions, agent_events, llm_calls, run_metrics), security (security_events), memory (memory_items), identity (users, ADR-062); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState schema (22 fields, 9 sections), 6 workflow status values, 15+ step values, state ownership rules, memory service (memory_items table), memory write/retrieve patterns, anti-patterns |
 
 ---
@@ -117,10 +117,10 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 
 | Document | What it covers |
 |---|---|
-| [architecture/data_model.md](architecture/data_model.md) | 17-table SQLite schema with core, observability, security, and memory tables |
+| [architecture/data_model.md](architecture/data_model.md) | 19-table SQLite schema with core, observability, security, memory, and identity (`users`, ADR-062) tables |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState ownership, memory service, state update rules, HITL state flow |
 
-**18 SQLite tables at a glance:**
+**19 SQLite tables at a glance:**
 
 | Category | Tables |
 |---|---|
@@ -128,6 +128,12 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | Observability | step_executions · agent_events · llm_calls · run_metrics |
 | Security | security_events |
 | Memory | memory_items |
+| Identity (ADR-062) | users |
+
+Profiles (ADR-062): `users` is the identity anchor (id 0 = pre-existing data, new
+profiles auto-increment from 1). `resumes`, `memory_items`, `workflow_runs`, and
+`user_config` carry a `user_id` so each profile has its own active resume,
+isolated memory, history, and config overrides.
 
 ---
 
@@ -143,8 +149,12 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | Layer | Location | Who changes it |
 |---|---|---|
 | System defaults | `config/config.yaml` | User at setup |
-| Runtime overrides | `user_config` SQLite table | User via UI |
+| Runtime overrides | `user_config` SQLite table (per profile, ADR-062) | User via UI |
 | Locked limits | `app/workflows/limits.py` | Code only |
+
+Runtime overrides are **per profile** (ADR-062): `get_effective_config(user_id)`
+merges a profile's `user_config` rows over the shared YAML defaults. The legacy
+`user_id IS NULL` system-wide layer was migrated to profile `"0"`.
 
 ---
 
@@ -184,9 +194,14 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 |---|---|
 | `POST /workflows` | Start a new workflow run |
 | `GET /workflows/{id}` | Poll status and current step |
-| `POST /workflows/{id}/decisions` | Submit HITL decision to resume |
 | `GET /workflows/{id}/jobs` | Scored jobs with filters |
 | `GET /workflows/{id}/report` | Final assembled report |
+| `POST /tailorings/{id}/decisions` | Record approve / revise / reject / edit on a tailoring draft (the only HITL, out-of-graph; ADR-059) |
+| `GET` / `POST /users` | List / create profiles (ADR-062) |
+| `POST /users/{id}/resume` | Upload + parse a resume for a profile (ADR-062) |
+
+Identity (ADR-062): every endpoint resolves the acting profile from an optional
+`?user_id=` query parameter (defaults to `"0"`).
 
 ---
 
@@ -202,7 +217,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 
 ## 10. Architecture Decision Records
 
-56 ADRs covering every major design decision. All accepted (ADR-051 superseded by ADR-053).
+62 ADRs covering every major design decision. All accepted (ADR-051 superseded by ADR-053).
 
 **Index:** [architecture/adr/ADR-000-index.md](architecture/adr/ADR-000-index.md)
 
@@ -269,6 +284,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | [059](architecture/adr/ADR-059-retire-in-graph-hitl-and-add-human-edit-decision.md) | Retire in-graph HITL; add a human edit decision (human as final author) | post-9 |
 | [060](architecture/adr/ADR-060-human-triage-before-scoring.md) | Human triage before scoring — widen discovery, score only selected | post-9 |
 | [061](architecture/adr/ADR-061-configurable-funnel-width.md) | Configurable funnel width + on-demand deep review and interview prep | post-9 |
+| [062](architecture/adr/ADR-062-multi-user-profiles.md) | Multi-user profiles with a single swappable identity seam (no-auth profile selector, per-user data scoping) | post-9 |
 
 ---
 

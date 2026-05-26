@@ -4,6 +4,25 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-05-26
+
+### Added — Multi-user profiles with a single swappable identity seam (ADR-062)
+
+The app can now serve more than one job-seeker from one install — each profile with its own resume, search defaults, config and per-agent model overrides, learned memory, cost view, and history. Built as the simplest front door (a no-auth profile selector) that does not foreclose real authentication later: the expensive, hard-to-reverse work (the data model) is done once and is identical regardless of the eventual auth model.
+
+- **Identity anchor.** New `users` table (`id INTEGER PK`, `name`, optional human-only `note`, `created_at`). `id 0` is seeded by the migration as the owner of all pre-existing data; profiles created via `POST /users` auto-increment from `1`. Reference columns (`workflow_runs.user_id`, `user_config.user_id`, new `resumes.user_id`, `memory_items.user_id`) standardize on the decimal-string form (`"0"`, `"1"`, ...) so comparisons stay string-to-string.
+- **Single identity seam.** `app/api/identity.py::get_current_user_id` resolves a `?user_id=` query parameter (no HTTP headers), defaults to `"0"` (backward compatible), and validates against `users`. Every router depends on it; nothing parses identity ad hoc. The UI mirror is `api_client.set_user_id` (attaches the param) + `db_reader` (filters by it). Adding auth later changes only this one function body.
+- **Per-user scoping.** Resumes are per-user active (creating a resume deactivates only that profile's prior ones); memory is isolated per profile; `register_run` writes the run owner; config collapses to two layers (`yaml -> user_config per-user`, the legacy `user_id IS NULL` system-wide layer migrated to `"0"`). Per-agent model/provider overrides ride the per-user config layer (rebuild-on-switch under sequential use).
+- **UI.** Sidebar profile selector; a 3-step "Add profile" onboarding wizard (identity -> resume upload -> default roles/locations, steps 2-3 skippable); Start New Run's free-text Resume ID box replaced by a picker over the active profile's resumes; Cost Dashboard gains a per-profile / system-wide toggle. History and cross-run analytics read only the active profile's data (orphan/legacy rows COALESCE to `"0"`).
+- **Isolation is cooperative, not enforced** (no auth): the selector decides *which* data a request touches, it is not an access boundary. No ownership-authorization checks were added — they are meaningful only once identity is authenticated, and the seam is exactly where they attach later (ADR-062 Decision E; `security.model.md` 4.1).
+- **Migration.** Timestamped backup taken first; `init_db` additively creates `users` + the new `user_id` columns and indexes, seeds user 0 (guarded on `id=0`), and backfills all pre-existing `resumes`/`memory_items`/`workflow_runs`/`user_config` rows to `"0"`. Idempotent and additive (no drops, no data loss).
+- New endpoints: `GET /users`, `POST /users`, `POST /users/{id}/resume` (onboarding resume upload).
+- Docs: ADR-062 + index, `data_model.md` (users table, per-user columns, indexes, corrected "always null" notes), `config_model.md` (two-layer per-user merge), `api_reference.md` (`/users` + identity query param), `state_and_memory_model.md` (per-user memory isolation), `security.model.md` (cooperative-isolation note), `CLAUDE.md` (identity/multi-user invariants).
+
+Tests: 599 passed (new `tests/v2/test_api_users.py` resume-upload cases, `test_cost_user_scoping.py`, `test_db_reader_user_scoping.py`; earlier phases added `UserRepository`, identity-seam, and per-user repo/config tests).
+
+---
+
 ## 2026-05-24
 
 ### Added — Configurable funnel width + on-demand deep review and interview prep (ADR-061)

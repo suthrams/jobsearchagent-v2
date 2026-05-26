@@ -18,6 +18,7 @@ A multi-agent career intelligence system: discovers jobs, scores fit across thre
 10. [Observability & Cost Tracking](#10-observability--cost-tracking)
 11. [Workflow Checkpointing](#11-workflow-checkpointing)
 12. [Configuration](#12-configuration)
+12a. [Multi-User Profiles](#12a-multi-user-profiles-adr-062)
 13. [Backend API](#13-backend-api)
 14. [Feature Summary](#14-feature-summary)
 
@@ -237,10 +238,90 @@ tracks:
 ```
 
 ### User-configurable at runtime (via UI → DB)
-Search titles, locations, salary, work mode, career tracks, Adzuna settings.
+Search titles, locations, salary, work mode, career tracks, Adzuna settings,
+per-agent provider + model. **Per profile** (ADR-062): overrides are stored per
+`user_id` and merged over the shared YAML defaults; a new profile starts on pure
+defaults.
 
 ### Locked (never user-configurable)
-LLM model assignments, execution limits (`MAX_JOBS_PER_RUN`, `MAX_REVIEW_ROUNDS`, etc.), safety thresholds, cost caps.
+LLM model assignments, execution limits (`MAX_JOBS_PER_RUN`, `MAX_REVIEW_ROUNDS`, etc.), safety thresholds, cost caps. Shared by every profile.
+
+---
+
+## 12a. Multi-User Profiles (ADR-062)
+
+One installation can serve several job-seekers (e.g. you and a family member).
+Each **profile** has its own resume, search defaults, config and per-agent model
+overrides, learned memory, cost view, and run history. You pick a profile in the
+sidebar and run as that person; you switch between runs. There is **no login**.
+
+### Design bet
+
+Build the simplest front door that does not foreclose a stronger one later. The
+expensive, hard-to-reverse work (the data model + a single identity-resolution
+point) is done once and is identical regardless of the eventual auth model; the
+cheap, swappable work (the no-auth selector) is isolated to one function, so
+adding real authentication later is additive, not a rewrite.
+
+Two constraints shape it:
+
+- **Sequential use** — one run at a time; switch profiles between runs. The global
+  singletons (compiled graph, dependencies, agent registry) stay as-is and are
+  rebuilt on profile switch / run kickoff rather than partitioned per user.
+- **Cooperative isolation, not a security boundary** — the selector decides
+  *which* profile's data a request reads and writes; with no authentication it
+  does not *prevent* naming another profile's id. Acceptable for a trusted
+  personal/family tool, and stated plainly so it is never mistaken for access
+  control. See `architecture/security.model.md` §4.1.
+
+### Identity anchor — the `users` table
+
+`id` (INTEGER PK; `0` = all pre-existing data, new profiles auto-increment from
+`1`), `name`, an optional human-only `note`, `created_at`. Deliberately minimal —
+everything a profile *uses* lives in its own table keyed by `user_id`.
+
+### Per-profile scoping
+
+- **Resumes** — each profile has its own active resume; creating one deactivates
+  only that profile's prior resumes. The Start New Run resume box becomes a picker
+  over the active profile's resumes.
+- **Memory** — `memory_items` is isolated per profile; one person's learned
+  patterns never seed another's runs.
+- **History / analytics / cost** — read only the active profile's data. The Cost
+  Dashboard defaults to the active profile with an "All profiles (system-wide)"
+  toggle.
+- **Config** — two layers (`config.yaml` defaults -> per-profile `user_config`
+  overrides). A new profile starts on pure defaults; protected keys and cost caps
+  stay shared.
+- Reference columns store the decimal-string form (`"0"`, `"1"`, ...); per-run
+  tables inherit ownership through `workflow_run_id`; `jobs` stays a shared pool.
+
+### One identity seam
+
+A `?user_id=` query parameter (no HTTP headers) resolved by a single backend
+dependency, `get_current_user_id` (default `"0"`, validated against `users`),
+mirrored on the UI client. No router parses identity itself, and adding real
+authentication later changes only that one function.
+
+### Onboarding
+
+The sidebar **Profile** selector switches the active profile; **＋ Add profile**
+opens a 3-step wizard — identity (name + optional note) -> resume upload (scoped
+to the new profile) -> default roles/locations (saved as that profile's config).
+Only step 1 is required.
+
+### Migration and compatibility
+
+Additive and idempotent: a timestamped DB backup is taken, the `users` table and
+`user_id` columns/indexes are created, profile `0` is seeded, and all pre-existing
+resumes, memory, runs, and config overrides are backfilled to `"0"`. Fully
+backward compatible — a request with no `user_id` resolves to profile `0`.
+
+### Out of scope (for now)
+
+No ownership-authorization checks (meaningful only with authentication), no
+concurrent multi-user runtime (sequential use), and no per-workflow runtime agent
+swap (the per-run config snapshot records what each run used).
 
 ---
 
@@ -256,9 +337,9 @@ uvicorn app.api.main:app --reload   # starts at http://localhost:8000
 Key endpoint groups:
 - `POST /workflow/run` — start a new workflow run
 - `GET /workflow/{run_id}/status` — poll run status and current step
-- `POST /workflow/{run_id}/decision` — submit a HITL decision to resume the workflow
 - `GET /jobs` — list scored jobs with filters
 - `GET /reports/{run_id}` — retrieve the final report
+- `GET` / `POST /users`, `POST /users/{id}/resume` — profile management (ADR-062); every endpoint accepts an optional `?user_id=` (default `"0"`)
 
 The Streamlit UI calls these endpoints. You can also drive the workflow directly via the API or notebooks.
 
@@ -285,7 +366,8 @@ The Streamlit UI calls these endpoints. You can also drive the workflow directly
 | Per-run and per-call cost tracking | ✅ |
 | Prompt caching (~90% cost reduction on cache hits) | ✅ |
 | Model tiering — Haiku for volume/validation, Sonnet for generative | ✅ |
-| Hybrid configuration — YAML defaults + DB overrides | ✅ |
+| Hybrid configuration — YAML defaults + per-profile DB overrides | ✅ |
+| Multi-user profiles — sequential, no-auth, cooperative isolation (ADR-062) | ✅ |
 | FastAPI backend + Streamlit UI | ✅ |
-| SQLite persistence — 17 tables | ✅ |
+| SQLite persistence — 19 tables | ✅ |
 | Test suite — 389 tests, mock mode, no real API calls in CI | ✅ |

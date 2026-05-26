@@ -21,6 +21,7 @@ from app.api.routers.jobs import exclusion_router as jobs_exclusion_router
 from app.api.routers.jobs import router as jobs_router
 from app.api.routers.reports import router as reports_router
 from app.api.routers.tailoring import router as tailoring_router
+from app.api.routers.users import router as users_router
 from app.api.routers.workflows import router as workflows_router
 
 
@@ -70,3 +71,4 @@ app.include_router(jobs_exclusion_router)  # ADR-057: per-job exclusion endpoint
 app.include_router(reports_router)
 app.include_router(config_router)
 app.include_router(tailoring_router)
+app.include_router(users_router)  # ADR-062: profile management

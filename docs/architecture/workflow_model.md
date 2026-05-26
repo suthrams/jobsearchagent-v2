@@ -175,6 +175,12 @@ Load or create the resume profile used across workflows.
 3. Load selected profile into workflow state
 ```
 
+Per-profile scoping (ADR-062): the resume load and store are scoped to the run's
+owner. `load_resume` is DB-first (`get_by_id(resume_id)`); on a parse, it stores
+under `state["user_id"]` (defaulting to `"0"`). Each profile keeps its own active
+resume — the resume picker lists only the active profile's resumes, and creating
+one deactivates only that profile's prior resumes.
+
 ---
 
 ### Services Used

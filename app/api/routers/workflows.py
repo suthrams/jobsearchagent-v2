@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_graph
+from app.api.identity import get_current_user_id
 from app.api.schemas.requests import StartWorkflowRequest
 from app.api.schemas.responses import WorkflowStatusResponse
 from app.workflows.limits import get_max_scored
@@ -30,14 +31,15 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
 
-def _build_initial_state(req: StartWorkflowRequest, workflow_id: str) -> dict:
+def _build_initial_state(req: StartWorkflowRequest, workflow_id: str,
+                         user_id: str) -> dict:
     now = utcnow_iso()
     return {
         "workflow_id": workflow_id,
         "workflow_type": req.workflow_type,
         "status": "running",
         "current_step": "initialized",
-        "user_id": None,
+        "user_id": user_id,
         "resume_id": req.resume_id,
         "resume_profile": None,
         "resume_version": None,
@@ -136,6 +138,7 @@ def _read_status(graph, workflow_id: str) -> WorkflowStatusResponse | None:
 def start_workflow(
     body: StartWorkflowRequest,
     graph=Depends(get_graph),
+    user_id: str = Depends(get_current_user_id),
 ) -> dict:
     """Start a new workflow. Returns 202 immediately; execution is async in thread pool.
 
@@ -149,7 +152,9 @@ def start_workflow(
     `warnings` array surfacing this gap when overrides are supplied.
     """
     warnings: list[str] = []
-    snapshot_agents, override_warnings = _resolve_agent_snapshot(body.agent_overrides)
+    snapshot_agents, override_warnings = _resolve_agent_snapshot(
+        body.agent_overrides, user_id,
+    )
     warnings.extend(override_warnings)
 
     # Merge the agents snapshot into the incoming effective_config so register_run
@@ -160,7 +165,7 @@ def start_workflow(
 
     workflow_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": workflow_id}}
-    initial_state = _build_initial_state(body, workflow_id)
+    initial_state = _build_initial_state(body, workflow_id, user_id)
 
     _executor.submit(_run_graph, graph, initial_state, config)
 
@@ -176,19 +181,20 @@ def start_workflow(
 
 def _resolve_agent_snapshot(
     overrides: dict[str, dict[str, str]],
+    user_id: str,
 ) -> tuple[dict[str, dict[str, str]], list[str]]:
     """Compute the per-workflow agent assignment snapshot.
 
-    Reads the global effective config (YAML defaults + user_config overrides)
-    via ConfigService, then layers the kickoff `overrides` on top after
-    validation. Returns (snapshot, warnings). Raises HTTPException on invalid
-    override input.
+    Reads the acting profile's effective config (YAML defaults + that user's
+    user_config overrides, ADR-062) via ConfigService, then layers the kickoff
+    `overrides` on top after validation. Returns (snapshot, warnings). Raises
+    HTTPException on invalid override input.
 
     Tolerates a config without the `agents:` / `models:` blocks (returns an
     empty snapshot and a warning). Lets older configs and test environments
     keep working until they are migrated to ADR-058 shape.
     """
-    eff = ConfigService().get_effective_config()
+    eff = ConfigService().get_effective_config(user_id)
     try:
         catalog = catalog_from_config(eff)
         defaults = defaults_from_config(eff)

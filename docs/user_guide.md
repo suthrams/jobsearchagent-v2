@@ -13,6 +13,7 @@ End-to-end walkthrough: setup, starting the system, running a workflow, and read
 5. [Add LinkedIn Jobs (optional)](#5-add-linkedin-jobs-optional)
 6. [Start the System](#6-start-the-system)
 7. [UI Navigation](#7-ui-navigation)
+7a. [Profiles (multi-user)](#7a-profiles-multi-user-adr-062)
 8. [Start a Workflow Run](#8-start-a-workflow-run)
 9. [Monitor Progress](#9-monitor-progress)
 10. [Read the Run Report](#10-read-the-run-report)
@@ -90,9 +91,21 @@ the Settings UI dropdowns; Claude continues to serve every agent.
 
 ## 4. Add Your Resume
 
-Place your resume PDF at `resume.pdf` in the project root. The resume is parsed by Claude on first use and cached by SHA-256 hash — re-running with the same file incurs no additional API cost.
+There are two ways to give a profile a resume:
 
-The parsed resume is stored with the ID `res-001` in `data/v2.db`. Use this ID in the **Start New Run** form. If you update your resume file, the hash changes and the resume is re-parsed automatically.
+- **In the UI (recommended):** the **Profiles → Add profile** wizard (and the
+  default profile's onboarding) lets you upload a PDF directly. It is parsed by
+  Claude, stored scoped to that profile, and set as the profile's active resume.
+  See [section 7a](#7a-profiles-multi-user-adr-062).
+- **On disk:** place your resume PDF at `resume.pdf` in the project root. On the
+  first run for a profile that has no stored resume, enter `resume.pdf` in the
+  **Start New Run** form and it will be parsed and stored under that profile.
+
+Resumes are parsed once and cached by SHA-256 hash (per profile), so re-running
+with the same file incurs no additional API cost. Once a profile has at least
+one stored resume, **Start New Run** shows a resume **picker** instead of a text
+box (the active resume is listed first). Each profile keeps its own active
+resume — adding a resume to one profile never deactivates another's (ADR-062).
 
 ---
 
@@ -137,6 +150,13 @@ Open `http://localhost:8501` in your browser.
 
 ## 7. UI Navigation
 
+At the **top of the sidebar** is the **Profile** selector (ADR-062) — the
+dropdown that picks whose search this is. Everything below (history, analytics,
+cost, the resume picker) is scoped to the selected profile, and new runs are
+tagged with it. The **＋ Add profile** button opens the onboarding wizard. See
+[section 7a](#7a-profiles-multi-user-adr-062). On a fresh install there is one
+profile, **Primary** (#0), which owns all pre-existing data.
+
 The sidebar opens to **Workflow History** (the default landing) and gives you the
 following views, top-down:
 
@@ -152,11 +172,15 @@ following views, top-down:
   textarea for line-by-line custom job URLs
 - **Live Run Monitor** — activity feed for the currently running workflow
 - **Run Report** — generated markdown report
-- **Settings** — view and edit your default config (search criteria, threshold,
-  salary, staleness, **per-agent provider + model**). Protected keys (hard
-  limits, retention windows, prompt definitions) remain read-only.
+- **Settings** — view and edit the active profile's config (search criteria,
+  threshold, salary, staleness, **per-agent provider + model**). Each profile has
+  its own overrides layered over the shared YAML defaults; a new profile starts
+  on pure defaults. Protected keys (hard limits, retention windows, prompt
+  definitions) remain read-only and shared by every profile.
+- **Profiles** — manage profiles and run the **Add profile** onboarding wizard
+  (ADR-062; see [section 7a](#7a-profiles-multi-user-adr-062)).
 
-**Cross-Run Analytics** *(read directly from `data/v2.db`)*
+**Cross-Run Analytics** *(read directly from `data/v2.db`, scoped to the active profile)*
 - **Top Matches** — scored jobs across all runs
 - **IC / Architect / Management Track** — sorted by per-track score
 - **Companies** — top target companies by best match score
@@ -169,13 +193,55 @@ following views, top-down:
 
 ---
 
+## 7a. Profiles (multi-user, ADR-062)
+
+The app can serve more than one job-seeker from one install — for example you and
+a family member — each with their own resume, search defaults, config, learned
+memory, cost view, and history. Use is **sequential**: pick a profile in the
+sidebar, run searches as that profile, switch when you want to act as someone
+else. There is no login.
+
+> **Isolation is cooperative, not a security boundary.** The selector decides
+> *which* profile's data a request reads and writes. With no authentication it
+> does not *prevent* anyone with access to the app from selecting another
+> profile. That is fine for a trusted personal/family tool; it is also exactly
+> the seam where real authentication would attach later (see
+> `docs/architecture/security.model.md` §4.1).
+
+### Switching profiles
+
+Pick a profile from the sidebar **Profile** dropdown. The whole UI re-scopes:
+Workflow History, the cross-run analytics, the Cost Dashboard, and the Start New
+Run resume picker all now show only that profile's data. The **Primary** profile
+(id 0) owns everything that existed before profiles were introduced.
+
+### Adding a profile (onboarding wizard)
+
+Click **＋ Add profile** (or open the **Profiles** view). The wizard has three
+steps; only the first is required:
+
+1. **Identity** — a display **name** (required) and an optional **note** (a
+   human-only label such as "new-grad SWE, west coast"; the system never acts on
+   it). This creates the profile and assigns its id (1, 2, 3, ...).
+2. **Resume** — upload a PDF. It is parsed and becomes the new profile's active
+   resume. Skippable — you can add one later.
+3. **Default search criteria** — roles and locations, saved as the profile's
+   defaults so **Start New Run** pre-fills them. Skippable.
+
+A profile created with just step 1 is fully valid; add a resume or criteria later
+through the normal screens.
+
+---
+
 ## 8. Start a Workflow Run
 
-Select **Start New Run** in the sidebar. Fill in the form:
+Select **Start New Run** in the sidebar. The run is owned by the **active
+profile**, uses that profile's saved defaults, and writes to that profile's
+history. Fill in the form:
 
 | Field | What to enter |
 |---|---|
-| **Resume ID** | `resume.pdf` (default) — the filename of your resume in the `data/` folder |
+| **Resume** | A **picker** over the active profile's stored resumes (active one first). If the profile has no stored resume yet, this is a text box instead — enter `resume.pdf` to parse a file in the project root. |
 | **Roles** | Comma-separated job titles — pre-filled from your saved settings |
 | **Locations** | Comma-separated locations — pre-filled from your saved settings |
 | **Min match score** | Slider, defaults to 75 — any track score (tech / arch / lead) at or above this triggers deep review |
@@ -360,6 +426,10 @@ Horizontal bar chart of the top 20 companies by best overall match score, filter
 
 Shows total workflow runs and cumulative estimated API cost across all runs. The full runs table below includes per-run status, job counts, LLM call counts, and cost.
 
+All of this is **scoped to the active profile** (ADR-062). The **Cost Dashboard**
+likewise defaults to the active profile; tick **All profiles (system-wide)** there
+to see spend across every profile at once.
+
 ---
 
 ## 14a. Picking a Provider and Model per Agent
@@ -448,8 +518,9 @@ Once configured, a typical session looks like:
 - You can still use Browse views — all historical data is in `data/v2.db`
 
 **Resume parse error or wrong resume being used**
-- Confirm `resume.pdf` is in the project root
-- To force a re-parse, delete the cached row: `sqlite3 data/v2.db "DELETE FROM resumes WHERE id='res-001'"`
+- Confirm `resume.pdf` is in the project root (for the on-disk path), or upload via **Profiles → Add profile**
+- Resumes are scoped per profile (ADR-062). To force a re-parse, delete that profile's cached row(s): `sqlite3 data/v2.db "DELETE FROM resumes WHERE user_id='0'"` (use the profile's id — `0` is the default **Primary** profile)
+- Confirm the right **Profile** is selected in the sidebar — the resume picker only lists the active profile's resumes
 
 **No deep review results or interview prep data**
 - These views require a workflow that completed a full deep review pass

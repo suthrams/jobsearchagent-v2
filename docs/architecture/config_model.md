@@ -107,17 +107,41 @@ Core function:
 ```python
 def get_effective_config(user_id: str) -> dict:
     yaml_config = load_yaml()
-    overrides = load_user_overrides(user_id)
+    overrides = load_user_overrides(user_id)  # rows for THIS user_id only
     return merge(yaml_config, overrides)
 ```
+
+### Two-layer per-user merge (ADR-062)
+
+Configuration is exactly two layers:
+
+```
+config.yaml defaults  ->  user_config (user_id = X: per-user overrides)
+```
+
+Because all pre-existing data (including config overrides) was ported to user
+`"0"`, there is no separate "system-wide" override layer: the old
+`user_config.user_id IS NULL` rows were migrated to `"0"`. Each profile's
+overrides are keyed `user_{user_id}__{config_key}` so re-saves upsert in place.
+
+- A newly created profile (id ≥ 1) has no overrides and runs on pure YAML
+  defaults until it sets its own.
+- Protected keys (`_PROTECTED_KEYS`) and the ADR-061 ceiling clamps apply to the
+  merged result exactly as before and remain sourced from YAML, so they are
+  shared by every profile.
+- **Per-agent model/provider overrides (ADR-053/058) ride this per-user layer** —
+  they are just `agents.{name}.{provider,model}` keys under the user's id. Under
+  sequential use, the agent registry is rebuilt from the active user's effective
+  config on profile switch / run kickoff (a rebuild, not a partition).
 
 ---
 
 ## 7b. Configurable funnel-width keys (ADR-061)
 
 Three keys control how wide the discover -> score -> tailor funnel is. All three
-are merged the standard three-tier way (yaml default -> user_config system-wide
--> per-run `effective_config`) and clamped to a hard ceiling for cost safety.
+are merged the standard three-tier way (yaml default -> user_config per-user
+(ADR-062) -> per-run `effective_config`) and clamped to a hard ceiling for cost
+safety.
 
 | Key | Meaning | Default | Hard ceiling |
 |---|---|---|---|
@@ -125,7 +149,7 @@ are merged the standard three-tier way (yaml default -> user_config system-wide
 | `search.max_discovered` | Manual-selection (ADR-060) wide discovery net. Ignored in auto mode. | 50 | 50 (`MAX_DISCOVERED_JOBS`) |
 | `search.max_jobs` | Discovery-SERVICE backstop (how many postings the scraper layer returns). Not a user-facing knob; the precise per-run caps are applied in the nodes. | 50 | 50 (`_SYSTEM_MAX_JOBS`) |
 
-Clamping happens in two places: `ConfigService._enforce_limits` (system-wide
+Clamping happens in two places: `ConfigService._enforce_limits` (the per-user
 merged config) and the `app/workflows/limits.py` helpers `get_max_scored()` /
 `get_max_discovered_jobs()` (authoritative workflow gate — per-run config can
 arrive un-clamped because the UI builds it directly). `MAX_LLM_CALLS_PER_RUN`

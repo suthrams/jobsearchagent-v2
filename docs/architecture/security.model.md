@@ -109,6 +109,30 @@ Key rule:
 
 > Job descriptions and scraped content are always untrusted.
 
+### 4.1 Multi-user isolation is cooperative, not enforced (ADR-062)
+
+The app serves multiple profiles, but **there is no authentication**. Identity
+travels as a `?user_id=` query parameter resolved by a single backend dependency
+(`get_current_user_id`); the UI sets it from a sidebar selector. This decides
+*which* profile's data a request reads and writes — it does **not** *prevent* a
+determined caller from naming another profile's id.
+
+This is acceptable for a trusted personal/family tool and is stated plainly so a
+future reader does not mistake the profile selector for an access-control
+boundary:
+
+- We deliberately do **not** add ownership-authorization checks (e.g. rejecting
+  `GET /workflows/{id}` when the requester is not the owner). Such a check is
+  meaningful only once identity is authenticated; adding it now would be security
+  theatre.
+- The identity seam is precisely where real enforcement attaches when auth
+  arrives: only the body of `get_current_user_id` changes (read the id from an
+  authenticated session/token instead of the query parameter). Repositories, the
+  workflow, and read paths already depend only on a *resolved* `user_id`, so they
+  are untouched.
+- History/analytics isolation is therefore a **read-scoping** property (the UI
+  and `db_reader` show the active profile's data), not an authorization one.
+
 ---
 
 ## 5. Data Classification

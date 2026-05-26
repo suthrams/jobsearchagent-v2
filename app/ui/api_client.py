@@ -13,6 +13,24 @@ BASE_URL = os.getenv("API_BASE_URL", "http://localhost:8000")
 _TIMEOUT_GET = 5.0
 _TIMEOUT_POST = 10.0
 
+# ADR-062: the acting profile, set once per Streamlit rerun from
+# st.session_state["current_user_id"]. Attached as the `user_id` query param on
+# the calls whose backend endpoints resolve it via the identity seam. This is the
+# client-side mirror of the single seam: one place sets it, callers don't repeat it.
+_CURRENT_USER_ID: str | None = None
+
+
+def set_user_id(user_id: str | None) -> None:
+    global _CURRENT_USER_ID
+    _CURRENT_USER_ID = str(user_id) if user_id is not None else None
+
+
+def _user_params(extra: dict | None = None) -> dict:
+    params = dict(extra or {})
+    if _CURRENT_USER_ID is not None:
+        params["user_id"] = _CURRENT_USER_ID
+    return params
+
 
 def start_workflow(
     resume_id: str,
@@ -23,6 +41,7 @@ def start_workflow(
 ) -> dict:
     r = httpx.post(
         f"{BASE_URL}/workflows",
+        params=_user_params(),
         json={
             "resume_id": resume_id,
             "search_criteria": search_criteria,
@@ -52,7 +71,7 @@ def submit_scoring_selection(workflow_id: str, selected_job_ids: list[str]) -> d
 
 
 def get_config() -> dict:
-    r = httpx.get(f"{BASE_URL}/config", timeout=_TIMEOUT_GET)
+    r = httpx.get(f"{BASE_URL}/config", params=_user_params(), timeout=_TIMEOUT_GET)
     r.raise_for_status()
     return r.json()
 
@@ -60,6 +79,7 @@ def get_config() -> dict:
 def put_config(key: str, value: object) -> dict:
     r = httpx.put(
         f"{BASE_URL}/config",
+        params=_user_params(),
         json={"key": key, "value": value},
         timeout=_TIMEOUT_POST,
     )
@@ -86,7 +106,42 @@ def reload_config() -> dict:
 
 def get_providers() -> dict:
     """Return registered providers + models + current per-agent assignment (ADR-053)."""
-    r = httpx.get(f"{BASE_URL}/config/providers", timeout=_TIMEOUT_GET)
+    r = httpx.get(f"{BASE_URL}/config/providers", params=_user_params(), timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
+# ── ADR-062: profile management ──────────────────────────────────────────────
+
+def list_users() -> dict:
+    """All profiles (default user 0 first). Backs the sidebar profile selector."""
+    r = httpx.get(f"{BASE_URL}/users", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_user(name: str, note: str | None = None) -> dict:
+    """Create a profile; returns the new user with its assigned id."""
+    r = httpx.post(
+        f"{BASE_URL}/users",
+        json={"name": name, "note": note},
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def upload_resume(user_id: int | str, file_bytes: bytes, filename: str) -> dict:
+    """Upload + parse a PDF resume for a profile; returns the new resume id.
+
+    Parsing may run the Claude enhancement pass, so this can take tens of
+    seconds — use the generous tailoring-class timeout.
+    """
+    r = httpx.post(
+        f"{BASE_URL}/users/{user_id}/resume",
+        files={"file": (filename, file_bytes, "application/pdf")},
+        timeout=_TIMEOUT_TAILOR,
+    )
     r.raise_for_status()
     return r.json()
 

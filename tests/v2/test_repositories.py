@@ -8,8 +8,10 @@ from app.repositories.database import init_db, purge_old_data, utcnow_iso
 from app.repositories.decision_repository import DecisionRepository
 from app.repositories.memory_repository import MemoryRepository
 from app.repositories.observability_repository import ObservabilityRepository
+from app.repositories.resume_repository import ResumeRepository
 from app.repositories.score_repository import ScoreRepository
 from app.repositories.step_repository import StepRepository
+from app.repositories.user_repository import UserRepository
 from app.repositories.workflow_repository import WorkflowRepository
 
 
@@ -23,7 +25,7 @@ def db_path(tmp_path):
 # ─── Schema / init ───────────────────────────────────────────────────────────
 
 _EXPECTED_TABLES = {
-    "workflow_runs", "jobs", "resumes", "job_scores",
+    "users", "workflow_runs", "jobs", "resumes", "job_scores",
     "review_rounds", "resume_reviews", "career_advice", "interview_prep",
     "tailored_resumes", "reports", "human_decisions", "user_config",
     "step_executions", "agent_events", "llm_calls", "run_metrics",
@@ -31,7 +33,7 @@ _EXPECTED_TABLES = {
 }
 
 
-def test_all_18_tables_created(db_path):
+def test_all_tables_created(db_path):
     conn = sqlite3.connect(str(db_path))
     rows = conn.execute(
         "SELECT name FROM sqlite_master WHERE type='table'"
@@ -39,6 +41,79 @@ def test_all_18_tables_created(db_path):
     conn.close()
     created = {r[0] for r in rows}
     assert _EXPECTED_TABLES == created
+
+
+# ─── ADR-062: multi-user migration ───────────────────────────────────────────
+
+def _columns(db_path, table):
+    conn = sqlite3.connect(str(db_path))
+    cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+    conn.close()
+    return cols
+
+
+def test_default_user_zero_seeded(db_path):
+    conn = sqlite3.connect(str(db_path))
+    row = conn.execute("SELECT id, name FROM users WHERE id = 0").fetchone()
+    conn.close()
+    assert row is not None
+    assert row[0] == 0
+    assert row[1] == "Primary"
+
+
+def test_resumes_and_memory_have_user_id(db_path):
+    assert "user_id" in _columns(db_path, "resumes")
+    assert "user_id" in _columns(db_path, "memory_items")
+
+
+def test_new_users_autoincrement_from_one(db_path):
+    """User 0 is reserved; the first profile created afterward gets id 1."""
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "INSERT INTO users (name, note, created_at) VALUES (?, ?, ?)",
+        ("Son", "new-grad SWE", utcnow_iso()),
+    )
+    conn.commit()
+    new_id = conn.execute("SELECT id FROM users WHERE name = 'Son'").fetchone()[0]
+    conn.close()
+    assert new_id == 1
+
+
+def test_backfill_assigns_preexisting_rows_to_user_zero(db_path):
+    """Rows inserted with a NULL user_id (legacy data) are ported to '0' on the
+    next init_db run. Idempotent: re-running does not change already-ported rows."""
+    conn = sqlite3.connect(str(db_path))
+    now = utcnow_iso()
+    # Simulate legacy rows with no owner.
+    conn.execute(
+        "INSERT INTO resumes (id, file_name, raw_text, version, is_active, created_at) "
+        "VALUES ('legacy_resume', 'old.pdf', 'text', 1, 1, ?)", (now,),
+    )
+    conn.execute(
+        "INSERT INTO memory_items (id, memory_type, memory_value_json, created_at, updated_at) "
+        "VALUES ('legacy_mem', 'pref', '{}', ?, ?)", (now, now),
+    )
+    conn.execute(
+        "INSERT INTO workflow_runs (id, workflow_type, status, state_json, started_at, updated_at) "
+        "VALUES ('legacy_wf', 'full', 'completed', '{}', ?, ?)", (now, now),
+    )
+    conn.execute(
+        "INSERT INTO user_config (id, config_key, config_value_json, created_at, updated_at) "
+        "VALUES ('legacy_cfg', 'search.roles', '[]', ?, ?)", (now, now),
+    )
+    conn.commit()
+    conn.close()
+
+    init_db(db_path)  # re-run triggers the backfill
+
+    conn = sqlite3.connect(str(db_path))
+    assert conn.execute("SELECT user_id FROM resumes WHERE id='legacy_resume'").fetchone()[0] == "0"
+    assert conn.execute("SELECT user_id FROM memory_items WHERE id='legacy_mem'").fetchone()[0] == "0"
+    assert conn.execute("SELECT user_id FROM workflow_runs WHERE id='legacy_wf'").fetchone()[0] == "0"
+    assert conn.execute("SELECT user_id FROM user_config WHERE id='legacy_cfg'").fetchone()[0] == "0"
+    # Idempotent: still exactly one user-0 row after repeated init.
+    assert conn.execute("SELECT COUNT(*) FROM users WHERE id=0").fetchone()[0] == 1
+    conn.close()
 
 
 def test_utcnow_iso_format():
@@ -179,26 +254,111 @@ def test_run_metrics_create_and_update(db_path):
     assert row[2] == 5   # total_llm_calls
 
 
-# ─── MemoryRepository ────────────────────────────────────────────────────────
+# ─── MemoryRepository (ADR-062: user-scoped) ─────────────────────────────────
 
 def test_memory_upsert_and_fetch(db_path):
     repo = MemoryRepository(db_path)
-    repo.upsert("mem_001", "preferred_role", "role",
+    repo.upsert("mem_001", "0", "preferred_role", "role",
                 {"value": "Principal Architect"}, confidence=90)
-    results = repo.get_by_type("preferred_role")
+    results = repo.get_by_type("0", "preferred_role")
     assert len(results) == 1
     assert results[0]["memory_key"] == "role"
 
 
 def test_memory_upsert_updates_existing(db_path):
     repo = MemoryRepository(db_path)
-    repo.upsert("mem_002", "rejected_pattern", "pure_ic",
+    repo.upsert("mem_002", "0", "rejected_pattern", "pure_ic",
                 {"value": "No architecture influence"}, confidence=70)
-    repo.upsert("mem_002", "rejected_pattern", "pure_ic",
+    repo.upsert("mem_002", "0", "rejected_pattern", "pure_ic",
                 {"value": "No architecture influence"}, confidence=85)
-    results = repo.get_by_type("rejected_pattern")
+    results = repo.get_by_type("0", "rejected_pattern")
     assert len(results) == 1
     assert results[0]["confidence"] == 85
+
+
+def test_memory_is_isolated_per_user(db_path):
+    """A profile never sees another profile's memory — the core ADR-062 invariant."""
+    repo = MemoryRepository(db_path)
+    repo.upsert("mem_a", "0", "preferred_role", "role",
+                {"value": "Architect"}, confidence=90)
+    repo.upsert("mem_b", "1", "preferred_role", "role",
+                {"value": "New-grad SWE"}, confidence=90)
+    user0 = repo.get_by_type("0", "preferred_role")
+    user1 = repo.get_by_type("1", "preferred_role")
+    assert len(user0) == 1 and user0[0]["memory_value_json"]
+    assert len(user1) == 1
+    assert "Architect" in user0[0]["memory_value_json"]
+    assert "New-grad SWE" in user1[0]["memory_value_json"]
+    # get_by_key is likewise scoped
+    assert repo.get_by_key("0", "preferred_role", "role") is not None
+    assert repo.get_by_key("2", "preferred_role", "role") is None
+
+
+# ─── UserRepository (ADR-062) ────────────────────────────────────────────────
+
+def test_user_create_returns_id_one_then_two(db_path):
+    repo = UserRepository(db_path)
+    first = repo.create("Son", note="new-grad SWE")
+    second = repo.create("Friend")
+    assert first == 1   # 0 is the pre-seeded default
+    assert second == 2
+
+
+def test_user_list_includes_default_first(db_path):
+    repo = UserRepository(db_path)
+    repo.create("Son")
+    users = repo.list_all()
+    assert [u["id"] for u in users] == [0, 1]
+    assert users[0]["name"] == "Primary"
+
+
+def test_user_get_and_exists(db_path):
+    repo = UserRepository(db_path)
+    new_id = repo.create("Son", note="note here")
+    got = repo.get_by_id(new_id)
+    assert got["name"] == "Son"
+    assert got["note"] == "note here"
+    assert repo.exists(new_id) is True
+    assert repo.exists(0) is True       # default user
+    assert repo.exists(999) is False
+    # string ids resolve too (the identity seam passes decimal strings)
+    assert repo.exists("0") is True
+
+
+# ─── ResumeRepository (ADR-062: per-user) ────────────────────────────────────
+
+def _make_resume(repo, resume_id, user_id, text_hash="h"):
+    repo.create(resume_id=resume_id, user_id=user_id, file_name="r.pdf",
+                raw_text="text", parsed_profile={"resume_id": resume_id},
+                raw_text_hash=text_hash)
+
+
+def test_resume_active_is_per_user(db_path):
+    """Creating a resume only deactivates the same user's prior resumes."""
+    repo = ResumeRepository(db_path)
+    _make_resume(repo, "u0_r1", "0")
+    _make_resume(repo, "u1_r1", "1")
+    _make_resume(repo, "u0_r2", "0")  # deactivates u0_r1 only
+    assert repo.get_active("0")["id"] == "u0_r2"
+    assert repo.get_active("1")["id"] == "u1_r1"   # user 1 untouched
+
+
+def test_resume_hash_cache_is_per_user(db_path):
+    repo = ResumeRepository(db_path)
+    _make_resume(repo, "u0_r1", "0", text_hash="same")
+    _make_resume(repo, "u1_r1", "1", text_hash="same")
+    assert repo.get_by_raw_text_hash("0", "same")["id"] == "u0_r1"
+    assert repo.get_by_raw_text_hash("1", "same")["id"] == "u1_r1"
+    assert repo.get_by_raw_text_hash("2", "same") is None
+
+
+def test_resume_list_by_user(db_path):
+    repo = ResumeRepository(db_path)
+    _make_resume(repo, "u0_r1", "0")
+    _make_resume(repo, "u0_r2", "0")
+    _make_resume(repo, "u1_r1", "1")
+    assert {r["id"] for r in repo.list_by_user("0")} == {"u0_r1", "u0_r2"}
+    assert {r["id"] for r in repo.list_by_user("1")} == {"u1_r1"}
 
 
 # ─── purge_old_data ──────────────────────────────────────────────────────────

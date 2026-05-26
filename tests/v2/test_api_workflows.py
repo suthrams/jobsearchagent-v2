@@ -264,6 +264,60 @@ def test_get_workflow_not_found(client):
     assert body["detail"]["error"] == "workflow_not_found"
 
 
+def test_start_workflow_tags_run_with_resolved_user_id():
+    """ADR-062: the user_id query param is resolved by the seam and written into
+    the initial state that register_run persists to workflow_runs."""
+    saver = MemorySaver()
+    deps = _make_deps(checkpointer=saver)
+    deps.workflow_repo.get_by_id.return_value = None  # so register_run reaches create()
+    graph = build_graph(deps)
+    app.dependency_overrides[get_graph] = lambda: graph
+    try:
+        with TestClient(app) as c:
+            resp = c.post(
+                "/workflows",
+                params={"user_id": "7"},
+                json={"resume_id": "res-001",
+                      "search_criteria": {"roles": ["Staff Engineer"]}},
+            )
+            assert resp.status_code == 202
+            # register_run runs in the threadpool; wait for the persist call.
+            for _ in range(80):
+                if deps.workflow_repo.create.called:
+                    break
+                time.sleep(0.05)
+            assert deps.workflow_repo.create.called
+            persisted_state = deps.workflow_repo.create.call_args.args[2]
+            assert persisted_state["user_id"] == "7"
+    finally:
+        app.dependency_overrides.clear()
+
+
+def test_start_workflow_defaults_user_id_to_zero():
+    """No user_id param -> the run is tagged to the default profile '0'."""
+    saver = MemorySaver()
+    deps = _make_deps(checkpointer=saver)
+    deps.workflow_repo.get_by_id.return_value = None
+    graph = build_graph(deps)
+    app.dependency_overrides[get_graph] = lambda: graph
+    try:
+        with TestClient(app) as c:
+            resp = c.post(
+                "/workflows",
+                json={"resume_id": "res-001",
+                      "search_criteria": {"roles": ["Staff Engineer"]}},
+            )
+            assert resp.status_code == 202
+            for _ in range(80):
+                if deps.workflow_repo.create.called:
+                    break
+                time.sleep(0.05)
+            assert deps.workflow_repo.create.called
+            assert deps.workflow_repo.create.call_args.args[2]["user_id"] == "0"
+    finally:
+        app.dependency_overrides.clear()
+
+
 def _manual_state(thread_id: str) -> dict:
     s = _initial_state(thread_id)
     s["effective_config"] = {"scoring": {"career_track": "all", "manual_selection": True}}
