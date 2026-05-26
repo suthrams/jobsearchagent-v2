@@ -5,7 +5,7 @@ import json
 import logging
 from typing import Callable
 
-from app.repositories.database import utcnow_iso
+from app.repositories.database import DEFAULT_USER_ID, utcnow_iso
 from app.repositories.resume_repository import ResumeRepository
 from app.schemas.resume_profile import ResumeProfile
 from app.services.observability_service import ObservabilityService
@@ -61,6 +61,7 @@ def make_load_resume_node(
             )
         profile = resume_parser.parse_pdf(
             str(resume_id), file_name=_resume_path.name, workflow_id=workflow_id,
+            user_id=state.get("user_id") or DEFAULT_USER_ID,
         )
         logger.info("load_resume: parsed PDF %s for workflow %s", resume_id, workflow_id)
 

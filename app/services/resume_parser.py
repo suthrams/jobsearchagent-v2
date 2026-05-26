@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from app.repositories.database import utcnow_iso
+from app.repositories.database import DEFAULT_USER_ID, utcnow_iso
 from app.repositories.resume_repository import ResumeRepository
 from app.schemas.resume_profile import (
     CertificationEntry,
@@ -75,7 +75,8 @@ class ResumeParser:
         self._enhance_fn = enhance_fn
 
     def parse_pdf(
-        self, file_path: str, file_name: str, workflow_id: str | None = None
+        self, file_path: str, file_name: str, workflow_id: str | None = None,
+        user_id: str = DEFAULT_USER_ID,
     ) -> ResumeProfile:
         """Extract text from PDF, check cache, parse, and return ResumeProfile.
 
@@ -84,16 +85,22 @@ class ResumeParser:
         parses outside a workflow (e.g. resume upload endpoint) — cost is still
         captured by the provider's thread-local last_usage but won't be linked
         to a run.
+
+        ``user_id`` (ADR-062) is the owning profile; it scopes the resume's
+        ownership and the raw_text-hash cache. Defaults to the pre-existing-data
+        profile for ad-hoc/test parses.
         """
         try:
             from pdfminer.high_level import extract_text  # noqa: PLC0415
             raw_text: str = extract_text(file_path) or ""
         except Exception as exc:
             raise ResumeParseError(f"Failed to read PDF '{file_path}': {exc}") from exc
-        return self.parse_text(raw_text, file_name, workflow_id=workflow_id)
+        return self.parse_text(raw_text, file_name, workflow_id=workflow_id,
+                               user_id=user_id)
 
     def parse_text(
-        self, raw_text: str, file_name: str, workflow_id: str | None = None
+        self, raw_text: str, file_name: str, workflow_id: str | None = None,
+        user_id: str = DEFAULT_USER_ID,
     ) -> ResumeProfile:
         """Parse pre-extracted text. Safe to call in tests without a real PDF."""
         if not raw_text or len(raw_text.strip()) < 50:
@@ -103,7 +110,7 @@ class ResumeParser:
 
         text_hash = hashlib.sha256(raw_text.encode("utf-8")).hexdigest()
 
-        cached = self._repo.get_by_raw_text_hash(text_hash)
+        cached = self._repo.get_by_raw_text_hash(user_id, text_hash)
         if cached:
             logger.info("ResumeParser: cache hit for hash %.8s", text_hash)
             return ResumeProfile.model_validate(json.loads(cached["parsed_profile_json"]))
@@ -146,6 +153,7 @@ class ResumeParser:
 
         self._repo.create(
             resume_id=resume_id,
+            user_id=user_id,
             file_name=file_name,
             raw_text=raw_text,
             raw_text_hash=text_hash,

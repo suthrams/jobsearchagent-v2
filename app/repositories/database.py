@@ -12,6 +12,11 @@ from pathlib import Path
 
 DEFAULT_DB_PATH = Path("data/v2.db")
 
+# ADR-062: the profile that owns all pre-existing (single-user) data. Also the
+# fallback the identity seam resolves to when no user is supplied. Centralized
+# here so the "0" literal lives in exactly one place.
+DEFAULT_USER_ID = "0"
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,   -- ADR-062: 0 reserved for pre-existing data; new profiles auto-increment from 1
