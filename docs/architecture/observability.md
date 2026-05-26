@@ -535,6 +535,14 @@ total_cost
 total_duration_ms
 ```
 
+### Per Profile (ADR-062)
+
+Cost is attributable per profile. `llm_calls` carries no `user_id`; ownership is
+the `user_id` of the `workflow_runs` row its `workflow_run_id` points at. The Cost
+Dashboard scopes its aggregates to the active profile by joining through
+`workflow_runs` (orphan calls with no run row COALESCE to the default profile
+`"0"`), with a toggle to view system-wide spend across every profile.
+
 ---
 
 ## 15. Quality Metrics

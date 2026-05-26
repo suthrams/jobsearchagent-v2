@@ -496,7 +496,7 @@ The cost-saving payoff comes for free via the existing dedup logic: `JobDiscover
 | Global ReAct | Unpredictable cost and latency at scale; single-shot structured output is sufficient for all non-research tasks |
 | Fully autonomous agents | Users must own career decisions; the system informs, it does not decide |
 | Dynamic planning (LLM-chosen next step) | Adds failure modes without proportional benefit when the plan is known in advance |
-| Multi-agent protocol (A2A messaging) | Premature complexity for a single-user sequential workflow; orchestrator-mediated is sufficient (ADR-009) |
+| Multi-agent protocol (A2A messaging) | Premature complexity for a sequential, single-run workflow; orchestrator-mediated is sufficient (ADR-009) |
 
 ---
 

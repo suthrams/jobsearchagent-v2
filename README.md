@@ -16,6 +16,8 @@ Built as a real-world exploration of **production agentic AI patterns**: statefu
 8. **Tailors** your resume with evidence-bound generation + fidelity guardrail
 9. **Tracks** every decision, reasoning step, and cost in SQLite
 
+Serves **multiple profiles** from one install (ADR-062) — each with its own resume, search defaults, config, memory, cost view, and history. Pick a profile in the sidebar; no login (cooperative isolation, sequential use).
+
 ## Architecture
 
 ```mermaid
@@ -116,7 +118,7 @@ ADZUNA_APP_ID=your_app_id
 ADZUNA_APP_KEY=your_api_key
 ```
 
-Place your resume PDF at `resume.pdf` in the project root.
+Place your resume PDF at `resume.pdf` in the project root, or upload one per profile via the UI's **Profiles → Add profile** wizard (ADR-062).
 
 ### 4. Run
 

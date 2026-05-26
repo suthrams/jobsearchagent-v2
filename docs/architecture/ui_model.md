@@ -119,6 +119,36 @@ Export
 
 ---
 
+## 6.0 Profile selector + onboarding (ADR-062)
+
+### Purpose
+
+Pick whose search this is, and add new profiles. The app serves multiple
+job-seekers from one install under sequential use.
+
+### UI Elements
+
+* a sidebar **Profile** dropdown (over `GET /users`) that sets
+  `st.session_state["current_user_id"]` and is mirrored onto the API client and
+  the `db_reader` read path
+* an **Add profile** button opening a 3-step onboarding wizard: identity
+  (name + optional note -> `POST /users`) -> resume upload (scoped to the new
+  profile) -> default roles/locations (saved as that profile's `user_config`)
+
+### Behavior
+
+* Switching profiles re-scopes every read view (history, analytics, cost) and the
+  Start New Run resume picker, and tags new runs with the selected owner.
+* The default profile (id 0) owns all pre-existing data.
+
+### Rule
+
+* Identity flows through ONE client seam (`api_client.set_user_id`) mirroring the
+  backend `get_current_user_id` dependency — views never attach `user_id`
+  themselves. This is the cooperative-isolation model (see §11).
+
+---
+
 ## 6.1 Home / Start Screen
 
 ### Purpose
@@ -428,6 +458,13 @@ Rules:
 * no hidden reasoning
 * show unsupported claim warnings
 * show fidelity risks
+
+**Multi-user isolation is cooperative, not enforced (ADR-062).** The profile
+selector decides *which* profile's data a view reads and writes; with no
+authentication it is not an access-control boundary. The UI must not present it
+as one. The single identity seam (`api_client.set_user_id` /
+`get_current_user_id`) is where real enforcement attaches if auth is added later.
+See `security.model.md` §4.1.
 
 ---
 
