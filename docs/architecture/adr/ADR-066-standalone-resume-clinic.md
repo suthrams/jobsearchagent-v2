@@ -6,6 +6,11 @@ Accepted (2026-05-27). Implementation strategy documented below (see
 "Implementation Plan"); not yet built. Sequenced as **option (a)** — LLM-only v1
 with the `RoleDataProvider` seam stubbed; ESCO/O*NET grounding is a fast-follow.
 
+> **Visual strategy walkthrough:**
+> [`docs/architecture/resume_clinic_strategy.md`](../resume_clinic_strategy.md)
+> (diagrams: the two surfaces, a clinic run, the data model, the role-data seam,
+> and the build sequence). Build is **deferred** while Article 9 is written.
+
 **Decisions locked in design review (2026-05-27):**
 - Overhaul output = **structured suggestions** (reorder plan + per-bullet rewrites
   with claim types), reusing the tailoring model/renderer. A **full regenerated
