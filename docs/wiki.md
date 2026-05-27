@@ -19,13 +19,8 @@
 9. [v2 Architecture — Performance, Patterns & Principles](#9-v2-architecture--performance-patterns--principles)
 10. [Architecture Decision Records](#10-architecture-decision-records)
 11. [Build Phases](#11-build-phases)
-12. [v1 Reference — Entry Points & Diagrams](#12-v1-reference--entry-points--diagrams)
-13. [v1 Reference — Agents](#13-v1-reference--agents)
-14. [v1 Reference — Claude Layer](#14-v1-reference--claude-layer)
-15. [v1 Reference — Models](#15-v1-reference--models)
-16. [v1 Reference — Scrapers](#16-v1-reference--scrapers)
-17. [v1 Reference — Storage & Prompts](#17-v1-reference--storage--prompts)
-18. [Project Maintenance](#18-project-maintenance)
+12. [Shared libraries from v1 (ADR-063)](#12-shared-libraries-from-v1-adr-063)
+13. [Project Maintenance](#13-project-maintenance)
 
 ---
 
@@ -326,84 +321,25 @@ Each phase has a dedicated deep-dive document:
 
 ---
 
-## 12. v1 Reference (retired — ADR-063)
+## 12. Shared libraries from v1 (ADR-063)
 
-> **The v1 runtime was removed in ADR-063.** The pages in sections 12-17 below
-> describe code that no longer exists in the tree (recoverable from git history)
-> and are kept only as a historical record. The exceptions are the modules v2
-> still imports as shared libraries — `models/{job,config_schema,filters}.py` and
-> `scrapers/{base,adzuna,linkedin}.py` — whose docs (sections 15-16) remain
-> accurate for live code. `agents/`, `claude/`, `storage/`, `prompts/`,
-> `scrapers/ladders.py`, `models/profile.py`, `main.py`, and `dashboard.py` are gone.
+> The v1 runtime was **removed** in ADR-063 — `main.py`, `dashboard.py`,
+> `agents/`, `claude/`, `storage/`, `prompts/`, `scrapers/ladders.py`, and
+> `models/profile.py` are gone (recoverable from git history). The modules below
+> are kept because v2 imports them; their docs describe live code.
 
-| Document | What it covers |
+| Document | Module (still present) |
 |---|---|
-| [main.md](main.md) | `main.py` v1 CLI — `python main.py`, `--list`, `--tailor`, `--purge`, `--dashboard` commands; scrape/score/display flow |
-| [dashboard.md](dashboard.md) | `dashboard.py` v1 Streamlit dashboard — 7 views, sidebar controls, job cards, run history, score badges |
-| [architecture.md](architecture.md) | v1 architecture Mermaid diagrams — solution overview, system layers, main run flow, cache-aside, batched fan-out, state machine, tailoring sequence, prompt-as-template, pre-filter gate, agentic patterns mind map |
+| [models/job.md](models/job.md) | `models/job.py` — `Job` / `JobSource` / `SalaryRange`, used by the scrapers |
+| [models/config_schema.md](models/config_schema.md) | `models/config_schema.py` — `AdzunaConfig` |
+| [models/filters.md](models/filters.md) | `models/filters.py` — shared title/description keyword filters (`EXCLUDED_TITLE_KEYWORDS`, `TECH_DESCRIPTION_KEYWORDS`, `RELEVANT_TITLE_KEYWORDS`) used by `JobDiscoveryService` |
+| [scrapers/base.md](scrapers/base.md) | `scrapers/base.py` — abstract base scraper |
+| [scrapers/adzuna.md](scrapers/adzuna.md) | `scrapers/adzuna.py` — wrapped by v2 `ConcurrentAdzunaScraper` |
+| [scrapers/linkedin.md](scrapers/linkedin.md) | `scrapers/linkedin.py` — built by `app/api/dependencies.py` |
 
 ---
 
-## 13. v1 Reference — Agents
-
-| Document | What it covers |
-|---|---|
-| [agents/profile_agent.md](agents/profile_agent.md) | `ProfileAgent` — PDF → structured Profile; cache-aside pattern (file mtime); pdfplumber extraction |
-| [agents/scoring_agent.md](agents/scoring_agent.md) | `ScoringAgent` — batch scoring (10 jobs/call); 3 parallel calls via ThreadPoolExecutor; prompt caching; MIN_PERSIST_SCORE filter |
-| [agents/tailoring_agent.md](agents/tailoring_agent.md) | `TailoringAgent` — single-pass resume section rewriting; output saved to `output/resumes/` |
-
----
-
-## 14. v1 Reference — Claude Layer
-
-| Document | What it covers |
-|---|---|
-| [claude/client.md](claude/client.md) | `ClaudeClient` — Anthropic SDK wrapper; all API calls routed here; operation-based settings (model, max_tokens, temperature per operation) |
-| [claude/prompt_loader.md](claude/prompt_loader.md) | `PromptLoader` — loads prompt template files, renders with keyword substitution |
-| [claude/response_parser.md](claude/response_parser.md) | `ResponseParser` — strips code fences, extracts JSON, validates against Pydantic schema |
-
----
-
-## 15. v1 Reference — Models
-
-| Document | What it covers |
-|---|---|
-| [models/job.md](models/job.md) | `Job` data model — all fields, lifecycle enums (ApplicationStatus, CareerTrack), `TrackScores` and `TrackScore` structure, `is_stale` property |
-| [models/profile.md](models/profile.md) | `Profile` model — ExperienceEntry, EducationEntry, CertificationEntry, computed `total_years_experience` |
-| [models/config_schema.md](models/config_schema.md) | Pydantic schema for `config.yaml` — all sections, defaults, validation rules |
-| [models/filters.md](models/filters.md) | Shared filter keyword lists — `EXCLUDED_TITLE_KEYWORDS`, `TECH_DESCRIPTION_KEYWORDS`, `RELEVANT_TITLE_KEYWORDS`; US state extraction logic (shared by v1 and v2) |
-
----
-
-## 16. v1 Reference — Scrapers
-
-| Document | What it covers |
-|---|---|
-| [scrapers/base.md](scrapers/base.md) | Abstract base scraper — `scrape()` interface, deduplication contract |
-| [scrapers/adzuna.md](scrapers/adzuna.md) | `AdzunaScraper` — Adzuna REST API; title × location search matrix; remote keyword searches; rate limiting |
-| [scrapers/linkedin.md](scrapers/linkedin.md) | `LinkedInScraper` — manual URL intake from `inbox/linkedin.txt`; fetch and clear pattern |
-| [scrapers/ladders.md](scrapers/ladders.md) | `LaddersScraper` — Ladders.com HTML scraping; $100k+ role focus |
-
----
-
-## 17. v1 Reference — Storage & Prompts
-
-| Document | What it covers |
-|---|---|
-| [storage/db.md](storage/db.md) | v1 SQLite schema — `jobs` table with all columns, CRUD operations, `backfill_states()`, `delete_below_threshold()` |
-| [prompts/overview.md](prompts/overview.md) | v1 prompt system overview — template format, variable substitution, prompt file organisation |
-
-**v1 prompt files** (live in `prompts/` at project root — these are the actual prompt templates):
-
-| File | What it covers |
-|---|---|
-| [../prompts/parse_resume.md](../prompts/parse_resume.md) | v1 resume extraction prompt — extracts name, headline, experience, skills, education, certifications as JSON |
-| [../prompts/score_job.md](../prompts/score_job.md) | v1 batch scoring prompt — scores IC/Architect/Management tracks (0–100) with summary and recommendation; injection defense built in |
-| [../prompts/tailor_resume.md](../prompts/tailor_resume.md) | v1 resume tailoring prompt — rewrites professional summary and experience bullets for a specific job and track; gaps analysis |
-
----
-
-## 18. Project Maintenance
+## 13. Project Maintenance
 
 | Document | What it covers |
 |---|---|

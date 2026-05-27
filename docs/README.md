@@ -60,10 +60,10 @@ because v2 imports them; these docs describe code that is still present and live
 | [scrapers/linkedin.md](scrapers/linkedin.md) | `scrapers/linkedin.py` — built by `app/api/dependencies.py` |
 | [scrapers/base.md](scrapers/base.md) | `scrapers/base.py` — base scraper |
 
-## Removed v1 documentation (historical)
+## Removed v1 documentation
 
-The pages below describe the **retired v1 runtime** — the code they document no
-longer exists in the tree (recoverable from git history before ADR-063). They are
-kept only as a historical record and do not describe the running system:
-`main.md`, `dashboard.md`, `architecture.md`, `agents/*`, `claude/*`,
-`models/profile.md`, `scrapers/ladders.md`, `storage/db.md`, `prompts/overview.md`.
+The doc pages for the retired v1 runtime were **deleted** along with the code
+(ADR-063), since they described modules that no longer exist: `main.md`,
+`dashboard.md`, `architecture.md`, `agents/*`, `claude/*`, `models/profile.md`,
+`scrapers/ladders.md`, `storage/db.md`, `prompts/*`. They remain recoverable from
+git history before the ADR-063 commit if ever needed.
