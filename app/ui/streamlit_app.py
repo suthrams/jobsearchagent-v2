@@ -2487,6 +2487,50 @@ elif view == "Profiles":
             use_container_width=True,
         )
 
+        # ── Manage an existing profile ────────────────────────────────────────
+        _opts = {str(u["id"]): f"{u['name']}  (#{u['id']})" for u in _users}
+        _by_id = {str(u["id"]): u for u in _users}
+
+        with st.expander("Edit a profile (name / note)"):
+            _eid = st.selectbox(
+                "Profile to edit", list(_opts.keys()),
+                format_func=lambda i: _opts.get(i, i), key="edit_profile_select",
+            )
+            _cur = _by_id.get(_eid, {})
+            _new_name = st.text_input("Display name", value=_cur.get("name") or "",
+                                      key=f"edit_name_{_eid}")
+            _new_note = st.text_input("Note (optional)", value=_cur.get("note") or "",
+                                      key=f"edit_note_{_eid}")
+            if st.button("Save changes", key=f"edit_save_{_eid}"):
+                if not _new_name.strip():
+                    st.error("Display name is required.")
+                else:
+                    try:
+                        api.update_user(_eid, _new_name.strip(), _new_note.strip() or None)
+                        _cached_list_users.clear()
+                        st.success(f"Updated profile #{_eid}.")
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Could not update profile: {exc}")
+
+        with st.expander("Add a resume to a profile"):
+            _rid = st.selectbox(
+                "Profile", list(_opts.keys()),
+                format_func=lambda i: _opts.get(i, i), key="add_resume_select",
+            )
+            _rfile = st.file_uploader("Resume PDF", type=["pdf"],
+                                      key=f"add_resume_file_{_rid}")
+            if st.button("Upload resume", type="primary",
+                         disabled=_rfile is None, key=f"add_resume_btn_{_rid}"):
+                try:
+                    with st.spinner("Parsing resume (this can take a moment)…"):
+                        resp = api.upload_resume(_rid, _rfile.getvalue(), _rfile.name)
+                    st.success(f"Stored resume `{resp.get('resume_id')}` as the active "
+                               f"resume for profile #{_rid}.")
+                    st.cache_data.clear()
+                except Exception as exc:
+                    st.error(f"Resume upload failed: {exc}")
+
     st.markdown("---")
     st.subheader("Add a profile")
 

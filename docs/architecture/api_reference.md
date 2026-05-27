@@ -55,6 +55,7 @@ GET  /config                                   → effective merged config + pro
 PUT  /config                                   → upsert one user-config override (rejects protected keys)
 GET  /users                                    → list profiles (ADR-062; default user 0 first)
 POST /users                                    → create a profile, returns its assigned id (201)
+PUT  /users/{id}                               → update a profile's name / note (200)
 POST /users/{id}/resume                        → upload + parse a PDF resume for a profile (ADR-062, 201)
 ```
 
@@ -696,6 +697,21 @@ Create a profile. The id is assigned by the database (auto-increment from 1;
 ```
 
 **Errors**: `422 invalid_name` (blank name), `500 persist_failed`.
+
+### PUT /users/{id}
+
+Update a profile's display name / note (the id is never changed). Whitespace-only
+note is stored as null.
+
+**Request**
+
+```json
+{"name": "Alex", "note": "new-grad SWE, west coast"}
+```
+
+**Response — 200 OK**: `{"user": {"id": 1, "name": "Alex", "note": "...", "created_at": "..."}}`
+
+**Errors**: `404 unknown_user`, `422 invalid_name` (blank name), `500 persist_failed`.
 
 ### POST /users/{id}/resume
 

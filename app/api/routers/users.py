@@ -34,6 +34,12 @@ class CreateUserRequest(BaseModel):
     note: str | None = Field(default=None, max_length=500)
 
 
+class UpdateUserRequest(BaseModel):
+    """Edit a profile's display name / note. The id is never changed."""
+    name: str = Field(min_length=1, max_length=120)
+    note: str | None = Field(default=None, max_length=500)
+
+
 @router.get("")
 def list_users(repo: UserRepository = Depends(get_user_repo)) -> dict:
     """All profiles, default user (id 0) first. Backs the UI profile selector."""
@@ -63,6 +69,35 @@ def create_user(
         ) from exc
     created = repo.get_by_id(new_id)
     return {"user": created}
+
+
+@router.put("/{user_id}")
+def update_user(
+    user_id: int,
+    body: UpdateUserRequest,
+    repo: UserRepository = Depends(get_user_repo),
+) -> dict:
+    """Update a profile's display name / note. Returns the updated profile."""
+    if not repo.exists(user_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "unknown_user", "message": f"No profile with id {user_id}."},
+        )
+    name = body.name.strip()
+    if not name:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "invalid_name", "message": "name must not be blank."},
+        )
+    try:
+        repo.update(user_id, name, note=((body.note or "").strip() or None))
+    except Exception as exc:
+        logger.exception("update_user failed for id=%s", user_id)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "persist_failed", "message": str(exc)},
+        ) from exc
+    return {"user": repo.get_by_id(user_id)}
 
 
 @router.post("/{user_id}/resume", status_code=201)
