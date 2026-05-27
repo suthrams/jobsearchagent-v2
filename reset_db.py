@@ -17,6 +17,11 @@ DB_PATH = PROJECT_ROOT / "data" / "v2.db"
 
 # All tables owned by the v2 app (not LangGraph checkpoint tables).
 # Order matters for foreign-key integrity even though FK enforcement is off by default in SQLite.
+#
+# `users` (ADR-062) is deliberately omitted: full_reset deletes the whole DB file
+# and init_db re-seeds user 0, while partial_reset (--keep-resumes) must PRESERVE
+# users so the kept resumes' owning profiles still exist. Do not add `users` here
+# without also exempting it in partial_reset, or kept resumes would be orphaned.
 _APP_TABLES = [
     "llm_calls",
     "agent_events",
