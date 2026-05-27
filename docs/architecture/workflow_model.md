@@ -97,6 +97,14 @@ and produces higher-fidelity output.
 
 Fetch jobs using automated discovery and normalize them into a common schema.
 
+ADR-064: discovery honors the run's `search_criteria`. When `roles` are present,
+`discover_jobs` builds a per-run Adzuna scraper from the profile's roles +
+locations (via `WorkflowDependencies.adzuna_scraper_factory`) and skips the senior
+startup Adzuna (`skip_builtin_adzuna`); title relevance is derived from the role
+tokens so non-senior roles survive the gate. No roles -> the built-in startup
+scraper runs (backward compatible). Locations are one-per-line so "City, State"
+is preserved; "Remote" triggers the remote search.
+
 ---
 
 ### Inputs

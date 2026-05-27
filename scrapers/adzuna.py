@@ -42,16 +42,26 @@ class AdzunaScraper(BaseScraper):
       Budget = (len(titles) × len(locations)) + len(remote_keywords).
     """
 
-    def __init__(self, config: AdzunaConfig, titles: list[str]) -> None:
+    def __init__(self, config: AdzunaConfig, titles: list[str],
+                 relevant_keywords: list[str] | None = None,
+                 excluded_keywords: list[str] | None = None) -> None:
         """
         Args:
             config: AdzunaConfig from config.yaml (locations, radius, remote_keywords, etc.)
             titles: Job titles to search for — comes from search.titles in AppConfig,
                     the single source of truth for what roles the user is targeting.
+            relevant_keywords: ADR-064 — title-relevance allowlist. Defaults to the
+                    senior RELEVANT_TITLE_KEYWORDS. A per-run/per-profile search
+                    passes role-derived tokens so non-senior titles (e.g. cyber
+                    "Security Analyst") survive the gate.
+            excluded_keywords: ADR-064 — title-exclusion list. Defaults to
+                    EXCLUDED_TITLE_KEYWORDS. Overridable per profile.
         """
         super().__init__("adzuna")
         self.config = config
         self.titles = titles
+        self._relevant = relevant_keywords if relevant_keywords else RELEVANT_TITLE_KEYWORDS
+        self._excluded = excluded_keywords if excluded_keywords else EXCLUDED_TITLE_KEYWORDS
 
         # Read credentials from environment — set in .env
         self.app_id = os.getenv("ADZUNA_APP_ID")
@@ -205,9 +215,9 @@ class AdzunaScraper(BaseScraper):
         match any excluded keyword. Filters out noise before Claude scoring.
         """
         title_lower = title.lower()
-        if not any(kw in title_lower for kw in RELEVANT_TITLE_KEYWORDS):
+        if not any(kw in title_lower for kw in self._relevant):
             return False
-        if any(kw in title_lower for kw in EXCLUDED_TITLE_KEYWORDS):
+        if any(kw in title_lower for kw in self._excluded):
             logger.debug("Excluding title (matched exclusion list): %s", title)
             return False
         return True

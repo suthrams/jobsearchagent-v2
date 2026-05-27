@@ -69,3 +69,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-061 | [Configurable Funnel Width + On-Demand Deep Review and Interview Prep](ADR-061-configurable-funnel-width.md) | Accepted |
 | ADR-062 | [Multi-User Profiles with a Single Swappable Identity Seam](ADR-062-multi-user-profiles.md) | Accepted |
 | ADR-063 | [Retire the v1 Reference Code (Keep the Shared Scraper/Model Libraries)](ADR-063-retire-v1-reference-code.md) | Accepted |
+| ADR-064 | [Per-Profile Search Criteria Drive Discovery; Configurable Relevance Filters](ADR-064-per-profile-search-criteria-drive-discovery.md) | Accepted |

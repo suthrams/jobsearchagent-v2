@@ -1901,7 +1901,9 @@ elif view == "Start New Run":
     scoring_cfg = eff.get("scoring", {}) or {}
 
     _default_roles = ", ".join(search_cfg.get("titles", []))
-    _default_locations = ", ".join(search_cfg.get("locations", []))
+    # ADR-064: locations are one-per-line so "City, State" survives (a comma split
+    # would shatter "Atlanta, GA" into "Atlanta" + "GA").
+    _default_locations = "\n".join(search_cfg.get("locations", []))
 
     with st.expander("📋 Settings in play for this run", expanded=True):
         st.caption(
@@ -1940,9 +1942,12 @@ elif view == "Start New Run":
                 "Roles (comma-separated)",
                 value=_default_roles or "Staff Engineer, Principal Engineer",
             )
-            locations = st.text_input(
-                "Locations (comma-separated)",
+            locations = st.text_area(
+                "Locations (one per line)",
                 value=_default_locations or "Remote",
+                height=90,
+                help="One location per line, e.g. 'Atlanta, GA' on its own line. "
+                     "Use 'Remote' (its own line) for a US-wide remote search.",
             )
         with c2:
             run_threshold = st.slider(
@@ -1995,7 +2000,7 @@ elif view == "Start New Run":
 
         search_criteria = {
             "roles": [r.strip() for r in roles.split(",") if r.strip()],
-            "locations": [l.strip() for l in locations.split(",") if l.strip()],
+            "locations": [l.strip() for l in locations.splitlines() if l.strip()],
         }
         effective_config = {
             "scoring": {
@@ -2511,9 +2516,10 @@ elif view == "Profiles":
                    "them. Skippable — you can set them later in Settings.")
         with st.form("onboard_search"):
             roles = st.text_input("Roles (comma-separated)",
-                                  placeholder="Staff Engineer, Principal Engineer")
-            locations = st.text_input("Locations (comma-separated)",
-                                      placeholder="Remote, Atlanta")
+                                  placeholder="Security Analyst, SOC Analyst")
+            locations = st.text_area("Locations (one per line)",
+                                     placeholder="Atlanta, GA\nRemote", height=90,
+                                     help="One per line so 'City, State' stays intact.")
             cs1, cs2 = st.columns(2)
             save = cs1.form_submit_button("Save and finish", type="primary")
             skip = cs2.form_submit_button("Skip and finish")
@@ -2526,7 +2532,7 @@ elif view == "Profiles":
                 try:
                     api.set_user_id(str(new_uid))
                     role_list = [r.strip() for r in roles.split(",") if r.strip()]
-                    loc_list = [l.strip() for l in locations.split(",") if l.strip()]
+                    loc_list = [l.strip() for l in locations.splitlines() if l.strip()]
                     if role_list:
                         api.put_config("search.titles", role_list)
                     if loc_list:

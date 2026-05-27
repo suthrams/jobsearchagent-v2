@@ -17,6 +17,28 @@ logger = logging.getLogger(__name__)
 
 _DEFAULT_WORKERS = 5
 
+# ADR-064: stopwords dropped when deriving title-relevance tokens from a profile's
+# role list, so a per-run search keeps titles matching the searched roles.
+_ROLE_STOPWORDS = frozenset({"of", "the", "and", "for", "to", "a", "an", "in", "on", "or"})
+
+
+def relevance_tokens(roles: list[str]) -> list[str]:
+    """Lowercase word tokens across the role phrases, minus stopwords/short tokens.
+
+    e.g. ["Security Analyst", "SOC Analyst"] -> ["security", "analyst", "soc"].
+    Used as the title-relevance allowlist for a per-run Adzuna search so non-senior
+    roles are not filtered out by the senior default keyword list.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for role in roles or []:
+        for raw in str(role).lower().split():
+            tok = "".join(c for c in raw if c.isalnum())
+            if len(tok) >= 3 and tok not in _ROLE_STOPWORDS and tok not in seen:
+                seen.add(tok)
+                out.append(tok)
+    return out
+
 
 class ConcurrentAdzunaScraper:
     """Wraps AdzunaScraper with concurrent fetching and no URL resolution overhead."""
@@ -71,11 +93,20 @@ class ConcurrentAdzunaScraper:
         return jobs
 
     @classmethod
-    def make(cls, adzuna_config, titles: list[str], max_workers: int = _DEFAULT_WORKERS):
-        """Instantiate the v1 AdzunaScraper and wrap it. Returns None on failure."""
+    def make(cls, adzuna_config, titles: list[str], max_workers: int = _DEFAULT_WORKERS,
+             relevant_keywords: list[str] | None = None,
+             excluded_keywords: list[str] | None = None):
+        """Instantiate the v1 AdzunaScraper and wrap it. Returns None on failure.
+
+        ADR-064: relevant_keywords/excluded_keywords flow through to the v1
+        scraper's title-relevance gate so a per-run search can override the
+        senior defaults (e.g. role-derived tokens for an entry-level profile).
+        """
         try:
             from scrapers.adzuna import AdzunaScraper
-            v1 = AdzunaScraper(adzuna_config, titles)
+            v1 = AdzunaScraper(adzuna_config, titles,
+                               relevant_keywords=relevant_keywords,
+                               excluded_keywords=excluded_keywords)
             return cls(v1, max_workers=max_workers)
         except Exception as exc:
             logger.warning("ConcurrentAdzunaScraper.make failed: %s", exc)

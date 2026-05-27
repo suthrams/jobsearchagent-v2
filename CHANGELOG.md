@@ -6,6 +6,15 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-26
 
+### Added — Per-profile search criteria drive discovery; role-derived relevance (ADR-064)
+
+A profile's own roles/locations now actually drive auto-discovery, so a second profile (e.g. an entry-level cybersecurity new-grad) can search its own roles instead of profile 0's senior titles.
+
+- **Discovery honors `search_criteria`.** When a run carries `roles`, `discover_jobs` builds a per-run Adzuna scraper via `WorkflowDependencies.adzuna_scraper_factory(roles, locations)` and passes `skip_builtin_adzuna=True` so the senior startup Adzuna is omitted. No roles -> built-in startup scraper (backward compatible). The scraper's title-relevance gate is now overridable (`AdzunaScraper(..., relevant_keywords, excluded_keywords)`); the per-run search derives relevance from the role tokens (`relevance_tokens()`), so non-senior titles ("Security Analyst", "SOC Analyst") survive the gate that otherwise requires senior keywords.
+- **Primary's criteria tied to profile 0.** `search.titles` / `search.locations` were already stored under user 0 in `user_config`; the mangled `search.locations` (comma-split had shattered "Atlanta, GA" into "Atlanta" + "GA") was repaired, and the Start New Run + onboarding location inputs are now **one-per-line** so "City, State" is preserved. "Remote" on its own line triggers the remote search.
+- **Scoring stays senior-tuned (ADR-064 Decision C, deferred).** Entry-level scores are modest by design; `scoring.min_match_score` (already per-profile) is the lever. A persona-aware rubric is out of scope.
+- Docs: ADR-064 + index, CLAUDE.md scraper rules, `workflow_model.md`, `config_model.md`, `user_guide.md`. Tests: 549 passed (new `tests/v2/test_adr064_discovery.py`).
+
 ### Added — Multi-user profiles with a single swappable identity seam (ADR-062)
 
 The app can now serve more than one job-seeker from one install — each profile with its own resume, search defaults, config and per-agent model overrides, learned memory, cost view, and history. Built as the simplest front door (a no-auth profile selector) that does not foreclose real authentication later: the expensive, hard-to-reverse work (the data model) is done once and is identical regardless of the eventual auth model.

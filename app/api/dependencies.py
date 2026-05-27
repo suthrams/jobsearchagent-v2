@@ -380,6 +380,37 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
         workflow_id=workflow_id,
     )
 
+    # ADR-064: per-run Adzuna scraper built from the run's search_criteria
+    # (roles + locations), so a profile's own roles drive discovery instead of the
+    # senior startup titles. Relevance is derived from the role tokens so non-senior
+    # titles survive the gate. "Remote" in the locations list triggers a remote
+    # search (no location filter) with the roles as keywords. Returns None when
+    # creds are missing or no roles were given (caller falls back to the built-in).
+    from app.services.concurrent_adzuna_scraper import ConcurrentAdzunaScraper, relevance_tokens
+    from models.config_schema import AdzunaConfig as _AdzunaConfig
+    _adzuna_raw = config_dict.get("scrapers", {}).get("adzuna", {})
+
+    def _adzuna_factory(roles: list[str], locations: list[str]):
+        if not roles:
+            return None
+        if not (os.getenv("ADZUNA_APP_ID") and os.getenv("ADZUNA_APP_KEY")):
+            return None
+        try:
+            base = _AdzunaConfig(**_adzuna_raw)
+            locs = locations or list(base.locations)
+            physical = [l for l in locs if l.strip().lower() != "remote"]
+            wants_remote = any(l.strip().lower() == "remote" for l in locs) or not physical
+            cfg = base.model_copy(update={
+                "locations": physical or list(base.locations),
+                "remote_keywords": list(roles) if wants_remote else [],
+            })
+            return ConcurrentAdzunaScraper.make(
+                cfg, list(roles), relevant_keywords=relevance_tokens(roles),
+            )
+        except Exception as exc:
+            logger.warning("adzuna_scraper_factory failed: %s", exc)
+            return None
+
     return WorkflowDependencies(
         research_agent=research,
         scoring_agent=scoring,
@@ -402,6 +433,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
         observability=obs,
         checkpointer=checkpointer,
         custom_url_scraper_factory=custom_url_factory,
+        adzuna_scraper_factory=_adzuna_factory,
     )
 
 
