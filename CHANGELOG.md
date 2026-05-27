@@ -6,6 +6,15 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-26
 
+### Added — Experience-targeted discovery: years-of-experience cap + senior exclusion (ADR-065)
+
+Per-profile, opt-in levers so an entry-level profile can target early-career roles. All off by default (Primary unaffected).
+
+- **Years-of-experience cap (`search.max_years_experience`).** A deterministic regex (`app/services/experience_filter.py::min_required_years`) parses each posting's description for the lowest stated requirement ("5+ years", "3-5 years", "minimum of 2 years", "entry level"/"new grad" -> 0); `JobDiscoveryService.discover()` drops postings above the cap. Postings with no detectable experience are kept (mirrors salary's ignore_if_missing). No LLM cost. `0`/`None` = off; default cap for a new entry-level profile is 2.
+- **Senior exclusion (`search.exclude_senior`).** When on, the per-run Adzuna search passes a curated `SENIOR_TERMS` set as Adzuna's `what_exclude` (drop at the source; `AdzunaScraper` now emits `what_exclude`) and adds the same terms to the per-run title gate.
+- Wiring: `discover_jobs` reads both from `effective_config.search`, passes the cap to `discover()` and `exclude_senior` to `adzuna_scraper_factory(roles, locations, exclude_senior)`. Both knobs are on the Start New Run form and persist as profile defaults via "Save these settings as my defaults".
+- Scoring stays senior-tuned (ADR-064 Decision C deferred). Docs: ADR-065 + index, CLAUDE.md, config_model, workflow_model, user_guide, config.example. Tests: 562 passed (new `tests/v2/test_adr065_experience_filter.py`).
+
 ### Added — Per-profile search criteria drive discovery; role-derived relevance (ADR-064)
 
 A profile's own roles/locations now actually drive auto-discovery, so a second profile (e.g. an entry-level cybersecurity new-grad) can search its own roles instead of profile 0's senior titles.

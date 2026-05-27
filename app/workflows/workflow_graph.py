@@ -86,10 +86,11 @@ class WorkflowDependencies:
     # can attribute its LLM-fallback cost to the run. None disables custom URL
     # ingestion.
     custom_url_scraper_factory: Callable[[list[str], str], Any] | None = None
-    # ADR-064: optional per-run Adzuna scraper factory; receives (roles, locations)
-    # from the run's search_criteria and returns a scraper (or None) so a profile's
-    # own roles drive auto-discovery. None falls back to the built-in startup Adzuna.
-    adzuna_scraper_factory: Callable[[list[str], list[str]], Any] | None = None
+    # ADR-064/065: optional per-run Adzuna scraper factory; receives
+    # (roles, locations, exclude_senior) from the run's search_criteria/effective
+    # config and returns a scraper (or None) so a profile's own roles drive
+    # auto-discovery. None falls back to the built-in startup Adzuna.
+    adzuna_scraper_factory: Callable[[list[str], list[str], bool], Any] | None = None
 
 
 def build_graph(deps: WorkflowDependencies):

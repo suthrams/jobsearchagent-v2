@@ -386,11 +386,15 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     # titles survive the gate. "Remote" in the locations list triggers a remote
     # search (no location filter) with the roles as keywords. Returns None when
     # creds are missing or no roles were given (caller falls back to the built-in).
-    from app.services.concurrent_adzuna_scraper import ConcurrentAdzunaScraper, relevance_tokens
+    from app.services.concurrent_adzuna_scraper import (
+        ConcurrentAdzunaScraper, relevance_tokens, SENIOR_TERMS,
+    )
     from models.config_schema import AdzunaConfig as _AdzunaConfig
+    from models.filters import EXCLUDED_TITLE_KEYWORDS as _EXCLUDED
     _adzuna_raw = config_dict.get("scrapers", {}).get("adzuna", {})
 
-    def _adzuna_factory(roles: list[str], locations: list[str]):
+    def _adzuna_factory(roles: list[str], locations: list[str],
+                        exclude_senior: bool = False):
         if not roles:
             return None
         if not (os.getenv("ADZUNA_APP_ID") and os.getenv("ADZUNA_APP_KEY")):
@@ -404,8 +408,15 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
                 "locations": physical or list(base.locations),
                 "remote_keywords": list(roles) if wants_remote else [],
             })
+            # ADR-065: exclude senior roles at the source (what_exclude) and in the
+            # per-run title gate (EXCLUDED + SENIOR_TERMS) when the profile opts in.
+            what_exclude = SENIOR_TERMS if exclude_senior else None
+            excluded_kw = (list(_EXCLUDED) + SENIOR_TERMS) if exclude_senior else None
             return ConcurrentAdzunaScraper.make(
-                cfg, list(roles), relevant_keywords=relevance_tokens(roles),
+                cfg, list(roles),
+                relevant_keywords=relevance_tokens(roles),
+                excluded_keywords=excluded_kw,
+                what_exclude=what_exclude,
             )
         except Exception as exc:
             logger.warning("adzuna_scraper_factory failed: %s", exc)

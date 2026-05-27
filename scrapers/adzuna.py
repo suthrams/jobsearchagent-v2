@@ -44,7 +44,8 @@ class AdzunaScraper(BaseScraper):
 
     def __init__(self, config: AdzunaConfig, titles: list[str],
                  relevant_keywords: list[str] | None = None,
-                 excluded_keywords: list[str] | None = None) -> None:
+                 excluded_keywords: list[str] | None = None,
+                 what_exclude: list[str] | None = None) -> None:
         """
         Args:
             config: AdzunaConfig from config.yaml (locations, radius, remote_keywords, etc.)
@@ -62,6 +63,8 @@ class AdzunaScraper(BaseScraper):
         self.titles = titles
         self._relevant = relevant_keywords if relevant_keywords else RELEVANT_TITLE_KEYWORDS
         self._excluded = excluded_keywords if excluded_keywords else EXCLUDED_TITLE_KEYWORDS
+        # ADR-065: space-separated terms for Adzuna's what_exclude query param.
+        self._what_exclude = " ".join(what_exclude) if what_exclude else None
 
         # Read credentials from environment — set in .env
         self.app_id = os.getenv("ADZUNA_APP_ID")
@@ -141,6 +144,9 @@ class AdzunaScraper(BaseScraper):
             "full_time": 1,
             "content-type": "application/json",
         }
+
+        if self._what_exclude:
+            params["what_exclude"] = self._what_exclude
 
         if location:
             params["where"] = location

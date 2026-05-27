@@ -1979,6 +1979,21 @@ elif view == "Start New Run":
                 help="ADR-061: how many jobs to surface for triage when manual "
                      "selection is on. Default 50, ceiling 50. Ignored in auto mode.",
             )
+            # ADR-065: entry-level targeting (per profile, off by default).
+            max_years_experience = st.number_input(
+                "Max years of experience (0 = no limit)",
+                min_value=0, max_value=20,
+                value=int(search_cfg.get("max_years_experience") or 0),
+                help="ADR-065: drop postings whose description asks for more than this "
+                     "many years (e.g. 2 = target 0-2 yrs). Postings that don't state "
+                     "experience are kept. 0 disables the filter.",
+            )
+            exclude_senior = st.checkbox(
+                "Exclude senior roles",
+                value=bool(search_cfg.get("exclude_senior", False)),
+                help="ADR-065: drop senior/principal/staff/lead/director/manager/architect "
+                     "roles at the source and by title. Use for entry-level profiles.",
+            )
             persist_prefs = st.checkbox(
                 "Save these settings as my defaults for future runs",
                 value=False,
@@ -2011,6 +2026,10 @@ elif view == "Start New Run":
             },
             "search": {
                 "max_discovered": int(max_discovered),
+                # ADR-065: 0 = no limit (omit so discovery leaves the cap off).
+                **({"max_years_experience": int(max_years_experience)}
+                   if int(max_years_experience) > 0 else {}),
+                "exclude_senior": bool(exclude_senior),
             },
         }
 
@@ -2022,6 +2041,8 @@ elif view == "Start New Run":
                 api.put_config("search.max_discovered", int(max_discovered))
                 api.put_config("search.titles", search_criteria["roles"])
                 api.put_config("search.locations", search_criteria["locations"])
+                api.put_config("search.max_years_experience", int(max_years_experience))
+                api.put_config("search.exclude_senior", bool(exclude_senior))
                 st.session_state.config_cache = None  # invalidate
             except Exception as exc:
                 st.warning(f"Settings save failed (run will still start): {exc}")

@@ -21,6 +21,14 @@ _DEFAULT_WORKERS = 5
 # role list, so a per-run search keeps titles matching the searched roles.
 _ROLE_STOPWORDS = frozenset({"of", "the", "and", "for", "to", "a", "an", "in", "on", "or"})
 
+# ADR-065: curated seniority terms. When a profile sets search.exclude_senior, these
+# are passed to Adzuna's what_exclude (drop at the source) and added to the per-run
+# title-exclusion gate (drop senior-titled results that slip through).
+SENIOR_TERMS = [
+    "senior", "principal", "staff", "lead", "director", "vp", "vice president",
+    "head of", "manager", "architect",
+]
+
 
 def relevance_tokens(roles: list[str]) -> list[str]:
     """Lowercase word tokens across the role phrases, minus stopwords/short tokens.
@@ -95,18 +103,22 @@ class ConcurrentAdzunaScraper:
     @classmethod
     def make(cls, adzuna_config, titles: list[str], max_workers: int = _DEFAULT_WORKERS,
              relevant_keywords: list[str] | None = None,
-             excluded_keywords: list[str] | None = None):
+             excluded_keywords: list[str] | None = None,
+             what_exclude: list[str] | None = None):
         """Instantiate the v1 AdzunaScraper and wrap it. Returns None on failure.
 
         ADR-064: relevant_keywords/excluded_keywords flow through to the v1
         scraper's title-relevance gate so a per-run search can override the
         senior defaults (e.g. role-derived tokens for an entry-level profile).
+        ADR-065: what_exclude is passed to Adzuna's query so senior terms are
+        dropped at the source.
         """
         try:
             from scrapers.adzuna import AdzunaScraper
             v1 = AdzunaScraper(adzuna_config, titles,
                                relevant_keywords=relevant_keywords,
-                               excluded_keywords=excluded_keywords)
+                               excluded_keywords=excluded_keywords,
+                               what_exclude=what_exclude)
             return cls(v1, max_workers=max_workers)
         except Exception as exc:
             logger.warning("ConcurrentAdzunaScraper.make failed: %s", exc)

@@ -31,6 +31,16 @@ def make_discover_jobs_node(
         custom_urls: list[str] = list(state.get("custom_urls") or [])
         errors = list(state.get("errors") or [])
 
+        # ADR-065: per-profile experience targeting (off unless set).
+        _search_cfg: dict = (state.get("effective_config") or {}).get("search") or {}
+        max_years = _search_cfg.get("max_years_experience")
+        try:
+            # 0 (and None) mean "no limit" — the filter is off.
+            max_years = int(max_years) or None
+        except (TypeError, ValueError):
+            max_years = None
+        exclude_senior = bool(_search_cfg.get("exclude_senior", False))
+
         # Per-run scrapers: build one CustomUrlScraper if URLs were provided.
         extra_scrapers: list[Any] = []
         custom_scraper = None
@@ -52,7 +62,7 @@ def make_discover_jobs_node(
         skip_builtin_adzuna = False
         if roles and adzuna_scraper_factory is not None:
             try:
-                adzuna_scraper = adzuna_scraper_factory(roles, locations)
+                adzuna_scraper = adzuna_scraper_factory(roles, locations, exclude_senior)
                 if adzuna_scraper is not None:
                     extra_scrapers.append(adzuna_scraper)
                     skip_builtin_adzuna = True
@@ -63,6 +73,7 @@ def make_discover_jobs_node(
             postings = discovery_service.discover(
                 workflow_id, search_criteria, extra_scrapers=extra_scrapers,
                 skip_builtin_adzuna=skip_builtin_adzuna,
+                max_years_experience=max_years,
             )
             # ADR-060: manual-selection mode casts a wider net (the user triages
             # before any scoring spend); otherwise cap at MAX_JOBS_PER_RUN.

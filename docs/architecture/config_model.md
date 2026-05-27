@@ -73,6 +73,7 @@ Used for:
 * preferred roles (`search.titles`/`roles`) — ADR-064: these drive the profile's Adzuna discovery
 * preferred locations (`search.locations`) — stored one-per-line so "City, State" is preserved
 * search keywords
+* experience targeting (ADR-065): `search.max_years_experience` (0 = off; drops postings asking for more years) and `search.exclude_senior` (bool; drops senior roles). Per-profile, off by default.
 * job limits (within bounds)
 * scoring preferences (`scoring.min_match_score` — the per-profile lever for non-senior personas)
 * tailoring style
