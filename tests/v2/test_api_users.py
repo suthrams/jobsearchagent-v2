@@ -61,6 +61,39 @@ def test_create_user_whitespace_name_rejected(client):
     assert resp.json()["detail"]["error"] == "invalid_name"
 
 
+# ── Update (PUT /users/{id}) ──────────────────────────────────────────────────
+
+def test_update_user_changes_name_and_note(client):
+    client.post("/users", json={"name": "Son", "note": "old"})  # -> id 1
+    resp = client.put("/users/1", json={"name": "Alex", "note": "new-grad SWE"})
+    assert resp.status_code == 200
+    user = resp.json()["user"]
+    assert user["id"] == 1
+    assert user["name"] == "Alex"
+    assert user["note"] == "new-grad SWE"
+    # Persisted: list reflects the change.
+    assert client.get("/users").json()["users"][1]["name"] == "Alex"
+
+
+def test_update_user_clears_note(client):
+    client.post("/users", json={"name": "Son", "note": "old"})
+    resp = client.put("/users/1", json={"name": "Son", "note": "   "})
+    assert resp.status_code == 200
+    assert resp.json()["user"]["note"] is None
+
+
+def test_update_user_unknown_404(client):
+    resp = client.put("/users/999", json={"name": "Ghost"})
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["error"] == "unknown_user"
+
+
+def test_update_user_blank_name_rejected(client):
+    resp = client.put("/users/0", json={"name": "   "})
+    assert resp.status_code == 422
+    assert resp.json()["detail"]["error"] == "invalid_name"
+
+
 # ── Onboarding step 2: resume upload (POST /users/{id}/resume) ────────────────
 
 class _FakeParser:

@@ -131,6 +131,17 @@ def create_user(name: str, note: str | None = None) -> dict:
     return r.json()
 
 
+def update_user(user_id: int | str, name: str, note: str | None = None) -> dict:
+    """Update a profile's display name / note; returns the updated profile."""
+    r = httpx.put(
+        f"{BASE_URL}/users/{user_id}",
+        json={"name": name, "note": note},
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def upload_resume(user_id: int | str, file_bytes: bytes, filename: str) -> dict:
     """Upload + parse a PDF resume for a profile; returns the new resume id.
 

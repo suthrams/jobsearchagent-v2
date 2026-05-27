@@ -6,6 +6,13 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-26
 
+### Added — Edit an existing profile (rename / note) + add a resume to an existing profile
+
+- `PUT /users/{id}` updates a profile's display name / note (`UserRepository.update`; whitespace-only note stored as null; 404 unknown, 422 blank name). The id is never changed.
+- The **Profiles** view gains a "Manage an existing profile" area: an "Edit a profile (name / note)" expander and an "Add a resume to a profile" expander (the latter wires the existing `POST /users/{id}/resume` endpoint to a UI control — previously only reachable from the new-profile onboarding wizard).
+- Search criteria / experience window / threshold remain editable per profile via Start New Run's "Save these settings as my defaults".
+- Docs: `api_reference.md`. Tests: new PUT /users cases in `test_api_users.py`.
+
 ### Added — Experience-targeted discovery: years-of-experience cap + senior exclusion (ADR-065)
 
 Per-profile, opt-in levers so an entry-level profile can target early-career roles. All off by default (Primary unaffected).

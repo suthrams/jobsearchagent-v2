@@ -30,6 +30,14 @@ class UserRepository:
             )
             return int(cursor.lastrowid)
 
+    def update(self, user_id: int | str, name: str, note: str | None = None) -> None:
+        """Update a profile's display name and note. Identity ids are never changed."""
+        with get_connection(self.db_path) as conn:
+            conn.execute(
+                "UPDATE users SET name = ?, note = ? WHERE id = ?",
+                (name, note, int(user_id)),
+            )
+
     def list_all(self) -> list[dict]:
         """All profiles, default user (id 0) first, then by id ascending."""
         with get_connection(self.db_path) as conn:
