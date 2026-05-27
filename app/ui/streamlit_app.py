@@ -2488,6 +2488,7 @@ elif view == "Profiles":
         )
 
         # ── Manage an existing profile ────────────────────────────────────────
+        st.subheader("Manage an existing profile")
         _opts = {str(u["id"]): f"{u['name']}  (#{u['id']})" for u in _users}
         _by_id = {str(u["id"]): u for u in _users}
 
