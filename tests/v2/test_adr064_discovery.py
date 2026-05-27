@@ -80,7 +80,8 @@ def test_discover_skips_builtin_adzuna_when_flagged():
 def _node_with(capture: dict, factory):
     svc = MagicMock(spec=JobDiscoveryService)
     def _discover(workflow_id, search_criteria, extra_scrapers=None,
-                  skip_builtin_adzuna=False, max_years_experience=None):
+                  skip_builtin_adzuna=False, max_years_experience=None,
+                  min_years_experience=None):
         capture["extra"] = list(extra_scrapers or [])
         capture["skip"] = skip_builtin_adzuna
         capture["max_years"] = max_years_experience

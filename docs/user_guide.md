@@ -274,12 +274,15 @@ If no jobs clear the threshold, deep review and prep are skipped and the run goe
 > (2) pasting specific postings as **Custom job URLs** still works and is a good way
 > to target exact entry-level roles regardless of what Adzuna surfaces.
 >
-> **Targeting years of experience (ADR-065).** Start New Run has two entry-level
-> knobs (saved per profile when you tick "Save these settings as my defaults"):
-> **Max years of experience** (e.g. `2` keeps roles asking for 0-2 years and drops
-> "5+ years" postings; `0` = no limit; postings that don't state experience are
-> kept), and **Exclude senior roles** (drops senior/principal/staff/lead/director/
-> manager/architect postings at the source and by title). Both default off.
+> **Targeting years of experience (ADR-065).** Start New Run has a per-profile
+> experience window (saved when you tick "Save these settings as my defaults"):
+> **Max years of experience** (e.g. `2` keeps 0-2 yr roles, drops "5+ years"
+> postings) and **Min years of experience** (e.g. `5` excludes junior roles — for a
+> *senior* profile), plus **Exclude senior roles** (drops senior/principal/staff/
+> lead/director/manager/architect at the source and by title). `0` = that bound
+> off; postings that don't state experience are kept; all default off. The min
+> floor is noisier than the max cap (many JDs omit a stated floor), so pair it with
+> a senior role search.
 
 ---
 
