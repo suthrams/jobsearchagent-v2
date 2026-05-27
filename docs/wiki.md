@@ -326,9 +326,15 @@ Each phase has a dedicated deep-dive document:
 
 ---
 
-## 12. v1 Reference — Entry Points & Diagrams
+## 12. v1 Reference (retired — ADR-063)
 
-> v1 (`main.py`, `agents/`, `scrapers/`, `storage/`, `dashboard.py`) remains stable and runnable. These documents are accurate for v1 code — they do not describe v2.
+> **The v1 runtime was removed in ADR-063.** The pages in sections 12-17 below
+> describe code that no longer exists in the tree (recoverable from git history)
+> and are kept only as a historical record. The exceptions are the modules v2
+> still imports as shared libraries — `models/{job,config_schema,filters}.py` and
+> `scrapers/{base,adzuna,linkedin}.py` — whose docs (sections 15-16) remain
+> accurate for live code. `agents/`, `claude/`, `storage/`, `prompts/`,
+> `scrapers/ladders.py`, `models/profile.py`, `main.py`, and `dashboard.py` are gone.
 
 | Document | What it covers |
 |---|---|

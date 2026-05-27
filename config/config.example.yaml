@@ -1,8 +1,14 @@
-# ─── Job Search Agent — Example Configuration ────────────────────────────────
+# ─── Job Search Agent v2 — Example Configuration ─────────────────────────────
 # Copy this file to config/config.yaml and fill in your preferences.
 # config.yaml is gitignored — this file is safe to commit.
+#
+# Per-profile overrides (ADR-062) layer on top of these defaults via the Settings
+# UI and are stored in the user_config table; a new profile starts on pure
+# defaults until it sets its own.
 
 # ─── Search Preferences ───────────────────────────────────────────────────────
+# search.titles is the keyword set that drives Adzuna scraping and pre-fills the
+# Start New Run form; search.locations pre-fills the run form's locations.
 search:
   titles:
     - Senior Software Engineer
@@ -10,140 +16,50 @@ search:
     - Principal Engineer
     - Solutions Architect
     - Principal Architect
-    - Senior Manager Engineering
     - Director of Engineering
     - Head of Engineering
-    # Optional — IoT / connected devices track (uncomment to enable)
-    # - IoT Solutions Architect
-    # - Head of IoT Engineering
-    # - Director of IoT
-    # - IoT Engineering Manager
-
   locations:
     - Atlanta, GA
     - Remote
 
-  work_mode:
-    - remote
-    - hybrid
-    - onsite
-
-  # Optional — uncomment and add keywords relevant to your stack
-  # keywords:
-  #   - gcp
-  #   - kubernetes
-  #   - dotnet
-  #   - microservices
-  #   - platform engineering
-
-  # Optional — filter out jobs below a certain experience requirement
-  # years_of_experience:
-  #   min: 8
-  #   max: 20
-
-# ─── Salary ───────────────────────────────────────────────────────────────────
-# Optional — used only when the job posting includes salary information
-salary:
-  min_desired: 150000
-  currency: USD
-  ignore_if_missing: true # do not penalize jobs that omit salary
-
-# ─── Career Tracks ────────────────────────────────────────────────────────────
-# Enable the tracks relevant to you. Each active track gets its own score.
-tracks:
-  ic: true # Senior / Staff / Principal Engineer
-  architect: true # Solutions Architect / Principal Architect
-  management: true # Senior Manager / Director / Head of Engineering / VP
-
-# ─── Claude Settings ──────────────────────────────────────────────────────────
-claude:
-  # Model per operation — tune cost vs quality independently.
-  # Haiku is ~4x cheaper than Sonnet and handles structured scoring well.
-  # Sonnet is kept for parsing (feeds all scores) and tailoring (employer-facing prose).
-  model:
-    resume_parsing:   claude-sonnet-4-6           # accuracy critical — feeds all scores
-    job_scoring:      claude-haiku-4-5-20251001   # structured JSON task, high volume
-    resume_tailoring: claude-sonnet-4-6           # prose quality visible to employers
-
-  # Token limits per operation — keeps costs predictable
-  max_tokens:
-    resume_parsing: 1000
-    job_scoring: 3500
-    resume_tailoring: 2000
-
-  # Temperature per operation — lower = more consistent JSON output
-  temperature:
-    resume_parsing: 0.1
-    job_scoring: 0.1
-    resume_tailoring: 0.3
-
-# ─── Scrapers ─────────────────────────────────────────────────────────────────
+# ─── Job Sources ──────────────────────────────────────────────────────────────
+# Adzuna (AdzunaConfig). Quota guard: len(search.titles) x len(locations)
+# + len(remote_keywords) must stay < 100/day.
 scrapers:
-  # LinkedIn — paste URLs manually into this file, one per line
-  linkedin:
-    inbox_file: inbox/linkedin.txt
-
-  # Indeed RSS — keywords drive the feed URL, location is appended automatically
   adzuna:
     enabled: true
     country: us
-    keywords:
-      - software engineer
-      - solutions architect
-      - engineering manager
-      # Optional — IoT local search (uncomment to enable)
-      # - IoT architect
-      # - IoT solutions architect
-      # - head of IoT
-    location: Atlanta, GA
+    locations:
+      - Atlanta, GA
     radius_km: 80
     results_per_page: 20
-    # Separate US-wide remote search — no location filter, "remote" appended to each keyword
+    # Remote search — no location filter, "remote" appended to each keyword.
     remote_keywords:
       - software architect
       - principal engineer
       - solutions architect
-      # Optional — IoT remote search (uncomment to enable)
-      # - IoT architect
-      # - IoT solutions architect
-      # - head of IoT
-
-  # Ladders — focuses on $100k+ roles, good signal-to-noise for senior jobs
-  ladders:
-    enabled: false
-
-# ─── Storage ──────────────────────────────────────────────────────────────────
-storage:
-  database: data/jobs.db
-  tailored_resumes_dir: output/resumes
-  logs_dir: output/logs
-
-# ─── Staleness ────────────────────────────────────────────────────────────────
-staleness:
-  max_days: 30 # jobs posted more than this many days ago are skipped
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# v2 Configuration — jobsearchagent-v2
-# These settings are read by the v2 ConfigService. v1 ignores this section.
+# v2 Configuration (ADR-053 + ADR-058)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-# ─── v2 LLM Settings ─────────────────────────────────────────────────────────
-# PROTECTED — never overridden by user_config DB entries
-# (legacy keys; the per-agent assignment in `agents:` below is the v2 path)
-llm:
-  default_model: claude-sonnet-4-6
-  scoring_model: claude-haiku-4-5-20251001
-  provider: anthropic
+# ─── v2 Data Retention ───────────────────────────────────────────────────────
+# Windows for the explicit purge (app.repositories.database.purge_old_data).
+# Purge is always manual — never runs automatically. Omit any key for the default.
+retention:
+  workflow_runs_days: 90
+  observability_days: 30
+  security_events_days: 180
+  memory_items_days: 365
+  jobs_days: 90
 
 # ─── v2 Per-Agent Model Assignment (ADR-053 + ADR-058) ───────────────────────
-# Each agent's default (provider, model). User overrides via the Settings UI
-# write to the user_config DB table and merge over these defaults at backend
-# startup.
+# Each agent's default (provider, model). Per-profile overrides via the Settings
+# UI write to the user_config DB table and merge over these defaults.
 #
-# Cost-capped agents (research_agent, scoring_agent) cannot be assigned a
-# model outside the HIGH_VOLUME_SAFE_MODELS allowlist defined in
-# app/providers/model_registry.py. That allowlist is a policy boundary,
-# enforced in code at registry build time — it is NOT configuration.
+# Cost-capped agents (research_agent, scoring_agent) cannot be assigned a model
+# outside the HIGH_VOLUME_SAFE_MODELS allowlist in app/providers/model_registry.py.
+# That allowlist is a policy boundary enforced in code — it is NOT configuration.
 agents:
   research_agent:       {provider: claude, model: claude-haiku-4-5-20251001}
   scoring_agent:        {provider: claude, model: claude-haiku-4-5-20251001}
@@ -158,16 +74,13 @@ agents:
 
 # ─── v2 Model Catalog + Pricing (ADR-058) ────────────────────────────────────
 # The catalog of registered (provider, model) pairs and their per-million-token
-# pricing in USD. Editing this file is how the system learns about new models
-# or new prices — no code release required.
+# pricing in USD. Editing this file is how the system learns about new models or
+# prices — no code release required.
 #
-# input_per_m  = USD per 1,000,000 input tokens
-# output_per_m = USD per 1,000,000 output tokens
-#
-# Validation: ConfigService validates this block on load. Any agent assigned
-# above must reference a (provider, model) pair listed here. Provider class
-# dispatch is in code (`ModelRegistry._build_provider`); adding a new provider
-# (not a new model) still requires a provider implementation.
+# Validation: ConfigService validates this block on load. Any agent assigned above
+# must reference a (provider, model) pair listed here. Provider class dispatch is
+# in code (ModelRegistry._build_provider); adding a new provider (not a new model)
+# still requires a provider implementation.
 models:
   providers:
     claude:
@@ -175,51 +88,8 @@ models:
       - {id: claude-sonnet-4-6,         input_per_m: 3.00,  output_per_m: 15.00}
       - {id: claude-opus-4-7,           input_per_m: 15.00, output_per_m: 75.00}
     openai:
-      # TODO: refresh against the current OpenAI pricing page when the catalog
-      # is reviewed. The 2024 models below are stale; o1 was superseded by o3.
+      # TODO: refresh against the current OpenAI pricing page when the catalog is
+      # reviewed. The 2024 models below are stale; o1 was superseded by o3.
       - {id: gpt-4o-mini, input_per_m: 0.15,  output_per_m: 0.60}
       - {id: gpt-4o,      input_per_m: 2.50,  output_per_m: 10.00}
       - {id: o1,          input_per_m: 15.00, output_per_m: 60.00}
-
-# ─── v2 Search Limits ────────────────────────────────────────────────────────
-# max_jobs can be lowered by user preference but never raised above 20
-search:
-  max_jobs: 20
-  roles: []       # override with your target titles, e.g. ["Principal Engineer"]
-  locations: []   # override with your preferred locations
-
-# ─── v2 Execution Limits ─────────────────────────────────────────────────────
-# PROTECTED — never overridden by user_config DB entries
-limits:
-  max_selected_jobs: 10
-  max_research_steps: 2
-  max_review_rounds: 3
-  max_llm_calls_per_job: 10
-  max_llm_calls_per_run: 200
-
-# ─── v2 Scoring Thresholds ───────────────────────────────────────────────────
-# PROTECTED — never overridden by user_config DB entries
-scoring:
-  deep_review_threshold: 70       # minimum overall_score to qualify for deep review
-  interview_prep_threshold: 75    # minimum overall_score to qualify for interview prep
-  # ADR-060: when true, discovery casts a wider net (MAX_DISCOVERED_JOBS) and the
-  # workflow stops for you to pick which jobs to score, instead of auto-scoring
-  # every discovered job. Research + scoring spend is then paid only on the jobs
-  # you keep. Default false (auto-score all discovered jobs, capped at
-  # MAX_JOBS_PER_RUN). Per-run override via effective_config.scoring.manual_selection.
-  manual_selection: false
-
-# ─── v2 Tailoring Preferences ────────────────────────────────────────────────
-# User-adjustable via settings screen
-tailoring:
-  style: conservative             # conservative | standard
-
-# ─── v2 Data Retention ───────────────────────────────────────────────────────
-# PROTECTED — controls how long data is kept before purge
-# Purge is always explicit — triggered manually, never automatic
-retention:
-  workflow_runs_days: 90          # workflow run state and all outputs
-  observability_days: 30          # agent_events, llm_calls, step_executions
-  security_events_days: 180       # security audit log — longer window
-  memory_items_days: 365          # long-term learning — keep for a year
-  jobs_days: 90                   # job postings

@@ -10,7 +10,7 @@ jobsearchagent-v2 is a multi-agent career intelligence system that helps users:
 - tailor resumes without fabricating experience
 - track decisions, reasoning, and outcomes
 
-This is a ground-up v2 refactor. v1 (`main.py`, `agents/`, `scrapers/`, `storage/`, `dashboard.py`) remains stable for reference — do not modify v1 files.
+This is a ground-up v2 refactor. The v1 runtime was retired in ADR-063; a small set of v1 libraries (the Adzuna/LinkedIn scrapers and the shared `models/` job schema + keyword filters) are kept because v2 imports them — see "Shared libraries from v1" below.
 
 For human-readable browseable documentation, see `docs/wiki.md`.
 Cost is a primary operational concern — when API spend surprises happen, see `docs/cost_troubleshooting.md` (diagnosis) and `docs/model_recommendations.md` (per-agent model picks with rationale).
@@ -112,7 +112,7 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - The conditional entry point routes `phase=="scoring" → score_jobs`, else `register_run`. The `scoring_mode_gate` on the `load_resume` edge routes manual runs to `await_scoring_selection`, else `score_jobs`. This preserves ADR-059's "no `interrupt()` in the graph" property — the human choice sits between two phases, like out-of-graph tailoring (ADR-055)
 
 **Scraper rules**
-- `ConcurrentAdzunaScraper` wraps v1 `AdzunaScraper` — do not modify v1 scrapers directly
+- `ConcurrentAdzunaScraper` wraps the retained `scrapers/AdzunaScraper` (a shared library, ADR-063) — keep that wrapper boundary; don't fold the scraper into `app/`
 - `JobDiscoveryService.discover()` enforces a 180s per-scraper safety timeout via `ThreadPoolExecutor` + `shutdown(wait=False)`
 - `_resolve_url` is patched to a no-op on the wrapped instance — Adzuna redirect URLs are stored as-is
 - `CustomUrlScraper` (`app/services/custom_url_scraper.py`) is built per workflow run from `state["custom_urls"]` via `WorkflowDependencies.custom_url_scraper_factory`. Per-URL extraction order: heuristics (JSON-LD JobPosting → OpenGraph → article tag) → LLM fallback (sonnet) → log-and-skip with the URL recorded in workflow `errors[]`
@@ -256,9 +256,9 @@ Phases 1–8 + post-8 work all complete. 456 tests pass, 1 skipped. **Latest act
 
 ---
 
-## v1 Reference (do not modify)
+## Shared libraries from v1 (ADR-063)
 
-v1 files are kept for migration reference only:
-- `main.py` · `agents/` · `scrapers/` · `storage/` · `dashboard.py` · `claude/` · `prompts/`
-- v1 scrapers are wrapped by v2 `JobDiscoveryService` + `ConcurrentAdzunaScraper` — not called directly
-- v1 filters (`EXCLUDED_TITLE_KEYWORDS`, `TECH_DESCRIPTION_KEYWORDS`) in `models/filters.py` are reused in v2
+The v1 runtime (`main.py`, `dashboard.py`, `agents/`, `storage/`, `claude/`, `prompts/`, plus `scrapers/ladders.py` and `models/profile.py`) was **removed** in ADR-063. Only the modules v2 imports are kept, reframed as shared libraries (not "v1 reference"):
+- `scrapers/` — `base.py`, `adzuna.py`, `linkedin.py`. The v2 `JobDiscoveryService` + `ConcurrentAdzunaScraper` wrap the Adzuna scraper; `app/api/dependencies.py` builds the LinkedIn scraper. Not called from v2 directly except through that boundary.
+- `models/` — `job.py` (`Job`/`JobSource`/`SalaryRange`, used by the scrapers), `config_schema.py` (`AdzunaConfig`), `filters.py` (`EXCLUDED_TITLE_KEYWORDS`, `TECH_DESCRIPTION_KEYWORDS`, `RELEVANT_TITLE_KEYWORDS`, reused by `app/services/job_discovery_service.py`).
+- The retired runtime stays recoverable from git history if ever needed.

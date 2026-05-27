@@ -68,3 +68,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-060 | [Human Triage Before Scoring (Widen Discovery, Score Only Selected)](ADR-060-human-triage-before-scoring.md) | Accepted |
 | ADR-061 | [Configurable Funnel Width + On-Demand Deep Review and Interview Prep](ADR-061-configurable-funnel-width.md) | Accepted |
 | ADR-062 | [Multi-User Profiles with a Single Swappable Identity Seam](ADR-062-multi-user-profiles.md) | Accepted |
+| ADR-063 | [Retire the v1 Reference Code (Keep the Shared Scraper/Model Libraries)](ADR-063-retire-v1-reference-code.md) | Accepted |
