@@ -105,6 +105,11 @@ tokens so non-senior roles survive the gate. No roles -> the built-in startup
 scraper runs (backward compatible). Locations are one-per-line so "City, State"
 is preserved; "Remote" triggers the remote search.
 
+ADR-065 adds per-profile experience targeting (opt-in, off by default):
+`search.max_years_experience` drops postings whose description states a minimum
+above the cap (regex, no LLM; silent JDs kept), and `search.exclude_senior` drops
+senior roles via Adzuna `what_exclude` + the title gate.
+
 ---
 
 ### Inputs

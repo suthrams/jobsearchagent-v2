@@ -79,9 +79,11 @@ def test_discover_skips_builtin_adzuna_when_flagged():
 
 def _node_with(capture: dict, factory):
     svc = MagicMock(spec=JobDiscoveryService)
-    def _discover(workflow_id, search_criteria, extra_scrapers=None, skip_builtin_adzuna=False):
+    def _discover(workflow_id, search_criteria, extra_scrapers=None,
+                  skip_builtin_adzuna=False, max_years_experience=None):
         capture["extra"] = list(extra_scrapers or [])
         capture["skip"] = skip_builtin_adzuna
+        capture["max_years"] = max_years_experience
         return []
     svc.discover.side_effect = _discover
     return make_discover_jobs_node(svc, MagicMock(), MagicMock(),
@@ -91,7 +93,7 @@ def _node_with(capture: dict, factory):
 def test_node_builds_per_run_adzuna_when_roles_present():
     sentinel = object()
     calls = []
-    factory = lambda roles, locations: (calls.append((roles, locations)) or sentinel)
+    factory = lambda roles, locations, exclude_senior=False: (calls.append((roles, locations)) or sentinel)
     cap: dict = {}
     node = _node_with(cap, factory)
     node({"workflow_id": "wf",
@@ -112,7 +114,7 @@ def test_node_falls_back_when_no_roles():
 
 def test_node_honors_titles_alias_for_roles():
     sentinel = object()
-    factory = lambda roles, locations: sentinel
+    factory = lambda roles, locations, exclude_senior=False: sentinel
     cap: dict = {}
     node = _node_with(cap, factory)
     node({"workflow_id": "wf", "search_criteria": {"titles": ["Principal Engineer"]}})

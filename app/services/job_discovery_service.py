@@ -61,6 +61,7 @@ class JobDiscoveryService:
         search_criteria: dict,
         extra_scrapers: list[Any] | None = None,
         skip_builtin_adzuna: bool = False,
+        max_years_experience: int | None = None,
     ) -> list[JobPosting]:
         """Run all scrapers (per-run extras first, then built-ins), normalise, dedupe, cap, return.
 
@@ -100,6 +101,19 @@ class JobDiscoveryService:
 
         postings = [self.normalize(job, workflow_id) for job in raw_jobs]
         postings = [p for p in postings if not self._is_excluded_title(p.title)]
+
+        # ADR-065: per-profile years-of-experience cap. Drop postings whose stated
+        # minimum experience exceeds the cap; keep postings with no detectable
+        # experience (silent JDs are not penalized).
+        if max_years_experience is not None:
+            from app.services.experience_filter import exceeds_cap
+            before = len(postings)
+            postings = [p for p in postings
+                        if not exceeds_cap(p.description, max_years_experience)]
+            if before != len(postings):
+                logger.info("Experience cap (<=%d yrs) dropped %d of %d postings",
+                            max_years_experience, before - len(postings), before)
+
         postings = self.deduplicate(postings)
 
         if len(postings) > self._max_jobs:

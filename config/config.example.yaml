@@ -22,6 +22,11 @@ search:
     - Atlanta, GA
     - Remote
 
+  # ADR-065: per-profile experience targeting (optional; usually set per profile
+  # via the Settings/Start New Run UI rather than here). Off by default.
+  # max_years_experience: 2   # drop postings asking for more than N years (0 = off)
+  # exclude_senior: true       # drop senior/principal/staff/lead/director/etc.
+
 # ─── Job Sources ──────────────────────────────────────────────────────────────
 # Adzuna (AdzunaConfig). Quota guard: len(search.titles) x len(locations)
 # + len(remote_keywords) must stay < 100/day.
