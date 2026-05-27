@@ -5,7 +5,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from app.services.experience_filter import min_required_years, exceeds_cap
+from app.services.experience_filter import (
+    min_required_years, max_required_years, exceeds_cap, below_floor,
+)
 from app.services.job_discovery_service import JobDiscoveryService
 from app.schemas.job_posting import JobPosting, JobSource
 from app.workflows.nodes.discover_jobs import make_discover_jobs_node
@@ -35,6 +37,21 @@ def test_exceeds_cap_keeps_silent_and_low():
     assert exceeds_cap("entry level", 2) is False
     assert exceeds_cap(None, 2) is False           # silent JD kept
     assert exceeds_cap("great team", 2) is False   # undetectable kept
+
+
+def test_max_required_years():
+    assert max_required_years("2+ years required, 5+ years preferred") == 5
+    assert max_required_years("entry level") == 0
+    assert max_required_years("no numbers here") is None
+
+
+def test_below_floor_uses_highest_bar_keeps_silent():
+    assert below_floor("2 years experience", 5) is True                  # senior bar 2 < 5 -> drop
+    assert below_floor("2+ years required, 5+ years preferred", 5) is False  # senior bar 5 -> kept
+    assert below_floor("7+ years", 5) is False                           # above floor
+    assert below_floor("entry level", 5) is True                         # 0 < 5 -> drop junior
+    assert below_floor(None, 5) is False                                 # silent JD kept
+    assert below_floor("collaborative team", 5) is False                 # undetectable kept
 
 
 # ── discover() applies the cap ────────────────────────────────────────────────
@@ -67,13 +84,31 @@ def test_discover_drops_postings_over_cap():
     assert {p.job_id for p in out_nocap} == {"a", "b", "c", "d"}
 
 
+def test_discover_drops_postings_below_floor():
+    svc = JobDiscoveryService(MagicMock(), {"search": {"max_jobs": 50}}, scrapers=[])
+    svc.deduplicate = lambda p: p
+    svc.normalize = lambda job, wf: job
+    postings = [
+        _posting("a", "2 years experience"),       # below floor 5 -> drop
+        _posting("b", "7+ years required"),         # keep
+        _posting("c", "2+ years required, 5+ years preferred"),  # senior bar 5 -> keep
+        _posting("d", "collaborative team"),        # silent -> keep
+    ]
+
+    class _S:
+        def scrape(self_): return postings
+    out = svc.discover("wf", {}, extra_scrapers=[_S()], min_years_experience=5)
+    assert {p.job_id for p in out} == {"b", "c", "d"}
+
+
 # ── node reads effective_config + passes cap / exclude_senior ─────────────────
 
 def test_node_passes_cap_and_exclude_senior_from_effective_config():
     cap: dict = {}
     svc = MagicMock(spec=JobDiscoveryService)
     def _discover(workflow_id, search_criteria, extra_scrapers=None,
-                  skip_builtin_adzuna=False, max_years_experience=None):
+                  skip_builtin_adzuna=False, max_years_experience=None,
+                  min_years_experience=None):
         cap["max_years"] = max_years_experience
         return []
     svc.discover.side_effect = _discover

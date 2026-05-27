@@ -24,7 +24,8 @@ search:
 
   # ADR-065: per-profile experience targeting (optional; usually set per profile
   # via the Settings/Start New Run UI rather than here). Off by default.
-  # max_years_experience: 2   # drop postings asking for more than N years (0 = off)
+  # max_years_experience: 2   # drop postings asking for MORE than N years (0 = off)
+  # min_years_experience: 5    # drop postings asking for FEWER than N years (0 = off)
   # exclude_senior: true       # drop senior/principal/staff/lead/director/etc.
 
 # ─── Job Sources ──────────────────────────────────────────────────────────────

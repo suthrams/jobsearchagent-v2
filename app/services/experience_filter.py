@@ -28,14 +28,10 @@ _YEARS_RE = re.compile(
 )
 
 
-def min_required_years(description: str | None) -> int | None:
-    """Lowest stated years-of-experience requirement, 0 for entry signals, or None.
-
-    Returns the minimum across all matches so that if even the lowest bar a posting
-    states exceeds the cap, the caller can confidently drop it.
-    """
+def _all_required_years(description: str | None) -> list[int]:
+    """Every stated years-of-experience requirement (0 for entry signals)."""
     if not description:
-        return None
+        return []
     text = description.lower()
     found: list[int] = []
     if any(sig in text for sig in _ENTRY_SIGNALS):
@@ -47,13 +43,37 @@ def min_required_years(description: str | None) -> int | None:
             continue
         if 0 <= n <= 50:
             found.append(n)
+    return found
+
+
+def min_required_years(description: str | None) -> int | None:
+    """Lowest stated requirement (the JD's entry bar), or None if undetectable."""
+    found = _all_required_years(description)
     return min(found) if found else None
 
 
-def exceeds_cap(description: str | None, max_years: int) -> bool:
-    """True when the posting states a minimum experience strictly above max_years.
+def max_required_years(description: str | None) -> int | None:
+    """Highest stated requirement (the JD's senior bar), or None if undetectable."""
+    found = _all_required_years(description)
+    return max(found) if found else None
 
-    None (no detectable experience) -> False (kept), by design.
+
+def exceeds_cap(description: str | None, max_years: int) -> bool:
+    """True when even the posting's LOWEST stated requirement is above max_years.
+
+    Conservative for dropping (only drops when the entry bar already exceeds the
+    cap). None (no detectable experience) -> False (kept), by design.
     """
     req = min_required_years(description)
     return req is not None and req > max_years
+
+
+def below_floor(description: str | None, min_years: int) -> bool:
+    """True when even the posting's HIGHEST stated requirement is below min_years.
+
+    Conservative for dropping (only drops when the senior bar is still below the
+    floor — so "2+ years, 5+ preferred" is kept by a min-5 floor). None (no
+    detectable experience) -> False (kept), by design.
+    """
+    req = max_required_years(description)
+    return req is not None and req < min_years

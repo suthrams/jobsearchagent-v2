@@ -26,17 +26,28 @@ defaults off, so Primary (senior) is unaffected.
 
 Three complementary, per-profile levers, all off by default:
 
-### A. Years-of-experience cap (Lever 3 — the primary ask)
+### A. Years-of-experience window (Lever 3 — the primary ask)
 
-New per-profile config `search.max_years_experience: int | None` (default `None` =
-off). A deterministic regex (`app/services/experience_filter.py::min_required_years`)
-parses each posting's `description` for the lowest stated experience requirement
-("5+ years", "3-5 years", "minimum of 2 years", "entry level"/"new grad" -> 0).
-`JobDiscoveryService.discover()` drops postings whose parsed minimum **exceeds the
-cap**. Postings with **no detectable experience are kept** (mirrors salary's
-`ignore_if_missing` — higher recall; a silent JD is not penalized). No LLM cost.
+New per-profile config `search.max_years_experience` and
+`search.min_years_experience` (`int`; `0`/`None` = that bound off). A deterministic
+regex (`app/services/experience_filter.py`) parses each posting's `description` for
+the stated requirements ("5+ years", "3-5 years", "minimum of 2 years", "entry
+level"/"new grad" -> 0). `JobDiscoveryService.discover()` drops postings outside the
+window:
 
-The default cap for a new entry-level profile is **2** (0-2 years).
+- **max** (`exceeds_cap`) compares the JD's **lowest** stated bar — only drops when
+  even the entry requirement exceeds the cap (conservative; keeps borderline).
+- **min** (`below_floor`) compares the JD's **highest** stated bar — only drops when
+  even the senior requirement is below the floor, so "2+ years, 5+ years preferred"
+  is kept by a min-5 floor (conservative; keeps borderline).
+
+Postings with **no detectable experience are kept** for both bounds (mirrors
+salary's `ignore_if_missing` — higher recall; a silent JD is not penalized). No LLM
+cost. The min floor is inherently noisier than the max cap because many JDs omit a
+stated floor; it pairs with the senior title search (Primary).
+
+The default cap for a new entry-level profile is **2** (0-2 years); the min floor
+is the symmetric tool for a senior profile excluding junior roles.
 
 ### B. Senior query exclusion (Lever 1)
 

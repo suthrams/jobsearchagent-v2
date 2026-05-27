@@ -33,12 +33,13 @@ def make_discover_jobs_node(
 
         # ADR-065: per-profile experience targeting (off unless set).
         _search_cfg: dict = (state.get("effective_config") or {}).get("search") or {}
-        max_years = _search_cfg.get("max_years_experience")
-        try:
-            # 0 (and None) mean "no limit" — the filter is off.
-            max_years = int(max_years) or None
-        except (TypeError, ValueError):
-            max_years = None
+        def _years(key):
+            try:
+                return int(_search_cfg.get(key)) or None  # 0/None = no limit
+            except (TypeError, ValueError):
+                return None
+        max_years = _years("max_years_experience")
+        min_years = _years("min_years_experience")
         exclude_senior = bool(_search_cfg.get("exclude_senior", False))
 
         # Per-run scrapers: build one CustomUrlScraper if URLs were provided.
@@ -74,6 +75,7 @@ def make_discover_jobs_node(
                 workflow_id, search_criteria, extra_scrapers=extra_scrapers,
                 skip_builtin_adzuna=skip_builtin_adzuna,
                 max_years_experience=max_years,
+                min_years_experience=min_years,
             )
             # ADR-060: manual-selection mode casts a wider net (the user triages
             # before any scoring spend); otherwise cap at MAX_JOBS_PER_RUN.
