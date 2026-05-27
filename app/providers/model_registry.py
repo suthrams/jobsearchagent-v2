@@ -23,7 +23,6 @@ from __future__ import annotations
 import logging
 import os
 from dataclasses import dataclass
-from typing import Iterable
 
 from app.providers.claude_provider import ClaudeProvider
 from app.providers.llm_client import LLMClient
