@@ -113,6 +113,7 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 
 **Scraper rules**
 - `ConcurrentAdzunaScraper` wraps the retained `scrapers/AdzunaScraper` (a shared library, ADR-063) — keep that wrapper boundary; don't fold the scraper into `app/`
+- **Discovery honors the run's `search_criteria` (ADR-064).** When a run carries `roles`, `discover_jobs` builds a per-run Adzuna scraper via `WorkflowDependencies.adzuna_scraper_factory(roles, locations)` and passes `skip_builtin_adzuna=True` so the senior startup Adzuna is omitted; no roles -> built-in (backward compatible). Title relevance for the per-run search is derived from the role tokens (`relevance_tokens()`), so non-senior titles (e.g. cyber "Security Analyst") survive the gate. Locations are one-per-line ("City, State" must not be comma-split); "Remote" triggers the remote search. Scoring stays senior-tuned (ADR-064 Decision C) — `scoring.min_match_score` is the per-profile lever.
 - `JobDiscoveryService.discover()` enforces a 180s per-scraper safety timeout via `ThreadPoolExecutor` + `shutdown(wait=False)`
 - `_resolve_url` is patched to a no-op on the wrapped instance — Adzuna redirect URLs are stored as-is
 - `CustomUrlScraper` (`app/services/custom_url_scraper.py`) is built per workflow run from `state["custom_urls"]` via `WorkflowDependencies.custom_url_scraper_factory`. Per-URL extraction order: heuristics (JSON-LD JobPosting → OpenGraph → article tag) → LLM fallback (sonnet) → log-and-skip with the URL recorded in workflow `errors[]`

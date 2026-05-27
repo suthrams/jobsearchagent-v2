@@ -70,11 +70,11 @@ Stored in DB.
 
 Used for:
 
-* preferred roles
-* preferred locations
+* preferred roles (`search.titles`/`roles`) — ADR-064: these drive the profile's Adzuna discovery
+* preferred locations (`search.locations`) — stored one-per-line so "City, State" is preserved
 * search keywords
 * job limits (within bounds)
-* scoring preferences
+* scoring preferences (`scoring.min_match_score` — the per-profile lever for non-senior personas)
 * tailoring style
 
 ---

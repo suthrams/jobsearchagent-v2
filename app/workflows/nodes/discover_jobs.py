@@ -23,6 +23,7 @@ def make_discover_jobs_node(
     job_repo: JobRepository,
     observability: ObservabilityService,
     custom_url_scraper_factory: Callable[[list[str], str], Any] | None = None,
+    adzuna_scraper_factory: Callable[[list[str], list[str]], Any] | None = None,
 ) -> Callable[[dict], dict]:
     def discover_jobs(state: dict) -> dict:
         workflow_id: str = state.get("workflow_id", "")
@@ -42,9 +43,26 @@ def make_discover_jobs_node(
                 errors = append_error({"errors": errors}, "custom_urls",
                                       "scraper_build_failed", str(exc), recoverable=True)
 
+        # ADR-064: when the run carries roles, build a per-run Adzuna scraper from
+        # the profile's own roles + locations and skip the senior startup Adzuna.
+        # No roles -> fall back to the built-in (backward compatible).
+        roles: list[str] = list(search_criteria.get("roles")
+                                 or search_criteria.get("titles") or [])
+        locations: list[str] = list(search_criteria.get("locations") or [])
+        skip_builtin_adzuna = False
+        if roles and adzuna_scraper_factory is not None:
+            try:
+                adzuna_scraper = adzuna_scraper_factory(roles, locations)
+                if adzuna_scraper is not None:
+                    extra_scrapers.append(adzuna_scraper)
+                    skip_builtin_adzuna = True
+            except Exception as exc:
+                logger.warning("discover_jobs: failed to build per-run Adzuna scraper: %s", exc)
+
         try:
             postings = discovery_service.discover(
                 workflow_id, search_criteria, extra_scrapers=extra_scrapers,
+                skip_builtin_adzuna=skip_builtin_adzuna,
             )
             # ADR-060: manual-selection mode casts a wider net (the user triages
             # before any scoring spend); otherwise cap at MAX_JOBS_PER_RUN.

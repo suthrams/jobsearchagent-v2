@@ -60,6 +60,7 @@ class JobDiscoveryService:
         workflow_id: str,
         search_criteria: dict,
         extra_scrapers: list[Any] | None = None,
+        skip_builtin_adzuna: bool = False,
     ) -> list[JobPosting]:
         """Run all scrapers (per-run extras first, then built-ins), normalise, dedupe, cap, return.
 
@@ -67,9 +68,18 @@ class JobDiscoveryService:
         the always-on scrapers and their results land at the front of the list.
         That way the max_jobs cap further down can never silently truncate
         explicitly-requested URLs in favour of auto-discovered ones.
+
+        ADR-064: when skip_builtin_adzuna is True the always-on (startup) Adzuna
+        scraper is omitted for this run — the caller has supplied a per-run Adzuna
+        scraper built from the run's search_criteria as an extra, and running the
+        startup one too would re-search the senior startup titles.
         """
         raw_jobs: list[Any] = []
-        all_scrapers = list(extra_scrapers or []) + list(self._scrapers)
+        builtins = list(self._scrapers)
+        if skip_builtin_adzuna:
+            builtins = [s for s in builtins
+                        if type(s).__name__ != "ConcurrentAdzunaScraper"]
+        all_scrapers = list(extra_scrapers or []) + builtins
         for scraper in all_scrapers:
             pool = ThreadPoolExecutor(max_workers=1)
             try:

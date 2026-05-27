@@ -242,8 +242,8 @@ history. Fill in the form:
 | Field | What to enter |
 |---|---|
 | **Resume** | A **picker** over the active profile's stored resumes (active one first). If the profile has no stored resume yet, this is a text box instead — enter `resume.pdf` to parse a file in the project root. |
-| **Roles** | Comma-separated job titles — pre-filled from your saved settings |
-| **Locations** | Comma-separated locations — pre-filled from your saved settings |
+| **Roles** | Comma-separated job titles — pre-filled from the active profile's saved settings. **These drive auto-discovery** (ADR-064): the search fetches these roles, not a fixed global list. |
+| **Locations** | **One per line** — pre-filled from the profile's settings. Keep "City, State" on one line (e.g. `Atlanta, GA`); put `Remote` on its own line for a US-wide remote search. |
 | **Min match score** | Slider, defaults to 75 — any track score (tech / arch / lead) at or above this triggers deep review |
 | **Max jobs** | Hard cap on jobs surfaced for processing (default 10) |
 | **Custom job URLs** | Optional textarea — paste up to 25 URLs (LinkedIn, company career pages, ATS pages, etc.), one per line. They're scraped alongside Adzuna for this run. |
@@ -263,6 +263,16 @@ The backend runs end-to-end with no required user input:
 8. **Report generation** as the final step
 
 If no jobs clear the threshold, deep review and prep are skipped and the run goes straight to report generation. The "Limits & Constraints" section in **Workflow Detail** will flag this so you can lower the threshold or broaden search.
+
+> **Per-profile discovery + the entry-level caveat (ADR-064).** Each profile's roles
+> drive its own Adzuna search, and relevance is derived from those roles — so a
+> non-senior profile (e.g. an entry-level cybersecurity grad searching "Security
+> Analyst, SOC Analyst") gets relevant results instead of the senior defaults.
+> Two things to know: (1) the **scoring rubric is still calibrated for senior
+> roles**, so entry-level matches score modestly — lower that profile's
+> **Min match score** (Settings) so they qualify for deep review/tailoring; and
+> (2) pasting specific postings as **Custom job URLs** still works and is a good way
+> to target exact entry-level roles regardless of what Adzuna surfaces.
 
 ---
 

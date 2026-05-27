@@ -86,6 +86,10 @@ class WorkflowDependencies:
     # can attribute its LLM-fallback cost to the run. None disables custom URL
     # ingestion.
     custom_url_scraper_factory: Callable[[list[str], str], Any] | None = None
+    # ADR-064: optional per-run Adzuna scraper factory; receives (roles, locations)
+    # from the run's search_criteria and returns a scraper (or None) so a profile's
+    # own roles drive auto-discovery. None falls back to the built-in startup Adzuna.
+    adzuna_scraper_factory: Callable[[list[str], list[str]], Any] | None = None
 
 
 def build_graph(deps: WorkflowDependencies):
@@ -104,7 +108,8 @@ def build_graph(deps: WorkflowDependencies):
 
     graph.add_node("discover_jobs", make_discover_jobs_node(
         deps.discovery_service, deps.job_repo, deps.observability,
-        custom_url_scraper_factory=deps.custom_url_scraper_factory))
+        custom_url_scraper_factory=deps.custom_url_scraper_factory,
+        adzuna_scraper_factory=deps.adzuna_scraper_factory))
 
     graph.add_node("load_resume", make_load_resume_node(
         deps.resume_parser, deps.observability, deps.resume_repo))
