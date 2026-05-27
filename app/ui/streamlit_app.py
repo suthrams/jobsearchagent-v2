@@ -2311,29 +2311,6 @@ elif view == "Settings":
     if st.button("Save manual_selection"):
         _save("scoring.manual_selection", bool(manual_selection_default))
 
-    # ── Salary ─────────────────────────────────────────────────────────────
-    st.subheader("Salary")
-    salary = (eff.get("salary") or {}).copy()
-    salary_min = st.number_input(
-        "salary.min_desired (USD)",
-        min_value=0, max_value=10_000_000,
-        value=int(salary.get("min_desired", 0)),
-        step=10_000,
-    )
-    if st.button("Save salary.min_desired"):
-        _save("salary.min_desired", int(salary_min))
-
-    # ── Staleness ──────────────────────────────────────────────────────────
-    st.subheader("Staleness")
-    staleness = (eff.get("staleness") or {}).copy()
-    max_days = st.number_input(
-        "staleness.max_days (skip postings older than this)",
-        min_value=1, max_value=365,
-        value=int(staleness.get("max_days", 14)),
-    )
-    if st.button("Save staleness.max_days"):
-        _save("staleness.max_days", int(max_days))
-
     # ── Agent Models (per ADR-053) ─────────────────────────────────────────
     st.markdown("---")
     st.subheader("Agent Models")

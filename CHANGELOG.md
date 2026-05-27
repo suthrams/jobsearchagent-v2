@@ -21,6 +21,18 @@ The app can now serve more than one job-seeker from one install — each profile
 
 Tests: 599 passed (new `tests/v2/test_api_users.py` resume-upload cases, `test_cost_user_scoping.py`, `test_db_reader_user_scoping.py`; earlier phases added `UserRepository`, identity-seam, and per-user repo/config tests).
 
+### Removed — Retire the v1 reference runtime (ADR-063)
+
+The v1 runtime is removed now that v2 is the only system in use; the v1 modules v2 imports are kept and reframed as shared libraries.
+
+- **Deleted:** `main.py`, `dashboard.py`, `agents/`, `storage/`, `claude/`, `prompts/`, `scrapers/ladders.py`, `models/profile.py`, and the two tests that exercised removed code (`tests/test_db.py`, `tests/test_filters.py`).
+- **Kept as shared libraries:** `scrapers/{base,adzuna,linkedin}.py` (the Adzuna scraper is wrapped by `ConcurrentAdzunaScraper`; LinkedIn is built in `dependencies.py`) and `models/{job,config_schema,filters}.py` (job schema + `AdzunaConfig` + keyword filters used by `JobDiscoveryService`). The `scrapers/__init__.py` and `models/__init__.py` exports dropped the removed siblings.
+- **Config trim:** `config.yaml` / `config.example.yaml` reduced to the v2-only sections actually read — `search`, `scrapers.adzuna`, `retention`, `agents`, `models`. Dropped the v1/inert blocks (`claude`, `tracks`, `storage`, `scrapers.linkedin`/`ladders`, `salary`, `staleness`, `search.work_mode`/`keywords`, plus the unread v2 `llm`/`limits`/`scoring`-threshold/`tailoring` blocks). The now-unbacked salary/staleness knobs were removed from the Settings UI.
+- Reverses the "keep v1 stable for reference" half of ADR-001; the retired runtime stays recoverable from git history.
+- Docs: ADR-063 + index; CLAUDE.md "Shared libraries from v1" note; `docs/README.md` and `docs/wiki.md` v1-reference sections reframed as retired/historical.
+
+Tests: 542 passed (599 minus the 57 in the two removed v1 test files; no v2 tests affected).
+
 ---
 
 ## 2026-05-24

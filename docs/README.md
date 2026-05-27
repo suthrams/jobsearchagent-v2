@@ -46,28 +46,24 @@ ADRs cover every major design decision from v1/v2 separation (ADR-001) through P
 
 ---
 
-## v1 Reference Documentation
+## Retained shared libraries (formerly v1) — ADR-063
 
-The following documents describe the **v1 codebase** (`main.py`, `agents/`, `scrapers/`, `storage/`, `dashboard.py`). v1 remains stable and runnable. These docs are accurate for v1 — they do not describe the v2 system.
+The v1 runtime was **removed** in ADR-063. A small set of v1 modules are kept
+because v2 imports them; these docs describe code that is still present and live:
 
-| Document | v1 Component |
+| Document | Module (still present) |
 |---|---|
-| [main.md](main.md) | `main.py` — v1 CLI entry point |
-| [dashboard.md](dashboard.md) | `dashboard.py` — v1 Streamlit dashboard |
-| [architecture.md](architecture.md) | v1 architecture diagrams (Mermaid) |
-| [agents/profile_agent.md](agents/profile_agent.md) | v1 `ProfileAgent` |
-| [agents/scoring_agent.md](agents/scoring_agent.md) | v1 `ScoringAgent` |
-| [agents/tailoring_agent.md](agents/tailoring_agent.md) | v1 `TailoringAgent` |
-| [claude/client.md](claude/client.md) | v1 `ClaudeClient` |
-| [claude/prompt_loader.md](claude/prompt_loader.md) | v1 `PromptLoader` |
-| [claude/response_parser.md](claude/response_parser.md) | v1 `ResponseParser` |
-| [models/job.md](models/job.md) | v1 `Job` data model |
-| [models/profile.md](models/profile.md) | v1 `Profile` model |
-| [models/config_schema.md](models/config_schema.md) | v1 config schema |
-| [models/filters.md](models/filters.md) | Shared filter keywords (used by both v1 and v2) |
-| [scrapers/adzuna.md](scrapers/adzuna.md) | v1 `AdzunaScraper` |
-| [scrapers/linkedin.md](scrapers/linkedin.md) | v1 `LinkedInScraper` |
-| [scrapers/ladders.md](scrapers/ladders.md) | v1 `LaddersScraper` |
-| [scrapers/base.md](scrapers/base.md) | v1 base scraper |
-| [storage/db.md](storage/db.md) | v1 SQLite schema |
-| [prompts/overview.md](prompts/overview.md) | v1 prompt system |
+| [models/job.md](models/job.md) | `models/job.py` — `Job` / `JobSource` / `SalaryRange`, used by the scrapers |
+| [models/config_schema.md](models/config_schema.md) | `models/config_schema.py` — `AdzunaConfig` |
+| [models/filters.md](models/filters.md) | `models/filters.py` — shared title/description keyword filters |
+| [scrapers/adzuna.md](scrapers/adzuna.md) | `scrapers/adzuna.py` — wrapped by v2 `ConcurrentAdzunaScraper` |
+| [scrapers/linkedin.md](scrapers/linkedin.md) | `scrapers/linkedin.py` — built by `app/api/dependencies.py` |
+| [scrapers/base.md](scrapers/base.md) | `scrapers/base.py` — base scraper |
+
+## Removed v1 documentation (historical)
+
+The pages below describe the **retired v1 runtime** — the code they document no
+longer exists in the tree (recoverable from git history before ADR-063). They are
+kept only as a historical record and do not describe the running system:
+`main.md`, `dashboard.md`, `architecture.md`, `agents/*`, `claude/*`,
+`models/profile.md`, `scrapers/ladders.md`, `storage/db.md`, `prompts/overview.md`.
