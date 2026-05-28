@@ -270,6 +270,64 @@ def submit_tailoring_decision(tailoring_id: str, approval: str,
     return r.json()
 
 
+# ── ADR-066: Resume Clinic ───────────────────────────────────────────────────
+
+def run_resume_clinic(user_id: int | str, *,
+                      resume_id: str | None = None,
+                      target_role: str | None = None,
+                      target_track: str | None = None,
+                      seniority_aware: bool = False) -> dict:
+    """POST /users/{user_id}/resume-clinic. Runs the standalone clinic and
+    returns the persisted review row. resume_id defaults to the user's active
+    resume server-side. target_role/track left blank put the run in quality-
+    only mode.
+
+    Uses the tailoring-class timeout because the clinic invokes the reviewer +
+    Fidelity Reviewer end-to-end.
+    """
+    payload: dict = {"seniority_aware": bool(seniority_aware)}
+    if resume_id:
+        payload["resume_id"] = resume_id
+    if target_role:
+        payload["target_role"] = target_role
+    if target_track:
+        payload["target_track"] = target_track
+    r = httpx.post(
+        f"{BASE_URL}/users/{user_id}/resume-clinic",
+        json=payload,
+        timeout=180.0,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def list_resume_clinic_runs(user_id: int | str) -> dict:
+    """GET /users/{user_id}/resume-clinic. Returns past clinic runs newest-first."""
+    r = httpx.get(
+        f"{BASE_URL}/users/{user_id}/resume-clinic",
+        timeout=_TIMEOUT_GET,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def submit_resume_clinic_decision(review_id: str, approval: str,
+                                  edited: dict | None = None) -> dict:
+    """POST /resume-clinic/{review_id}/decisions. Mirrors the tailoring decision
+    submission: approval in {approve, revise, reject, edit}, with `edited`
+    required when approval == "edit"."""
+    payload: dict = {"approval": approval}
+    if edited is not None:
+        payload["edited"] = edited
+    r = httpx.post(
+        f"{BASE_URL}/resume-clinic/{review_id}/decisions",
+        json=payload,
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # ── ADR-057: per-job exclusion ───────────────────────────────────────────────
 
 def exclude_job(job_id: str, reason: str | None = None) -> dict:
