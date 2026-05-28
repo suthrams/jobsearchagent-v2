@@ -790,6 +790,86 @@ None.
 
 The Fidelity Reviewer always runs after the Tailoring Agent — there is no path that bypasses it. It runs both inside the workflow graph (paired with the in-graph tailoring node) and inside the on-demand tailoring router (ADR-055), with the same prompt and the same `FidelityReview` output schema in both cases. The output is persisted alongside the draft in `tailored_resumes.fidelity_review_json`.
 
+The Fidelity Reviewer is also reused — unchanged — for the Resume Clinic (see
+§13.1 below). The clinic runner packs clinic `RewriteSuggestion`s into a
+`TailoredResumeDraft`-shaped envelope so the prompt's evidence-binding and
+fabrication checks operate on the same inputs they expect for tailoring.
+
+---
+
+## 13.1 Resume Reviewer Agent (ADR-066)
+
+### Purpose
+
+Produces all three outputs of the standalone Resume Clinic in a single call:
+
+1. A role-agnostic quality scorecard (always).
+2. A target-role/track alignment read (when a target is given; otherwise null).
+3. An evidence-bound overhaul = reorganization plan + per-bullet rewrites.
+
+The clinic is **job-agnostic by construction** — it runs on the resume alone,
+no JD, no scoring. This is the second product surface (ADR-066 motivation:
+the funnel is senior-tuned and gates resume-facing help behind a scored
+job; the clinic gives that help to anyone with a resume, regardless of
+career stage).
+
+### Pattern
+
+Single structured-output agent. No reflection loop, no tool calls. The runner
+chains it with the Fidelity Reviewer (which runs unchanged on the
+agent-authored rewrites; evidence-binding holds with or without a job).
+
+### Inputs
+
+- `resume_profile` (parsed; cached in the second system block by PromptLoader).
+- `target_role: str | None`, `target_track: "ic" | "architect" | "management" | None`.
+- `seniority_aware: bool` — when true, calibrate findings/fixes/rewrites to
+  the candidate's career stage as inferred from the resume.
+- `role_data: dict | None` — optional grounding (occupation taxonomy)
+  produced by the pluggable `RoleDataProvider`. v1 always None
+  (`NullRoleDataProvider`). When non-null, the prompt treats it as ground
+  truth for the alignment axis.
+
+raw_text is NEVER in the reviewer context — same prompt rule as every other
+resume-facing agent. raw_text goes to the Fidelity Reviewer only.
+
+### Outputs
+
+`ResumeClinicReview` (Pydantic, `app/schemas/resume_clinic.py`):
+
+- `quality: ResumeQuality` — one rating per dimension (Literal enum, schema-
+  enforced): `structure_ordering | impact_quantification | clarity |
+  ats_formatting | consistency | length_fit | seniority_framing`, each rated
+  `strong | adequate | needs_work` with `findings[]` and `fixes[]`, plus
+  `overall_summary`.
+- `alignment: Alignment | None` — `fit_summary`, `missing_skills[]`,
+  `missing_keywords[]`, `suggested_certifications[]`, `suggested_projects[]`,
+  `emphasize[]`, `confidence` (low / medium / high). Null when no target.
+- `reorganization: Reorganization` — `section_order[]` plus `moves[]`
+  (`action: move | cut | promote`, `subject`, `rationale`).
+- `rewrites: list[RewriteSuggestion]` — same shape as tailoring's
+  `TailoredBullet` minus the JD-relative fields: `section_label`,
+  `original_text`, `suggested_text`, `claim_type` (one of `restate | reorder |
+  quantify | reframe`), `supporting_evidence` (required, min_length=1).
+
+### Constraints
+
+- Never fabricate experience, metrics, scopes, technologies, dates, or
+  certifications. Missing experience is labelled as a gap in
+  `alignment.missing_skills` / `missing_keywords`, never rewritten as if
+  present.
+- All claim types and ratings are Literal enums; a drifted model emitting a
+  free-text value fails Pydantic validation (catches the schema-passes /
+  meaning-shifts failure shape ADR-058's pin invariant was shipped to
+  expose).
+
+### Observability Events
+
+Same as every BaseAgent — `agent_started` / `agent_completed` / `agent_failed`,
+plus one `llm_calls` row per call. The clinic runner correlates these to a
+lightweight `workflow_runs` row (`workflow_type="resume_clinic"`,
+`user_id=profile`) so the per-profile Cost Dashboard sees clinic spend.
+
 ---
 
 ## 14. Status Manager

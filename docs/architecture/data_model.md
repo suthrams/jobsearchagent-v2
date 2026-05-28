@@ -1,7 +1,7 @@
 # Data Model — jobsearchagent-v2
 
 This document is the authoritative reference for the SQLite schema in `data/v2.db`.
-For each of the 19 tables (18 original + `users`, ADR-062) you get the SQL DDL, a per-column data dictionary,
+For each of the 20 tables (18 original + `users` ADR-062 + `resume_clinic_reviews` ADR-066) you get the SQL DDL, a per-column data dictionary,
 and a "workflow usage" block describing which agent / service / endpoint
 writes the rows and which UI helper / endpoint / report reads them.
 
@@ -585,6 +585,76 @@ CREATE TABLE tailored_resumes (
   drafts" panel via `_cached_list_tailorings`.
 - **Schema migrations** (ADR-055): `fidelity_review_json`, `decision`,
   `decided_at` were added via try/except `ALTER TABLE` in `init_db()`.
+
+---
+
+## 4.9.1 resume_clinic_reviews (ADR-066)
+
+### Purpose
+
+Persistence for the standalone, job-agnostic Resume Clinic (ADR-066). One row
+per clinic run; runs accumulate per `(user_id, resume_id)`. The clinic is
+out-of-graph (the runner writes a lightweight `workflow_runs` row only as the
+cost-attribution correlation id) so this table is keyed on user + resume,
+NOT on workflow.
+
+### Schema
+
+```sql
+CREATE TABLE resume_clinic_reviews (
+    id                   TEXT PRIMARY KEY,
+    user_id              TEXT NOT NULL,
+    resume_id            TEXT NOT NULL,
+    workflow_run_id      TEXT,
+    target_role          TEXT,
+    target_track         TEXT,
+    seniority_aware      INTEGER NOT NULL DEFAULT 0,
+    review_json          TEXT NOT NULL,
+    alignment_json       TEXT,
+    overhaul_json        TEXT NOT NULL,
+    fidelity_review_json TEXT,
+    decision             TEXT,
+    edited_json          TEXT,
+    decided_at           TEXT,
+    created_at           TEXT NOT NULL
+);
+CREATE INDEX idx_resume_clinic_user ON resume_clinic_reviews(user_id);
+```
+
+### Column dictionary
+
+| Column                 | Type        | Description |
+|------------------------|-------------|-------------|
+| `id`                   | TEXT PK     | UUID; the `clinic_id` exposed by the API. |
+| `user_id`              | TEXT        | Owning profile (decimal-string `users.id`); the clinic is profile-scoped. |
+| `resume_id`            | TEXT        | FK -> `resumes.id`. Ownership enforced cooperatively by the runner. |
+| `workflow_run_id`      | TEXT        | FK -> `workflow_runs.id` of the lightweight `workflow_type="resume_clinic"` row written for cost attribution; NULL only for legacy rows. |
+| `target_role`          | TEXT        | Optional free-text target; absent -> quality-only mode. |
+| `target_track`         | TEXT        | Optional one of `ic` / `architect` / `management`. |
+| `seniority_aware`      | INT         | `0` or `1` (cast to bool on read); whether the reviewer calibrated to the candidate's stage. |
+| `review_json`          | TEXT (JSON) | `ResumeQuality` — the dimension scorecard + `overall_summary`. Always present. |
+| `alignment_json`       | TEXT (JSON) | `Alignment` — `fit_summary`, `missing_skills[]`, `missing_keywords[]`, `suggested_certifications[]`, `suggested_projects[]`, `emphasize[]`, `confidence`. NULL when the run had no target. |
+| `overhaul_json`        | TEXT (JSON) | The reorganization plan (`section_order[]` + `moves[]`) plus the `rewrites[]` list in the tailoring claim-type shape. |
+| `fidelity_review_json` | TEXT (JSON) | `FidelityReview` verdict on the rewrites. NULL when the run had no rewrites or fidelity raised an `LLMProviderError`. |
+| `decision`             | TEXT        | `"approve"` \| `"revise"` \| `"reject"` \| `"edit"`. NULL until user decides. |
+| `edited_json`          | TEXT (JSON) | Human-authored overhaul on `edit` (ADR-059). Original `overhaul_json` retained. NOT re-run through Fidelity. |
+| `decided_at`           | TEXT        | ISO 8601 UTC. |
+| `created_at`           | TEXT        | ISO 8601 UTC. |
+
+### Workflow usage
+
+- **Written by**: `app/services/resume_clinic_runner.py::run_clinic`. The
+  runner loads the resume, looks up role data (v1: always `None` via
+  `NullRoleDataProvider`), runs `ResumeReviewerAgent`, runs `FidelityReviewer`
+  on `rewrites`, and persists via `ResumeClinicRepository.create`. A
+  lightweight `workflow_runs` row is written before the agents fire so the
+  per-call `llm_calls` rows are attributable to the profile (ADR-062 cost
+  dashboard).
+- **Decision written by**: `POST /resume-clinic/{id}/decisions` ->
+  `ResumeClinicRepository.set_decision` (reuses the shared `DecisionRequest`
+  validator with the tailoring router).
+- **Read by**: `GET /users/{id}/resume-clinic`; the Streamlit "Resume Clinic"
+  view's past-runs panel via `db_reader.load_user_clinic_reviews`.
 
 ---
 

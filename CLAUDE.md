@@ -126,6 +126,12 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - The langgraph SqliteSaver `checkpoints` table is for resumption only — query `workflow_runs` for UI / history reads
 - Schema changes to `data/v2.db` require updating BOTH the repository layer AND `app/ui/db_reader.py` (the UI read-path bypasses the API for performance — documented in `db_reader.py` header)
 
+**Resume Clinic rules (ADR-066)**
+- The clinic is out-of-graph (same pattern as on-demand tailoring, ADR-055). Endpoints: `POST /users/{id}/resume-clinic`, `GET /users/{id}/resume-clinic`, `POST /resume-clinic/{id}/decisions`. No `interrupt()`, no LangGraph entry. The runner writes a lightweight `workflow_runs` row (`workflow_type="resume_clinic"`, `user_id=profile`) used only as the cost-attribution correlation id for `llm_calls` / `agent_events`
+- The Fidelity Reviewer MUST run on `rewrites` every clinic call (the agent-authored evidence-binding invariant from ADR-015/056 holds with or without a job). It is SKIPPED only when the agent emits no rewrites. A human `edit` decision is owner-authored and is NOT re-reviewed (ADR-059)
+- `RoleDataProvider` is a pluggable seam (v1: `NullRoleDataProvider` always returns None). `lookup` MUST NOT raise — graceful fallback to LLM-only is the contract, not best-effort
+- The clinic endpoints take the acting profile from the path `{user_id}` (matching the users router), NOT the ADR-062 `?user_id=` query seam. FastAPI rejects a path param named `user_id` co-existing with a `Query`-defaulted dependency parameter of the same name. The path-based pattern is the documented exception
+
 **Identity / multi-user rules (ADR-062)**
 - Identity is resolved in exactly ONE place per side of the wire: backend `app/api/identity.py::get_current_user_id` (reads a `?user_id=` query param, defaults to `"0"`, validates against `users`); frontend `app/ui/api_client.py::set_user_id` (attaches the param) + `db_reader` (takes `user_id` and filters). No router parses identity itself; no HTTP headers. Adding auth later changes only `get_current_user_id`'s body
 - `users.id` is INTEGER (`0` = all pre-existing data; new profiles auto-increment from `1`). Every reference column (`workflow_runs.user_id`, `user_config.user_id`, `resumes.user_id`, `memory_items.user_id`) stores the decimal-STRING form (`"0"`, `"1"`, ...) — compare string-to-string
@@ -213,7 +219,8 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 | Career Advisor | Advisory | After reflection loop |
 | Interview Coach | Conditional | match_score ≥ threshold OR user request |
 | Tailoring Agent | Evidence-bound generation | User request |
-| Fidelity Reviewer | Validation / Guardrail | Always after tailoring |
+| Fidelity Reviewer | Validation / Guardrail | Always after tailoring AND after Resume Reviewer rewrites (ADR-066) |
+| Resume Reviewer | Structured output (job-agnostic) | Out-of-graph; runs from Resume Clinic user request only (ADR-066) |
 
 ### Typical agent skeleton
 

@@ -4,6 +4,69 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-05-28
+
+### Added — Resume Clinic: standalone, job-agnostic resume review (ADR-066)
+
+The second product surface — a profile-scoped, out-of-graph resume tool that
+runs on the resume alone. No discovery, no scoring, no JD. Built ahead of
+Article 10 so the senior-tuned funnel no longer gates resume-facing help
+behind a qualified job.
+
+- **Schema + repository** (`resume_clinic_reviews` — 20 tables total).
+  Columns: `id`, `user_id`, `resume_id`, `workflow_run_id`, `target_role`,
+  `target_track`, `seniority_aware`, `review_json` (quality scorecard),
+  `alignment_json` (nullable role/track alignment), `overhaul_json`
+  (reorganization + rewrites), `fidelity_review_json`, `decision`,
+  `edited_json`, `decided_at`, `created_at`. `ResumeClinicRepository`
+  mirrors the tailoring repo shape (create / get_by_id / list_by_user /
+  set_decision).
+- **Resume Reviewer agent** (`AGENT_NAME="resume_reviewer"`,
+  `claude-sonnet-4-6` default; pinned in `tests/model_pins.json`).
+  `ResumeClinicReview` schema with `quality` (Literal-enforced dimensions),
+  `alignment` (nullable), `reorganization`, and `rewrites` in the tailoring
+  claim-type shape so the Fidelity Reviewer and the existing renderer can
+  reuse most plumbing. Prompt at `app/prompts/agents/resume_reviewer.txt`
+  with the seven dimensions, evidence-binding rule, seniority-aware mode,
+  and optional role-data grounding block.
+- **Out-of-graph runner** (`app/services/resume_clinic_runner.py`).
+  `run_clinic(user_id, resume_id, *, target_role, target_track,
+  seniority_aware, ...)` chains resume load -> ownership check ->
+  lightweight `workflow_runs` row -> `RoleDataProvider.lookup` ->
+  reviewer -> `FidelityReviewer` on `rewrites` -> persist. The Fidelity
+  invariant is enforced in the runner; the row carries a `clinic:<id>`
+  synthetic `job_id` so the fidelity prompt's expectations work
+  unchanged.
+- **Pluggable `RoleDataProvider`** (`app/services/role_data/`). v1 ships
+  `NullRoleDataProvider`; ESCO and O*NET providers are fast-follow
+  (ADR-066 Decision G). `lookup` MUST NOT raise — graceful fallback to
+  LLM-only is the contract.
+- **REST API** (`app/api/routers/resume_clinic.py`).
+  `POST /users/{id}/resume-clinic`, `GET /users/{id}/resume-clinic`,
+  `POST /resume-clinic/{id}/decisions`. Shared decision validator
+  (`app/api/decision_validation.py`) extracted so clinic + tailoring
+  use the same approve/revise/reject/edit payload shape. Edit carries
+  the human draft; not re-reviewed (ADR-059).
+- **Streamlit "Resume Clinic" view** (`app/ui/streamlit_app.py`). Resume
+  picker, target role/track, seniority-aware toggle. Results pane renders
+  quality scorecard, alignment, reorganization plan, side-by-side
+  rewrites with claim-type chips + evidence captions, fidelity verdict.
+  Approve / Revise / Reject decision controls. Past-runs panel via
+  `db_reader.load_user_clinic_reviews`.
+- **Docs**: ADR-066 + the implementation walkthrough, `data_model.md`
+  (new §4.9.1, 19 -> 20 tables), `api_reference.md` (new Resume Clinic
+  section), `agent_model.md` (new §13.1 Resume Reviewer), `ui_model.md`
+  (new §6.13), CLAUDE.md (agents table + Resume Clinic rules block),
+  `docs/wiki.md` (20-table note).
+- **Tests**: 9 repo + 16 agent + 14 runner + 13 router = 52 new unit
+  tests; full suite at 622 passing (was 570 before the build began).
+- **Not yet built**: live integration tests for the clinic, the E2E
+  validation notebook (`notebooks/resume_clinic_validation.ipynb`),
+  clinic-tuned Fidelity Reviewer prompt, inline edit-with-payload UI,
+  ESCO/O*NET role-data providers.
+
+---
+
 ## 2026-05-26
 
 ### Added — Edit an existing profile (rename / note) + add a resume to an existing profile

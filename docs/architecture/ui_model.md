@@ -397,6 +397,64 @@ Show execution details.
 
 ---
 
+## 6.13 Resume Clinic (ADR-066)
+
+### Purpose
+
+A standalone, job-agnostic resume review for the active profile. Runs the
+clinic on the resume alone (no discovery, no scoring, no JD) and renders
+the quality scorecard, optional role/track alignment, reorganization plan,
+and evidence-bound rewrites. Out-of-graph; serves early-career candidates
+that the senior-tuned funnel underserves.
+
+### UI Elements
+
+* Active profile (read-only header)
+* Resume picker (active resume preselected)
+* Target role free-text input (pre-filled from `profile.search.titles[0]`)
+* Target track selector (`-` / `IC` / `Architect` / `Management`)
+* Seniority-aware toggle (calibrates feedback to the candidate's stage)
+* "Run clinic" primary button
+* Results pane (after run):
+  * Quality scorecard — one expander per dimension with a rating chip,
+    findings, and fixes
+  * Role/track alignment — fit summary, missing skills/keywords/certs,
+    suggested projects, items to emphasize, confidence chip
+  * Reorganization plan — proposed section order + per-move
+    `move / cut / promote` items with rationale
+  * Rewrites — side-by-side `original` vs `suggested` with claim-type chip
+    (`restate | reorder | quantify | reframe`) and supporting-evidence
+    caption
+  * Fidelity verdict — `approve | revise | reject` chip + confidence, plus
+    the caveat that the reviewer is tailoring-tuned (clinic-mode follow-up
+    documented in ADR-066)
+* Decision controls (Approve / Revise / Reject) — POSTs to
+  `/resume-clinic/{id}/decisions`. Inline `edit` editor is a follow-up.
+* Past clinic runs — expander per row, button to reload into the results pane.
+
+### Backend Actions
+
+* `api_client.run_resume_clinic` -> `POST /users/{user_id}/resume-clinic`
+* `api_client.list_resume_clinic_runs` -> `GET /users/{user_id}/resume-clinic`
+* `api_client.submit_resume_clinic_decision` -> `POST /resume-clinic/{id}/decisions`
+* Read path: `db_reader.load_user_clinic_reviews(user_id)` for the
+  past-runs panel.
+
+### Rules
+
+* The path's `{user_id}` is the active profile (cooperative scoping per
+  ADR-062). The endpoint does NOT consult the query-param identity seam
+  because of a FastAPI path-vs-query name collision; this is the only
+  route family in v2 that takes the active id from the path.
+* No raw resume text ever leaves this view to the agent — the API resolves
+  the resume on the backend and the reviewer receives only the parsed
+  profile (raw_text goes to fidelity only).
+* The reviewer prompt's quality dimensions and claim-type values are
+  Literal-enforced; a schema-validation failure on a clinic run is shown
+  as a backend 502.
+
+---
+
 ## 7. Navigation Model
 
 ```text

@@ -501,6 +501,114 @@ accountable human. The agent's original draft is retained in `tailored_json`.
 
 ---
 
+## Resume Clinic (ADR-066)
+
+A standalone, job-agnostic resume review. Runs on the resume alone — no
+discovery, no scoring, no LangGraph. Out-of-graph, same pattern as on-demand
+tailoring (ADR-055). The clinic produces a quality scorecard, an optional
+role/track alignment, and an evidence-bound overhaul (reorganization plan +
+rewrites). The Fidelity Reviewer always runs on the rewrites; a human `edit`
+decision is owner-authored and is NOT re-reviewed (ADR-059).
+
+The path-based `{user_id}` declares which profile the operation is for. This
+endpoint family does NOT consult the `?user_id=` query-param seam (a FastAPI
+collision between the path param and the seam's query param). Cooperative
+scoping per ADR-062 — the path is not an authentication boundary.
+
+---
+
+### POST /users/{user_id}/resume-clinic
+
+Run a clinic review end-to-end. Returns the persisted row.
+
+**Request body** (all fields optional)
+
+```json
+{
+  "resume_id": "...",            // defaults to the user's active resume
+  "target_role": "...",          // free text; absent -> quality-only mode
+  "target_track": "ic | architect | management",
+  "seniority_aware": false
+}
+```
+
+**Response — 200 OK**
+
+```json
+{
+  "clinic_id": "...",
+  "user_id": "0",
+  "resume_id": "...",
+  "workflow_run_id": "...",
+  "target_role": "...",
+  "target_track": "ic",
+  "seniority_aware": true,
+  "quality":   { "dimensions": [...], "overall_summary": "..." },
+  "alignment": { "fit_summary": "...", "missing_skills": [...], "confidence": "medium" },
+  "overhaul":  { "reorganization": {...}, "rewrites": [...] },
+  "fidelity_review": { "approval_recommendation": "approve", "confidence": 90, ... },
+  "decision": null,
+  "edited": null,
+  "decided_at": null,
+  "created_at": "2026-05-28T..."
+}
+```
+
+`alignment` is null when no `target_role` and no `target_track` is given.
+`fidelity_review` is null when there were no rewrites or fidelity raised an
+`LLMProviderError`.
+
+**Response — 404** `resume_not_found` — when `resume_id` is unknown, when the
+resume is owned by a different profile, or when the user has no active resume
+and `resume_id` was omitted.
+
+**Response — 422** invalid `target_track` (must be one of `ic`, `architect`,
+`management`).
+
+**Response — 502** `clinic_failed` — reviewer LLM error.
+
+---
+
+### GET /users/{user_id}/resume-clinic
+
+List past clinic runs for a profile, newest first.
+
+**Response — 200 OK**
+
+```json
+{
+  "user_id": "0",
+  "reviews": [ { /* clinic row, same shape as POST */ } ]
+}
+```
+
+---
+
+### POST /resume-clinic/{review_id}/decisions
+
+Record the user's `approve | revise | reject | edit` choice. Uses the same
+shared validator as the tailoring decisions; an `edit` requires a non-empty
+`edited` payload (the human-authored overhaul). The agent's original
+`overhaul_json` is retained for the audit trail.
+
+**Request**
+
+```json
+{
+  "approval": "approve | revise | reject | edit",
+  "edited": { "reorganization": {...}, "rewrites": [...] }
+}
+```
+
+**Response — 200 OK** — the updated clinic row (same shape as the run response).
+
+**Response — 404** `clinic_review_not_found`.
+
+**Response — 422** Pydantic validation — `approval` must be one of the four
+literals; `edited` is required when `approval == "edit"`.
+
+---
+
 ### GET /config
 
 Return the effective merged config (YAML defaults + DB user overrides) plus the

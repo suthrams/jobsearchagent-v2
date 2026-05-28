@@ -436,6 +436,69 @@ If a section's suggestions don't fit your style, skip them — but don't add len
 
 ---
 
+## 13a. Resume Clinic (ADR-066)
+
+The funnel (Sections 8–13) is built around scored jobs. If you don't have
+a senior background yet, those flows often return "nothing qualified" and
+the resume-facing agents (critique, advice, tailoring) stay locked behind
+the funnel.
+
+The **Resume Clinic** is a second surface that runs on your **resume alone**,
+with no JD. Open **Resume Clinic** in the sidebar.
+
+### What it gives you
+
+1. **Quality scorecard** — one rating (`strong / adequate / needs_work`) per
+   dimension: structure & ordering, impact & quantification, clarity, ATS
+   formatting, consistency, length fit, seniority framing. Each dimension
+   comes with specific findings and concrete fixes.
+2. **Role / track alignment** (optional) — when you enter a target role
+   (and optionally a track: IC / Architect / Management) the reviewer adds
+   an alignment read: fit summary, missing skills, missing keywords,
+   suggested certifications, suggested projects, and items already on your
+   resume that should be emphasized harder.
+3. **Reorganization plan** — a proposed top-down section order plus a list
+   of moves (`move / cut / promote`) with rationale.
+4. **Rewrites** — bullet-level suggestions with `claim_type` (`restate`,
+   `reorder`, `quantify`, `reframe`). Every rewrite is **evidence-bound**:
+   the reviewer must cite something already in your resume. Missing
+   experience is labelled as a gap in the alignment block, never
+   rewritten as if present. The same Fidelity Reviewer that polices
+   tailoring runs on the clinic's rewrites too — fabrication is caught
+   automatically.
+
+### How to use it
+
+1. Pick a resume (your active one is preselected).
+2. Optionally type a **target role** (free text — "entry-level security
+   analyst", "principal platform engineer", anything). The form prefills
+   from your profile's first saved role; clear the field for quality-only
+   mode.
+3. Optionally pick a **target track**.
+4. Toggle **seniority-aware feedback** on if you want the review calibrated
+   to your career stage (early-career: projects/education forward;
+   senior+: scope and outcomes).
+5. Click **Run clinic**. The review lands in the right panel — quality
+   scorecard, alignment, reorganization, rewrites, fidelity verdict.
+6. Decide: **Approve** locks the review as-is. **Revise** asks for another
+   pass (the next clinic run is a fresh row). **Reject** discards.
+   (Inline edit with payload is a planned follow-up.)
+
+### Past runs
+
+Below the live panel is a list of every past clinic run for the active
+profile, newest first. Click an expander to see its summary and tap
+**Load into results pane** to re-render an earlier one.
+
+### Cost
+
+The clinic is one reviewer call plus (when there are rewrites) one
+Fidelity Reviewer call. It writes a lightweight `resume_clinic`
+`workflow_runs` row so the **Cost Dashboard** attributes clinic spend
+to the active profile correctly.
+
+---
+
 ## 14. Analytics: Companies and Run History
 
 ### Companies
