@@ -139,6 +139,25 @@ CREATE TABLE IF NOT EXISTS reports (
     created_at TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS resume_clinic_reviews (
+    -- ADR-066: standalone, job-agnostic resume review. Out-of-graph; one row per run.
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,                 -- owning profile (decimal-string users.id)
+    resume_id TEXT NOT NULL,               -- resume the review ran against
+    workflow_run_id TEXT,                  -- lightweight workflow_runs row for cost attribution
+    target_role TEXT,                      -- optional free text; absent -> quality-only mode
+    target_track TEXT,                     -- optional: ic | architect | management
+    seniority_aware INTEGER NOT NULL DEFAULT 0,
+    review_json TEXT NOT NULL,             -- quality scorecard (always present)
+    alignment_json TEXT,                   -- role/track alignment (null when no target)
+    overhaul_json TEXT NOT NULL,           -- reorganization + evidence-bound rewrites
+    fidelity_review_json TEXT,             -- Fidelity Reviewer verdict on rewrites
+    decision TEXT,                         -- approve | revise | reject | edit (per ADR-059)
+    edited_json TEXT,                      -- human-authored overhaul on `edit` decision
+    decided_at TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS human_decisions (
     id TEXT PRIMARY KEY,
     workflow_run_id TEXT NOT NULL,
@@ -247,6 +266,7 @@ CREATE INDEX IF NOT EXISTS idx_memory_type              ON memory_items(memory_t
 CREATE INDEX IF NOT EXISTS idx_memory_updated_at        ON memory_items(updated_at);
 CREATE INDEX IF NOT EXISTS idx_security_created_at      ON security_events(created_at);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_user       ON workflow_runs(user_id);
+CREATE INDEX IF NOT EXISTS idx_resume_clinic_user        ON resume_clinic_reviews(user_id);
 """
 # Indexes on user_id columns that are added by ALTER in init_db (resumes,
 # memory_items) cannot live in _SCHEMA_SQL: executescript runs before the ALTERs,

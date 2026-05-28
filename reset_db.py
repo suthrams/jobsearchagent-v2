@@ -30,6 +30,7 @@ _APP_TABLES = [
     "run_metrics",
     "human_decisions",
     "tailored_resumes",
+    "resume_clinic_reviews",
     "interview_prep",
     "career_advice",
     "review_rounds",

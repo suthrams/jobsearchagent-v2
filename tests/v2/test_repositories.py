@@ -27,9 +27,9 @@ def db_path(tmp_path):
 _EXPECTED_TABLES = {
     "users", "workflow_runs", "jobs", "resumes", "job_scores",
     "review_rounds", "resume_reviews", "career_advice", "interview_prep",
-    "tailored_resumes", "reports", "human_decisions", "user_config",
-    "step_executions", "agent_events", "llm_calls", "run_metrics",
-    "security_events", "memory_items",
+    "tailored_resumes", "resume_clinic_reviews", "reports",
+    "human_decisions", "user_config", "step_executions", "agent_events",
+    "llm_calls", "run_metrics", "security_events", "memory_items",
 }
 
 

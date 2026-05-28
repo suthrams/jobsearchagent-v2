@@ -67,6 +67,39 @@ def load_user_resumes(user_id: str) -> pd.DataFrame:
 
 
 @st.cache_data(ttl=30)
+def load_user_clinic_reviews(user_id: str) -> pd.DataFrame:
+    """A profile's resume_clinic_reviews, newest first — backs the Resume Clinic
+    past-runs panel (ADR-066). One row per clinic run; JSON blobs are returned as
+    strings for compact display, parsed on demand by the view."""
+    if not DB_PATH.exists():
+        return pd.DataFrame()
+    conn = _connect()
+    try:
+        df = pd.read_sql_query(
+            """
+            SELECT id            AS clinic_id,
+                   resume_id,
+                   target_role,
+                   target_track,
+                   seniority_aware,
+                   decision,
+                   decided_at,
+                   created_at
+            FROM resume_clinic_reviews
+            WHERE user_id = ?
+            ORDER BY created_at DESC
+            """,
+            conn,
+            params=(str(user_id),),
+        )
+    except Exception:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
+    return df
+
+
+@st.cache_data(ttl=30)
 def load_scored_jobs(include_excluded: bool = False,
                      user_id: str | None = None) -> pd.DataFrame:
     """All scored jobs joined with posting metadata. Extracts scores from score_json blob.
