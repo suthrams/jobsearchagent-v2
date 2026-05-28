@@ -16,6 +16,7 @@ from app.agents.fidelity_reviewer import FidelityReviewer
 from app.agents.interview_coach import InterviewCoach
 from app.agents.research_agent import ResearchAgent
 from app.agents.resume_critic import ResumeCritic
+from app.agents.resume_reviewer import ResumeReviewerAgent
 from app.agents.review_auditor import ReviewAuditor
 from app.agents.scoring_agent import ScoringAgent
 from app.agents.tailoring_agent import TailoringAgent
@@ -25,6 +26,7 @@ from app.repositories.decision_repository import DecisionRepository
 from app.repositories.job_repository import JobRepository
 from app.repositories.observability_repository import ObservabilityRepository
 from app.repositories.report_repository import ReportRepository
+from app.repositories.resume_clinic_repository import ResumeClinicRepository
 from app.repositories.resume_repository import ResumeRepository  # noqa: F401 (used in _build_mocked_deps + real)
 from app.repositories.review_repository import ReviewRepository
 from app.repositories.score_repository import ScoreRepository
@@ -39,6 +41,7 @@ from app.schemas.interview_prep import InterviewPrep
 from app.schemas.job_posting import JobPosting, JobSource, WorkMode
 from app.schemas.job_score import JobScore
 from app.schemas.research_context import ResearchContext
+from app.schemas.resume_clinic import ResumeClinicReview
 from app.schemas.resume_review import ResumeReview
 from app.schemas.review_audit import ReviewAudit
 from app.schemas.tailored_resume_draft import TailoredResumeDraft
@@ -172,6 +175,24 @@ def _make_tailoring_side_effect(workflow_id: str, context: dict) -> TailoredResu
     )
 
 
+def _make_resume_reviewer_side_effect(workflow_id: str, context: dict) -> ResumeClinicReview:
+    """ADR-066: mock clinic reviewer used in the unit-test path. Returns a
+    minimal valid ResumeClinicReview so the runner's persistence + fidelity
+    glue can be exercised without hitting a real model."""
+    return ResumeClinicReview(
+        quality={
+            "dimensions": [
+                {"dimension": "structure_ordering", "rating": "adequate",
+                 "findings": ["solid baseline"], "fixes": ["promote projects up"]},
+            ],
+            "overall_summary": "Solid baseline; minor reordering would help.",
+        },
+        alignment=None,
+        reorganization={"section_order": ["summary", "experience", "skills"], "moves": []},
+        rewrites=[],
+    )
+
+
 def _make_fidelity_side_effect(workflow_id: str, context: dict) -> FidelityReview:
     job_id = context.get("job_id", "job-unknown")
     resume_id = context.get("resume_id", "res-unknown")
@@ -229,6 +250,9 @@ def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
     fidelity = MagicMock(spec=FidelityReviewer)
     fidelity.run.side_effect = _make_fidelity_side_effect
 
+    resume_reviewer = MagicMock(spec=ResumeReviewerAgent)
+    resume_reviewer.run.side_effect = _make_resume_reviewer_side_effect
+
     posting = JobPosting(
         job_id="job-001",
         workflow_id="wf-placeholder",
@@ -257,6 +281,7 @@ def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
         interview_coach=coach,
         tailoring_agent=tailoring,
         fidelity_reviewer=fidelity,
+        resume_reviewer=resume_reviewer,
         discovery_service=discovery_svc,
         resume_parser=resume_parser,
         report_generator=report_gen,
@@ -265,6 +290,7 @@ def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
         advice_repo=MagicMock(spec=AdviceRepository),
         review_repo=MagicMock(spec=ReviewRepository),
         tailoring_repo=MagicMock(spec=TailoringRepository),
+        resume_clinic_repo=MagicMock(spec=ResumeClinicRepository),
         workflow_repo=MagicMock(spec=WorkflowRepository),
         resume_repo=_mock_resume_repo(),
         observability=obs,
@@ -307,6 +333,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     advice_repo = AdviceRepository(db_path)
     review_repo = ReviewRepository(db_path)
     tailoring_repo = TailoringRepository(db_path)
+    resume_clinic_repo = ResumeClinicRepository(db_path)
     workflow_repo = WorkflowRepository(db_path)
     resume_repo = ResumeRepository(db_path)
     obs_repo = ObservabilityRepository(db_path)
@@ -348,6 +375,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     coach = InterviewCoach(registry.for_agent("interview_coach"), obs)
     tailoring = TailoringAgent(registry.for_agent("tailoring_agent"), obs)
     fidelity = FidelityReviewer(registry.for_agent("fidelity_reviewer"), obs)
+    resume_reviewer = ResumeReviewerAgent(registry.for_agent("resume_reviewer"), obs)
 
     # ResumeParser uses its own assigned provider too. Wire observability so the
     # LLM enhancement pass writes an llm_calls audit row when invoked from a
@@ -431,6 +459,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
         interview_coach=coach,
         tailoring_agent=tailoring,
         fidelity_reviewer=fidelity,
+        resume_reviewer=resume_reviewer,
         discovery_service=discovery_svc,
         resume_parser=resume_parser,
         report_generator=report_gen,
@@ -439,6 +468,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
         advice_repo=advice_repo,
         review_repo=review_repo,
         tailoring_repo=tailoring_repo,
+        resume_clinic_repo=resume_clinic_repo,
         workflow_repo=workflow_repo,
         resume_repo=resume_repo,
         observability=obs,

@@ -17,11 +17,13 @@ from app.agents.fidelity_reviewer import FidelityReviewer
 from app.agents.interview_coach import InterviewCoach
 from app.agents.research_agent import ResearchAgent
 from app.agents.resume_critic import ResumeCritic
+from app.agents.resume_reviewer import ResumeReviewerAgent
 from app.agents.review_auditor import ReviewAuditor
 from app.agents.scoring_agent import ScoringAgent
 from app.agents.tailoring_agent import TailoringAgent
 from app.repositories.advice_repository import AdviceRepository
 from app.repositories.job_repository import JobRepository
+from app.repositories.resume_clinic_repository import ResumeClinicRepository
 from app.repositories.review_repository import ReviewRepository
 from app.repositories.score_repository import ScoreRepository
 from app.repositories.tailoring_repository import TailoringRepository
@@ -66,6 +68,9 @@ class WorkflowDependencies:
     # them via get_deps().
     tailoring_agent: TailoringAgent
     fidelity_reviewer: FidelityReviewer
+    # ADR-066: the Resume Clinic is also out-of-graph (job-agnostic; runs only
+    # on user request). The clinic router resolves these via get_deps().
+    resume_reviewer: ResumeReviewerAgent
     # Services
     discovery_service: JobDiscoveryService
     resume_parser: ResumeParser
@@ -76,6 +81,7 @@ class WorkflowDependencies:
     advice_repo: AdviceRepository
     review_repo: ReviewRepository
     tailoring_repo: TailoringRepository
+    resume_clinic_repo: ResumeClinicRepository
     workflow_repo: WorkflowRepository
     resume_repo: ResumeRepository
     # Cross-cutting
