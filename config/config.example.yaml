@@ -77,6 +77,7 @@ agents:
   tailoring_agent:      {provider: claude, model: claude-sonnet-4-6}
   resume_parser:        {provider: claude, model: claude-sonnet-4-6}
   custom_url_extractor: {provider: claude, model: claude-sonnet-4-6}
+  resume_reviewer:      {provider: claude, model: claude-sonnet-4-6}   # ADR-066 Resume Clinic; low-volume, quality-sensitive
 
 # ─── v2 Model Catalog + Pricing (ADR-058) ────────────────────────────────────
 # The catalog of registered (provider, model) pairs and their per-million-token
