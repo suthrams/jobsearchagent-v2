@@ -86,8 +86,20 @@ def _make_resume_row(user_id=USER_ID, resume_id=RESUME_ID):
         "raw_text": "Software engineer with 5 years experience.",
         "parsed_profile_json": json.dumps({
             "name": "Test User",
+            "headline": "Software Engineer",
+            "email": "test@example.com",
+            "summary": "Backend engineer.",
             "skills": ["Python"],
-            "experience": [],
+            "experience": [
+                {
+                    "company": "Acme",
+                    "title": "Engineer",
+                    "start_year": 2022,
+                    "end_year": None,
+                    "description": "Worked on backend systems.",
+                    "technologies": ["Python"],
+                },
+            ],
         }),
     }
 
@@ -379,3 +391,116 @@ def test_decision_invalid_value_422(client):
                   json={"approval": "maybe"})
     assert resp.status_code == 422
     assert resp.json()["detail"]["error"] == "validation_error"
+
+
+# ── GET /resume-clinic/{id}/export ──────────────────────────────────────────
+
+import pytest
+
+
+@pytest.mark.parametrize("fmt,name_token,content_type_substring,magic_bytes", [
+    # name_token=None means "skip the inline name check" - useful for binary
+    # formats where the name is inside a compressed container (DOCX). The
+    # renderer-layer tests already unzip and confirm.
+    ("md",   b"Test User",   "text/markdown",                       None),
+    ("txt",  b"TEST USER",   "text/plain",                          None),
+    ("html", b"Test User",   "text/html",                           b"<!DOCTYPE"),
+    ("json", b"Test User",   "application/json",                    b"{"),
+    ("docx", None,           "wordprocessingml.document",           b"PK\x03\x04"),
+    ("pdf",  b"Test User",   "application/pdf",                     b"%PDF-"),
+])
+def test_export_returns_each_format(client, fmt, name_token, content_type_substring,
+                                    magic_bytes):
+    c, _ = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    # Approve the review so the export is the canonical "decision applied" path
+    # without the preview banner getting in the way of the content checks.
+    c.post(f"/resume-clinic/{clinic_id}/decisions", json={"approval": "approve"})
+
+    resp = c.get(f"/resume-clinic/{clinic_id}/export?format={fmt}")
+    assert resp.status_code == 200, resp.text
+    if name_token is not None:
+        assert name_token in resp.content, (
+            f"format={fmt} did not include the candidate name in the output"
+        )
+    if magic_bytes is not None:
+        assert resp.content.startswith(magic_bytes), (
+            f"format={fmt} produced unexpected prefix: {resp.content[:32]!r}"
+        )
+    assert content_type_substring in resp.headers["content-type"]
+    # Download-friendly disposition header always set.
+    cd = resp.headers.get("content-disposition", "")
+    assert "attachment" in cd
+    assert clinic_id[:8] in cd
+
+
+def test_export_unknown_format_400(client):
+    c, _ = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    resp = c.get(f"/resume-clinic/{clinic_id}/export?format=xyz")
+    assert resp.status_code == 400
+    assert resp.json()["detail"]["error"] == "unsupported_format"
+
+
+def test_export_unknown_review_404(client):
+    c, _ = client
+    resp = c.get("/resume-clinic/does-not-exist/export?format=md")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["error"] == "clinic_review_not_found"
+
+
+def test_export_default_format_is_markdown(client):
+    c, _ = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    resp = c.get(f"/resume-clinic/{clinic_id}/export")
+    assert resp.status_code == 200
+    assert "text/markdown" in resp.headers["content-type"]
+
+
+def test_export_respects_decision_reject_renders_original_only(client):
+    c, _ = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    c.post(f"/resume-clinic/{clinic_id}/decisions", json={"approval": "reject"})
+
+    resp = c.get(f"/resume-clinic/{clinic_id}/export?format=md")
+    assert resp.status_code == 200
+    md = resp.content.decode("utf-8")
+    # The mock review's rewrite was "200 RPS" - on reject it should NOT appear,
+    # because the original parsed_profile in the test fixture has no such bullet.
+    assert "200 RPS" not in md
+
+
+def test_export_respects_decision_approve_applies_overhaul(client):
+    c, _ = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    c.post(f"/resume-clinic/{clinic_id}/decisions", json={"approval": "approve"})
+
+    resp = c.get(f"/resume-clinic/{clinic_id}/export?format=md")
+    assert resp.status_code == 200
+    md = resp.content.decode("utf-8")
+    # The mock overhaul contains "200 RPS" - on approve it should land in the
+    # rendered output (the rewrite gets appended even with no matching bullet).
+    assert "200 RPS" in md

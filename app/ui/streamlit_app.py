@@ -2488,6 +2488,54 @@ elif view == "Resume Clinic":
                 except Exception as exc:
                     st.error(f"Could not record decision: {exc}")
 
+            # ── Export the final resume ──────────────────────────────────────
+            st.markdown("---")
+            st.subheader("Export the final resume")
+            st.caption(
+                "Decision-aware: approve uses the agent's overhaul, edit uses "
+                "your draft, reject renders your original resume. No decision "
+                "shows a preview-banner copy."
+            )
+            _fmt_labels = {
+                "md":   "Markdown (.md)",
+                "txt":  "Plain text (.txt)",
+                "html": "HTML (.html)",
+                "json": "JSON Resume (.json)",
+                "docx": "Word (.docx)",
+                "pdf":  "PDF (.pdf)",
+            }
+            _fmt = st.selectbox(
+                "Format",
+                options=list(_fmt_labels.keys()),
+                format_func=lambda f: _fmt_labels[f],
+                key="rc_export_format",
+            )
+            try:
+                _bytes, _ctype, _fname = api.export_resume_clinic(_clinic_id, _fmt)
+            except Exception as exc:
+                _bytes, _ctype, _fname = None, None, None
+                st.error(f"Could not generate export: {exc}")
+            if _bytes is not None:
+                # Inline preview for the text-y formats so the user sees what
+                # will be downloaded before clicking.
+                if _fmt in ("md", "txt"):
+                    with st.expander("Preview", expanded=False):
+                        st.code(_bytes.decode("utf-8", errors="replace"), language=("markdown" if _fmt == "md" else None))
+                elif _fmt == "json":
+                    with st.expander("Preview", expanded=False):
+                        st.code(_bytes.decode("utf-8", errors="replace"), language="json")
+                elif _fmt == "html":
+                    with st.expander("Preview (raw HTML)", expanded=False):
+                        st.code(_bytes.decode("utf-8", errors="replace"), language="html")
+                st.download_button(
+                    label=f"⬇ Download {_fmt_labels[_fmt]}",
+                    data=_bytes,
+                    file_name=_fname or f"resume_clinic_{_clinic_id[:8]}.{_fmt}",
+                    mime=_ctype or "application/octet-stream",
+                    use_container_width=True,
+                    key=f"rc_dl_{_clinic_id}_{_fmt}",
+                )
+
     # ── Past runs ────────────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Past clinic runs")

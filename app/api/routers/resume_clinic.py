@@ -16,7 +16,9 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+import json
+
+from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
 
 from app.api.decision_validation import DecisionRequest
@@ -27,6 +29,12 @@ from app.api.schemas.responses import (
 )
 from app.providers.llm_client import LLMProviderError
 from app.services.resume_clinic_runner import ResumeClinicError, run_clinic
+from app.services.resume_text_renderer import (
+    compose_resume,
+    export_content_type,
+    export_file_extension,
+    render as render_export,
+)
 from app.services.role_data import NullRoleDataProvider
 from app.workflows.workflow_graph import WorkflowDependencies
 
@@ -194,3 +202,92 @@ def submit_resume_clinic_decision(
     deps.resume_clinic_repo.set_decision(review_id, body.approval, edited=body.edited)
     updated = deps.resume_clinic_repo.get_by_id(review_id)
     return _serialize_row(updated or row)
+
+
+# ── Resume text export (ADR-066 fast-follow) ─────────────────────────────────
+
+_SUPPORTED_FORMATS = {"md", "txt", "html", "json", "docx", "pdf"}
+
+
+@router.get("/resume-clinic/{review_id}/export")
+def export_resume_clinic_text(
+    review_id: str,
+    format: str = "md",
+    deps: WorkflowDependencies = Depends(get_deps),
+) -> Response:
+    """Render a clinic review's final resume in the requested format.
+
+    Decision-aware: `approve` -> apply the agent's overhaul; `edit` -> use the
+    human-authored draft; `reject` -> render the original resume unchanged;
+    `revise` / no decision -> render a preview banner-tagged version. The
+    renderer is deterministic - no LLM call.
+
+    `?format=` must be one of md, txt, html, json, docx, pdf. Returns raw
+    bytes with the appropriate Content-Type and a download-friendly
+    Content-Disposition header.
+    """
+    fmt = (format or "").strip().lower()
+    if fmt not in _SUPPORTED_FORMATS:
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "unsupported_format",
+                "message": (
+                    f"Format {format!r} is not supported. "
+                    f"Pick one of: {sorted(_SUPPORTED_FORMATS)}."
+                ),
+            },
+        )
+
+    row = deps.resume_clinic_repo.get_by_id(review_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "clinic_review_not_found",
+                "message": f"Resume clinic review {review_id!r} not found.",
+                "review_id": review_id,
+            },
+        )
+
+    resume = deps.resume_repo.get_by_id(row.get("resume_id"))
+    if resume is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "resume_not_found",
+                "message": "The resume this clinic review points at is missing.",
+                "resume_id": row.get("resume_id"),
+            },
+        )
+
+    # parsed_profile_json is the renderer's source. Repos return it as the
+    # serialized string column; decode here so the renderer sees a dict.
+    raw_profile = resume.get("parsed_profile_json")
+    if isinstance(raw_profile, str):
+        try:
+            profile_dict = json.loads(raw_profile)
+        except Exception:
+            profile_dict = {}
+    elif isinstance(raw_profile, dict):
+        profile_dict = raw_profile
+    else:
+        profile_dict = {}
+
+    rendered = compose_resume(
+        profile=profile_dict,
+        overhaul=row.get("overhaul"),
+        edited=row.get("edited"),
+        decision=row.get("decision"),
+    )
+
+    payload = render_export(fmt, rendered)
+    ext = export_file_extension(fmt)
+    filename = f"resume_clinic_{review_id[:8]}.{ext}"
+    return Response(
+        content=payload,
+        media_type=export_content_type(fmt),
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename}"',
+        },
+    )

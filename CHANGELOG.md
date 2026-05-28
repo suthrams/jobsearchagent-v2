@@ -6,6 +6,49 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-28
 
+### Added — Resume Clinic: text/file export in six formats (ADR-066 nice-to-have)
+
+The "later nice-to-have / full resume-text export" that ADR-066 named is now
+live. Deterministic — no LLM call. Decision-aware: `approve` applies the
+agent's overhaul, `edit` uses the human's final draft, `reject` falls back to
+the original resume, `revise` / undecided renders a preview banner.
+
+- **Renderer** (`app/services/resume_text_renderer.py`). One canonical
+  composer (`compose_resume`) materialises a profile + overhaul + decision
+  into a `RenderedResume` intermediate; six format-specific render
+  functions (`render_markdown`, `render_plain_text`, `render_html`,
+  `render_json_resume`, `render_docx`, `render_pdf`) walk that
+  intermediate. Fidelity contract: nothing the agent didn't rewrite is
+  touched; placeholders like `[N]` / `[X]%` survive verbatim; unmatched
+  rewrites are appended (never silently dropped); rewrites match
+  bullets by `section_label` + exact-then-substring on `original_text`.
+- **Formats**:
+  - Markdown (canonical, no dependency)
+  - Plain text (ATS-friendly, hard-wrapped at 72 chars)
+  - HTML (hand-rolled, no extra dependency; HTML-escaped inputs)
+  - JSON Resume (jsonresume.org schema subset)
+  - DOCX (python-docx; one-page-friendly margins, Calibri 11pt)
+  - PDF (reportlab; LETTER size, Helvetica family)
+- **Dependencies**: `python-docx>=1.1.0` and `reportlab>=4.0.0` (both
+  pure-Python; no system deps; added to `requirements.txt`).
+- **REST endpoint**:
+  `GET /resume-clinic/{id}/export?format=md|txt|html|json|docx|pdf`.
+  Returns raw bytes with the right `Content-Type` and a
+  download-friendly `Content-Disposition: attachment; filename=...`.
+  400 on unsupported format; 404 on unknown clinic review or missing
+  resume.
+- **UI** (Resume Clinic view). New "Export the final resume" panel
+  beneath the decision controls: format selectbox, inline preview for
+  text-y formats (md / txt / json / html), and a download button.
+- **Tests**: 31 renderer tests (composer + decision logic + each
+  format) + 11 endpoint tests (per-format success, default format,
+  unknown format 400, unknown review 404, decision-aware rendering
+  for approve vs reject). Full suite at 664 (was 622).
+
+---
+
+## 2026-05-28
+
 ### Added — Resume Clinic: standalone, job-agnostic resume review (ADR-066)
 
 The second product surface — a profile-scoped, out-of-graph resume tool that

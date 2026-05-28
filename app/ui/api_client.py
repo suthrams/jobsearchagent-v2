@@ -328,6 +328,32 @@ def submit_resume_clinic_decision(review_id: str, approval: str,
     return r.json()
 
 
+def export_resume_clinic(review_id: str, format: str) -> tuple[bytes, str, str]:
+    """GET /resume-clinic/{review_id}/export?format=...
+
+    Returns (raw_bytes, content_type, filename) so the UI can plug straight into
+    st.download_button. Supported formats: md, txt, html, json, docx, pdf.
+    Decision-aware - the server applies the agent's overhaul or the human's
+    edited draft (or no overhaul on reject) before rendering.
+    """
+    r = httpx.get(
+        f"{BASE_URL}/resume-clinic/{review_id}/export",
+        params={"format": format},
+        timeout=30.0,
+    )
+    r.raise_for_status()
+    content_type = r.headers.get("content-type", "application/octet-stream").split(";")[0].strip()
+    # Pull the filename out of Content-Disposition if present; fall back to a sane default.
+    cd = r.headers.get("content-disposition", "")
+    filename = f"resume_clinic_{review_id[:8]}.{format if format != 'json' else 'json'}"
+    if "filename=" in cd:
+        try:
+            filename = cd.split("filename=", 1)[1].strip().strip('"')
+        except Exception:
+            pass
+    return r.content, content_type, filename
+
+
 # ── ADR-057: per-job exclusion ───────────────────────────────────────────────
 
 def exclude_job(job_id: str, reason: str | None = None) -> dict:
