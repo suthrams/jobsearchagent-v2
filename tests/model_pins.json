@@ -1,0 +1,34 @@
+{
+  "_doc": [
+    "Per-agent model pins. Each entry is the (provider, model) an agent was last",
+    "validated against, with the date that validation happened.",
+    "",
+    "The companion test (tests/v2/test_model_pins.py) resolves the live registry",
+    "assignment for user_id='0' and fails the build if any agent has drifted.",
+    "",
+    "To update a pin:",
+    "  1. Run the live integration suite for the drifted agent(s):",
+    "       pytest -m integration tests/",
+    "  2. Inspect the structured outputs for semantic drift (scores, decisions,",
+    "     evidence quality) -- not just that the call succeeded.",
+    "  3. Edit this file with the new {provider, model, validated_on}.",
+    "  4. Commit the pin update separately from the config change so the",
+    "     re-validation is auditable.",
+    "",
+    "Baseline date below = 2026-05-28, the day this file was first created. Earlier",
+    "validations exist (per ADR-053/058 cost work) but were not date-stamped at the",
+    "pin layer, so this is the first authoritative pin record."
+  ],
+  "pins": {
+    "research_agent":       {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
+    "scoring_agent":        {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
+    "resume_critic":        {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
+    "review_auditor":       {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
+    "fidelity_reviewer":    {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
+    "career_advisor":       {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-28"},
+    "interview_coach":      {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-28"},
+    "tailoring_agent":      {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-28"},
+    "resume_parser":        {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-28"},
+    "custom_url_extractor": {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-28"}
+  }
+}

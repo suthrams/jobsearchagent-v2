@@ -46,7 +46,7 @@ python -m pytest tests/ -m integration    # run live-API smoke tests
 ## Commit conventions
 
 - Use HEREDOC for the commit message so multi-line formatting survives shell quoting.
-- End the message with `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
+- End the message with `Co-Authored-By: Claude <noreply@anthropic.com>`.
 - First line: short imperative summary. ASCII only.
 - Body: what changed and why. Reference ADRs / files / line numbers where useful.
 
@@ -57,7 +57,7 @@ feat: short imperative summary line
 Multi-line body explaining what changed and why. Reference ADRs, file
 paths, or line numbers where it would help a future reader.
 
-Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
+Co-Authored-By: Claude <noreply@anthropic.com>
 EOF
 )"
 ```
@@ -140,6 +140,7 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - Both providers use the same retry policy: 6 attempts on `RateLimitError` / `APIConnectionError` / `InternalServerError`, jittered exponential backoff capped at 60s, 429s honor `retry-after` (capped at 90s)
 - `OpenAIProvider` is gated by `OPENAI_API_KEY`. If absent, OpenAI models are not registered and the Settings UI hides them. Workflows continue on Claude
 - Prefer `provider.complete_with_usage(...) -> (dict, LLMUsage)` over the legacy `complete()` + `last_call_usage()` two-step. The typed return eliminates the thread-local race that the old side-channel had
+- Per-agent model assignment is pinned in `tests/model_pins.json`; the invariant in `tests/v2/test_model_pins.py` resolves the live registry for `user_id="0"` and fails the build when the assignment drifts from the pin. A swap (YAML edit, user_config row on the default profile, catalog rename) cannot land silently. Update the pin file in a separate commit AFTER running `pytest -m integration tests/` and inspecting outputs for semantic drift — never edit the pin to silence the test. This is the build-time gate half of ADR-058's per-workflow model snapshot (the audit half)
 
 ---
 
