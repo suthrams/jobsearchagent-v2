@@ -212,7 +212,7 @@ Identity (ADR-062): every endpoint resolves the acting profile from an optional
 
 ## 10. Architecture Decision Records
 
-62 ADRs covering every major design decision. All accepted (ADR-051 superseded by ADR-053).
+66 ADRs covering every major design decision. ADR-011 superseded by ADR-059; ADR-051 superseded by ADR-053. All others accepted.
 
 **Index:** [architecture/adr/ADR-000-index.md](architecture/adr/ADR-000-index.md)
 
@@ -228,7 +228,7 @@ Identity (ADR-062): every endpoint resolves the acting profile from an optional
 | [008](architecture/adr/ADR-008-use-bounded-reflection-for-resume-critique.md) | Use bounded reflection for resume critique | Agents |
 | [009](architecture/adr/ADR-009-do-not-use-formal-multi-agent-protocol-for-mvp.md) | No formal multi-agent protocol for MVP | Foundation |
 | [010](architecture/adr/ADR-010-use-react-selectively-in-research-agent-only.md) | Use ReAct selectively in Research Agent only | Agents |
-| [011](architecture/adr/ADR-011-human-in-the-loop-as-backend-workflow-pauses.md) | Human-in-the-loop as backend workflow pauses | Orchestrator |
+| [011](architecture/adr/ADR-011-human-in-the-loop-as-backend-workflow-pauses.md) | Human-in-the-loop as backend workflow pauses (superseded by ADR-059) | Orchestrator |
 | [012](architecture/adr/ADR-012-deep-review-only-on-shortlisted-jobs.md) | Deep review only on shortlisted jobs | Orchestrator |
 | [013](architecture/adr/ADR-013-separate-resume-gaps-from-career-gaps.md) | Separate resume gaps from career gaps | Agents |
 | [014](architecture/adr/ADR-014-interview-coach-is-conditional.md) | Interview Coach is conditional | Agents |
@@ -280,6 +280,10 @@ Identity (ADR-062): every endpoint resolves the acting profile from an optional
 | [060](architecture/adr/ADR-060-human-triage-before-scoring.md) | Human triage before scoring — widen discovery, score only selected | post-9 |
 | [061](architecture/adr/ADR-061-configurable-funnel-width.md) | Configurable funnel width + on-demand deep review and interview prep | post-9 |
 | [062](architecture/adr/ADR-062-multi-user-profiles.md) | Multi-user profiles with a single swappable identity seam (no-auth profile selector, per-user data scoping) | post-9 |
+| [063](architecture/adr/ADR-063-retire-v1-reference-code.md) | Retire the v1 reference code (keep the shared scraper/model libraries) | post-9 |
+| [064](architecture/adr/ADR-064-per-profile-search-criteria-drive-discovery.md) | Per-profile search criteria drive discovery; configurable relevance filters | post-9 |
+| [065](architecture/adr/ADR-065-experience-targeted-discovery.md) | Experience-targeted discovery (years-of-experience cap + senior exclusion) | post-9 |
+| [066](architecture/adr/ADR-066-standalone-resume-clinic.md) | Standalone Resume Clinic (job-agnostic review, advice, and overhaul) | post-9 |
 
 ---
 

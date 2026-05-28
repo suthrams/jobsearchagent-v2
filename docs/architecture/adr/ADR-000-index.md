@@ -16,7 +16,7 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-008 | [Use Bounded Reflection for Resume Critique](ADR-008-use-bounded-reflection-for-resume-critique.md) | Accepted |
 | ADR-009 | [Do Not Use Formal Multi-Agent Protocol for MVP](ADR-009-do-not-use-formal-multi-agent-protocol-for-mvp.md) | Accepted |
 | ADR-010 | [Use ReAct Selectively in Research Agent Only](ADR-010-use-react-selectively-in-research-agent-only.md) | Accepted |
-| ADR-011 | [Human-in-the-Loop as Backend Workflow Pauses](ADR-011-human-in-the-loop-as-backend-workflow-pauses.md) | Accepted |
+| ADR-011 | [Human-in-the-Loop as Backend Workflow Pauses](ADR-011-human-in-the-loop-as-backend-workflow-pauses.md) | Superseded by ADR-059 |
 | ADR-012 | [Deep Review Only on Shortlisted Jobs](ADR-012-deep-review-only-on-shortlisted-jobs.md) | Accepted |
 | ADR-013 | [Separate Resume Gaps from Career Gaps](ADR-013-separate-resume-gaps-from-career-gaps.md) | Accepted |
 | ADR-014 | [Interview Coach Is Conditional](ADR-014-interview-coach-is-conditional.md) | Accepted |
@@ -71,4 +71,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-063 | [Retire the v1 Reference Code (Keep the Shared Scraper/Model Libraries)](ADR-063-retire-v1-reference-code.md) | Accepted |
 | ADR-064 | [Per-Profile Search Criteria Drive Discovery; Configurable Relevance Filters](ADR-064-per-profile-search-criteria-drive-discovery.md) | Accepted |
 | ADR-065 | [Experience-Targeted Discovery (Years-of-Experience Cap + Senior Exclusion)](ADR-065-experience-targeted-discovery.md) | Accepted |
-| ADR-066 | [Standalone Resume Clinic (Job-Agnostic Review, Advice, and Overhaul)](ADR-066-standalone-resume-clinic.md) | Proposed |
+| ADR-066 | [Standalone Resume Clinic (Job-Agnostic Review, Advice, and Overhaul)](ADR-066-standalone-resume-clinic.md) | Accepted |

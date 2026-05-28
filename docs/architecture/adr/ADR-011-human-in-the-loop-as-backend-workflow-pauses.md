@@ -1,7 +1,15 @@
     # ADR-011: Human-in-the-Loop as Backend Workflow Pauses
 
     ## Status
-    Accepted
+    Superseded by ADR-059 (Retire In-Graph HITL; Add a Human Edit Decision).
+
+    ADR-011 framed HITL as in-graph backend pauses (`interrupt()` nodes that the
+    UI submits decisions against). ADR-059 retires the in-graph interrupt path
+    in full and replaces it with two patterns: auto-selection at the job-selection
+    step (no human gate) and out-of-graph approvals for tailoring (curate-after
+    via a separate REST endpoint, ADR-055). The original principle — backend
+    owns orchestration, human controls consequential decisions — is preserved;
+    the mechanism is no longer a graph pause.
 
     ## Context
     The user must remain in control of consequential decisions, but the UI should not orchestrate the workflow.

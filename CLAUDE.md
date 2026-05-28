@@ -166,7 +166,7 @@ app/
   ui/               ← Streamlit frontend (streamlit_app.py + db_reader.py + api_client.py)
 
 docs/architecture/
-  adr/              ← 56 Architecture Decision Records (start at ADR-000-index.md)
+  adr/              ← 66 Architecture Decision Records (start at ADR-000-index.md)
   implementation_plan.md
   agent_model.md · workflow_model.md · state_and_memory_model.md
   data_model.md · observability.md · security.model.md
@@ -198,7 +198,7 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 - `state_and_memory_model.md` — WorkflowState schema and memory rules
 - `data_model.md` — all 19 SQLite table definitions (incl. `users`, ADR-062), per-column data dictionary, and per-table workflow usage
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
-- `adr/` — 56 Architecture Decision Records
+- `adr/` — 66 Architecture Decision Records
 
 ---
 
