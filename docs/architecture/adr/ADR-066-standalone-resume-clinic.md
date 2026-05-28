@@ -268,7 +268,7 @@ ModelRegistry, observability, the out-of-graph runner pattern).
   plan, and the `rewrites` via the **existing** `_render_tailored_sections` /
   `_render_one_bullet` renderer with the approve/edit/reject decision flow.
 
-### Phase 6 — Tests + docs
+### Phase 6 — Tests + docs + E2E notebook
 
 - Tests: repository CRUD; `run_clinic` with mocked reviewer + fidelity (asserts
   Fidelity always runs on rewrites); endpoint success / decision / unknown
@@ -278,6 +278,13 @@ ModelRegistry, observability, the out-of-graph runner pattern).
   `agent_model.md` (Resume Reviewer), `ui_model.md` (Resume Clinic view),
   `CLAUDE.md` (agents table + invariants: clinic is out-of-graph, rewrites are
   fidelity-checked), `user_guide.md`, `CHANGELOG.md`.
+- **E2E validation notebook** `notebooks/resume_clinic_validation.ipynb`: live-agent
+  walkthrough of the full clinic flow (load profile -> optional target role/track
+  -> POST the clinic endpoint -> inspect quality/alignment/overhaul JSON -> exercise
+  an approve/edit/reject decision). Mirrors `notebooks/phase_7_validation.ipynb`'s
+  pattern: requires `ANTHROPIC_API_KEY`; not run in CI; the surface where semantic
+  drift would actually show up (per ADR-058's audit/gate distinction, this is the
+  audit/inspection surface — the mocked Phase-6 tests are the structural gate).
 
 ### Fast-follow (separate ADR-light change)
 
