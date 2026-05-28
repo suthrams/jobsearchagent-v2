@@ -55,3 +55,32 @@ class TailoringResponse(BaseModel):
 class TailoringListResponse(BaseModel):
     workflow_id: str
     tailorings: list[TailoringResponse] = []
+
+
+class ResumeClinicResponse(BaseModel):
+    """One Resume Clinic review row (ADR-066).
+
+    Returned by the clinic router for both create (POST) and read (GET).
+    `quality` and `overhaul` (reorganization + rewrites) are always present;
+    `alignment` is null when the run had no target_role / target_track.
+    """
+    clinic_id: str
+    user_id: str
+    resume_id: str
+    workflow_run_id: str | None = None
+    target_role: str | None = None
+    target_track: str | None = None
+    seniority_aware: bool = False
+    quality: dict | None = None             # ResumeQuality
+    alignment: dict | None = None           # Alignment (null when no target)
+    overhaul: dict | None = None            # {reorganization, rewrites}
+    fidelity_review: dict | None = None     # FidelityReview verdict (null if fidelity skipped/failed)
+    decision: str | None = None             # approve | revise | reject | edit
+    edited: dict | None = None              # human-authored overhaul on `edit` decision
+    decided_at: str | None = None
+    created_at: str | None = None
+
+
+class ResumeClinicListResponse(BaseModel):
+    user_id: str
+    reviews: list[ResumeClinicResponse] = []

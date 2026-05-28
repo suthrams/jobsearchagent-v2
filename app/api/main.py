@@ -20,6 +20,7 @@ from app.api.routers.config import router as config_router
 from app.api.routers.jobs import exclusion_router as jobs_exclusion_router
 from app.api.routers.jobs import router as jobs_router
 from app.api.routers.reports import router as reports_router
+from app.api.routers.resume_clinic import router as resume_clinic_router
 from app.api.routers.tailoring import router as tailoring_router
 from app.api.routers.users import router as users_router
 from app.api.routers.workflows import router as workflows_router
@@ -72,3 +73,4 @@ app.include_router(reports_router)
 app.include_router(config_router)
 app.include_router(tailoring_router)
 app.include_router(users_router)  # ADR-062: profile management
+app.include_router(resume_clinic_router)  # ADR-066: standalone Resume Clinic
