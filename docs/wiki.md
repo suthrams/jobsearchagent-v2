@@ -212,78 +212,11 @@ Identity (ADR-062): every endpoint resolves the acting profile from an optional
 
 ## 10. Architecture Decision Records
 
-66 ADRs covering every major design decision. ADR-011 superseded by ADR-059; ADR-051 superseded by ADR-053. All others accepted.
+Every major design decision in the codebase is captured as an ADR. The canonical list — with current status, supersession history, and a link to each ADR — lives in the index next to the ADR files:
 
-**Index:** [architecture/adr/ADR-000-index.md](architecture/adr/ADR-000-index.md)
+**Full list:** [architecture/adr/ADR-000-index.md](architecture/adr/ADR-000-index.md)
 
-| ADR | Decision | Phase |
-|---|---|---|
-| [001](architecture/adr/ADR-001-keep-v1-stable-and-use-v2-for-refactor.md) | Keep v1 stable; develop v2 in parallel | Foundation |
-| [002](architecture/adr/ADR-002-orchestrator-mediated-agent-coordination-with-shared-state.md) | Orchestrator-mediated agent coordination with shared state | Foundation |
-| [003](architecture/adr/ADR-003-separate-frontend-and-backend-responsibilities.md) | Separate frontend and backend responsibilities | Foundation |
-| [004](architecture/adr/ADR-004-backend-owns-workflow-orchestration.md) | Backend owns workflow orchestration | Foundation |
-| [005](architecture/adr/ADR-005-use-specialized-agents.md) | Use specialized agents — one responsibility each | Agents |
-| [006](architecture/adr/ADR-006-keep-deterministic-work-in-tools-and-services.md) | Keep deterministic work in tools and services | Services |
-| [007](architecture/adr/ADR-007-use-structured-output-schemas.md) | Use structured output schemas (Pydantic) | Agents |
-| [008](architecture/adr/ADR-008-use-bounded-reflection-for-resume-critique.md) | Use bounded reflection for resume critique | Agents |
-| [009](architecture/adr/ADR-009-do-not-use-formal-multi-agent-protocol-for-mvp.md) | No formal multi-agent protocol for MVP | Foundation |
-| [010](architecture/adr/ADR-010-use-react-selectively-in-research-agent-only.md) | Use ReAct selectively in Research Agent only | Agents |
-| [011](architecture/adr/ADR-011-human-in-the-loop-as-backend-workflow-pauses.md) | Human-in-the-loop as backend workflow pauses (superseded by ADR-059) | Orchestrator |
-| [012](architecture/adr/ADR-012-deep-review-only-on-shortlisted-jobs.md) | Deep review only on shortlisted jobs | Orchestrator |
-| [013](architecture/adr/ADR-013-separate-resume-gaps-from-career-gaps.md) | Separate resume gaps from career gaps | Agents |
-| [014](architecture/adr/ADR-014-interview-coach-is-conditional.md) | Interview Coach is conditional | Agents |
-| [015](architecture/adr/ADR-015-tailoring-must-be-evidence-bound.md) | Tailoring must be evidence-bound | Agents |
-| [016](architecture/adr/ADR-016-add-fidelity-reviewer-after-tailoring-agent.md) | Add Fidelity Reviewer after Tailoring Agent | Agents |
-| [017](architecture/adr/ADR-017-ethical-ai-use-for-career-decision-support.md) | Ethical AI use for career decision support | Foundation |
-| [018](architecture/adr/ADR-018-global-ethics-guardrails-must-be-included-in-agent-prompts.md) | Global ethics guardrails in every agent prompt | Agents |
-| [019](architecture/adr/ADR-019-treat-scraped-job-descriptions-as-untrusted-input.md) | Treat scraped job descriptions as untrusted input | Security |
-| [020](architecture/adr/ADR-020-minimize-pii-sent-to-llms.md) | Minimize PII sent to LLMs | Security |
-| [021](architecture/adr/ADR-021-store-workflow-runs-not-just-final-results.md) | Store workflow runs, not just final results | Data |
-| [022](architecture/adr/ADR-022-use-json-columns-for-evolving-agent-outputs.md) | Use JSON columns for evolving agent outputs | Data |
-| [023](architecture/adr/ADR-023-make-observability-first-class.md) | Make observability first-class | Observability |
-| [024](architecture/adr/ADR-024-track-prompt-versions.md) | Track prompt versions | Observability |
-| [025](architecture/adr/ADR-025-add-security-and-policy-layer-around-agents-and-tools.md) | Add security and policy layer around agents and tools | Security |
-| [026](architecture/adr/ADR-026-track-security-events.md) | Track security events | Security |
-| [027](architecture/adr/ADR-027-add-cost-token-and-latency-tracking.md) | Add cost, token, and latency tracking | Observability |
-| [028](architecture/adr/ADR-028-start-with-streamlit-and-sqlite-mvp.md) | Start with Streamlit + SQLite MVP | UI |
-| [029](architecture/adr/ADR-029-add-fastapi-only-after-service-layer-stabilizes.md) | Add FastAPI only after service layer stabilizes | API |
-| [030](architecture/adr/ADR-030-use-skillsyaml-for-application-skill-taxonomy.md) | Use skills.yaml for application skill taxonomy | Services |
-| [031](architecture/adr/ADR-031-separate-claude-code-support-files-from-app-code.md) | Separate Claude Code support files from app code | Foundation |
-| [032](architecture/adr/ADR-032-abstract-llm-providers.md) | Abstract LLM providers | Provider |
-| [033](architecture/adr/ADR-033-status-manager-must-be-non-ai.md) | Status Manager must be non-AI | Services |
-| [034](architecture/adr/ADR-034-do-not-overbuild-before-proving-core-workflow.md) | Do not overbuild before proving core workflow | Foundation |
-| [035](architecture/adr/ADR-035-enforce-a-structured-workflow-state-schema.md) | Enforce a structured WorkflowState schema | Orchestrator |
-| [036](architecture/adr/ADR-036-define-explicit-agent-input-and-output-contracts.md) | Define explicit agent input/output contracts | Agents |
-| [037](architecture/adr/ADR-037-standard-failure-and-retry-strategy.md) | Standard failure and retry strategy | Provider |
-| [038](architecture/adr/ADR-038-version-prompts-agents-schemas-and-workflows.md) | Version prompts, agents, schemas, and workflows | Provider |
-| [039](architecture/adr/ADR-039-define-sequential-mvp-execution-model-with-future-parallelism.md) | Sequential MVP execution model with future parallelism | Orchestrator |
-| [040](architecture/adr/ADR-040-define-data-retention-and-privacy-policy.md) | Define data retention and privacy policy | Data |
-| [041](architecture/adr/ADR-041-all-agent-execution-must-be-bounded.md) | All agent execution must be bounded | Agents |
-| [042](architecture/adr/ADR-042-define-testing-and-evaluation-strategy.md) | Define testing and evaluation strategy | Testing |
-| [043](architecture/adr/ADR-043-define-prompt-evaluation-and-regression-strategy.md) | Define prompt evaluation and regression strategy | Testing |
-| [044](architecture/adr/ADR-044-define-v1-to-v2-migration-strategy.md) | Define v1 to v2 migration strategy | Foundation |
-| [045](architecture/adr/ADR-045-Job-Intake-Supports-Automated-Discovery-and-Manual-Input.md) | Job intake supports automated discovery and manual input | Services |
-| [046](architecture/adr/ADR-046-Hybrid_Configuration_Model_YAML_And_DB_Overrides.md) | Hybrid configuration model — YAML + DB overrides | Config |
-| [047](architecture/adr/ADR-047-use-sqlitesaver-for-workflow-checkpoint-persistence.md) | Use SqliteSaver for LangGraph checkpoint persistence | Phase 7 |
-| [048](architecture/adr/ADR-048-api-key-presence-as-live-mock-mode-gate.md) | API key presence as live/mock mode gate | Phase 7 |
-| [049](architecture/adr/ADR-049-use-threadpoolexecutor-for-concurrent-job-scoring.md) | Use ThreadPoolExecutor for concurrent job scoring | Phase 8 |
-| [050](architecture/adr/ADR-050-wrap-v1-adzuna-scraper-with-concurrent-adapter.md) | Wrap v1 AdzunaScraper with a concurrent adapter | Phase 8 |
-| [051](architecture/adr/ADR-051-tiered-model-assignment-haiku-for-volume-sonnet-for-generative.md) | Tiered model assignment — Haiku for volume/validation, Sonnet for generative (superseded by ADR-053) | Phase 9 |
-| [052](architecture/adr/ADR-052-reduce-max-jobs-per-run-as-cost-control.md) | Reduce MAX_JOBS_PER_RUN as primary cost control lever | Phase 9 |
-| [053](architecture/adr/ADR-053-pluggable-per-agent-provider-and-model-selection.md) | Pluggable per-agent provider + model selection (ModelRegistry) | post-9 |
-| [054](architecture/adr/ADR-054-allow-deep-review-for-all-qualifying-jobs.md) | Allow deep review for all qualifying jobs — raise MAX_SELECTED_JOBS to 10 | post-9 |
-| [055](architecture/adr/ADR-055-on-demand-tailoring-as-out-of-graph-operation.md) | On-demand tailoring as an out-of-graph REST operation | post-9 |
-| [056](architecture/adr/ADR-056-tailoring-page-budget-and-section-grouping.md) | Tailoring page-budget contract + section-grouped suggestions (with three addenda: per-suggestion rationale, headline section + impactful strategy summary, directional per-track impact estimate) | post-9 |
-| [057](architecture/adr/ADR-057-restore-per-job-exclusion.md) | Restore per-job exclusion (filter input, not outcome tracking) | post-9 |
-| [058](architecture/adr/ADR-058-model-config-to-yaml-with-per-workflow-snapshot.md) | Model catalog/pricing/defaults to config.yaml + per-workflow snapshot | post-9 |
-| [059](architecture/adr/ADR-059-retire-in-graph-hitl-and-add-human-edit-decision.md) | Retire in-graph HITL; add a human edit decision (human as final author) | post-9 |
-| [060](architecture/adr/ADR-060-human-triage-before-scoring.md) | Human triage before scoring — widen discovery, score only selected | post-9 |
-| [061](architecture/adr/ADR-061-configurable-funnel-width.md) | Configurable funnel width + on-demand deep review and interview prep | post-9 |
-| [062](architecture/adr/ADR-062-multi-user-profiles.md) | Multi-user profiles with a single swappable identity seam (no-auth profile selector, per-user data scoping) | post-9 |
-| [063](architecture/adr/ADR-063-retire-v1-reference-code.md) | Retire the v1 reference code (keep the shared scraper/model libraries) | post-9 |
-| [064](architecture/adr/ADR-064-per-profile-search-criteria-drive-discovery.md) | Per-profile search criteria drive discovery; configurable relevance filters | post-9 |
-| [065](architecture/adr/ADR-065-experience-targeted-discovery.md) | Experience-targeted discovery (years-of-experience cap + senior exclusion) | post-9 |
-| [066](architecture/adr/ADR-066-standalone-resume-clinic.md) | Standalone Resume Clinic (job-agnostic review, advice, and overhaul) | post-9 |
+This wiki section used to mirror the index as an inline table. It was dropped to eliminate a duplicate source of truth: every new ADR required updates in two places, nothing enforced the sync, and the inline copy drifted out of date. One list, in one place, next to the files it describes.
 
 ---
 
