@@ -792,51 +792,65 @@ def render_pdf(rendered: RenderedResume) -> bytes:
     buf = io.BytesIO()
     doc = SimpleDocTemplate(
         buf, pagesize=LETTER,
-        leftMargin=0.7 * inch, rightMargin=0.7 * inch,
-        topMargin=0.6 * inch, bottomMargin=0.6 * inch,
+        # Tighter margins (0.6" / 0.5") fit more content per page without
+        # crowding the edges; common one-page-resume convention.
+        leftMargin=0.6 * inch, rightMargin=0.6 * inch,
+        topMargin=0.5 * inch, bottomMargin=0.5 * inch,
         title=rendered.name or "Resume",
     )
 
+    # All text uses the Helvetica family (matching the HTML stylesheet and the
+    # DOCX Calibri choice). ReportLab's getSampleStyleSheet()["Normal"] defaults
+    # to Times-Roman, so paragraph styles inherit fontName explicitly.
     styles = getSampleStyleSheet()
     name_style = ParagraphStyle(
-        "Name", parent=styles["Title"], fontSize=22, leading=26,
-        textColor="#222222", alignment=TA_LEFT, spaceAfter=2,
+        "Name", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=18, leading=21,
+        textColor="#1a1a1a", alignment=TA_LEFT, spaceAfter=1,
     )
     headline_style = ParagraphStyle(
-        "Headline", parent=styles["Normal"], fontSize=12, leading=14,
-        textColor="#444444", spaceAfter=2, fontName="Helvetica-Bold",
+        "Headline", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=11, leading=13,
+        textColor="#444444", spaceAfter=1,
     )
     contact_style = ParagraphStyle(
-        "Contact", parent=styles["Normal"], fontSize=10, leading=12,
-        textColor="#666666", spaceAfter=10,
+        "Contact", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9.5, leading=11,
+        textColor="#666666", spaceAfter=6,
     )
     section_style = ParagraphStyle(
-        "Section", parent=styles["Normal"], fontSize=11, leading=13,
-        textColor="#333333", spaceBefore=12, spaceAfter=4,
-        fontName="Helvetica-Bold",
+        "Section", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=10.5, leading=12,
+        textColor="#333333", spaceBefore=8, spaceAfter=2,
     )
     role_style = ParagraphStyle(
-        "Role", parent=styles["Normal"], fontSize=11.5, leading=13,
-        spaceBefore=8, spaceAfter=0, fontName="Helvetica-Bold",
+        "Role", parent=styles["Normal"],
+        fontName="Helvetica-Bold", fontSize=10.5, leading=12,
+        spaceBefore=5, spaceAfter=0,
     )
     meta_style = ParagraphStyle(
-        "Meta", parent=styles["Normal"], fontSize=10, leading=12,
-        textColor="#666666", spaceAfter=2,
+        "Meta", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9.5, leading=11,
+        textColor="#666666", spaceAfter=0,
     )
     tech_style = ParagraphStyle(
-        "Tech", parent=styles["Normal"], fontSize=10, leading=12,
-        textColor="#555555", spaceAfter=4, fontName="Helvetica-Oblique",
+        "Tech", parent=styles["Normal"],
+        fontName="Helvetica-Oblique", fontSize=9.5, leading=11,
+        textColor="#555555", spaceAfter=2,
     )
     body_style = ParagraphStyle(
-        "Body", parent=styles["Normal"], fontSize=10.5, leading=14,
+        "Body", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=10, leading=12.5,
+        textColor="#222222",
     )
     bullet_style = ParagraphStyle(
-        "Bullet", parent=body_style, spaceAfter=2,
+        "Bullet", parent=body_style, spaceAfter=1,
     )
     banner_style = ParagraphStyle(
-        "Banner", parent=styles["Normal"], fontSize=9.5, leading=12,
+        "Banner", parent=styles["Normal"],
+        fontName="Helvetica-Oblique", fontSize=9, leading=11,
         textColor="#664400", backColor="#fff7d6", borderColor="#e7d27a",
-        borderWidth=0.5, borderPadding=4, spaceAfter=10,
+        borderWidth=0.5, borderPadding=4, spaceAfter=8,
     )
 
     story: list = []
@@ -868,7 +882,6 @@ def render_pdf(rendered: RenderedResume) -> bytes:
             for para in rendered.summary.split("\n\n"):
                 if para.strip():
                     story.append(P(para.strip(), body_style))
-                    story.append(Spacer(1, 2))
         elif section == "experience" and rendered.experience:
             story.append(P(section_h_label[section].upper(), section_style))
             for it in rendered.experience:
