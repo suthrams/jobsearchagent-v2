@@ -203,26 +203,19 @@ Reviewer's evidence-binding check on every turn.
 
 ## The cost shape per session
 
-```mermaid
-flowchart LR
-    subgraph SETUP [Initial clinic]
-        C1[ResumeReviewerAgent - 1 call, about USD 0.08]
-        C2[FidelityReviewer - 1 call, about USD 0.02]
-    end
-    subgraph TURNS [Per chat turn, typically 3 to 6 per session]
-        T1[ResumeChatAgent - about USD 0.012 uncached]
-        T2[FidelityReviewer - about USD 0.005]
-    end
+Tabular rather than a Mermaid diagram — costs are linear and a table reads
+cleaner than a flowchart of subgraphs with dotted arrows.
 
-    SETUP -. about USD 0.10 fixed .-> TURNS
-    TURNS -. USD 0.05 to USD 0.15 across the session .-> TOTAL[About USD 0.15 to 0.25 total]
-```
+| Phase | LLM calls | Approx cost | Notes |
+|---|---|---|---|
+| Initial clinic (once per resume) | 1 × `ResumeReviewerAgent` + 1 × `FidelityReviewer` | **~$0.10 fixed** | Runs when the user first opens the Resume Clinic on a profile. |
+| Per chat turn (iterative) | 1 × `ResumeChatAgent` + 1 × `FidelityReviewer` | **~$0.017 per turn** (uncached) | Triggered by the user pressing **Send feedback**. |
+| Typical session | 3 to 6 chat turns | **$0.15 – $0.25 total** | Initial clinic + chat refinements added together. |
 
-The parsed profile is cached in the second prompt block, so subsequent chat
-turns hit the 10% pricing tier on that block — real session cost runs lower
-than the headline numbers above.
-
-All chat-turn `llm_calls` rows are tagged with the clinic's
+The parsed profile is **cached in the second prompt block**, so subsequent
+chat turns hit the 10% pricing tier on that block — real session cost runs
+lower than the headline numbers above. Cost attribution flows through one
+correlation id: every chat-turn `llm_calls` row is tagged with the clinic's
 `workflow_run_id` (the lightweight `workflow_type="resume_clinic"` row the
 original clinic runner wrote), so the per-profile **Cost Dashboard**
 attributes the whole session — reviewer + every chat turn + every fidelity
