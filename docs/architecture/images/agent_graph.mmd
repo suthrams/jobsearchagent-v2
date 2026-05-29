@@ -1,0 +1,27 @@
+flowchart TB
+    subgraph Funnel [Job-search funnel - in-graph LangGraph]
+        a1[ResearchAgent - Bounded ReAct]
+        a2[ScoringAgent - Structured output]
+        a3[ResumeCritic - Critique]
+        a4[ReviewAuditor - Evaluator and reflection]
+        a5[CareerAdvisor - Advisory]
+        a6[InterviewCoach - Conditional on threshold]
+    end
+
+    subgraph Tailoring [On-demand tailoring - out-of-graph]
+        a7[TailoringAgent - Evidence-bound generation]
+    end
+
+    subgraph Clinic [Resume Clinic - out-of-graph]
+        a8[ResumeReviewerAgent - Structured output, job-agnostic]
+        a9[ResumeChatAgent - Iterative revision per turn]
+    end
+
+    subgraph Guardrail [Validation - runs after every generation agent]
+        a10[FidelityReviewer]
+    end
+
+    subgraph Helpers [Utility LLM helpers - not BaseAgent]
+        a11[ResumeParser uses resume_parser]
+        a12[CustomUrlExtractor uses custom_url_extractor]
+    end

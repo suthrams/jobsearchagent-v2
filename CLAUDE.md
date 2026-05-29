@@ -178,7 +178,7 @@ app/
   ui/               ← Streamlit frontend (streamlit_app.py + db_reader.py + api_client.py)
 
 docs/architecture/
-  adr/              ← 67 Architecture Decision Records (start at ADR-000-index.md)
+  adr/              ← 68 Architecture Decision Records (start at ADR-000-index.md)
   implementation_plan.md
   agent_model.md · workflow_model.md · state_and_memory_model.md
   data_model.md · observability.md · security.model.md
@@ -206,11 +206,13 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 
 - `implementation_plan.md` — phased build plan with review gates
 - `agent_model.md` — per-agent input/output contracts and constraints
+- `agent_graph_overview.md` — one-page visual map (PNG + Mermaid) of every agent grouped by responsibility, plus the in-graph workflow flow and out-of-graph operations
 - `workflow_model.md` — complete workflow execution blueprint
 - `state_and_memory_model.md` — WorkflowState schema and memory rules
-- `data_model.md` — all 19 SQLite table definitions (incl. `users`, ADR-062), per-column data dictionary, and per-table workflow usage
+- `data_model.md` — all 20 SQLite table definitions (incl. `users`, ADR-062, and `resume_clinic_reviews`, ADR-066), per-column data dictionary, and per-table workflow usage
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
-- `adr/` — 67 Architecture Decision Records
+- `api_surface_overview.md` — one-page visual map (PNG + Mermaid) of every REST endpoint grouped by domain
+- `adr/` — 68 Architecture Decision Records
 
 ---
 
