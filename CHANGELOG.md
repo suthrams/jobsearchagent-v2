@@ -6,6 +6,57 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-29
 
+### Added — Headline as a Resume Clinic feedback target (ADR-068 follow-up)
+
+The clinic now treats the resume's `headline` (the one-line positioning
+statement under the candidate's name) as a first-class rewrite target on
+the same path as `summary`. Before this commit the headline was parsed
+into `ResumeProfile.headline` and rendered into every export format, but
+neither the reviewer nor the chat agent could touch it - feedback flowed
+to summary / experience / skills only and the headline silently passed
+through whatever the parser captured.
+
+Closing this is small but the leverage is real: the headline is the
+first three words a reviewer reads, and for mid- to senior-career
+candidates a sharp value-prop there changes the read of the whole page.
+
+- **Schemas** (`app/schemas/resume_chat.py`): `ChatSectionFocus` and
+  `ChangedSection` Literals add `"headline"`. The `ResumeClinicReview`
+  shape was already permissive enough (`section_label` is a free `str`)
+  so the reviewer can emit a headline rewrite without a schema change.
+- **Router** (`app/api/routers/resume_clinic.py`): `ChatBody.section`
+  Literal mirrors the chat schema and accepts `"headline"`.
+- **Renderer** (`app/services/resume_text_renderer.py`):
+  `_apply_rewrites` gets a `section_label == "headline"` branch that
+  replaces (or adds) the headline. New helper
+  `_replace_or_append_headline` mirrors the summary substitution shape -
+  exact-then-substring with append fallback - keeping behaviour
+  consistent across the two single-line text fields.
+- **Reviewer prompt** (`prompts/agents/resume_reviewer.txt` v2):
+  documents headline-as-rewrite-target with explicit criteria
+  (sharpness, role/level signal, scannability) and instructs the
+  reviewer to propose ADDING a headline (with `original_text=""`) when
+  the candidate has none and would benefit from one. Existing
+  evidence-binding rules apply unchanged.
+- **Chat prompt** (`prompts/agents/resume_chat.txt` v2): `section`
+  accepts `"headline"`, the focus rule covers it, and the load-bearing
+  isolation invariant ("revise only rewrites whose section_label
+  belongs to that section") extends to headline.
+- **UI** (`app/ui/streamlit_app.py`): the Refine-with-feedback section
+  selectbox adds a `"Headline"` option between "Whole resume" and
+  "Summary".
+- **Tests**: 3 new cases - renderer rewrites headline exact-match,
+  renderer ADDS headline when `original_text=""` and the candidate had
+  none, schema accepts `changed_sections=["headline"]`. Full suite at
+  724 (was 721; +3).
+
+**Explicit non-goal**: no new `QualityDimension` was added. The
+seven-dimension scorecard already covers what would have gone into a
+`headline_strength` axis (`clarity` + `seniority_framing` +
+`impact_quantification`). Expanding the enum would force a migration
+of every persisted clinic row and inflate token cost on every clinic;
+the existing rewrite path is enough.
+
 ### Added — Cost tracking + per-session cap on Resume Clinic chat (ADR-068 follow-up)
 
 After shipping the chat-revise loop, audit found three gaps in cost

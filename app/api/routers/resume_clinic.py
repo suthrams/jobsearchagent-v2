@@ -366,7 +366,7 @@ class ResumeChatRequest(BaseModel):
     """
     message: str = Field(min_length=1, max_length=2000)
     section: Literal[
-        "whole", "summary", "experience", "skills",
+        "whole", "headline", "summary", "experience", "skills",
         "education", "certifications",
     ] = "whole"
     history: list[dict] = Field(default_factory=list)

@@ -360,6 +360,9 @@ def _apply_rewrites(base: RenderedResume, rewrites: Iterable[dict]) -> None:
         original = (r.get("original_text") or "").strip()
         if not suggested:
             continue
+        if label == "headline":
+            _replace_or_append_headline(base, original, suggested)
+            continue
         if label == "summary":
             _replace_or_append_summary(base, original, suggested)
             continue
@@ -380,6 +383,16 @@ def _apply_rewrites(base: RenderedResume, rewrites: Iterable[dict]) -> None:
         # the most-recent experience entry rather than dropping it.
         if base.experience:
             base.experience[0].bullets.append(suggested)
+
+
+def _replace_or_append_headline(base: RenderedResume, original: str, suggested: str) -> None:
+    """Apply a `section_label="headline"` rewrite. The headline is a single
+    line (not bullets), so the substitution is whole-string with the same
+    exact-then-substring fallback summary uses."""
+    if base.headline and original and original in base.headline:
+        base.headline = base.headline.replace(original, suggested, 1)
+    else:
+        base.headline = suggested
 
 
 def _replace_or_append_summary(base: RenderedResume, original: str, suggested: str) -> None:

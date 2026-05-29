@@ -18,6 +18,7 @@ from app.schemas.resume_clinic import ResumeOverhaul
 
 ChatSectionFocus = Literal[
     "whole",
+    "headline",
     "summary",
     "experience",
     "skills",
@@ -26,6 +27,7 @@ ChatSectionFocus = Literal[
 ]
 
 ChangedSection = Literal[
+    "headline",
     "summary",
     "experience",
     "skills",

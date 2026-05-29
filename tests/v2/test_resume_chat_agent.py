@@ -151,6 +151,14 @@ def test_empty_changed_sections_is_valid():
     assert parsed.changed_sections == []
 
 
+def test_headline_is_a_valid_changed_section():
+    """Headline can be targeted in the chat loop (post-ADR-068 follow-up).
+    Schema must accept it as a changed_section value."""
+    result = _turn_result(changed_sections=["headline"], rewrites_count=0)
+    parsed = ResumeChatTurnResult(**result)
+    assert parsed.changed_sections == ["headline"]
+
+
 # ── Registration ─────────────────────────────────────────────────────────────
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]

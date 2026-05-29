@@ -2571,6 +2571,7 @@ elif view == "Resume Clinic":
             # ── Chat input ──────────────────────────────────────────────────
             _rc_section_options = {
                 "whole": "Whole resume",
+                "headline": "Headline",
                 "summary": "Summary",
                 "experience": "Experience",
                 "skills": "Skills",

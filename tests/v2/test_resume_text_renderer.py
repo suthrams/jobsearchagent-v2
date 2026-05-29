@@ -292,6 +292,46 @@ def test_rewrite_substring_fallback_matches_noisy_bullets():
     assert "Mentored two junior engineers." not in acme.bullets
 
 
+def test_rewrite_replaces_headline_when_section_label_is_headline():
+    """ADR-068 follow-up: section_label="headline" rewrites the one-line
+    positioning statement under the candidate's name. Exact-match path."""
+    overhaul = {
+        "reorganization": {"section_order": ["summary", "experience"], "moves": []},
+        "rewrites": [
+            {
+                "section_label": "headline",
+                "original_text": "Software Engineer",
+                "suggested_text": "Backend Engineer | AWS | Payments Platforms",
+                "claim_type": "reframe",
+                "supporting_evidence": "Resume shows AWS ECS migration + payments ownership.",
+            },
+        ],
+    }
+    rendered = compose_resume(_profile(), overhaul, None, decision="approve")
+    assert rendered.headline == "Backend Engineer | AWS | Payments Platforms"
+
+
+def test_rewrite_adds_headline_when_original_is_empty():
+    """If the candidate has no headline, the agent may propose ADDING one
+    via a rewrite with empty original_text. The renderer must accept it."""
+    profile = _profile()
+    profile["headline"] = None
+    overhaul = {
+        "reorganization": {"section_order": ["summary", "experience"], "moves": []},
+        "rewrites": [
+            {
+                "section_label": "headline",
+                "original_text": "",
+                "suggested_text": "Senior Engineer | Distributed Systems",
+                "claim_type": "reframe",
+                "supporting_evidence": "Resume evidences senior-level distributed work.",
+            },
+        ],
+    }
+    rendered = compose_resume(profile, overhaul, None, decision="approve")
+    assert rendered.headline == "Senior Engineer | Distributed Systems"
+
+
 def test_placeholders_survive_verbatim():
     # The fidelity contract: [N], [X]%, and similar placeholders the agent
     # emits when a metric can't be invented must not be normalized away.
