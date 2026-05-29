@@ -1,0 +1,54 @@
+flowchart TB
+    subgraph Profiles
+        p1[GET /users]
+        p2[POST /users]
+        p3[PUT /users/id]
+        p4[POST /users/id/resume]
+        p5[DELETE /users/id/resume/rid]
+    end
+
+    subgraph Workflows
+        w1[POST /workflows]
+        w2[GET /workflows/id]
+        w3[POST /workflows/id/retry]
+        w4[POST /workflows/id/scoring]
+    end
+
+    subgraph Workflow_reads
+        r1[GET /workflows/id/jobs]
+        r2[GET /workflows/id/report]
+    end
+
+    subgraph Per_job_on_demand
+        d1[POST /workflows/wf/jobs/job/tailorings]
+        d2[POST /workflows/wf/jobs/job/deep-review]
+        d3[POST /workflows/wf/jobs/job/interview-prep]
+    end
+
+    subgraph Tailoring_drafts
+        t1[GET /workflows/wf/tailorings]
+        t2[GET /tailorings/id]
+        t3[POST /tailorings/id/decisions]
+    end
+
+    subgraph Job_exclusion
+        j1[GET /jobs/excluded]
+        j2[POST /jobs/id/exclude]
+        j3[DELETE /jobs/id/exclude]
+    end
+
+    subgraph Resume_Clinic
+        c1[POST /users/id/resume-clinic]
+        c2[GET /users/id/resume-clinic]
+        c3[POST /resume-clinic/id/decisions]
+        c4[POST /resume-clinic/id/chat]
+        c5[POST /resume-clinic/id/discard-edits]
+        c6[GET /resume-clinic/id/export]
+    end
+
+    subgraph Config
+        f1[GET /config]
+        f2[PUT /config]
+        f3[GET /config/providers]
+        f4[POST /config/reload]
+    end

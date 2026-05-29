@@ -34,6 +34,11 @@
 
 ## Overview
 
+> 🗺  **Visual map**: see [`api_surface_overview.md`](api_surface_overview.md)
+> for a one-page diagram of every endpoint grouped by domain, plus the two
+> typical user journeys (job-search run + Resume Clinic chat-edit loop).
+> The detailed per-endpoint contract lives in this file.
+
 The API exposes a single LangGraph workflow graph as a REST surface. The graph
 runs in a background thread pool; callers poll `GET /workflows/{id}` to track
 progress.

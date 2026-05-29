@@ -181,6 +181,7 @@ merges a profile's `user_config` rows over the shared YAML defaults. The legacy
 |---|---|
 | [architecture/ui_model.md](architecture/ui_model.md) | Streamlit as thin control surface (not orchestrator); dual data-access pattern (writes via FastAPI, reads direct from SQLite); 12 screens including Active Run sections, settings, job ranking, deep review, HITL controls, report viewing |
 | [architecture/api_reference.md](architecture/api_reference.md) | Full HTTP REST API reference — endpoints for starting runs, polling status, submitting HITL decisions, fetching jobs and reports; request/response schemas; error codes; decision types; HITL decision flow |
+| [architecture/api_surface_overview.md](architecture/api_surface_overview.md) | One-page visual diagram (PNG + Mermaid) of every REST endpoint grouped by domain, plus a grouped reference table and the two typical user journeys (job-search run + Resume Clinic chat-edit loop) |
 | [architecture/reporting_model.md](architecture/reporting_model.md) | Report structure mapped to agent outputs; answers "is this job right for me, what am I missing, what should I do next"; storage schema; export formats (Markdown, DOCX, PDF) |
 
 **Key API endpoints:**
