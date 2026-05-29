@@ -6,6 +6,73 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-29
 
+### Fixed — SSRF defense on CustomUrlScraper (boundary check on user-supplied URLs)
+
+Security audit pre-Article 10 found a real SSRF gap in `CustomUrlScraper._fetch`.
+The scraper fetches URLs the user pastes in the Start New Run "paste URLs"
+field. Before this commit `_fetch` did `httpx.get(url, follow_redirects=True)`
+with no scheme allowlist, no host validation, and no per-redirect check. A
+user (or attacker pasting on someone else's behalf) could submit:
+
+    file:///etc/passwd                local file read
+    http://localhost:6379/            probe local Redis or other internal services
+    http://[::1]/internal              IPv6 loopback variant
+    http://192.168.1.1/admin          LAN-scan / router probe
+    http://10.0.0.1/internal          internal corporate network probe
+    http://169.254.169.254/...        cloud instance metadata (AWS/GCP/Azure)
+
+The 25-URL cap and 30s timeout bounded the abuse rate but not the access
+surface. This is the classic SSRF pattern.
+
+**Fix.** New `app/services/url_safety.py` with `validate_url_for_fetch`. It
+enforces:
+
+- **Scheme allowlist**: only `http` and `https`. `file://`, `ftp://`,
+  `gopher://`, `javascript:`, `data:` all rejected.
+- **Host presence**: empty / missing hostname rejected.
+- **Resolved-IP allowlist (negative form)**: the host is DNS-resolved and
+  EVERY returned address must be a routable public address. Any
+  loopback / link-local / private (RFC 1918 / ULA) / unspecified /
+  multicast / reserved address triggers rejection. Multi-record DNS
+  responses are all checked (a hostname that resolves to BOTH a public
+  and a private IP is rejected, otherwise an attacker can bypass by
+  stacking records).
+- **Literal IPs are validated directly** (no DNS round-trip).
+
+`CustomUrlScraper._fetch` now:
+- Calls `validate_url_for_fetch(url)` before the first request.
+- Sets `follow_redirects=False` and loops manually (max 5 hops),
+  re-validating each `Location` target. Without this an attacker
+  could submit a public URL that 302s to `http://169.254.169.254/`.
+- `_scrape_one` catches `UnsafeURLError` distinctly from `httpx.HTTPError`
+  so the workflow `errors[]` log records `"unsafe_url: <reason>"` instead
+  of a generic transport failure. Audit-trail clarity matters here.
+
+**Known limitation: DNS rebinding.** The validator resolves the host at
+validation time; httpx re-resolves at connect time. An attacker who
+controls the authoritative DNS can return a public IP at validation and
+a private IP at fetch. Closing that requires pinned-IP fetch (set the
+`Host:` header and connect by resolved IP). Out of scope for v1. Real
+users of the URL field paste hosts they typed by hand for public job
+boards. Documented in the module header.
+
+**Tests** (`tests/v2/test_url_safety.py` + 1 in
+`test_custom_url_scraper.py`): 27 new cases. Scheme rejection (file://,
+ftp://, gopher://, javascript:, data:), literal-IP rejections (loopback
+v4 + v6, AWS metadata, all three RFC 1918 ranges, unspecified, multicast),
+hostname rejections (localhost, private-resolved, mixed multi-record),
+DNS failure handled, public address passes. Plus an integration test
+that `UnsafeURLError` from `_fetch` lands as `"unsafe_url:"` in the
+workflow errors[] log. Full suite at 768 (was 741; +27).
+
+**Out of scope (separate work):** the no-auth posture on the API
+(`?user_id=` cooperative-only multi-user, documented in
+`security.model.md` 4.1), no per-request size caps on JD body fields, no
+rate limiting. Those are honest gaps to name in Article 10 rather than
+patch in this commit. SSRF was the only finding the audit flagged as
+"needs to ship before the article" - it is a concrete code-level bug, not
+a documented design choice.
+
 ### Fixed — Adzuna senior-exclude was too aggressive; split into two lists + bump results_per_page
 
 Third diagnostic in today's discovery debugging series. The previous two

@@ -26,6 +26,7 @@ from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
 from app.providers.llm_client import LLMClient, LLMProviderError
+from app.services.url_safety import UnsafeURLError, validate_url_for_fetch
 
 if TYPE_CHECKING:
     from app.services.observability_service import ObservabilityService
@@ -41,6 +42,7 @@ _DEFAULT_TIMEOUT_S = 30.0
 _MAX_URLS = 25
 _MAX_HTML_CHARS = 80_000  # cap LLM input at ~20k tokens worst case
 _MIN_DESCRIPTION_CHARS = 200  # below this, treat heuristics as insufficient
+_MAX_REDIRECTS = 5  # SSRF defense: cap redirect chain, each hop re-validated
 
 
 # ── LLM extraction schema ──────────────────────────────────────────────────────
@@ -143,6 +145,8 @@ class CustomUrlScraper:
         # 1. fetch
         try:
             html = self._fetch(url)
+        except UnsafeURLError as exc:
+            return CustomUrlResult(url=url, error=f"unsafe_url: {exc}")
         except httpx.HTTPError as exc:
             return CustomUrlResult(url=url, error=f"fetch failed: {exc}")
         if not html:
@@ -178,14 +182,40 @@ class CustomUrlScraper:
     # ── Fetch ─────────────────────────────────────────────────────────────────
 
     def _fetch(self, url: str) -> str:
+        """SSRF-aware fetch.
+
+        Auto-redirects are DISABLED so we can re-validate each redirect
+        target before following it - otherwise a public URL could 302 the
+        client to http://169.254.169.254/ or http://localhost/admin and
+        the safety check on the original URL would not help.
+
+        Raises UnsafeURLError on any validation failure (the caller
+        records "unsafe_url" as a distinct error reason). Other transport
+        failures still raise httpx.HTTPError so existing error handling
+        keeps working.
+        """
+        validate_url_for_fetch(url)
         with httpx.Client(
-            follow_redirects=True,
+            follow_redirects=False,
             timeout=self._timeout,
             headers={"User-Agent": _USER_AGENT, "Accept-Language": "en-US,en;q=0.9"},
         ) as client:
-            response = client.get(url)
-            response.raise_for_status()
-            return response.text or ""
+            current = url
+            for _ in range(_MAX_REDIRECTS):
+                response = client.get(current)
+                if not response.is_redirect:
+                    response.raise_for_status()
+                    return response.text or ""
+                next_request = response.next_request
+                if next_request is None:
+                    raise httpx.HTTPError(
+                        f"redirect with no Location header from {current}"
+                    )
+                current = str(next_request.url)
+                validate_url_for_fetch(current)
+            raise httpx.HTTPError(
+                f"too many redirects (max {_MAX_REDIRECTS}) starting at {url}"
+            )
 
     # ── Heuristic extraction ──────────────────────────────────────────────────
 

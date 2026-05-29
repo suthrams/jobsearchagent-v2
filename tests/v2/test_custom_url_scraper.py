@@ -123,6 +123,26 @@ def test_fetch_failure_recorded_as_error():
     assert "fetch failed" in errs[0]["reason"]
 
 
+# ── SSRF defense ──────────────────────────────────────────────────────────────
+
+def test_unsafe_url_recorded_as_distinct_error_reason():
+    """The SSRF check raises UnsafeURLError, which the scraper records as
+    "unsafe_url:" so the workflow errors[] log can distinguish it from a
+    transport failure. Audit-trail clarity matters here - a fetch_error
+    might be a transient network blip, an unsafe_url is the user (or an
+    attacker) probing the boundary."""
+    from app.services.url_safety import UnsafeURLError
+    scraper = CustomUrlScraper(["https://example.com/path"])
+    with patch.object(scraper, "_fetch",
+                      side_effect=UnsafeURLError("loopback address 127.0.0.1 not allowed")):
+        jobs = scraper.scrape()
+    assert jobs == []
+    errs = scraper.errors()
+    assert len(errs) == 1
+    assert errs[0]["reason"].startswith("unsafe_url:")
+    assert "loopback" in errs[0]["reason"]
+
+
 # ── Observability — LLM fallback writes an llm_calls audit row ────────────────
 
 def _good_llm_payload() -> dict:
