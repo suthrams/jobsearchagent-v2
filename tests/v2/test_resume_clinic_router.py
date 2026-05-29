@@ -205,6 +205,34 @@ def _make_deps() -> WorkflowDependencies:
     workflow_repo.get_by_status.return_value = []
     workflow_repo.get_by_id.return_value = None
 
+    # In-memory observability so log_llm_call / get_llm_calls_by_run roundtrip.
+    # This is what the new cost-cap + session-cost-rollup logic reads through.
+    llm_call_log: list[dict] = []
+
+    def _log_llm_call(*args, workflow_id, agent_name, provider, model,
+                      tokens_input, tokens_output, cost_usd, latency_ms,
+                      cache_creation_tokens=0, cache_read_tokens=0, **kwargs):
+        llm_call_log.append({
+            "workflow_run_id": workflow_id,
+            "agent_name": agent_name,
+            "provider": provider,
+            "model": model,
+            "tokens_input": tokens_input,
+            "tokens_output": tokens_output,
+            "estimated_cost": cost_usd,
+            "latency_ms": latency_ms,
+        })
+
+    def _get_llm_calls_by_run(workflow_id):
+        return [r for r in llm_call_log if r["workflow_run_id"] == workflow_id]
+
+    observability = MagicMock()
+    observability.log_llm_call.side_effect = _log_llm_call
+    observability.get_llm_calls_by_run.side_effect = _get_llm_calls_by_run
+    # Expose the log so tests can also seed rows directly (e.g. to drive the
+    # cap into the 429 branch without going through 25 real round-trips).
+    observability.llm_call_log = llm_call_log
+
     return WorkflowDependencies(
         research_agent=MagicMock(),
         scoring_agent=MagicMock(),
@@ -227,7 +255,7 @@ def _make_deps() -> WorkflowDependencies:
         resume_clinic_repo=clinic_repo,
         workflow_repo=workflow_repo,
         resume_repo=resume_repo,
-        observability=MagicMock(),
+        observability=observability,
         checkpointer=MagicMock(),
     )
 
@@ -750,3 +778,193 @@ def test_discard_edits_404_when_review_unknown(client):
     resp = c.post("/resume-clinic/does-not-exist/discard-edits")
     assert resp.status_code == 404
     assert resp.json()["detail"]["error"] == "clinic_review_not_found"
+
+
+# ── ADR-068 cost monitoring (2026-05-29) ────────────────────────────────────
+
+
+def _seed_llm_call(deps, *, workflow_run_id: str, agent_name: str,
+                   estimated_cost: float = 0.012) -> None:
+    """Directly append a row to the in-memory observability log so tests can
+    exercise the cap / cost-rollup logic without going through 25+ real
+    endpoint round-trips."""
+    deps.observability.llm_call_log.append({
+        "workflow_run_id": workflow_run_id,
+        "agent_name": agent_name,
+        "provider": "claude",
+        "model": "claude-sonnet-4-6",
+        "tokens_input": 1000,
+        "tokens_output": 300,
+        "estimated_cost": estimated_cost,
+        "latency_ms": 1500,
+    })
+
+
+def _wire_agents_to_log(deps, *, chat_cost: float = 0.012,
+                        fidelity_cost: float = 0.005) -> None:
+    """Make the mock chat + fidelity agents call observability.log_llm_call
+    when they run, mirroring what BaseAgent does in production. This is what
+    the end-to-end cost-tracking invariant rides on."""
+    real_chat = deps.resume_chat.run.return_value
+    real_fid = deps.fidelity_reviewer.run.return_value
+
+    def _chat_run(workflow_id, context):
+        deps.observability.log_llm_call(
+            workflow_id=workflow_id, agent_name="resume_chat",
+            provider="claude", model="claude-sonnet-4-6",
+            tokens_input=1200, tokens_output=400,
+            cost_usd=chat_cost, latency_ms=1800,
+        )
+        return real_chat
+
+    def _fid_run(workflow_id, context):
+        deps.observability.log_llm_call(
+            workflow_id=workflow_id, agent_name="fidelity_reviewer",
+            provider="claude", model="claude-sonnet-4-6",
+            tokens_input=600, tokens_output=150,
+            cost_usd=fidelity_cost, latency_ms=900,
+        )
+        return real_fid
+
+    deps.resume_chat.run.side_effect = _chat_run
+    deps.fidelity_reviewer.run.side_effect = _fid_run
+
+
+def test_chat_response_returns_turns_used_max_turns_and_session_cost(client):
+    """End-to-end cost-tracking invariant: after a chat round-trip the
+    response carries turns_used (counted from llm_calls), max_turns (the
+    effective cap), and session_cost_usd (sum of estimated_cost across all
+    rows tagged with the clinic's workflow_run_id)."""
+    c, deps = client
+
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    workflow_run_id = deps.resume_clinic_repo.get_by_id(clinic_id)["workflow_run_id"]
+
+    # Wire AFTER the initial clinic POST so the run_clinic's own agent calls
+    # don't pollute the seed - we want the seeded rows below to represent
+    # the prior cumulative state, not "the initial clinic plus seed".
+    _wire_agents_to_log(deps, chat_cost=0.012, fidelity_cost=0.005)
+
+    # Seed prior rows: 1 chat (0.012) + 1 fidelity (0.005) from an earlier
+    # iteration. After this turn we expect 2 chat turns total.
+    _seed_llm_call(deps, workflow_run_id=workflow_run_id,
+                   agent_name="resume_chat", estimated_cost=0.012)
+    _seed_llm_call(deps, workflow_run_id=workflow_run_id,
+                   agent_name="fidelity_reviewer", estimated_cost=0.005)
+
+    resp = c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "tighten"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["turns_used"] == 2          # 1 prior + 1 from this turn
+    assert body["max_turns"] == 25
+    # 2 chat * 0.012 + 2 fidelity * 0.005 = 0.034
+    assert abs(body["session_cost_usd"] - 0.034) < 1e-6
+
+
+def test_chat_blocks_with_429_when_turn_cap_reached(client):
+    """Pre-seed 25 chat llm_calls on the clinic's workflow_run_id; the next
+    POST /chat must return 429 before any LLM call is made."""
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    workflow_run_id = deps.resume_clinic_repo.get_by_id(clinic_id)["workflow_run_id"]
+
+    for _ in range(25):
+        _seed_llm_call(deps, workflow_run_id=workflow_run_id,
+                       agent_name="resume_chat")
+
+    # Reset agent-mock call counts so we can prove the LLM was NOT called.
+    deps.resume_chat.run.reset_mock()
+    deps.fidelity_reviewer.run.reset_mock()
+
+    resp = c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "more"})
+    assert resp.status_code == 429
+    detail = resp.json()["detail"]
+    assert detail["error"] == "chat_turn_cap_reached"
+    assert detail["turns_used"] == 25
+    assert detail["max_turns"] == 25
+    # The cap check fires BEFORE any LLM call.
+    deps.resume_chat.run.assert_not_called()
+    deps.fidelity_reviewer.run.assert_not_called()
+
+
+def test_chat_cap_respects_env_var_override(client, monkeypatch):
+    """RESUME_CHAT_MAX_TURNS env var overrides MAX_CHAT_TURNS_PER_CLINIC."""
+    c, deps = client
+    monkeypatch.setenv("RESUME_CHAT_MAX_TURNS", "3")
+
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    workflow_run_id = deps.resume_clinic_repo.get_by_id(clinic_id)["workflow_run_id"]
+
+    # 3 prior chat turns; cap is 3; next call should 429.
+    for _ in range(3):
+        _seed_llm_call(deps, workflow_run_id=workflow_run_id,
+                       agent_name="resume_chat")
+    resp = c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "x"})
+    assert resp.status_code == 429
+    assert resp.json()["detail"]["max_turns"] == 3
+
+
+def test_chat_response_max_turns_reflects_env_var(client, monkeypatch):
+    """When the env var lowers the cap, the response carries the lowered
+    value (so the UI's meter shows the correct ceiling)."""
+    c, deps = client
+    monkeypatch.setenv("RESUME_CHAT_MAX_TURNS", "10")
+
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    # Wire AFTER the initial clinic POST (same reason as above).
+    _wire_agents_to_log(deps)
+
+    resp = c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "x"})
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["max_turns"] == 10
+    assert resp.json()["turns_used"] == 1
+
+
+def test_chat_session_cost_includes_reviewer_chat_and_fidelity_rows(client):
+    """The session-cost rollup is the sum of estimated_cost across EVERY
+    llm_calls row tagged with this clinic's workflow_run_id - not just chat
+    rows. Verifies the rollup is end-to-end (reviewer + every chat turn +
+    every fidelity call)."""
+    c, deps = client
+
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    workflow_run_id = deps.resume_clinic_repo.get_by_id(clinic_id)["workflow_run_id"]
+
+    # Wire AFTER the initial clinic POST (same reason as above).
+    _wire_agents_to_log(deps, chat_cost=0.012, fidelity_cost=0.005)
+
+    # Pretend the initial clinic spent the reviewer + 1 fidelity call.
+    _seed_llm_call(deps, workflow_run_id=workflow_run_id,
+                   agent_name="resume_reviewer", estimated_cost=0.080)
+    _seed_llm_call(deps, workflow_run_id=workflow_run_id,
+                   agent_name="fidelity_reviewer", estimated_cost=0.020)
+
+    resp = c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "x"})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    # turns_used counts ONLY chat rows (1 from this turn, since prior rows
+    # are reviewer + fidelity, not chat).
+    assert body["turns_used"] == 1
+    # session_cost includes all four rows: reviewer (0.080) + initial
+    # fidelity (0.020) + this turn's chat (0.012) + this turn's fidelity (0.005).
+    assert abs(body["session_cost_usd"] - 0.117) < 1e-6

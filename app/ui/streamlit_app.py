@@ -2541,6 +2541,33 @@ elif view == "Resume Clinic":
             with st.expander("Live preview", expanded=True):
                 st.markdown(_rc_markdown)
 
+            # ── Session cost meter (ADR-068) ────────────────────────────────
+            # Surfaces `turns_used / max_turns` and `session_cost_usd` returned
+            # by the last /chat call. Stays sticky between turns so the user
+            # sees their remaining budget before sending the next message.
+            _rc_cost_key = f"rc_chat_cost_{_clinic_id}"
+            _rc_cost = st.session_state.get(_rc_cost_key)
+            if _rc_cost:
+                _turns_used = int(_rc_cost.get("turns_used") or 0)
+                _max_turns = int(_rc_cost.get("max_turns") or 0)
+                _sess_cost = float(_rc_cost.get("session_cost_usd") or 0.0)
+                _pct = (_turns_used / _max_turns) if _max_turns else 0.0
+                _cm1, _cm2 = st.columns([3, 2])
+                _cm1.progress(min(_pct, 1.0),
+                              text=f"Chat turns: {_turns_used} / {_max_turns}")
+                _cm2.metric("Session cost", f"${_sess_cost:.4f}")
+                if _pct >= 0.95:
+                    st.error(
+                        f"You've used {_turns_used} of {_max_turns} chat turns. "
+                        "The next turn may be blocked - approve / edit your current "
+                        "draft, or start a new clinic for more iterations."
+                    )
+                elif _pct >= 0.75:
+                    st.warning(
+                        f"You've used {_turns_used} of {_max_turns} chat turns. "
+                        "Consider locking in your edit soon."
+                    )
+
             # ── Chat input ──────────────────────────────────────────────────
             _rc_section_options = {
                 "whole": "Whole resume",
@@ -2591,6 +2618,12 @@ elif view == "Resume Clinic":
                         {"role": "assistant",
                          "message": _chat_resp.get("reply") or ""},
                     )
+                    # Stash the cost meter fields so they survive the rerun.
+                    st.session_state[_rc_cost_key] = {
+                        "turns_used":      _chat_resp.get("turns_used", 0),
+                        "max_turns":       _chat_resp.get("max_turns", 0),
+                        "session_cost_usd": _chat_resp.get("session_cost_usd", 0.0),
+                    }
                     # Refresh the clinic row so the preview re-renders.
                     try:
                         _rows = api.list_resume_clinic_runs(user_id).get("reviews") or []
@@ -2603,6 +2636,23 @@ elif view == "Resume Clinic":
                     except Exception:
                         pass
                     st.rerun()
+                except httpx.HTTPStatusError as exc:
+                    # Surface the cap-reached reason directly when the backend
+                    # returns 429 (chat_turn_cap_reached) so the user doesn't
+                    # see a raw HTTP error message.
+                    _detail = None
+                    try:
+                        _detail = (exc.response.json() or {}).get("detail")
+                    except Exception:
+                        pass
+                    if exc.response.status_code == 429:
+                        st.error(
+                            _detail or
+                            "Chat turn cap reached for this clinic. Approve / edit "
+                            "your current draft, or start a new clinic."
+                        )
+                    else:
+                        st.error(f"Chat turn failed: {_detail or exc}")
                 except Exception as exc:
                     st.error(f"Chat turn failed: {exc}")
 
@@ -2636,6 +2686,10 @@ elif view == "Resume Clinic":
                     if _updated:
                         st.session_state.rc_last_review = _updated
                     st.session_state[_rc_chat_history_key] = []
+                    # Discard only clears edits on the server; the chat-turn
+                    # spend on the workflow_run_id is permanent (it's already
+                    # billed in llm_calls). Leave the meter intact so the user
+                    # sees the true session cost.
                     st.info("Chat edits discarded.")
                     st.rerun()
                 except Exception as exc:

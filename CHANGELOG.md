@@ -6,6 +6,62 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-29
 
+### Added — Cost tracking + per-session cap on Resume Clinic chat (ADR-068 follow-up)
+
+After shipping the chat-revise loop, audit found three gaps in cost
+tracking specific to chat: no per-session cap, no real-time cost signal
+back to the user, no invariant test that `llm_calls` rows are actually
+written. All three are closed in this commit. Same "track cost closely"
+principle that drove ADR-058 — but on the chat side, where one clinic
+can now run dozens of LLM-backed turns if a user leans in.
+
+- **New limit** (`app/workflows/limits.py`):
+  `MAX_CHAT_TURNS_PER_CLINIC = 25`. One chat turn = 1 chat-agent call +
+  (when rewrites are emitted) 1 fidelity call. At ~$0.017 uncached per
+  turn, 25 turns caps a single clinic at ~$0.45 in chat spend on top of
+  the initial reviewer + fidelity (~$0.10). Runtime override via
+  `RESUME_CHAT_MAX_TURNS` env var (use sparingly — bias is "block
+  first"). The cap counts `resume_chat` rows in `llm_calls` tagged with
+  the clinic's `workflow_run_id`, so it survives across sessions and API
+  restarts.
+- **Cap enforcement** (`app/api/routers/resume_clinic.py`): the chat
+  endpoint checks the count BEFORE any LLM call and returns
+  `429 chat_turn_cap_reached` (detail mentions the cap + how to
+  override). Failing closed here is cheap; failing open is not.
+- **Real-time cost return**: `ResumeChatResponse` now carries
+  `turns_used`, `max_turns`, `session_cost_usd` (the sum of
+  `estimated_cost` across every `llm_calls` row tagged with the
+  clinic's `workflow_run_id` — reviewer + every chat turn + every
+  fidelity call). The frontend turns this into a sticky meter so the
+  user sees their remaining budget before sending the next message.
+- **UI meter** (`app/ui/streamlit_app.py`): progress bar (turns_used /
+  max_turns) + dollar metric above the chat input. Yellow warning at
+  75% of cap, red error at 95%. 429 responses surface the backend's
+  detail string instead of a raw httpx error. The meter persists
+  across reruns via session_state and is not cleared on "Discard
+  chat edits" (the spend is permanent regardless of whether the edits
+  are kept).
+- **New observability pass-through**:
+  `ObservabilityService.get_llm_calls_by_run(workflow_id) -> list[dict]`.
+  The router needs per-row filtering the aggregate methods don't
+  provide.
+- **Invariant tests** (`tests/v2/test_resume_clinic_router.py`):
+  5 new cases (1) return shape carries `turns_used` / `max_turns` /
+  `session_cost_usd` summed from real seeded rows + the in-test turn,
+  (2) 429 at the cap, (3) env-var override honored, (4) response
+  reflects overridden cap, (5) cost rollup spans reviewer + chat +
+  fidelity rows, not just chat. Wires the existing observability
+  MagicMock to an in-memory `llm_call_log` so the tests exercise the
+  same `log_llm_call` → `get_llm_calls_by_run` path as production.
+  Full suite at 721 (was 716; +5).
+
+**Why this matters**: chat is the first feature where the user — not
+the workflow — controls the LLM-call count. Without the cap, a user
+who keeps typing pays for every turn; without the meter, they have no
+warning before they hit it; without the invariant test, a refactor
+that mocks the observability layer could ship a feature that
+silently stops writing cost rows. All three close together.
+
 ### Added — Resume Clinic chat-revise loop (ADR-068)
 
 The clinic stops being one-shot. Users iterate on the agent's overhaul

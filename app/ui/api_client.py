@@ -349,10 +349,16 @@ def chat_resume_clinic(review_id: str, message: str, *,
                        history: list[dict] | None = None) -> dict:
     """POST /resume-clinic/{review_id}/chat - one chat-revise turn.
 
-    ADR-068. Returns `{reply, overhaul, fidelity_review, changed_sections}`.
+    ADR-068. Returns `{reply, overhaul, fidelity_review, changed_sections,
+    turns_used, max_turns, session_cost_usd}`. The cost fields drive the
+    UI's session-cost meter; the cap (`max_turns`) defaults to
+    MAX_CHAT_TURNS_PER_CLINIC and can be overridden by RESUME_CHAT_MAX_TURNS.
     `history` is the in-session conversation (last N turns); the backend
     does not persist it. `section` is a focus hint: "whole" (default),
     "summary", "experience", "skills", "education", "certifications".
+
+    Raises httpx.HTTPStatusError on 429 (chat_turn_cap_reached) - the caller
+    should surface `response.json()["detail"]` rather than the raw exception.
     """
     payload: dict = {"message": message, "section": section}
     if history:

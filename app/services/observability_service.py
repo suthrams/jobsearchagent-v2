@@ -216,6 +216,21 @@ class ObservabilityService:
         except Exception:
             logger.exception("ObservabilityService: init_run_metrics failed")
 
+    def get_llm_calls_by_run(self, workflow_id: str) -> list[dict]:
+        """Public pass-through to the llm_calls audit rows for one workflow.
+
+        Used by callers that need per-row filtering the aggregate methods
+        below don't provide - e.g. the Resume Clinic chat router needs to
+        count `agent_name == "resume_chat"` rows to enforce the per-clinic
+        turn cap. Returns [] on any persistence error rather than raising;
+        the audit trail is non-load-bearing for runtime correctness.
+        """
+        try:
+            return self._obs.get_llm_calls_by_run(workflow_id) or []
+        except Exception:
+            logger.exception("ObservabilityService: get_llm_calls_by_run failed")
+            return []
+
     def compute_run_totals_from_llm_calls(self, workflow_id: str) -> dict:
         """Derive canonical totals (calls / tokens / cost) from llm_calls rows.
 

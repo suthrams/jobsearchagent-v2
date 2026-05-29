@@ -37,6 +37,14 @@ MAX_REVIEW_ROUNDS = 2
 MAX_LLM_CALLS_PER_JOB = 10
 MAX_LLM_CALLS_PER_RUN = 200
 
+# ADR-068: bounded chat-revise sessions. One chat turn = 1 ResumeChatAgent call
+# + (when there are rewrites) 1 FidelityReviewer call ~= $0.017 uncached. 25
+# turns caps the worst case for one clinic at ~$0.45. Override at runtime via
+# the RESUME_CHAT_MAX_TURNS env var (use sparingly; bias is "block first").
+# Counts the number of past `resume_chat` agent calls tagged with the clinic's
+# workflow_run_id - so the cap survives across sessions / API restarts.
+MAX_CHAT_TURNS_PER_CLINIC = 25
+
 # ── Quality thresholds ────────────────────────────────────────────────────────
 
 AUDIT_QUALITY_THRESHOLD = 75

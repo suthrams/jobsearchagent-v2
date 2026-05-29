@@ -96,8 +96,19 @@ class ResumeChatResponse(BaseModel):
     `changed_sections` is the audit trail of which sections the agent
     modified this turn (empty when nothing changed, e.g. an off-topic
     message).
+
+    Cost tracking (added 2026-05-29):
+    - `turns_used`         number of chat turns spent on this clinic so far
+    - `max_turns`          cap on chat turns per clinic (MAX_CHAT_TURNS_PER_CLINIC)
+    - `session_cost_usd`   cumulative cost across reviewer + chat turns +
+                           fidelity, summed from the llm_calls rows tagged with
+                           the clinic's workflow_run_id. Round-trippable from
+                           the per-profile Cost Dashboard.
     """
     reply: str
     overhaul: dict | None
     fidelity_review: dict | None = None
     changed_sections: list[str] = []
+    turns_used: int = 0
+    max_turns: int = 0
+    session_cost_usd: float = 0.0

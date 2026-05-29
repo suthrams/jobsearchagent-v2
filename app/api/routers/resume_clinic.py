@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 
 import json
+import os
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -42,7 +43,56 @@ from app.services.resume_text_renderer import (
     render as render_export,
 )
 from app.services.role_data import NullRoleDataProvider
+from app.workflows.limits import MAX_CHAT_TURNS_PER_CLINIC
 from app.workflows.workflow_graph import WorkflowDependencies
+
+
+def _resolved_max_chat_turns() -> int:
+    """MAX_CHAT_TURNS_PER_CLINIC with an optional RESUME_CHAT_MAX_TURNS env-var
+    override. Used by the cap check + returned in the chat response so the UI
+    can show the current effective ceiling."""
+    raw = os.getenv("RESUME_CHAT_MAX_TURNS")
+    if raw is None:
+        return MAX_CHAT_TURNS_PER_CLINIC
+    try:
+        n = int(raw)
+        return max(1, n)
+    except ValueError:
+        return MAX_CHAT_TURNS_PER_CLINIC
+
+
+def _count_chat_turns_for_clinic(observability, workflow_run_id: str) -> int:
+    """Count `resume_chat` llm_calls rows tagged with this clinic's
+    workflow_run_id. Used to enforce the per-clinic chat-turn cap. Survives
+    server restarts because the count comes from the persisted audit trail,
+    not in-memory session state."""
+    if not workflow_run_id:
+        return 0
+    try:
+        rows = observability.get_llm_calls_by_run(workflow_run_id) or []
+    except Exception:
+        return 0
+    return sum(1 for r in rows if (r.get("agent_name") or "") == "resume_chat")
+
+
+def _session_cost_usd_for_clinic(observability, workflow_run_id: str) -> float:
+    """Sum estimated_cost across every llm_calls row tagged with this clinic's
+    workflow_run_id - reviewer + every chat turn + every fidelity call. Used
+    by the chat response so the UI shows the running session cost in real time
+    (not after the fact in the Cost Dashboard)."""
+    if not workflow_run_id:
+        return 0.0
+    try:
+        rows = observability.get_llm_calls_by_run(workflow_run_id) or []
+    except Exception:
+        return 0.0
+    total = 0.0
+    for r in rows:
+        try:
+            total += float(r.get("estimated_cost") or 0.0)
+        except (TypeError, ValueError):
+            continue
+    return round(total, 6)
 
 logger = logging.getLogger(__name__)
 
@@ -356,6 +406,33 @@ def chat_resume_clinic(
             },
         )
 
+    # ── Cost cap (ADR-068 cost-monitoring follow-up, 2026-05-29) ─────────────
+    # Block before any LLM call - count the past `resume_chat` rows tagged
+    # with this clinic's workflow_run_id and refuse if we're at the cap.
+    # The chat agent and the fidelity reviewer both write through
+    # ObservabilityService.log_llm_call; the read uses the public pass-through
+    # method get_llm_calls_by_run on the same service.
+    max_turns = _resolved_max_chat_turns()
+    workflow_run_id = row.get("workflow_run_id") or ""
+    turns_used = _count_chat_turns_for_clinic(deps.observability, workflow_run_id)
+    if turns_used >= max_turns:
+        raise HTTPException(
+            status_code=429,
+            detail={
+                "error": "chat_turn_cap_reached",
+                "message": (
+                    f"This clinic review has used all {max_turns} chat turns "
+                    f"({turns_used} on record). Click 'Save final edit' to lock the "
+                    f"current state, or 'Discard chat edits' and run a fresh clinic. "
+                    f"Override at the operator level via the RESUME_CHAT_MAX_TURNS "
+                    f"env var."
+                ),
+                "review_id": review_id,
+                "turns_used": turns_used,
+                "max_turns": max_turns,
+            },
+        )
+
     resume = deps.resume_repo.get_by_id(row.get("resume_id"))
     if resume is None:
         raise HTTPException(
@@ -441,11 +518,19 @@ def chat_resume_clinic(
         review_id, new_overhaul, fidelity_review=fidelity_dict,
     )
 
+    # ── Cost rollup (computed AFTER persist so this turn's llm_calls rows
+    #    are included in the totals returned to the UI) ────────────────────
+    turns_used_now = _count_chat_turns_for_clinic(deps.observability, workflow_run_id)
+    session_cost_usd = _session_cost_usd_for_clinic(deps.observability, workflow_run_id)
+
     return ResumeChatResponse(
         reply=result.reply,
         overhaul=new_overhaul,
         fidelity_review=fidelity_dict,
         changed_sections=list(result.changed_sections),
+        turns_used=turns_used_now,
+        max_turns=max_turns,
+        session_cost_usd=session_cost_usd,
     )
 
 
