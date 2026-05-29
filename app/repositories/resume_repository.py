@@ -71,3 +71,20 @@ class ResumeRepository:
                 (user_id,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def delete(self, resume_id: str, user_id: str) -> int:
+        """Hard-delete a resume row, scoped by owning user_id.
+
+        Returns the number of rows deleted (0 if the resume is unknown OR is
+        owned by a different profile). Cascading to clinic reviews / workflow
+        rows is the caller's responsibility - this repo only deletes what its
+        method name says it does. The `user_id` scope is the cooperative
+        boundary from ADR-062: a cross-user delete attempt no-ops rather than
+        raising, so the API layer's 404/403 mapping stays in one place.
+        """
+        with get_connection(self.db_path) as conn:
+            cur = conn.execute(
+                "DELETE FROM resumes WHERE id = ? AND user_id = ?",
+                (resume_id, str(user_id)),
+            )
+            return cur.rowcount

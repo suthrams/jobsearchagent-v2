@@ -145,3 +145,63 @@ def upload_resume(
         "file_name": profile.file_name,
         "name": profile.name,
     }
+
+
+@router.delete("/{user_id}/resume/{resume_id}", status_code=200)
+def delete_resume(
+    user_id: int,
+    resume_id: str,
+    repo: UserRepository = Depends(get_user_repo),
+    deps: WorkflowDependencies = Depends(get_deps),
+) -> dict:
+    """Delete a resume and cascade to its Resume Clinic reviews.
+
+    The resume's job-search workflow_runs are preserved as historical cost
+    data; only the clinic reviews are cascaded (they reference a resume that
+    would otherwise no longer exist).
+
+    Returns 404 when the resume is unknown OR is owned by a different
+    profile (we don't distinguish - same cooperative-scoping rule as the
+    rest of ADR-062). Returns 200 with `{resume_deleted, clinic_reviews_deleted}`
+    so the UI can surface the cascade impact.
+    """
+    if not repo.exists(user_id):
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "unknown_user",
+                "message": f"No profile with id {user_id}.",
+                "user_id": user_id,
+            },
+        )
+
+    # Cascade clinic reviews FIRST so a partial failure leaves a still-renderable
+    # state (resume present, no orphaned clinic rows). The two deletes are not
+    # atomic across the two repos; the cascade is small enough that this is
+    # acceptable.
+    clinic_deleted = deps.resume_clinic_repo.delete_by_resume(
+        resume_id, str(user_id),
+    )
+    resume_deleted = deps.resume_repo.delete(resume_id, str(user_id))
+
+    if resume_deleted == 0:
+        # Either the resume id was unknown or it was owned by someone else.
+        # Same response either way to keep the scoping cooperative.
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "resume_not_found",
+                "message": (
+                    f"Resume {resume_id!r} is not present on profile #{user_id}."
+                ),
+                "user_id": user_id,
+                "resume_id": resume_id,
+            },
+        )
+
+    return {
+        "resume_deleted": resume_deleted,
+        "clinic_reviews_deleted": clinic_deleted,
+        "user_id": user_id,
+        "resume_id": resume_id,
+    }

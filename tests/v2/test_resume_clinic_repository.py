@@ -236,3 +236,46 @@ def test_set_decision_reject_does_not_persist_edited_json(repo):
     row = repo.get_by_id("cl-5")
     assert row["decision"] == "reject"
     assert row["edited"] is None
+
+
+# ── delete_by_resume (cascade) ──────────────────────────────────────────────
+
+def test_delete_by_resume_removes_only_matching_rows(repo):
+    repo.create(
+        clinic_id="cl-d1", user_id="0", resume_id="r-A",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    repo.create(
+        clinic_id="cl-d2", user_id="0", resume_id="r-A",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    repo.create(
+        clinic_id="cl-d3", user_id="0", resume_id="r-B",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    deleted = repo.delete_by_resume("r-A", "0")
+    assert deleted == 2
+    remaining = {r["id"] for r in repo.list_by_user("0")}
+    assert remaining == {"cl-d3"}
+
+
+def test_delete_by_resume_no_match_returns_zero(repo):
+    repo.create(
+        clinic_id="cl-d4", user_id="0", resume_id="r-A",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    assert repo.delete_by_resume("does-not-exist", "0") == 0
+    assert repo.delete_by_resume("r-A", "999") == 0       # cross-user no-op
+    assert {r["id"] for r in repo.list_by_user("0")} == {"cl-d4"}

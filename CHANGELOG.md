@@ -4,6 +4,48 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-05-29
+
+### Added — Delete a resume from a profile (UI + API)
+
+Closes the gap that forced manual `DELETE FROM resumes` SQL during the
+ADR-067 validation: there was no in-app way to remove a resume and force a
+fresh parse. Same shape as the existing upload flow but in reverse.
+
+- **Repo** (`app/repositories/resume_repository.py`):
+  `ResumeRepository.delete(resume_id, user_id) -> int` — hard delete scoped
+  to the owning profile (ADR-062 cooperative scoping). Returns the count of
+  rows deleted so the caller can detect "not found" without raising.
+- **Cascade** (`app/repositories/resume_clinic_repository.py`):
+  `ResumeClinicRepository.delete_by_resume(resume_id, user_id) -> int` —
+  drops the resume's clinic reviews so the past-runs panel doesn't surface
+  broken rows.
+- **Endpoint** (`app/api/routers/users.py`):
+  `DELETE /users/{user_id}/resume/{resume_id}` -> returns
+  `{resume_deleted, clinic_reviews_deleted, user_id, resume_id}` so the UI
+  can show the cascade impact. 404 on unknown user, 404 on unknown resume
+  OR cross-user attempt (cooperative scoping — same status for both, no
+  enumeration leak).
+- **Client** (`app/ui/api_client.py`): `delete_resume(user_id, resume_id)`.
+- **UI** (`app/ui/streamlit_app.py`): new "Delete a resume from a profile"
+  expander in **Profiles → Manage an existing profile**. Profile selector
+  -> resume picker -> shows cascade count (clinic reviews) -> confirm
+  checkbox -> Delete button. The checkbox is the explicit opt-in for the
+  cascade.
+- **Preserved**: the resume's job-search `workflow_runs` rows and their
+  per-call `llm_calls` rows are NOT deleted — they're audit / cost data and
+  unrelated to the fidelity bug that motivates the typical delete-and-
+  reupload flow.
+- **Tests**: 3 repo + 2 clinic-repo + 4 endpoint = 9 new cases. Full suite
+  at 684 (was 675; +9).
+
+**Usage**: open Profiles → Manage an existing profile → Delete a resume,
+pick the resume, tick the cascade-confirm checkbox, click Delete. Then use
+"Add a resume to a profile" (or just open Resume Clinic and upload there)
+to re-parse under the latest parser prompt (ADR-067).
+
+---
+
 ## 2026-05-28
 
 ### Changed — Preserve full resume fidelity at parse time (ADR-067)

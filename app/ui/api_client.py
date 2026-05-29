@@ -142,6 +142,22 @@ def update_user(user_id: int | str, name: str, note: str | None = None) -> dict:
     return r.json()
 
 
+def delete_resume(user_id: int | str, resume_id: str) -> dict:
+    """DELETE /users/{user_id}/resume/{resume_id}.
+
+    Cascades to the resume's clinic reviews. Returns
+    `{resume_deleted, clinic_reviews_deleted, user_id, resume_id}` so the
+    UI can show the cascade impact. 404 maps to an httpx HTTPStatusError
+    that the UI surfaces as a toast.
+    """
+    r = httpx.delete(
+        f"{BASE_URL}/users/{user_id}/resume/{resume_id}",
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def upload_resume(user_id: int | str, file_bytes: bytes, filename: str) -> dict:
     """Upload + parse a PDF resume for a profile; returns the new resume id.
 

@@ -2869,6 +2869,66 @@ elif view == "Profiles":
                 except Exception as exc:
                     st.error(f"Resume upload failed: {exc}")
 
+        with st.expander("Delete a resume from a profile"):
+            st.caption(
+                "Removes a resume from the profile and cascades to its Resume "
+                "Clinic reviews (the past-runs panel would otherwise show "
+                "broken rows). Job-search workflow history is preserved. "
+                "Re-upload to get a fresh parse under the latest parser prompt."
+            )
+            _dprof = st.selectbox(
+                "Profile", list(_opts.keys()),
+                format_func=lambda i: _opts.get(i, i), key="del_resume_profile",
+            )
+            _dprof_resumes = load_user_resumes(_dprof)
+            if _dprof_resumes.empty:
+                st.info("This profile has no resumes to delete.")
+            else:
+                _del_options = {}
+                for _, _r in _dprof_resumes.iterrows():
+                    _flag = " (active)" if int(_r.get("is_active") or 0) else ""
+                    _del_options[str(_r["resume_id"])] = (
+                        f"{_r.get('file_name') or _r['resume_id']}  ·  "
+                        f"v{_r.get('version') or '?'}{_flag}  ·  "
+                        f"{_fmt_ts(_r.get('created_at'))}"
+                    )
+                _dres = st.selectbox(
+                    "Resume to delete",
+                    options=list(_del_options.keys()),
+                    format_func=lambda i: _del_options[i],
+                    key=f"del_resume_select_{_dprof}",
+                )
+                # Count clinic reviews that would cascade so the user sees the
+                # full impact before confirming.
+                try:
+                    _clinic_rows = api.list_resume_clinic_runs(_dprof).get("reviews") or []
+                    _cascade_count = sum(
+                        1 for r in _clinic_rows if r.get("resume_id") == _dres
+                    )
+                except Exception:
+                    _cascade_count = 0
+                _confirm = st.checkbox(
+                    f"Yes — also delete this resume's **{_cascade_count}** Resume "
+                    f"Clinic review(s). Job-search history stays.",
+                    key=f"del_resume_confirm_{_dprof}_{_dres}",
+                )
+                if st.button(
+                    "Delete resume",
+                    type="primary",
+                    disabled=not _confirm,
+                    key=f"del_resume_btn_{_dprof}_{_dres}",
+                ):
+                    try:
+                        resp = api.delete_resume(_dprof, _dres)
+                        st.success(
+                            f"Deleted resume `{_dres[:8]}…` and "
+                            f"{resp.get('clinic_reviews_deleted', 0)} clinic review(s)."
+                        )
+                        st.cache_data.clear()
+                        st.rerun()
+                    except Exception as exc:
+                        st.error(f"Delete failed: {exc}")
+
     st.markdown("---")
     st.subheader("Add a profile")
 

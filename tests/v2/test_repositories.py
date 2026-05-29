@@ -361,6 +361,33 @@ def test_resume_list_by_user(db_path):
     assert {r["id"] for r in repo.list_by_user("1")} == {"u1_r1"}
 
 
+# ─── delete (ADR-062 cooperative scoping) ─────────────────────────────────────
+
+def test_resume_delete_returns_count_and_removes_row(db_path):
+    repo = ResumeRepository(db_path)
+    _make_resume(repo, "u0_r1", "0")
+    _make_resume(repo, "u0_r2", "0")
+    assert repo.delete("u0_r1", "0") == 1
+    remaining = {r["id"] for r in repo.list_by_user("0")}
+    assert remaining == {"u0_r2"}
+
+
+def test_resume_delete_unknown_id_no_ops(db_path):
+    repo = ResumeRepository(db_path)
+    _make_resume(repo, "u0_r1", "0")
+    assert repo.delete("does-not-exist", "0") == 0
+    assert {r["id"] for r in repo.list_by_user("0")} == {"u0_r1"}
+
+
+def test_resume_delete_cross_user_no_ops(db_path):
+    """Cooperative scoping: trying to delete user 0's resume with user 1's id
+    is a no-op, not a failure."""
+    repo = ResumeRepository(db_path)
+    _make_resume(repo, "u0_r1", "0")
+    assert repo.delete("u0_r1", "1") == 0
+    assert {r["id"] for r in repo.list_by_user("0")} == {"u0_r1"}
+
+
 # ─── purge_old_data ──────────────────────────────────────────────────────────
 
 def test_purge_removes_old_rows(db_path):

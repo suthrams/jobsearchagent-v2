@@ -64,6 +64,21 @@ class ResumeClinicRepository:
             ).fetchall()
         return [self._row_to_dict(r) for r in rows if r is not None]
 
+    def delete_by_resume(self, resume_id: str, user_id: str) -> int:
+        """Delete all clinic reviews for a given (resume_id, user_id).
+
+        Used by the cascade when a resume is deleted - the reviews reference
+        a resume that no longer exists, so the past-runs panel would render
+        broken rows. Scoped by user_id so a cross-user delete attempt no-ops.
+        Returns the number of clinic reviews deleted.
+        """
+        with get_connection(self.db_path) as conn:
+            cur = conn.execute(
+                "DELETE FROM resume_clinic_reviews WHERE resume_id = ? AND user_id = ?",
+                (resume_id, str(user_id)),
+            )
+            return cur.rowcount
+
     def set_decision(self, clinic_id: str, decision: str,
                      edited: dict | None = None) -> None:
         """Persist the user's approve / revise / reject / edit choice.
