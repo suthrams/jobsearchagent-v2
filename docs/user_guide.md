@@ -231,6 +231,30 @@ steps; only the first is required:
 A profile created with just step 1 is fully valid; add a resume or criteria later
 through the normal screens.
 
+### Managing an existing profile
+
+Open the **Profiles** view. Under **Manage an existing profile** are three
+expanders:
+
+- **Edit a profile (name / note)** — rename a profile or update its note.
+- **Add a resume to a profile** — upload a new PDF for any profile. Becomes
+  that profile's active resume.
+- **Delete a resume from a profile** — pick a profile, pick one of its
+  resumes, **tick the cascade-confirm checkbox** showing how many Resume
+  Clinic reviews will also be removed, then click **Delete resume**. The
+  cascade exists because clinic reviews reference a resume by id; if the
+  resume is gone, the past-runs panel would show broken rows. Job-search
+  workflow history and per-call cost data are **preserved** — only the
+  resume row and its clinic reviews are removed.
+
+  **Why delete then re-upload?** The parser caches the parsed profile by
+  the PDF's text hash. Re-uploading the same PDF returns the cached
+  profile instead of triggering a fresh parse. Deleting the resume row
+  clears the cache for that profile, so the next upload of the same PDF
+  runs the parser again — useful after a parser-prompt upgrade like
+  ADR-067, when you want the new fields (GPA, honors, skill groups)
+  populated on a previously-parsed resume.
+
 ---
 
 ## 8. Start a Workflow Run
@@ -497,6 +521,61 @@ Fidelity Reviewer call. It writes a lightweight `resume_clinic`
 `workflow_runs` row so the **Cost Dashboard** attributes clinic spend
 to the active profile correctly.
 
+### Export the final resume
+
+Below the decision controls is an **Export the final resume** panel. The
+renderer is **decision-aware** — what you get depends on which decision
+button you clicked:
+
+- **Approve** → applies the agent's overhaul (reorganization + rewrites)
+  to your parsed resume and renders that.
+- **Edit** → uses the human-authored draft you saved (when the chat-edit
+  feature lands; until then, the API supports it but the UI doesn't yet
+  surface an inline editor).
+- **Reject** → renders your original parsed resume unchanged.
+- *No decision yet* → renders a preview of the agent's overhaul with a
+  small italic note at the bottom saying so.
+
+Six formats are available:
+
+| Format | Good for |
+|---|---|
+| **Markdown** (`.md`) | Review, paste into Google Docs / Notion / a markdown editor |
+| **Plain text** (`.txt`) | ATS systems that strip formatting; raw copy-paste |
+| **HTML** (`.html`) | Preview in a browser; print-to-PDF via the browser for styled output |
+| **JSON Resume** (`.json`) | Round-trip into other resume tools (jsonresume.org schema) |
+| **Word** (`.docx`) | ATS systems that want a Word document; many employers list this format |
+| **PDF** (`.pdf`) | Final delivery; what most employers actually open |
+
+Pick a format from the selector. Markdown / plain text / JSON / HTML have
+an inline preview expander; click **Download** to save the file.
+
+The renderer is **deterministic** — no LLM call. Every export of the same
+decision-applied state produces byte-identical output. The agent's
+evidence-bound rules apply through the renderer too: placeholders like
+`[N]+ services` or `[X]%` survive verbatim (you fill them in), nothing the
+agent didn't rewrite is touched, and missing experience stays labelled as a
+gap rather than fabricated.
+
+### What gets preserved on parse (ADR-067)
+
+When you upload (or re-upload) a resume, the parser captures:
+
+- **GPA** verbatim under each Education entry (e.g. `"3.9/4.0"`,
+  `"First Class"`)
+- **Academic honors** as a free-text list under each Education entry
+  (Dean's List, President's List, Magna Cum Laude, Phi Beta Kappa, etc.)
+- **Skill groups** with their original category headings (e.g. `"Security &
+  Monitoring": [SIEM, Splunk, ...]`) — the categorisation is preserved in
+  the exported resume
+
+If your existing resume was uploaded before 2026-05-28 it may be missing
+these fields (the schema didn't have a slot for them). To get them
+populated for an existing resume, **delete the resume** from **Profiles →
+Manage an existing profile → Delete a resume from a profile** and
+**re-upload** the same PDF. The parser cache key is the PDF text hash, so
+the delete is what triggers a fresh parse.
+
 ---
 
 ## 14. Analytics: Companies and Run History
@@ -602,7 +681,7 @@ Once configured, a typical session looks like:
 
 **Resume parse error or wrong resume being used**
 - Confirm `resume.pdf` is in the project root (for the on-disk path), or upload via **Profiles → Add profile**
-- Resumes are scoped per profile (ADR-062). To force a re-parse, delete that profile's cached row(s): `sqlite3 data/v2.db "DELETE FROM resumes WHERE user_id='0'"` (use the profile's id — `0` is the default **Primary** profile)
+- Resumes are scoped per profile (ADR-062). To force a re-parse, open **Profiles → Manage an existing profile → Delete a resume from a profile**, pick the resume, tick the cascade-confirm checkbox, click Delete. Then re-upload via **Add a resume to a profile**. The parser cache is keyed by the PDF's text hash, so the delete is what forces a fresh parse under the latest parser prompt
 - Confirm the right **Profile** is selected in the sidebar — the resume picker only lists the active profile's resumes
 
 **No deep review results or interview prep data**

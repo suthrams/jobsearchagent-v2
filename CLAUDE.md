@@ -127,10 +127,16 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - Schema changes to `data/v2.db` require updating BOTH the repository layer AND `app/ui/db_reader.py` (the UI read-path bypasses the API for performance — documented in `db_reader.py` header)
 
 **Resume Clinic rules (ADR-066)**
-- The clinic is out-of-graph (same pattern as on-demand tailoring, ADR-055). Endpoints: `POST /users/{id}/resume-clinic`, `GET /users/{id}/resume-clinic`, `POST /resume-clinic/{id}/decisions`. No `interrupt()`, no LangGraph entry. The runner writes a lightweight `workflow_runs` row (`workflow_type="resume_clinic"`, `user_id=profile`) used only as the cost-attribution correlation id for `llm_calls` / `agent_events`
+- The clinic is out-of-graph (same pattern as on-demand tailoring, ADR-055). Endpoints: `POST /users/{id}/resume-clinic`, `GET /users/{id}/resume-clinic`, `POST /resume-clinic/{id}/decisions`, `GET /resume-clinic/{id}/export?format=...`. No `interrupt()`, no LangGraph entry. The runner writes a lightweight `workflow_runs` row (`workflow_type="resume_clinic"`, `user_id=profile`) used only as the cost-attribution correlation id for `llm_calls` / `agent_events`
 - The Fidelity Reviewer MUST run on `rewrites` every clinic call (the agent-authored evidence-binding invariant from ADR-015/056 holds with or without a job). It is SKIPPED only when the agent emits no rewrites. A human `edit` decision is owner-authored and is NOT re-reviewed (ADR-059)
 - `RoleDataProvider` is a pluggable seam (v1: `NullRoleDataProvider` always returns None). `lookup` MUST NOT raise — graceful fallback to LLM-only is the contract, not best-effort
 - The clinic endpoints take the acting profile from the path `{user_id}` (matching the users router), NOT the ADR-062 `?user_id=` query seam. FastAPI rejects a path param named `user_id` co-existing with a `Query`-defaulted dependency parameter of the same name. The path-based pattern is the documented exception
+- Resume text/file export is deterministic — `app/services/resume_text_renderer.py::compose_resume` materialises a decision-aware intermediate (`approve` -> overhaul; `edit` -> human draft; `reject` -> original resume), then format-specific render functions produce md / txt / html / json / docx / pdf. No LLM call. Fidelity invariants are in the composer: placeholders survive verbatim, unmatched rewrites are appended (never silently dropped), rewrites match by `section_label` + exact-then-substring on `original_text`
+
+**Parsed resume schema (ADR-067)**
+- `ResumeProfile` (`app/schemas/resume_profile.py`) is the source of structured truth for every downstream agent and the renderer. If a field is not in the schema, the parser cannot store it and downstream cannot recover it (raw_text is reserved for the Fidelity Reviewer)
+- ADR-067 (2026-05-28) added `EducationEntry.gpa: str | None`, `EducationEntry.honors: list[str]`, and `ResumeProfile.skill_groups: list[SkillGroup]`. The flat `ResumeProfile.skills` list is kept (Scoring Agent + keyword filters read it); when `skill_groups` is populated, the parser derives the flat list as the de-duplicated, first-seen-order union. `_ResumeEnhancement` (`app/providers/claude_provider.py`) mirrors the new fields on the LLM output schema. The parser prompt is at v2
+- The parser caches `parsed_profile_json` keyed by `raw_text` SHA-256 scoped to `user_id`. Re-uploading the same PDF returns the cache. To force a fresh parse under the current prompt, delete the resume row via `DELETE /users/{user_id}/resume/{resume_id}` (cascades to the resume's clinic reviews; preserves job-search `workflow_runs` and `llm_calls` audit data), then re-upload
 
 **Identity / multi-user rules (ADR-062)**
 - Identity is resolved in exactly ONE place per side of the wire: backend `app/api/identity.py::get_current_user_id` (reads a `?user_id=` query param, defaults to `"0"`, validates against `users`); frontend `app/ui/api_client.py::set_user_id` (attaches the param) + `db_reader` (takes `user_id` and filters). No router parses identity itself; no HTTP headers. Adding auth later changes only `get_current_user_id`'s body
@@ -172,7 +178,7 @@ app/
   ui/               ← Streamlit frontend (streamlit_app.py + db_reader.py + api_client.py)
 
 docs/architecture/
-  adr/              ← 66 Architecture Decision Records (start at ADR-000-index.md)
+  adr/              ← 67 Architecture Decision Records (start at ADR-000-index.md)
   implementation_plan.md
   agent_model.md · workflow_model.md · state_and_memory_model.md
   data_model.md · observability.md · security.model.md
@@ -204,7 +210,7 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 - `state_and_memory_model.md` — WorkflowState schema and memory rules
 - `data_model.md` — all 19 SQLite table definitions (incl. `users`, ADR-062), per-column data dictionary, and per-table workflow usage
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
-- `adr/` — 66 Architecture Decision Records
+- `adr/` — 67 Architecture Decision Records
 
 ---
 

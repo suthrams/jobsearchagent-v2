@@ -57,6 +57,11 @@ GET  /users                                    → list profiles (ADR-062; defau
 POST /users                                    → create a profile, returns its assigned id (201)
 PUT  /users/{id}                               → update a profile's name / note (200)
 POST /users/{id}/resume                        → upload + parse a PDF resume for a profile (ADR-062, 201)
+DELETE /users/{id}/resume/{resume_id}          → delete a resume; cascades to its clinic reviews (200)
+POST /users/{id}/resume-clinic                 → run a Resume Clinic review on a resume (ADR-066, 200)
+GET  /users/{id}/resume-clinic                 → list past clinic runs for a profile
+POST /resume-clinic/{id}/decisions             → record approve / revise / reject / edit for a clinic review
+GET  /resume-clinic/{id}/export                → render the clinic resume in md/txt/html/json/docx/pdf (200)
 ```
 
 **Identity (ADR-062).** Every endpoint resolves the acting profile through a
@@ -609,6 +614,92 @@ literals; `edited` is required when `approval == "edit"`.
 
 ---
 
+### GET /resume-clinic/{review_id}/export
+
+Render the clinic review's final resume in the requested format and stream the
+bytes back with a download-friendly `Content-Disposition` header. The renderer
+is **deterministic** — no LLM call — and **decision-aware**:
+
+- `decision == "approve"` → apply the agent's `overhaul`.
+- `decision == "edit"` → use the human-authored `edited` overhaul.
+- `decision == "reject"` → render the original parsed resume unchanged.
+- `decision in (null, "revise")` → render with a discreet preview footer noting
+  that no decision has been recorded yet.
+
+**Query parameters**
+
+| Name | Type | Notes |
+|---|---|---|
+| `format` | string | one of `md` (default) / `txt` / `html` / `json` / `docx` / `pdf` |
+
+**Response — 200 OK**
+
+Raw bytes in the requested format. Response headers:
+
+```
+Content-Type:        text/markdown; charset=utf-8        (md)
+                     text/plain; charset=utf-8           (txt)
+                     text/html; charset=utf-8            (html)
+                     application/json                    (json)
+                     application/vnd.openxmlformats-officedocument.wordprocessingml.document   (docx)
+                     application/pdf                     (pdf)
+Content-Disposition: attachment; filename="resume_clinic_<8chars>.<ext>"
+```
+
+The JSON Resume export follows the [jsonresume.org](https://jsonresume.org)
+schema subset: `basics`, `work[]`, `skills[]`, `education[]`, `certificates[]`,
+plus a `meta` block carrying the rendered `section_order` and any preview
+banner.
+
+**Response — 400** `unsupported_format` — `format` is not in the supported set.
+
+**Response — 404** `clinic_review_not_found` — unknown `review_id`.
+
+**Response — 404** `resume_not_found` — the resume the review points at has
+been deleted (the clinic review row is now orphaned; happens if the resume
+was removed via `DELETE /users/{user_id}/resume/{resume_id}` but the review
+row wasn't cascaded).
+
+---
+
+## Resume management
+
+### DELETE /users/{user_id}/resume/{resume_id}
+
+Hard-delete a resume from a profile and cascade to the resume's clinic
+reviews (the past-runs panel would otherwise show broken rows). Job-search
+`workflow_runs` and per-call `llm_calls` rows are **preserved** as historical
+audit / cost data.
+
+**Response — 200 OK**
+
+```json
+{
+  "resume_deleted": 1,
+  "clinic_reviews_deleted": 2,
+  "user_id": 1,
+  "resume_id": "..."
+}
+```
+
+**Response — 404** `unknown_user` — the path `user_id` does not exist.
+
+**Response — 404** `resume_not_found` — the resume id is unknown OR the
+resume is owned by a different profile. Same status for both — ADR-062
+cooperative scoping, no cross-user enumeration.
+
+**Idempotency** — Re-deleting an already-deleted resume returns 404
+`resume_not_found`. The endpoint is not idempotent on success (404 on the
+second call); use 404 as the "already gone" signal.
+
+**Related**: to add a fresh resume after a delete, use
+`POST /users/{user_id}/resume` (upload). The parser cache is keyed by
+`raw_text` SHA-256; a re-upload of the same PDF returns the cached profile,
+so a true re-parse under the current parser prompt requires either a
+modified source PDF or the resume row having been deleted (this endpoint).
+
+---
+
 ### GET /config
 
 Return the effective merged config (YAML defaults + DB user overrides) plus the
@@ -835,6 +926,41 @@ resume. `multipart/form-data` with a single `file` field.
 
 **Errors**: `404 unknown_user` (no such profile), `422 resume_parse_failed`
 (parse/extract failure).
+
+**Parsed profile shape (stored in `resumes.parsed_profile_json`)** — the
+parser populates a `ResumeProfile` per `app/schemas/resume_profile.py`:
+
+```
+name              string?
+headline          string?
+email             string?
+location          string?
+summary           string?
+experience        [{company, title, start_year, end_year?, description?, technologies[]}]
+skills            [string]               # flat list (Scoring Agent + keyword filters read this)
+skill_groups      [{category, skills[]}] # ADR-067: categorised view; populated when the source has headings
+education         [{institution, degree, year?, gpa?, honors[]}]   # ADR-067: gpa + honors added
+certifications    [{name, issuer?, year?}]
+raw_text          string                 # full extracted text; Fidelity Reviewer's source of truth
+```
+
+`skill_groups` and `EducationEntry.gpa` / `honors` are ADR-067 additions
+(2026-05-28). When the source resume has no skill category headings,
+`skill_groups` is `[]` and downstream consumers (including the resume
+renderer) fall back to the flat `skills` list. The flat list is the union
+of all groups' skills when groups are present.
+
+**Cache**: the parser keys its cache on the SHA-256 of `raw_text` scoped to
+`user_id`. Re-uploading the same PDF returns the cached profile (no LLM
+call). To force a fresh parse under the current parser prompt, either modify
+the source PDF or delete the resume row first via
+`DELETE /users/{user_id}/resume/{resume_id}`.
+
+---
+
+### DELETE /users/{user_id}/resume/{resume_id}
+
+See [Resume management](#resume-management) above.
 
 ---
 

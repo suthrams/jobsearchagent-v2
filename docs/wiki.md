@@ -112,7 +112,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 
 | Document | What it covers |
 |---|---|
-| [architecture/data_model.md](architecture/data_model.md) | 20-table SQLite schema with core, observability, security, memory, identity (`users`, ADR-062), and Resume Clinic (`resume_clinic_reviews`, ADR-066) tables |
+| [architecture/data_model.md](architecture/data_model.md) | 20-table SQLite schema with core, observability, security, memory, identity (`users`, ADR-062), and Resume Clinic (`resume_clinic_reviews`, ADR-066) tables. `ResumeProfile` (stored as JSON in `resumes.parsed_profile_json`) was extended in ADR-067 with `gpa`, `honors[]`, and `skill_groups[]`. |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState ownership, memory service, state update rules, HITL state flow |
 
 **19 SQLite tables at a glance:**

@@ -147,6 +147,27 @@ job-seekers from one install under sequential use.
   backend `get_current_user_id` dependency — views never attach `user_id`
   themselves. This is the cooperative-isolation model (see §11).
 
+### "Manage an existing profile" sub-panel
+
+A second area within the Profiles view, with three expanders:
+
+* **Edit a profile (name / note)** — `PUT /users/{id}` (display name + note).
+* **Add a resume to a profile** — `POST /users/{id}/resume`. Parses the PDF;
+  the new resume becomes the profile's active resume.
+* **Delete a resume from a profile** — `DELETE /users/{id}/resume/{resume_id}`.
+  Profile selector -> resume picker (`load_user_resumes`) -> a count of clinic
+  reviews that would cascade (via `api.list_resume_clinic_runs`) -> a
+  confirm checkbox that gates the **Delete resume** button. The cascade
+  also removes the resume's `resume_clinic_reviews` rows; job-search
+  `workflow_runs` and per-call `llm_calls` rows are preserved.
+
+  **Why the delete-then-reupload flow exists:** `ResumeParser` caches the
+  parsed profile keyed by the PDF text hash, so re-uploading the same PDF
+  returns the cached profile (no LLM call). Deleting the resume row clears
+  the cache for that profile and forces a fresh parse — useful after a
+  parser-prompt upgrade (e.g. ADR-067 added GPA / honors / skill groups
+  the previous parser had no slot for).
+
 ---
 
 ## 6.1 Home / Start Screen
@@ -430,6 +451,14 @@ that the senior-tuned funnel underserves.
     documented in ADR-066)
 * Decision controls (Approve / Revise / Reject) — POSTs to
   `/resume-clinic/{id}/decisions`. Inline `edit` editor is a follow-up.
+* **Export the final resume** panel — format selectbox over
+  `md / txt / html / json / docx / pdf`, an inline preview expander for
+  text-y formats, and a download button. Hits
+  `GET /resume-clinic/{id}/export?format=...` per format change. The
+  renderer is **deterministic** and **decision-aware**: `approve` applies
+  the agent's overhaul, `edit` uses the human draft, `reject` falls back
+  to the original parsed resume, undecided / `revise` shows a preview
+  banner. See `app/services/resume_text_renderer.py`.
 * Past clinic runs — expander per row, button to reload into the results pane.
 
 ### Backend Actions
@@ -437,6 +466,7 @@ that the senior-tuned funnel underserves.
 * `api_client.run_resume_clinic` -> `POST /users/{user_id}/resume-clinic`
 * `api_client.list_resume_clinic_runs` -> `GET /users/{user_id}/resume-clinic`
 * `api_client.submit_resume_clinic_decision` -> `POST /resume-clinic/{id}/decisions`
+* `api_client.export_resume_clinic` -> `GET /resume-clinic/{id}/export?format=...`
 * Read path: `db_reader.load_user_clinic_reviews(user_id)` for the
   past-runs panel.
 
