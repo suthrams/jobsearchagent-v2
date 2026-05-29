@@ -106,6 +106,26 @@ def test_normalize_returns_job_posting():
     assert isinstance(posting, JobPosting)
 
 
+def test_normalize_canonicalizes_adzuna_url():
+    """Integration: normalize() must strip the rotating Adzuna `?se=`
+    tracking token via the URL canonicalizer so per-URL dedup catches
+    re-fetches. Regression for the 2026-05-29 'same job over and over'
+    bug on the cyber-grad profile."""
+    svc = _svc()
+    v1_job = _mock_v1_job(url="https://www.adzuna.com/land/ad/5690461826?se=token1&utm_medium=api")
+    posting = svc.normalize(v1_job, "wf-001")
+    assert posting.url == "https://www.adzuna.com/land/ad/5690461826"
+
+
+def test_normalize_leaves_non_adzuna_url_unchanged():
+    """Sanity: only Adzuna URLs get canonicalized. LinkedIn and others
+    pass through (until proven otherwise)."""
+    svc = _svc()
+    v1_job = _mock_v1_job(url="https://www.linkedin.com/jobs/view/1?trackingId=x")
+    posting = svc.normalize(v1_job, "wf-001")
+    assert posting.url == "https://www.linkedin.com/jobs/view/1?trackingId=x"
+
+
 def test_normalize_with_salary():
     salary = MagicMock()
     salary.min = 150000

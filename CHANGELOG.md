@@ -6,6 +6,63 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-29
 
+### Fixed — Adzuna URL canonicalization (closes the "same job over and over" loop)
+
+Follow-up to the discovery dedup commit earlier today. After shipping the
+funnel instrumentation + excluded-only dedup + per-user dedup, the next
+live run on the cyber-grad profile (`703cb6fc`) returned a single new
+posting again. The funnel showed `dedup_user_scored_dropped: 4`,
+`returned: 1` - per-user dedup was working - but the "1 returned" was
+still "Digital Network Exploitation Analyst" at the same Adzuna ad ID
+the user had already scored five times in prior runs.
+
+Investigation found six rows in the `jobs` table for the same Adzuna ad
+(ID `5690461826`), each with a different `jobs.id` UUID, each at a
+slightly different URL. The URLs differed only in a rotating session
+token: `?se=eFiZbnFZ8RGcOYs2Ni-pJA`, `?se=zFirR-tZ8RGs3Me5X3pAAw`, etc.
+Adzuna appends a fresh tracking token to every redirect URL it returns
+from search; the ad ID is stable, the query rotates per fetch. Per-URL
+dedup could never catch this because the URL itself was different each
+time.
+
+**Fix.** New `app/services/url_canonicalizer.py` with `canonicalize_url`.
+For Adzuna URLs (host contains "adzuna"), strips the query and fragment,
+leaving only `scheme://host/path`. Non-Adzuna URLs pass through
+unchanged - we only canonicalize when we know the source rotates
+tracking parameters. Called from `JobDiscoveryService.normalize` so every
+`JobPosting` carries the canonical URL before any persist or dedup.
+
+The path-only Adzuna URL (`https://www.adzuna.com/land/ad/5690461826`)
+is now stable across fetches. Next run on the cyber profile should:
+
+1. Get the canonical URL on first fetch of any new Adzuna ad
+2. Skip that URL on the next run via per-user dedup (correctly)
+3. Re-surface Adzuna ads that other profiles have scored but this one
+   hasn't (since global dedup only drops excluded URLs)
+
+**Historical noise** (intentional non-fix). The `jobs` table still has 6
+rows for ad `5690461826` from prior runs (each at a different URL). A
+backfill that consolidates them onto the canonical URL would touch
+`job_scores`, `tailored_resumes`, `interview_prep`, and other tables
+that reference `jobs.id`. Out of scope for this fix. The historical rows
+sit as inert noise; future fetches of the same ad will produce ONE new
+row at the canonical URL and dedup from there.
+
+**Out of scope (separate diagnostic needed).** The deeper question raised
+by run `703cb6fc`: why only 5 raw postings from Adzuna across 6 cyber
+roles in 6 cities? That's not the rotating-token bug; it's the Adzuna
+search itself. Candidates for next diagnostic: `exclude_senior=true` may
+be too aggressive in `what_exclude`, the per-run scraper may be searching
+fewer (role x location) pairs than expected, or the title-relevance gate
+in `models.filters` may be filtering more than the funnel reveals. Will
+chase next if the next live run still feels thin.
+
+**Tests** (`tests/v2/test_url_canonicalizer.py`, +2 in
+`test_job_discovery_service.py`): 9 new cases. The load-bearing one is
+`test_same_adzuna_ad_two_rotating_tokens_yields_same_canonical` -
+asserts the regression scenario directly. Full suite at 738 (was 729;
++9).
+
 ### Fixed — Discovery dedup no longer collapses re-discovery + per-user dedup + funnel instrumentation
 
 Live run on the cyber-grad (Vishal) profile surfaced a discovery bug: three

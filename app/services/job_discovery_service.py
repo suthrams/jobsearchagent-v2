@@ -12,6 +12,7 @@ from typing import Any
 from app.repositories.database import utcnow_iso
 from app.repositories.job_repository import JobRepository
 from app.schemas.job_posting import JobPosting, JobSource, SalaryInfo, WorkMode
+from app.services.url_canonicalizer import canonicalize_url
 from models.filters import EXCLUDED_TITLE_KEYWORDS
 
 logger = logging.getLogger(__name__)
@@ -233,10 +234,15 @@ class JobDiscoveryService:
             if posted_at_raw else None
         )
 
+        # Canonicalize the URL before it leaves normalize. Some sources
+        # (Adzuna in particular) rotate a session token in the query
+        # string per fetch; canonicalize_url strips those so the URL is
+        # stable across re-fetches and dedup actually catches duplicates.
+        # See app/services/url_canonicalizer.py for the full rationale.
         return JobPosting(
             job_id=str(uuid.uuid4()),
             workflow_id=workflow_id,
-            url=getattr(v1_job, "url", ""),
+            url=canonicalize_url(getattr(v1_job, "url", "")),
             source=source,
             title=getattr(v1_job, "title", ""),
             company=getattr(v1_job, "company", ""),
