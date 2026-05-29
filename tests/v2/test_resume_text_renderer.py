@@ -185,6 +185,65 @@ def test_compose_unknown_decision_sets_preview_banner_and_applies_overhaul():
     assert rendered.banner and "unrecognized" in rendered.banner.lower()
 
 
+# ── ADR-068: edited wins regardless of decision (except reject) ──────────────
+
+def _edited_overhaul() -> dict:
+    """A chat-edited overhaul that is structurally distinct from _overhaul()
+    so tests can detect which one the composer applied."""
+    return {
+        "reorganization": {"section_order": ["summary"], "moves": []},
+        "rewrites": [
+            {
+                "section_label": "experience:Acme Corp:Senior Engineer",
+                "original_text": "Led migration of monolith to microservices on AWS ECS.",
+                "suggested_text": "HUMAN/CHAT EDIT: led ECS migration end-to-end.",
+                "claim_type": "restate",
+                "supporting_evidence": "human edit via chat",
+            },
+        ],
+    }
+
+
+def test_compose_edited_overrides_overhaul_when_decision_is_null():
+    rendered = compose_resume(_profile(), _overhaul(), _edited_overhaul(), decision=None)
+    acme = next(i for i in rendered.experience if i.company == "Acme Corp")
+    assert any("HUMAN/CHAT EDIT" in b for b in acme.bullets)
+    # Agent's [N] services rewrite must NOT be applied; edited wins.
+    assert not any("[N] services" in b for b in acme.bullets)
+    assert rendered.banner and "no decision yet" in rendered.banner.lower()
+
+
+def test_compose_edited_overrides_overhaul_when_decision_is_revise():
+    rendered = compose_resume(_profile(), _overhaul(), _edited_overhaul(),
+                              decision="revise")
+    acme = next(i for i in rendered.experience if i.company == "Acme Corp")
+    assert any("HUMAN/CHAT EDIT" in b for b in acme.bullets)
+    assert rendered.banner and "decision: revise" in rendered.banner.lower()
+
+
+def test_compose_edited_overrides_overhaul_when_decision_is_approve():
+    """ADR-068: even on approve, an explicit edited wins over the agent's
+    original overhaul. The user populated `edited` deliberately; rendering
+    the agent's overhaul instead would be surprising."""
+    rendered = compose_resume(_profile(), _overhaul(), _edited_overhaul(),
+                              decision="approve")
+    acme = next(i for i in rendered.experience if i.company == "Acme Corp")
+    assert any("HUMAN/CHAT EDIT" in b for b in acme.bullets)
+    assert rendered.banner and "approved" in rendered.banner.lower()
+    assert "chat edits applied" in rendered.banner.lower()
+
+
+def test_compose_reject_renders_original_even_with_edited_present():
+    """Reject is the explicit 'throw out the overhaul' signal - edited
+    must not override it."""
+    rendered = compose_resume(_profile(), _overhaul(), _edited_overhaul(),
+                              decision="reject")
+    acme = next(i for i in rendered.experience if i.company == "Acme Corp")
+    assert "Led migration of monolith to microservices on AWS ECS." in acme.bullets
+    assert not any("HUMAN/CHAT EDIT" in b for b in acme.bullets)
+    assert rendered.banner is None
+
+
 # ── Composer: rewrite application ───────────────────────────────────────────
 
 def test_rewrite_replaces_matching_bullet_in_named_experience():

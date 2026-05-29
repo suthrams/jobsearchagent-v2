@@ -6,6 +6,69 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-29
 
+### Added — Resume Clinic chat-revise loop (ADR-068)
+
+The clinic stops being one-shot. Users iterate on the agent's overhaul
+through chat: type natural-language feedback, see the resume update in
+the preview, repeat. New agent, new endpoint, new UI panel under the
+existing clinic results. The `edit` decision is now a real product
+surface, not just a backend capability.
+
+- **New agent** `ResumeChatAgent` (`AGENT_NAME = "resume_chat"`,
+  `claude-sonnet-4-6` default; pinned in `tests/model_pins.json`). Same
+  decision model as the reviewer — separate agent, separate prompt,
+  separate cost row, separate model pin. Shares the overhaul output
+  shape so the renderer + Fidelity translation glue operate unchanged.
+- **New endpoints** in `app/api/routers/resume_clinic.py`:
+  - `POST /resume-clinic/{id}/chat` — one revise turn. Body:
+    `{message, section?, history?}` → returns
+    `{reply, overhaul, fidelity_review, changed_sections}`. Always runs
+    Fidelity on rewrites. Persists into `edited_json`; `decision`
+    unchanged.
+  - `POST /resume-clinic/{id}/discard-edits` — clears `edited_json`,
+    `decision`, `decided_at` so the renderer reverts to the agent's
+    original overhaul.
+- **Composer change** (`app/services/resume_text_renderer.py`):
+  `compose_resume` now prefers `edited` whenever populated regardless
+  of decision, EXCEPT when `decision == "reject"` (the explicit "throw
+  out the overhaul" signal). Lets the preview reflect the chat-edited
+  state as it accumulates, before any explicit Save.
+- **Runner helper extracted**: `_build_fidelity_context` ->
+  `build_fidelity_context_for_overhaul` (public). The chat endpoint
+  reuses it for per-turn fidelity checks.
+- **Repository methods** (`app/repositories/resume_clinic_repository.py`):
+  - `set_edited(clinic_id, edited, fidelity_review=None)` — persists
+    a chat turn's output. Decision unchanged.
+  - `discard_edits(clinic_id)` — clears `edited_json`, `decision`,
+    `decided_at`.
+- **API client** (`app/ui/api_client.py`): `chat_resume_clinic(...)` +
+  `discard_resume_clinic_edits(...)`.
+- **UI** (`app/ui/streamlit_app.py`): new "Refine with feedback" panel
+  under the Decision controls. Live preview (renders the composer's
+  current state inline), section selectbox, text area, **Send
+  feedback** + **Save final edit** + **Discard chat edits** buttons,
+  conversation log. Chat history is in-session only (Streamlit
+  session_state); not persisted to the DB in v1.
+- **Tests**: 13 agent contract + 3 repo + 11 endpoint = 27 new cases.
+  Existing renderer tests still pass plus 4 new composer cases
+  covering the "edited wins" rule for null / revise / approve / reject
+  decisions. Full suite 716 (was 684; +32).
+- **Docs**:
+  - ADR-068 (the decision, with full design + tradeoffs).
+  - `resume_clinic_chat_implementation_walkthrough.md` (the per-file
+    plan + summary table of 6 deviations from ADR-068).
+  - `resume_clinic_chat_visualization.md` (Mermaid diagrams: the two
+    clinic agents at a glance, one chat turn end-to-end, the
+    `edited × decision` state machine, where each piece lives, the
+    cost shape per session).
+
+**Usage**: open the Resume Clinic, run it as before, then under the
+decision controls scroll to "Refine with feedback". Pick a section
+focus, type what you want changed ("make the summary shorter"), click
+Send. The preview updates. Iterate. Click **Save final edit** to lock
+the chat-edited state in as your final draft (sets `decision = "edit"`,
+exports use it). Click **Discard chat edits** to revert.
+
 ### Added — Delete a resume from a profile (UI + API)
 
 Closes the gap that forced manual `DELETE FROM resumes` SQL during the

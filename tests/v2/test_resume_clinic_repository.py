@@ -268,6 +268,77 @@ def test_delete_by_resume_removes_only_matching_rows(repo):
     assert remaining == {"cl-d3"}
 
 
+# ── ADR-068: chat-revise persistence helpers ────────────────────────────────
+
+def test_set_edited_populates_edited_and_fidelity_without_changing_decision(repo):
+    repo.create(
+        clinic_id="cl-chat-1", user_id="0", resume_id="r-1",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    new_overhaul = {
+        "reorganization": {"section_order": ["summary"], "moves": []},
+        "rewrites": [{
+            "section_label": "experience:Acme:Engineer",
+            "original_text": "Worked on backend systems.",
+            "suggested_text": "Designed and shipped a backend service.",
+            "claim_type": "restate",
+            "supporting_evidence": "Resume mentions a backend role.",
+        }],
+    }
+    fidelity = {"verdict": "pass", "issues": []}
+    repo.set_edited("cl-chat-1", new_overhaul, fidelity_review=fidelity)
+    row = repo.get_by_id("cl-chat-1")
+    assert row["edited"] == new_overhaul
+    assert row["fidelity_review"] == fidelity
+    # Decision NOT changed by a chat turn.
+    assert row["decision"] is None
+    # Agent's original overhaul preserved for the audit trail.
+    assert row["overhaul"]["rewrites"][0]["claim_type"] == "quantify"
+
+
+def test_set_edited_persists_null_fidelity_when_passed(repo):
+    repo.create(
+        clinic_id="cl-chat-2", user_id="0", resume_id="r-1",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review={"verdict": "pass"},
+    )
+    new_overhaul = {"reorganization": {"section_order": [], "moves": []},
+                    "rewrites": []}
+    repo.set_edited("cl-chat-2", new_overhaul, fidelity_review=None)
+    row = repo.get_by_id("cl-chat-2")
+    assert row["fidelity_review"] is None
+
+
+def test_discard_edits_clears_edited_decision_and_decided_at(repo):
+    repo.create(
+        clinic_id="cl-chat-3", user_id="0", resume_id="r-1",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    edited = {"reorganization": {"section_order": ["summary"], "moves": []},
+              "rewrites": []}
+    repo.set_edited("cl-chat-3", edited)
+    repo.set_decision("cl-chat-3", "edit", edited=edited)
+    pre = repo.get_by_id("cl-chat-3")
+    assert pre["decision"] == "edit"
+    assert pre["edited"] is not None
+
+    repo.discard_edits("cl-chat-3")
+    post = repo.get_by_id("cl-chat-3")
+    assert post["edited"] is None
+    assert post["decision"] is None
+    assert post["decided_at"] is None
+    # Agent's overhaul still intact.
+    assert post["overhaul"]["rewrites"][0]["claim_type"] == "quantify"
+
+
 def test_delete_by_resume_no_match_returns_zero(repo):
     repo.create(
         clinic_id="cl-d4", user_id="0", resume_id="r-A",

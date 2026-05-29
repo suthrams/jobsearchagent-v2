@@ -2488,6 +2488,171 @@ elif view == "Resume Clinic":
                 except Exception as exc:
                     st.error(f"Could not record decision: {exc}")
 
+            # ── Refine with feedback (ADR-068) ───────────────────────────────
+            st.markdown("---")
+            st.subheader("Refine with feedback")
+            st.caption(
+                "Iteratively revise the overhaul through chat. Each turn updates "
+                "the preview in place; click **Save final edit** when you're done "
+                "to lock the result in as your final draft, or **Discard chat edits** "
+                "to revert to the agent's original overhaul."
+            )
+
+            # Live preview of the current state. compose_resume reads the
+            # edited overhaul whenever populated (per ADR-068), so the preview
+            # reflects the latest chat turn automatically.
+            _rc_preview_review = st.session_state.get("rc_last_review") or {}
+            _rc_overhaul = _rc_preview_review.get("overhaul")
+            _rc_edited = _rc_preview_review.get("edited")
+            _rc_decision = _rc_preview_review.get("decision")
+            _rc_resume_id = _rc_preview_review.get("resume_id")
+
+            # Fetch the parsed profile fresh from the DB so we render against
+            # the same data the backend chat agent saw. Falls back to an
+            # empty dict if the resume can't be loaded (the chat will still
+            # work but the preview may be sparse).
+            _rc_profile_dict: dict = {}
+            if _rc_resume_id:
+                try:
+                    import sqlite3
+                    import json as _json
+                    from app.ui.db_reader import DB_PATH as _DBP
+                    _db = sqlite3.connect(str(_DBP))
+                    _db.row_factory = sqlite3.Row
+                    _row = _db.execute(
+                        "SELECT parsed_profile_json FROM resumes WHERE id = ?",
+                        (_rc_resume_id,),
+                    ).fetchone()
+                    if _row and _row["parsed_profile_json"]:
+                        _rc_profile_dict = _json.loads(_row["parsed_profile_json"])
+                    _db.close()
+                except Exception:
+                    _rc_profile_dict = {}
+
+            from app.services.resume_text_renderer import compose_resume as _compose_resume, render_markdown as _render_markdown
+            try:
+                _rc_rendered = _compose_resume(
+                    _rc_profile_dict, _rc_overhaul, _rc_edited, _rc_decision,
+                )
+                _rc_markdown = _render_markdown(_rc_rendered)
+            except Exception as _e:
+                _rc_markdown = f"_Preview unavailable: {_e}_"
+
+            with st.expander("Live preview", expanded=True):
+                st.markdown(_rc_markdown)
+
+            # ── Chat input ──────────────────────────────────────────────────
+            _rc_section_options = {
+                "whole": "Whole resume",
+                "summary": "Summary",
+                "experience": "Experience",
+                "skills": "Skills",
+                "education": "Education",
+                "certifications": "Certifications",
+            }
+            _rc_section = st.selectbox(
+                "Section to focus on",
+                options=list(_rc_section_options.keys()),
+                format_func=lambda k: _rc_section_options[k],
+                key=f"rc_chat_section_{_clinic_id}",
+            )
+            _rc_message = st.text_area(
+                "What would you like to change?",
+                placeholder=(
+                    "e.g. \"make the summary shorter and front-load the "
+                    "cybersecurity angle\" or \"promote my projects above experience\""
+                ),
+                key=f"rc_chat_msg_{_clinic_id}",
+                height=80,
+            )
+
+            _rc_chat_history_key = f"rc_chat_history_{_clinic_id}"
+            if _rc_chat_history_key not in st.session_state:
+                st.session_state[_rc_chat_history_key] = []
+
+            _cc1, _cc2, _cc3 = st.columns([2, 2, 2])
+            if _cc1.button("Send feedback", type="primary",
+                           disabled=not _rc_message.strip(),
+                           key=f"rc_chat_send_{_clinic_id}",
+                           use_container_width=True):
+                try:
+                    with st.spinner("Revising…"):
+                        _chat_resp = api.chat_resume_clinic(
+                            _clinic_id,
+                            _rc_message.strip(),
+                            section=_rc_section,
+                            history=st.session_state[_rc_chat_history_key],
+                        )
+                    # Append to in-session history.
+                    st.session_state[_rc_chat_history_key].append(
+                        {"role": "user", "message": _rc_message.strip()},
+                    )
+                    st.session_state[_rc_chat_history_key].append(
+                        {"role": "assistant",
+                         "message": _chat_resp.get("reply") or ""},
+                    )
+                    # Refresh the clinic row so the preview re-renders.
+                    try:
+                        _rows = api.list_resume_clinic_runs(user_id).get("reviews") or []
+                        _updated = next(
+                            (r for r in _rows if r.get("clinic_id") == _clinic_id),
+                            None,
+                        )
+                        if _updated:
+                            st.session_state.rc_last_review = _updated
+                    except Exception:
+                        pass
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Chat turn failed: {exc}")
+
+            if _cc2.button("✓ Save final edit",
+                           key=f"rc_chat_save_{_clinic_id}",
+                           use_container_width=True,
+                           help="Lock the current chat-edited state as your final draft (decision = edit)."):
+                try:
+                    _edited_payload = _rc_edited or _rc_overhaul or {}
+                    _updated = api.submit_resume_clinic_decision(
+                        _clinic_id, "edit", edited=_edited_payload,
+                    )
+                    st.session_state.rc_last_review = _updated
+                    st.success("Saved as final edit.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Save failed: {exc}")
+
+            if _cc3.button("↺ Discard chat edits",
+                           key=f"rc_chat_discard_{_clinic_id}",
+                           use_container_width=True,
+                           help="Clear chat edits and decision; revert to the agent's original overhaul."):
+                try:
+                    api.discard_resume_clinic_edits(_clinic_id)
+                    # Refresh from server.
+                    _rows = api.list_resume_clinic_runs(user_id).get("reviews") or []
+                    _updated = next(
+                        (r for r in _rows if r.get("clinic_id") == _clinic_id),
+                        None,
+                    )
+                    if _updated:
+                        st.session_state.rc_last_review = _updated
+                    st.session_state[_rc_chat_history_key] = []
+                    st.info("Chat edits discarded.")
+                    st.rerun()
+                except Exception as exc:
+                    st.error(f"Discard failed: {exc}")
+
+            # ── Conversation log ────────────────────────────────────────────
+            _hist = st.session_state.get(_rc_chat_history_key) or []
+            if _hist:
+                with st.expander(f"Conversation ({len(_hist) // 2} turn(s))", expanded=False):
+                    for _msg in _hist:
+                        _role = _msg.get("role", "")
+                        _text = _msg.get("message", "")
+                        if _role == "user":
+                            st.markdown(f"**You:** {_text}")
+                        else:
+                            st.markdown(f"**Agent:** _{_text}_")
+
             # ── Export the final resume ──────────────────────────────────────
             st.markdown("---")
             st.subheader("Export the final resume")

@@ -171,6 +171,7 @@ def _make_deps(graph) -> WorkflowDependencies:
         tailoring_agent=tailoring_agent,
         fidelity_reviewer=fidelity_reviewer,
         resume_reviewer=MagicMock(),
+        resume_chat=MagicMock(),
         discovery_service=MagicMock(),
         resume_parser=MagicMock(),
         report_generator=MagicMock(),

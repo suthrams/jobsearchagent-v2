@@ -84,3 +84,20 @@ class ResumeClinicResponse(BaseModel):
 class ResumeClinicListResponse(BaseModel):
     user_id: str
     reviews: list[ResumeClinicResponse] = []
+
+
+class ResumeChatResponse(BaseModel):
+    """ADR-068: response from one chat-revise turn on a clinic review.
+
+    `overhaul` is the FULL revised overhaul shape ({reorganization, rewrites})
+    that the renderer + Fidelity Reviewer translation glue both understand.
+    `fidelity_review` is the verdict on the new rewrites; null when the agent
+    emitted no rewrites or the Fidelity Reviewer LLM call failed.
+    `changed_sections` is the audit trail of which sections the agent
+    modified this turn (empty when nothing changed, e.g. an off-topic
+    message).
+    """
+    reply: str
+    overhaul: dict | None
+    fidelity_review: dict | None = None
+    changed_sections: list[str] = []

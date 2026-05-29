@@ -136,7 +136,7 @@ def run_clinic(
     fidelity_dict: dict | None = None
     if review.rewrites:
         try:
-            fidelity_result = fidelity.run(workflow_run_id, _build_fidelity_context(
+            fidelity_result = fidelity.run(workflow_run_id, build_fidelity_context_for_overhaul(
                 clinic_id=clinic_id,
                 resume_id=resume_id,
                 parsed_profile=parsed_profile,
@@ -197,14 +197,20 @@ _CLAIM_TYPE_MAP = {
 }
 
 
-def _build_fidelity_context(*, clinic_id: str, resume_id: str,
-                            parsed_profile: dict, raw_text: str,
-                            rewrites) -> dict:
+def build_fidelity_context_for_overhaul(
+    *, clinic_id: str, resume_id: str,
+    parsed_profile: dict, raw_text: str,
+    rewrites,
+) -> dict:
     """Pack a clinic review's rewrites into the tailoring-shaped envelope the
     FidelityReviewer prompt expects. Tailoring-specific fields receive
     placeholder values (impact_rationale, overall_tailoring_notes, etc.). The
     core evidence-binding and fabrication checks run on the real fields
-    (original_text, suggested_text, supporting_evidence)."""
+    (original_text, suggested_text, supporting_evidence).
+
+    Public (ADR-068) so the chat-revise endpoint can reuse the same glue.
+    Callable signature unchanged from the original private helper.
+    """
     tailored_bullets = []
     for r in rewrites:
         # `r` is a RewriteSuggestion (pydantic) or a dict.

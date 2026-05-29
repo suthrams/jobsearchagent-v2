@@ -15,6 +15,7 @@ from app.agents.career_advisor import CareerAdvisor
 from app.agents.fidelity_reviewer import FidelityReviewer
 from app.agents.interview_coach import InterviewCoach
 from app.agents.research_agent import ResearchAgent
+from app.agents.resume_chat import ResumeChatAgent
 from app.agents.resume_critic import ResumeCritic
 from app.agents.resume_reviewer import ResumeReviewerAgent
 from app.agents.review_auditor import ReviewAuditor
@@ -41,6 +42,7 @@ from app.schemas.interview_prep import InterviewPrep
 from app.schemas.job_posting import JobPosting, JobSource, WorkMode
 from app.schemas.job_score import JobScore
 from app.schemas.research_context import ResearchContext
+from app.schemas.resume_chat import ResumeChatTurnResult
 from app.schemas.resume_clinic import ResumeClinicReview
 from app.schemas.resume_review import ResumeReview
 from app.schemas.review_audit import ReviewAudit
@@ -175,6 +177,24 @@ def _make_tailoring_side_effect(workflow_id: str, context: dict) -> TailoredResu
     )
 
 
+def _make_resume_chat_side_effect(workflow_id: str, context: dict) -> ResumeChatTurnResult:
+    """ADR-068: mocked chat-revise turn. Echoes the current overhaul back
+    unchanged with an acknowledging reply, so the runner's persistence +
+    fidelity glue can be exercised without hitting a real model."""
+    current = context.get("current_overhaul") or {}
+    overhaul = {
+        "reorganization": current.get("reorganization") or {
+            "section_order": ["summary", "experience"], "moves": [],
+        },
+        "rewrites": current.get("rewrites") or [],
+    }
+    return ResumeChatTurnResult(
+        reply="Acknowledged - test mock returns the overhaul unchanged.",
+        overhaul=overhaul,
+        changed_sections=[],
+    )
+
+
 def _make_resume_reviewer_side_effect(workflow_id: str, context: dict) -> ResumeClinicReview:
     """ADR-066: mock clinic reviewer used in the unit-test path. Returns a
     minimal valid ResumeClinicReview so the runner's persistence + fidelity
@@ -253,6 +273,9 @@ def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
     resume_reviewer = MagicMock(spec=ResumeReviewerAgent)
     resume_reviewer.run.side_effect = _make_resume_reviewer_side_effect
 
+    resume_chat = MagicMock(spec=ResumeChatAgent)
+    resume_chat.run.side_effect = _make_resume_chat_side_effect
+
     posting = JobPosting(
         job_id="job-001",
         workflow_id="wf-placeholder",
@@ -282,6 +305,7 @@ def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
         tailoring_agent=tailoring,
         fidelity_reviewer=fidelity,
         resume_reviewer=resume_reviewer,
+        resume_chat=resume_chat,
         discovery_service=discovery_svc,
         resume_parser=resume_parser,
         report_generator=report_gen,
@@ -376,6 +400,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     tailoring = TailoringAgent(registry.for_agent("tailoring_agent"), obs)
     fidelity = FidelityReviewer(registry.for_agent("fidelity_reviewer"), obs)
     resume_reviewer = ResumeReviewerAgent(registry.for_agent("resume_reviewer"), obs)
+    resume_chat = ResumeChatAgent(registry.for_agent("resume_chat"), obs)
 
     # ResumeParser uses its own assigned provider too. Wire observability so the
     # LLM enhancement pass writes an llm_calls audit row when invoked from a
@@ -460,6 +485,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
         tailoring_agent=tailoring,
         fidelity_reviewer=fidelity,
         resume_reviewer=resume_reviewer,
+        resume_chat=resume_chat,
         discovery_service=discovery_svc,
         resume_parser=resume_parser,
         report_generator=report_gen,

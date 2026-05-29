@@ -16,6 +16,7 @@ from app.agents.career_advisor import CareerAdvisor
 from app.agents.fidelity_reviewer import FidelityReviewer
 from app.agents.interview_coach import InterviewCoach
 from app.agents.research_agent import ResearchAgent
+from app.agents.resume_chat import ResumeChatAgent
 from app.agents.resume_critic import ResumeCritic
 from app.agents.resume_reviewer import ResumeReviewerAgent
 from app.agents.review_auditor import ReviewAuditor
@@ -71,6 +72,8 @@ class WorkflowDependencies:
     # ADR-066: the Resume Clinic is also out-of-graph (job-agnostic; runs only
     # on user request). The clinic router resolves these via get_deps().
     resume_reviewer: ResumeReviewerAgent
+    # ADR-068: the chat-revise loop's agent. Same get_deps() resolution path.
+    resume_chat: ResumeChatAgent
     # Services
     discovery_service: JobDiscoveryService
     resume_parser: ResumeParser

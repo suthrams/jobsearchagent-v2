@@ -344,6 +344,42 @@ def submit_resume_clinic_decision(review_id: str, approval: str,
     return r.json()
 
 
+def chat_resume_clinic(review_id: str, message: str, *,
+                       section: str = "whole",
+                       history: list[dict] | None = None) -> dict:
+    """POST /resume-clinic/{review_id}/chat - one chat-revise turn.
+
+    ADR-068. Returns `{reply, overhaul, fidelity_review, changed_sections}`.
+    `history` is the in-session conversation (last N turns); the backend
+    does not persist it. `section` is a focus hint: "whole" (default),
+    "summary", "experience", "skills", "education", "certifications".
+    """
+    payload: dict = {"message": message, "section": section}
+    if history:
+        payload["history"] = history
+    r = httpx.post(
+        f"{BASE_URL}/resume-clinic/{review_id}/chat",
+        json=payload,
+        timeout=120.0,  # chat agent + fidelity each call a model
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def discard_resume_clinic_edits(review_id: str) -> dict:
+    """POST /resume-clinic/{review_id}/discard-edits - revert the chat state.
+
+    ADR-068. Clears `edited_json`, `decision`, `decided_at`. The renderer
+    falls back to the agent's original overhaul.
+    """
+    r = httpx.post(
+        f"{BASE_URL}/resume-clinic/{review_id}/discard-edits",
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def export_resume_clinic(review_id: str, format: str) -> tuple[bytes, str, str]:
     """GET /resume-clinic/{review_id}/export?format=...
 

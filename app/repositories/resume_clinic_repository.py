@@ -64,6 +64,36 @@ class ResumeClinicRepository:
             ).fetchall()
         return [self._row_to_dict(r) for r in rows if r is not None]
 
+    def set_edited(self, clinic_id: str, edited: dict,
+                   fidelity_review: dict | None = None) -> None:
+        """ADR-068: persist a chat-revise turn's output to `edited_json` and
+        the fidelity verdict to `fidelity_review_json`. The `decision` field
+        is NOT changed - chat turns populate edits; the decision is set by
+        explicit user action (Save final edit / Reject).
+        """
+        with get_connection(self.db_path) as conn:
+            conn.execute(
+                """UPDATE resume_clinic_reviews
+                   SET edited_json = ?, fidelity_review_json = ?
+                   WHERE id = ?""",
+                (json.dumps(edited),
+                 json.dumps(fidelity_review) if fidelity_review is not None else None,
+                 clinic_id),
+            )
+
+    def discard_edits(self, clinic_id: str) -> None:
+        """ADR-068: revert the chat-edited state. Clears `edited_json`,
+        `decision`, and `decided_at` so the renderer falls back to the
+        agent's original overhaul. The agent's overhaul_json stays intact.
+        """
+        with get_connection(self.db_path) as conn:
+            conn.execute(
+                """UPDATE resume_clinic_reviews
+                   SET edited_json = NULL, decision = NULL, decided_at = NULL
+                   WHERE id = ?""",
+                (clinic_id,),
+            )
+
     def delete_by_resume(self, resume_id: str, user_id: str) -> int:
         """Delete all clinic reviews for a given (resume_id, user_id).
 

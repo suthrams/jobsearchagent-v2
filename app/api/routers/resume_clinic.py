@@ -17,6 +17,7 @@ from __future__ import annotations
 import logging
 
 import json
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from pydantic import BaseModel, Field, field_validator
@@ -24,11 +25,16 @@ from pydantic import BaseModel, Field, field_validator
 from app.api.decision_validation import DecisionRequest
 from app.api.dependencies import get_deps
 from app.api.schemas.responses import (
+    ResumeChatResponse,
     ResumeClinicListResponse,
     ResumeClinicResponse,
 )
 from app.providers.llm_client import LLMProviderError
-from app.services.resume_clinic_runner import ResumeClinicError, run_clinic
+from app.services.resume_clinic_runner import (
+    ResumeClinicError,
+    build_fidelity_context_for_overhaul,
+    run_clinic,
+)
 from app.services.resume_text_renderer import (
     compose_resume,
     export_content_type,
@@ -291,3 +297,176 @@ def export_resume_clinic_text(
             "Content-Disposition": f'attachment; filename="{filename}"',
         },
     )
+
+
+# ── Chat-revise loop (ADR-068) ───────────────────────────────────────────────
+
+
+_CHAT_SECTION_FOCUS = {"whole", "summary", "experience", "skills",
+                       "education", "certifications"}
+
+
+class ResumeChatRequest(BaseModel):
+    """One turn of the chat-revise loop.
+
+    `section` is a hint to the agent ("focus on the Experience section") -
+    enforcement is in the agent prompt + the Fidelity Reviewer, not here.
+    `history` is the in-session conversation kept by the UI and submitted on
+    each turn; the backend does not persist it.
+    """
+    message: str = Field(min_length=1, max_length=2000)
+    section: Literal[
+        "whole", "summary", "experience", "skills",
+        "education", "certifications",
+    ] = "whole"
+    history: list[dict] = Field(default_factory=list)
+
+    @field_validator("history")
+    @classmethod
+    def _validate_history(cls, v: list[dict]) -> list[dict]:
+        # Cap the submitted history at the last 10 turns so a runaway client
+        # cannot blow the prompt budget. The agent only needs short context.
+        return v[-10:] if v else []
+
+
+@router.post("/resume-clinic/{review_id}/chat", status_code=200,
+             response_model=ResumeChatResponse)
+def chat_resume_clinic(
+    review_id: str,
+    body: ResumeChatRequest,
+    deps: WorkflowDependencies = Depends(get_deps),
+) -> ResumeChatResponse:
+    """Run one chat-revise turn against a clinic review.
+
+    Loads the resume and the current overhaul (the chat-edited state if the
+    user has revised before, otherwise the agent's original overhaul), calls
+    the ResumeChatAgent, runs the Fidelity Reviewer on the new rewrites, and
+    persists the new overhaul into `edited_json`. The `decision` field is NOT
+    changed - that is a separate explicit user action (Save final edit /
+    Reject).
+    """
+    row = deps.resume_clinic_repo.get_by_id(review_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "clinic_review_not_found",
+                "message": f"Resume clinic review {review_id!r} not found.",
+                "review_id": review_id,
+            },
+        )
+
+    resume = deps.resume_repo.get_by_id(row.get("resume_id"))
+    if resume is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "resume_not_found",
+                "message": "The resume this clinic review points at is missing.",
+                "resume_id": row.get("resume_id"),
+            },
+        )
+
+    raw_profile = resume.get("parsed_profile_json")
+    if isinstance(raw_profile, str):
+        try:
+            parsed_profile = json.loads(raw_profile)
+        except Exception:
+            parsed_profile = {}
+    elif isinstance(raw_profile, dict):
+        parsed_profile = raw_profile
+    else:
+        parsed_profile = {}
+    raw_text = resume.get("raw_text") or ""
+
+    # Prefer the chat-edited state when populated (the user has already
+    # revised in this session); otherwise the agent's original overhaul.
+    current_overhaul: dict = row.get("edited") or row.get("overhaul") or {}
+
+    # Build the agent context. The parsed profile is cached so subsequent
+    # turns hit the second cached prompt block at the 10% rate. raw_text is
+    # NOT in the agent context - only the Fidelity Reviewer sees raw_text.
+    chat_context: dict = {
+        "_cached": {"resume_profile": parsed_profile},
+        "resume_id": resume.get("id"),
+        "current_overhaul": current_overhaul,
+        "history": [
+            {"role": h.get("role"), "message": h.get("message")}
+            for h in (body.history or [])
+            if isinstance(h, dict) and h.get("message")
+        ],
+        "section": body.section,
+        "message": body.message,
+    }
+
+    workflow_run_id = row.get("workflow_run_id") or ""
+
+    try:
+        result = deps.resume_chat.run(workflow_run_id, chat_context)
+    except LLMProviderError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "chat_failed",
+                "message": str(exc),
+                "review_id": review_id,
+            },
+        ) from exc
+
+    new_overhaul = result.overhaul.model_dump()
+    rewrites = new_overhaul.get("rewrites") or []
+
+    # Fidelity invariant (ADR-066 carried into ADR-068): always run on
+    # rewrites. A reviewer LLM failure persists the turn with null fidelity
+    # rather than failing the chat - the user still gets the revision.
+    fidelity_dict: dict | None = None
+    if rewrites:
+        try:
+            fidelity_result = deps.fidelity_reviewer.run(
+                workflow_run_id,
+                build_fidelity_context_for_overhaul(
+                    clinic_id=review_id,
+                    resume_id=resume.get("id") or "",
+                    parsed_profile=parsed_profile,
+                    raw_text=raw_text,
+                    rewrites=rewrites,
+                ),
+            )
+            fidelity_dict = fidelity_result.model_dump()
+        except LLMProviderError:
+            fidelity_dict = None
+
+    # Persist. decision is unchanged - that's a separate user action.
+    deps.resume_clinic_repo.set_edited(
+        review_id, new_overhaul, fidelity_review=fidelity_dict,
+    )
+
+    return ResumeChatResponse(
+        reply=result.reply,
+        overhaul=new_overhaul,
+        fidelity_review=fidelity_dict,
+        changed_sections=list(result.changed_sections),
+    )
+
+
+@router.post("/resume-clinic/{review_id}/discard-edits", status_code=200)
+def discard_resume_clinic_edits(
+    review_id: str,
+    deps: WorkflowDependencies = Depends(get_deps),
+) -> dict:
+    """Revert the chat-edited state. Clears edited_json, decision, and
+    decided_at so the renderer falls back to the agent's original overhaul.
+    The agent's original overhaul_json is intact.
+    """
+    row = deps.resume_clinic_repo.get_by_id(review_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "clinic_review_not_found",
+                "message": f"Resume clinic review {review_id!r} not found.",
+                "review_id": review_id,
+            },
+        )
+    deps.resume_clinic_repo.discard_edits(review_id)
+    return {"cleared": True, "review_id": review_id}

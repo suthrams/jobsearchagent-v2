@@ -92,6 +92,21 @@ class RewriteSuggestion(BaseModel):
     supporting_evidence: str = Field(min_length=1)  # must reference the source resume
 
 
+# ── Overhaul (chat-revise reuses this shape, ADR-068) ────────────────────────
+
+
+class ResumeOverhaul(BaseModel):
+    """The reorganization plan + the rewrites.
+
+    Materialised as the `overhaul_json` column on `resume_clinic_reviews`.
+    The ResumeChatAgent (ADR-068) returns this same shape on each turn so
+    the renderer (ADR-066) and the Fidelity Reviewer translation glue
+    operate unchanged.
+    """
+    reorganization: Reorganization
+    rewrites: list[RewriteSuggestion] = Field(default_factory=list)
+
+
 # ── Top-level review ─────────────────────────────────────────────────────────
 
 

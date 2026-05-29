@@ -181,6 +181,7 @@ def _make_deps(checkpointer=None, override_scoring_score: int = 80) -> WorkflowD
         tailoring_agent=_mock_tailoring(),
         fidelity_reviewer=_mock_fidelity(),
         resume_reviewer=MagicMock(),
+        resume_chat=MagicMock(),
         discovery_service=discovery_svc,
         resume_parser=resume_parser,
         report_generator=report_gen,

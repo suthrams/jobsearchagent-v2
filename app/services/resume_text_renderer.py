@@ -107,14 +107,29 @@ def compose_resume(profile: dict,
     base = _profile_to_rendered(profile)
 
     # 1) Pick which overhaul to apply, if any.
+    #
+    # ADR-068 rule: prefer `edited` whenever it is populated (the chat-revise
+    # loop writes here per turn, regardless of the user's final decision),
+    # EXCEPT when `decision == "reject"` - reject is the explicit "throw out
+    # the overhaul" signal and falls back to the original parsed resume.
     applied: dict | None
     banner: str | None = None
     d = (decision or "").strip().lower() or None
 
     if d == "reject":
         applied = None
-    elif d == "edit" and edited:
+    elif edited:
         applied = edited
+        if d == "edit":
+            banner = None
+        elif d == "revise":
+            banner = "Preview - editing in progress (decision: revise)."
+        elif d == "approve":
+            banner = "Preview - approved, with chat edits applied."
+        elif d is None:
+            banner = "Preview - editing in progress (no decision yet)."
+        else:
+            banner = f"Preview - editing in progress (decision: {decision!r})."
     elif d == "approve":
         applied = overhaul
     elif d == "revise":

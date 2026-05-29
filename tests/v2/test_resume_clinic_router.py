@@ -22,6 +22,7 @@ from app.api.dependencies import get_deps, get_graph
 from app.api.main import app
 from app.repositories.database import utcnow_iso
 from app.schemas.fidelity_review import FidelityReview
+from app.schemas.resume_chat import ResumeChatTurnResult
 from app.schemas.resume_clinic import ResumeClinicReview
 from app.workflows.workflow_graph import WorkflowDependencies
 
@@ -104,12 +105,32 @@ def _make_resume_row(user_id=USER_ID, resume_id=RESUME_ID):
     }
 
 
+def _chat_turn_result() -> ResumeChatTurnResult:
+    return ResumeChatTurnResult(
+        reply="Trimmed the summary and tightened the closing.",
+        overhaul={
+            "reorganization": {"section_order": ["summary", "experience"], "moves": []},
+            "rewrites": [{
+                "section_label": "experience:Acme:Engineer",
+                "original_text": "Worked on backend systems.",
+                "suggested_text": "CHAT EDIT: shipped backend services at scale.",
+                "claim_type": "restate",
+                "supporting_evidence": "Resume mentions a backend role.",
+            }],
+        },
+        changed_sections=["experience"],
+    )
+
+
 def _make_deps() -> WorkflowDependencies:
     # Reviewer + fidelity agents (mocked)
     reviewer = MagicMock()
     reviewer.run.return_value = _review()
     fidelity = MagicMock()
     fidelity.run.return_value = _fidelity()
+
+    chat = MagicMock()
+    chat.run.return_value = _chat_turn_result()
 
     # Resume repo with two resumes (one owned by USER_ID, one orphaned to "7")
     resumes = {
@@ -158,11 +179,24 @@ def _make_deps() -> WorkflowDependencies:
             clinic_store[clinic_id]["decided_at"] = utcnow_iso()
             clinic_store[clinic_id]["edited"] = edited
 
+    def _clinic_set_edited(clinic_id, edited, fidelity_review=None):
+        if clinic_id in clinic_store:
+            clinic_store[clinic_id]["edited"] = edited
+            clinic_store[clinic_id]["fidelity_review"] = fidelity_review
+
+    def _clinic_discard_edits(clinic_id):
+        if clinic_id in clinic_store:
+            clinic_store[clinic_id]["edited"] = None
+            clinic_store[clinic_id]["decision"] = None
+            clinic_store[clinic_id]["decided_at"] = None
+
     clinic_repo = MagicMock()
     clinic_repo.create.side_effect = _clinic_create
     clinic_repo.get_by_id.side_effect = _clinic_get
     clinic_repo.list_by_user.side_effect = _clinic_list
     clinic_repo.set_decision.side_effect = _clinic_decision
+    clinic_repo.set_edited.side_effect = _clinic_set_edited
+    clinic_repo.discard_edits.side_effect = _clinic_discard_edits
 
     # Workflow repo: no-op create/update; get_by_status returns empty.
     workflow_repo = MagicMock()
@@ -181,6 +215,7 @@ def _make_deps() -> WorkflowDependencies:
         tailoring_agent=MagicMock(),
         fidelity_reviewer=fidelity,
         resume_reviewer=reviewer,
+        resume_chat=chat,
         discovery_service=MagicMock(),
         resume_parser=MagicMock(),
         report_generator=MagicMock(),
@@ -504,3 +539,214 @@ def test_export_respects_decision_approve_applies_overhaul(client):
     # The mock overhaul contains "200 RPS" - on approve it should land in the
     # rendered output (the rewrite gets appended even with no matching bullet).
     assert "200 RPS" in md
+
+
+# ── ADR-068: POST /resume-clinic/{id}/chat ──────────────────────────────────
+
+
+def test_chat_round_trip_persists_edited_and_returns_reply(client):
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    resp = c.post(
+        f"/resume-clinic/{clinic_id}/chat",
+        json={"message": "make the experience section sharper",
+              "section": "experience"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["reply"].startswith("Trimmed")
+    assert body["changed_sections"] == ["experience"]
+    # The persisted clinic row now has edited_json populated, decision unchanged.
+    row = deps.resume_clinic_repo.get_by_id(clinic_id)
+    assert row["edited"] is not None
+    assert any("CHAT EDIT" in r["suggested_text"]
+               for r in row["edited"]["rewrites"])
+    assert row["decision"] is None
+
+
+def test_chat_always_runs_fidelity_when_rewrites_exist(client):
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    resp = c.post(
+        f"/resume-clinic/{clinic_id}/chat",
+        json={"message": "tighten the summary"},
+    )
+    assert resp.status_code == 200, resp.text
+    # The mocked fidelity agent was called.
+    deps.fidelity_reviewer.run.assert_called()
+    assert resp.json()["fidelity_review"] is not None
+
+
+def test_chat_persists_null_fidelity_when_reviewer_raises(client):
+    from app.providers.llm_client import LLMProviderError
+
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    deps.fidelity_reviewer.run.side_effect = LLMProviderError("upstream")
+    resp = c.post(
+        f"/resume-clinic/{clinic_id}/chat",
+        json={"message": "tighten the summary"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["fidelity_review"] is None
+    # The edited overhaul was still persisted - the user still got the revision.
+    row = deps.resume_clinic_repo.get_by_id(clinic_id)
+    assert row["edited"] is not None
+
+
+def test_chat_uses_edited_when_present_else_overhaul_as_input(client):
+    """Second turn input should be the edited state from the first turn,
+    not the original agent overhaul."""
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "first turn"})
+    # On the second turn, capture what current_overhaul was passed to the agent.
+    deps.resume_chat.run.reset_mock()
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "second turn"})
+    ctx = deps.resume_chat.run.call_args.args[1]
+    # current_overhaul should be the FIRST turn's edit (which contains
+    # "CHAT EDIT"), not the agent's original overhaul.
+    rewrites = (ctx.get("current_overhaul") or {}).get("rewrites") or []
+    assert any("CHAT EDIT" in r.get("suggested_text", "") for r in rewrites)
+
+
+def test_chat_does_not_change_decision_field(client):
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    c.post(f"/resume-clinic/{clinic_id}/decisions", json={"approval": "revise"})
+
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "tweak"})
+    row = deps.resume_clinic_repo.get_by_id(clinic_id)
+    assert row["decision"] == "revise"  # unchanged by chat
+
+
+def test_chat_does_not_send_raw_text_to_the_agent(client):
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    deps.resume_chat.run.reset_mock()
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "x"})
+    ctx = deps.resume_chat.run.call_args.args[1]
+    assert "raw_text" not in ctx
+
+
+def test_chat_history_is_capped_at_10_turns(client):
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    history = [{"role": "user", "message": f"msg-{i}"} for i in range(50)]
+    deps.resume_chat.run.reset_mock()
+    c.post(
+        f"/resume-clinic/{clinic_id}/chat",
+        json={"message": "next", "history": history},
+    )
+    ctx = deps.resume_chat.run.call_args.args[1]
+    assert len(ctx["history"]) == 10
+    # The last 10 turns are kept.
+    assert ctx["history"][-1]["message"] == "msg-49"
+
+
+def test_chat_404_when_review_unknown(client):
+    c, _ = client
+    resp = c.post(
+        "/resume-clinic/does-not-exist/chat",
+        json={"message": "tweak"},
+    )
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["error"] == "clinic_review_not_found"
+
+
+def test_chat_422_when_message_empty(client):
+    c, _ = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    resp = c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": ""})
+    assert resp.status_code == 422
+
+
+def test_chat_422_when_unknown_section(client):
+    c, _ = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+
+    resp = c.post(
+        f"/resume-clinic/{clinic_id}/chat",
+        json={"message": "x", "section": "alignment"},
+    )
+    assert resp.status_code == 422
+
+
+# ── ADR-068: POST /resume-clinic/{id}/discard-edits ─────────────────────────
+
+
+def test_discard_edits_clears_edited_and_decision(client):
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic",
+        json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    # Plant some edited state.
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "tweak"})
+    c.post(f"/resume-clinic/{clinic_id}/decisions",
+           json={"approval": "edit",
+                 "edited": {"reorganization": {"section_order": [], "moves": []},
+                            "rewrites": []}})
+    pre = deps.resume_clinic_repo.get_by_id(clinic_id)
+    assert pre["edited"] is not None
+    assert pre["decision"] == "edit"
+
+    resp = c.post(f"/resume-clinic/{clinic_id}/discard-edits")
+    assert resp.status_code == 200
+    assert resp.json()["cleared"] is True
+
+    post = deps.resume_clinic_repo.get_by_id(clinic_id)
+    assert post["edited"] is None
+    assert post["decision"] is None
+
+
+def test_discard_edits_404_when_review_unknown(client):
+    c, _ = client
+    resp = c.post("/resume-clinic/does-not-exist/discard-edits")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["error"] == "clinic_review_not_found"
