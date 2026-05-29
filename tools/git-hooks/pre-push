@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Pre-push hook: scan the commits we're about to push for plausible secrets.
+#
+# Catches the case where a secret slips through the per-commit scan (e.g.
+# multiple commits squashing, or a manual edit between commit and push).
+#
+# To bypass for one operation: `GIT_CHECK_NO_SECRETS=skip git push ...`.
+
+set -e
+REPO_ROOT=$(git rev-parse --show-toplevel)
+exec bash "$REPO_ROOT/tools/check_no_secrets.sh" outgoing

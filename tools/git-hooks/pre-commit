@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# Pre-commit hook: block commits that contain plausible secrets / PII.
+#
+# Activated by `tools/install-git-hooks.sh` which sets
+# `git config core.hooksPath tools/git-hooks` on this clone. The script
+# itself lives under tools/ so it is tracked, reviewable, and identical
+# across every clone that installs it.
+#
+# To bypass for one operation: `GIT_CHECK_NO_SECRETS=skip git commit ...`.
+# Use only after eyeballing the diff and noting why in the commit message.
+
+set -e
+REPO_ROOT=$(git rev-parse --show-toplevel)
+exec bash "$REPO_ROOT/tools/check_no_secrets.sh" staged

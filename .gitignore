@@ -9,23 +9,59 @@ blogs/
 .env.*
 *.env
 
+# Cryptographic keys and certificates — NEVER commit
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.cer
+*.pkcs12
+*.jks
+*.keystore
+
+# SSH keys (any path containing these in the filename)
+**/id_rsa
+**/id_rsa.*
+**/id_dsa
+**/id_dsa.*
+**/id_ed25519
+**/id_ed25519.*
+**/id_ecdsa
+**/id_ecdsa.*
+**/*.ssh
+
+# Cloud + tool credential conventions
+**/credentials
+**/credentials.json
+**/credentials.toml
+**/credentials.ini
+**/credentials.yml
+**/credentials.yaml
+.aws/
+.gcp/
+.azure/
+gcp-credentials.json
+service-account*.json
+
+# Generic secret-like patterns
+*.secret
+secrets.*
+.secrets/
+
 # ─── Personal data ────────────────────────────────────────────────────────────
 # Your resume PDF — contains personal PII, never commit
 resume.pdf
 *.pdf
 
-# Parsed resume profile — extracted from resume, contains name/email/work history
-data/profile.json
-
-# Job search database — contains your full search and application history
-data/jobs.db
-data/*.db
-# SQLite write-ahead log artifacts that live next to the .db file
-data/*.db-shm
-data/*.db-wal
-data/*.db-journal
-# Timestamped DB backups taken before migrations (e.g. v2.db.bak-20260526-154813)
-data/*.bak*
+# ── data/ : default-deny, then allow the intentionally-tracked files ──────
+# `data/` holds SQLite databases, exports (resume_clinic_validation outputs,
+# vishal_export/, etc.), parsed profiles, and other PII. Default-deny means a
+# new file landing in data/ stays local unless we explicitly un-ignore it.
+data/*
+# Allow-list: these are the only data/ files that ARE meant to be committed.
+!data/linkedin_inbox.txt
+!data/skills.yaml
 
 # Tailored resumes and run logs — contain personal content
 output/
@@ -71,7 +107,13 @@ env/
 *.swo
 
 # ─── Claude Code ──────────────────────────────────────────────────────────────
-.claude/
+# Use `.claude/*` (not `.claude/`) so a re-include rule below can opt files
+# back in - gitignore cannot un-exclude paths under a fully-excluded parent.
+.claude/*
+# Project-wide settings (hooks, permissions) MUST ship with the repo so the
+# secret-audit rule travels to every clone. Personal overrides remain in
+# .claude/settings.local.json (still ignored above).
+!.claude/settings.json
 
 # ─── Obsidian ─────────────────────────────────────────────────────────────────
 .obsidian/
@@ -136,6 +178,21 @@ desktop.ini
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 tmp_*.py
+
+# ─── Backups / editor swap files ─────────────────────────────────────────────
+*~
+*.orig
+*.rej
+*.bak
+*.swo
+
+# ─── Test / coverage caches ──────────────────────────────────────────────────
+.cache/
+htmlcov/
+coverage.xml
+.coverage
+.coverage.*
+node_modules/
 
 # ─── Blog drafts and personal writing (keep local only) ──────────────────────
 docs/blog_draft.md
