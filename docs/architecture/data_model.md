@@ -289,7 +289,7 @@ CREATE TABLE resumes (
 | `file_name`           | TEXT        | Original filename (e.g. `resume.pdf`). |
 | `raw_text`            | TEXT        | Extracted plain text. **Source of truth for the Fidelity Reviewer** (ADR-015 / ADR-056) — never widely exposed to agents. |
 | `raw_text_hash`       | TEXT        | SHA-256 of `raw_text`. Lookup key for the parser cache (now scoped per `user_id`). |
-| `parsed_profile_json` | TEXT (JSON) | Serialized `ResumeProfile` (`name`, `headline`, `summary`, `experience[]`, `skills[]`, `education[]`, `certifications[]`). What agents consume. |
+| `parsed_profile_json` | TEXT (JSON) | Serialized `ResumeProfile` (`name`, `headline`, `summary`, `experience[]`, `skills[]`, `skill_groups[]` (ADR-067), `education[]` with optional `gpa` + `honors[]` per entry (ADR-067), `certifications[]`). What agents consume. |
 | `version`             | INT         | Monotonically increasing per resume_id. Reserved for re-parse versioning. |
 | `is_active`           | INT         | `1` = the current canonical resume **for that profile**; `0` = superseded. ADR-062: `create(user_id, ...)` only deactivates the same profile's prior resumes, so each profile has its own active resume. |
 | `created_at`          | TEXT        | ISO 8601 UTC. |

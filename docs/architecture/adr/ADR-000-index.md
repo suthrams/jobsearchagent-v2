@@ -72,3 +72,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-064 | [Per-Profile Search Criteria Drive Discovery; Configurable Relevance Filters](ADR-064-per-profile-search-criteria-drive-discovery.md) | Accepted |
 | ADR-065 | [Experience-Targeted Discovery (Years-of-Experience Cap + Senior Exclusion)](ADR-065-experience-targeted-discovery.md) | Accepted |
 | ADR-066 | [Standalone Resume Clinic (Job-Agnostic Review, Advice, and Overhaul)](ADR-066-standalone-resume-clinic.md) | Accepted |
+| ADR-067 | [Preserve Full Resume Fidelity at Parse Time (GPA, Honors, Skill Groups)](ADR-067-preserve-resume-fidelity-at-parse-time.md) | Accepted |

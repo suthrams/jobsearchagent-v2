@@ -418,3 +418,134 @@ def test_content_type_for_every_format_is_documented():
         assert ct and "/" in ct
         ext = export_file_extension(fmt)
         assert ext  # always returns something
+
+
+# ── ADR-067: GPA, honors, skill_groups ──────────────────────────────────────
+
+def _profile_with_fidelity_extras() -> dict:
+    """A parsed_profile with the ADR-067 fields populated, matching the data
+    shape a fresh parse produces."""
+    p = _profile()
+    p["education"] = [
+        {
+            "institution": "UT Austin",
+            "degree": "BS Computer Science",
+            "year": 2020,
+            "gpa": "3.9/4.0",
+            "honors": ["Dean's List 2018, 2019, 2020", "Phi Beta Kappa"],
+        },
+    ]
+    p["skill_groups"] = [
+        {"category": "Languages",       "skills": ["Python", "Go"]},
+        {"category": "Cloud",           "skills": ["AWS", "Docker", "Kubernetes"]},
+        {"category": "Databases",       "skills": ["PostgreSQL"]},
+    ]
+    # Flat list also present (parser keeps both in sync).
+    p["skills"] = ["Python", "Go", "AWS", "Docker", "Kubernetes", "PostgreSQL"]
+    return p
+
+
+def test_compose_picks_up_gpa_and_honors():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    ed = rendered.education[0]
+    assert ed.gpa == "3.9/4.0"
+    assert "Dean's List 2018, 2019, 2020" in ed.honors
+    assert "Phi Beta Kappa" in ed.honors
+
+
+def test_compose_picks_up_skill_groups():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    assert len(rendered.skill_groups) == 3
+    assert rendered.skill_groups[0].category == "Languages"
+    assert rendered.skill_groups[0].skills == ["Python", "Go"]
+    # The flat list is preserved alongside (used by Scoring agent etc.).
+    assert "Python" in rendered.skills
+
+
+def test_render_markdown_emits_gpa_and_honors_in_education():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    md = render_markdown(rendered)
+    assert "GPA: 3.9/4.0" in md
+    assert "Dean's List 2018, 2019, 2020" in md
+    assert "Phi Beta Kappa" in md
+
+
+def test_render_markdown_emits_skill_groups_when_present():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    md = render_markdown(rendered)
+    assert "**Languages:**" in md
+    assert "Python · Go" in md
+    assert "**Cloud:**" in md
+
+
+def test_render_markdown_falls_back_to_flat_skills_when_no_groups():
+    """Resumes parsed before ADR-067 have no skill_groups -> flat list."""
+    p = _profile()  # no skill_groups
+    rendered = compose_resume(p, _overhaul(), None, decision="approve")
+    md = render_markdown(rendered)
+    assert "**Languages:**" not in md
+    assert "## Skills" in md
+
+
+def test_render_html_grouped_skills():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    h = render_html(rendered)
+    assert "<strong>Languages:</strong>" in h
+    assert "<strong>Cloud:</strong>" in h
+
+
+def test_render_html_emits_gpa_and_honors():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    h = render_html(rendered)
+    assert "GPA: 3.9/4.0" in h
+    assert "Phi Beta Kappa" in h
+
+
+def test_render_plain_text_emits_grouped_skills():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    txt = render_plain_text(rendered)
+    assert "Languages:" in txt
+    assert "Python, Go" in txt
+    assert "GPA: 3.9/4.0" in txt
+
+
+def test_render_json_resume_emits_gpa_as_score_and_honors_as_courses():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    j = render_json_resume(rendered)
+    assert j["education"][0]["score"] == "3.9/4.0"
+    assert "Phi Beta Kappa" in j["education"][0]["courses"]
+    # Each grouped skill carries its category in `keywords`.
+    skill_entries = j["skills"]
+    languages = [s for s in skill_entries if "Languages" in (s.get("keywords") or [])]
+    assert len(languages) == 2  # Python + Go
+
+
+def test_render_docx_includes_gpa_text():
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    payload = render_docx(rendered)
+    with zipfile.ZipFile(io.BytesIO(payload)) as zf:
+        body = zf.read("word/document.xml").decode("utf-8")
+    assert "3.9/4.0" in body
+    assert "Phi Beta Kappa" in body
+    assert "Languages" in body
+
+
+def test_render_pdf_does_not_crash_with_gpa_and_honors_and_skill_groups():
+    """ReportLab compresses text streams so the raw bytes are not searchable
+    for plain content. This test asserts the PDF generates cleanly when the
+    education has GPA + honors AND skills are grouped - the structural path
+    the ADR-067 fields exercise."""
+    rendered = compose_resume(_profile_with_fidelity_extras(),
+                              _overhaul(), None, decision="approve")
+    payload = render_pdf(rendered)
+    assert payload[:5] == b"%PDF-"
+    assert len(payload) > 1000  # a non-trivial document was produced

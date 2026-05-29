@@ -24,7 +24,12 @@ from pydantic import BaseModel
 
 from app.providers.llm_client import LLMClient, LLMProviderError
 from app.providers.prompt_loader import PromptLoader
-from app.schemas.resume_profile import CertificationEntry, EducationEntry, ExperienceEntry
+from app.schemas.resume_profile import (
+    CertificationEntry,
+    EducationEntry,
+    ExperienceEntry,
+    SkillGroup,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -350,7 +355,12 @@ class ClaudeProvider(LLMClient):
 # ── enhance_fn factory ────────────────────────────────────────────────────────
 
 class _ResumeEnhancement(BaseModel):
-    """Structured output schema for the resume_parser LLM enhancement pass."""
+    """Structured output schema for the resume_parser LLM enhancement pass.
+
+    Mirrors the public ResumeProfile schema's optional fields. ADR-067 added
+    `skill_groups`, `EducationEntry.gpa`, and `EducationEntry.honors` so the
+    parser preserves resume content the v1 schema dropped.
+    """
     name: str | None = None
     headline: str | None = None
     email: str | None = None
@@ -358,6 +368,7 @@ class _ResumeEnhancement(BaseModel):
     summary: str | None = None
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
+    skill_groups: list[SkillGroup] = []
     education: list[EducationEntry] = []
     certifications: list[CertificationEntry] = []
 

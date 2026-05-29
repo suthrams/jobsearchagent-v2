@@ -49,6 +49,8 @@ class EducationItem:
     degree: str
     institution: str
     year: str | None = None
+    gpa: str | None = None                   # ADR-067
+    honors: list[str] = field(default_factory=list)  # ADR-067
 
 
 @dataclass
@@ -56,6 +58,12 @@ class CertificationItem:
     name: str
     issuer: str | None = None
     year: str | None = None
+
+
+@dataclass
+class SkillGroupItem:
+    category: str
+    skills: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -67,6 +75,10 @@ class RenderedResume:
     summary: str | None = None
     experience: list[ExperienceItem] = field(default_factory=list)
     skills: list[str] = field(default_factory=list)
+    # ADR-067: when populated, the renderer uses skill_groups for the Skills
+    # section instead of the flat list. Both views co-exist so older
+    # parsed_profile rows that lack groupings still render via `skills`.
+    skill_groups: list[SkillGroupItem] = field(default_factory=list)
     education: list[EducationItem] = field(default_factory=list)
     certifications: list[CertificationItem] = field(default_factory=list)
     # The order in which to render the four content sections. Each value must be
@@ -145,10 +157,17 @@ def _profile_to_rendered(profile: dict) -> RenderedResume:
     for e in profile.get("education") or []:
         if not isinstance(e, dict):
             continue
+        # ADR-067: also pull gpa + honors when present.
+        gpa = e.get("gpa")
+        gpa_str = str(gpa).strip() if gpa not in (None, "") else None
+        honors_raw = e.get("honors") or []
+        honors = [str(h).strip() for h in honors_raw if str(h).strip()] if isinstance(honors_raw, list) else []
         education.append(EducationItem(
             degree=str(e.get("degree") or "").strip(),
             institution=str(e.get("institution") or "").strip(),
             year=_year_str(e.get("year")),
+            gpa=gpa_str,
+            honors=honors,
         ))
 
     certifications: list[CertificationItem] = []
@@ -161,6 +180,17 @@ def _profile_to_rendered(profile: dict) -> RenderedResume:
             year=_year_str(c.get("year")),
         ))
 
+    # ADR-067: skill_groups overlays the flat skills list. Render-time logic
+    # in the format-specific renderers prefers `skill_groups` when populated.
+    skill_groups: list[SkillGroupItem] = []
+    for g in profile.get("skill_groups") or []:
+        if not isinstance(g, dict):
+            continue
+        cat = str(g.get("category") or "").strip()
+        items = [str(s).strip() for s in (g.get("skills") or []) if str(s).strip()]
+        if cat and items:
+            skill_groups.append(SkillGroupItem(category=cat, skills=items))
+
     return RenderedResume(
         name=(profile.get("name") or "").strip() or None,
         headline=(profile.get("headline") or "").strip() or None,
@@ -169,6 +199,7 @@ def _profile_to_rendered(profile: dict) -> RenderedResume:
         summary=(profile.get("summary") or "").strip() or None,
         experience=experience,
         skills=[str(s).strip() for s in (profile.get("skills") or []) if str(s).strip()],
+        skill_groups=skill_groups,
         education=education,
         certifications=certifications,
     )
@@ -195,30 +226,85 @@ def _year_str(value: object) -> str | None:
         return str(value).strip() or None
 
 
-# Description -> bullets. Resume descriptions are usually one paragraph with
-# sentence-terminated bullets, or a newline-separated list. Both shapes appear.
+_BULLET_MARKERS = ("•", "·", "*", "-", "–", "—", "►", "▪", "◦")
+_MIN_SENTENCE_LEN = 25       # below this, treat as a fragment (don't promote)
+_PARA_SPLIT_THRESHOLD = 100  # only sentence-split paragraphs above this length
+
+
 def _description_to_bullets(description: object) -> list[str]:
+    """Split an experience description into bullets.
+
+    Resume parses are noisy. The default behaviour matters because it is the
+    single biggest driver of output quality. The contract, in order of
+    precedence:
+
+    1. Explicit bullet markers (>=2 lines start with a `•`/`-`/`*` etc):
+       parse as a bullet list; continuation lines fold into the bullet above.
+    2. Multiple non-empty lines without bullet markers: each line is a bullet
+       (assumes the parser already split the bullets with newlines).
+    3. Single paragraph >100 chars AND looks like multiple full sentences:
+       sentence-split on a clean regex. Fragments below 25 chars are folded
+       back into the previous bullet so half-sentences never stand alone.
+    4. Otherwise: one bullet, intact.
+
+    The trade-off in case 3 is fidelity vs readability. Rendering a 400-char
+    paragraph as one giant bullet is unreadable; sentence-splitting produces
+    2-4 bullets of complete sentences, which is what readers expect on a
+    resume.
+    """
     if not description:
         return []
     text = str(description).strip()
     if not text:
         return []
-    if "\n" in text:
-        # Multi-line: one bullet per non-empty line, leading bullet markers stripped.
-        out = []
-        for line in text.splitlines():
-            stripped = re.sub(r"^[\-\*•·]\s*", "", line.strip())
-            if stripped:
-                out.append(stripped)
-        if out:
-            return out
-    # Single paragraph: split by sentence-terminating period if reasonably long;
-    # otherwise treat as one bullet.
-    if "." in text and len(text) > 80:
-        # Split sentences but keep them readable. Avoid splitting on "e.g." etc.
-        parts = re.split(r"(?<!\b[A-Z]\.)(?<=[.!?])\s+(?=[A-Z\[])", text)
-        out = [p.strip() for p in parts if p.strip()]
-        return out or [text]
+
+    lines = text.splitlines()
+    nonempty_lines = [l for l in lines if l.strip()]
+
+    # Case 1: explicit bullet markers (>=2 bulleted lines).
+    bulleted = [l for l in nonempty_lines
+                if l.lstrip()[0:1] in _BULLET_MARKERS]
+    if len(bulleted) >= 2:
+        out: list[str] = []
+        current: list[str] = []
+        for line in nonempty_lines:
+            stripped = line.lstrip()
+            if stripped[0:1] in _BULLET_MARKERS:
+                if current:
+                    out.append(" ".join(current).strip())
+                rest = re.sub(r"^[\-\*•·–—►▪◦]+\s*", "", stripped)
+                current = [rest] if rest else []
+            else:
+                if current:
+                    current.append(stripped.strip())
+                else:
+                    out.append(stripped.strip())
+        if current:
+            out.append(" ".join(current).strip())
+        return [b for b in out if b]
+
+    # Case 2: multiple non-empty lines without markers.
+    if len(nonempty_lines) > 1:
+        return [l.strip() for l in nonempty_lines]
+
+    # Case 3: single paragraph above the split threshold with multiple
+    # sentences -> sentence-split. The regex splits after `.`/`!`/`?` followed
+    # by whitespace AND a capital letter / digit / opening bracket, so common
+    # abbreviations (e.g. "U.S.") don't trigger a split.
+    if len(text) >= _PARA_SPLIT_THRESHOLD and text.count(".") >= 1:
+        parts = re.split(r"(?<=[.!?])\s+(?=[A-Z0-9\[])", text)
+        sentences = [p.strip() for p in parts if p.strip()]
+        if len(sentences) >= 2:
+            # Re-merge fragments shorter than the floor into the prior bullet.
+            merged: list[str] = []
+            for s in sentences:
+                if merged and len(s) < _MIN_SENTENCE_LEN:
+                    merged[-1] = f"{merged[-1]} {s}"
+                else:
+                    merged.append(s)
+            return merged
+
+    # Case 4: keep as one bullet.
     return [text]
 
 
@@ -327,11 +413,22 @@ def _apply_reorganization(base: RenderedResume, reorg: dict) -> None:
     proposed: list[str] = []
     for s in raw_order:
         norm = str(s).strip().lower()
+        # Allow tokens like "header / contact" or "projects" to pass through
+        # the order list - they map to nothing in v1, but their presence in
+        # the iteration order doesn't break anything; we just skip them when
+        # rendering. The fix is: only KEEP tokens we know how to render.
         if norm in valid and norm not in proposed:
             proposed.append(norm)
     if proposed:
-        # Anything we know about but the agent didn't list goes to the end so
-        # nothing gets dropped from the rendering.
+        # Agents commonly omit "summary" from their proposed section_order on
+        # the assumption that it sits implicitly above the body, in the
+        # header. The renderer treats summary as a body section, so an omitted
+        # summary needs to be RE-INSERTED above the agent's proposed order
+        # (not appended at the end - that was the original bug).
+        if "summary" not in proposed:
+            proposed.insert(0, "summary")
+        # Append any remaining known sections at the END so they aren't
+        # silently dropped.
         for s in ("summary", "experience", "skills", "certifications", "education"):
             if s not in proposed:
                 proposed.append(s)
@@ -377,16 +474,13 @@ def _apply_reorganization(base: RenderedResume, reorg: dict) -> None:
 
 def render_markdown(rendered: RenderedResume) -> str:
     lines: list[str] = []
-    if rendered.banner:
-        lines.append(f"> _{rendered.banner}_")
-        lines.append("")
     if rendered.name:
         lines.append(f"# {rendered.name}")
     if rendered.headline:
-        lines.append(f"**{rendered.headline}**")
+        lines.append(f"_{rendered.headline}_")
     contact_bits = [b for b in (rendered.email, rendered.location) if b]
     if contact_bits:
-        lines.append(" - ".join(contact_bits))
+        lines.append(" · ".join(contact_bits))
     if rendered.name or rendered.headline or contact_bits:
         lines.append("")
 
@@ -401,20 +495,29 @@ def render_markdown(rendered: RenderedResume) -> str:
             lines.append("## Experience")
             lines.append("")
             for it in rendered.experience:
-                heading = " - ".join(b for b in (it.title, it.company) if b)
-                if heading:
-                    lines.append(f"### {heading}")
-                if it.dates:
-                    lines.append(it.dates)
+                # `Title · Company    dates` on the heading line.
+                title_co = " · ".join(b for b in (it.title, it.company) if b)
+                if title_co and it.dates:
+                    lines.append(f"### {title_co} — {it.dates}")
+                elif title_co:
+                    lines.append(f"### {title_co}")
+                elif it.dates:
+                    lines.append(f"### {it.dates}")
                 if it.technologies:
                     lines.append(f"*{', '.join(it.technologies)}*")
                 lines.append("")
                 for b in it.bullets:
                     lines.append(f"- {b}")
                 lines.append("")
-        elif section == "skills" and rendered.skills:
+        elif section == "skills" and (rendered.skill_groups or rendered.skills):
             lines.append("## Skills")
-            lines.append(" - ".join(rendered.skills))
+            # ADR-067: render grouped when categorised data is present;
+            # otherwise fall back to the flat list.
+            if rendered.skill_groups:
+                for g in rendered.skill_groups:
+                    lines.append(f"**{g.category}:** {' · '.join(g.skills)}")
+            else:
+                lines.append(" · ".join(rendered.skills))
             lines.append("")
         elif section == "certifications" and rendered.certifications:
             lines.append("## Certifications")
@@ -425,9 +528,21 @@ def render_markdown(rendered: RenderedResume) -> str:
         elif section == "education" and rendered.education:
             lines.append("## Education")
             for ed in rendered.education:
-                bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
-                lines.append(f"- {' - '.join(bits)}")
+                # ADR-067: include GPA and honors when the parser captured them.
+                head_bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
+                head_line = f"- {' · '.join(head_bits)}"
+                if ed.gpa:
+                    head_line += f" — GPA: {ed.gpa}"
+                lines.append(head_line)
+                for h in ed.honors:
+                    lines.append(f"  - {h}")
             lines.append("")
+
+    # Discreet "preview" footer instead of a loud banner up top.
+    if rendered.banner:
+        lines.append("")
+        lines.append("---")
+        lines.append(f"_{rendered.banner}_")
 
     # Collapse runs of blank lines and trailing whitespace.
     out: list[str] = []
@@ -446,13 +561,10 @@ def render_markdown(rendered: RenderedResume) -> str:
 def render_plain_text(rendered: RenderedResume, *, width: int = 72) -> str:
     lines: list[str] = []
     sep = "-" * 60
-    if rendered.banner:
-        lines.append(f"({rendered.banner})")
-        lines.append("")
     if rendered.name:
         lines.append(rendered.name.upper())
     if rendered.headline:
-        lines.append(rendered.headline)
+        lines.extend(_wrap(rendered.headline, width=width))
     contact_bits = [b for b in (rendered.email, rendered.location) if b]
     if contact_bits:
         lines.append(" | ".join(contact_bits))
@@ -492,9 +604,15 @@ def render_plain_text(rendered: RenderedResume, *, width: int = 72) -> str:
                         for sub in bullet_lines[1:]:
                             lines.append(f"    {sub}")
                 lines.append("")
-        elif section == "skills" and rendered.skills:
+        elif section == "skills" and (rendered.skill_groups or rendered.skills):
             _section_header("Skills")
-            lines.extend(_wrap(", ".join(rendered.skills), width=width))
+            # ADR-067: grouped when available.
+            if rendered.skill_groups:
+                for g in rendered.skill_groups:
+                    line = f"{g.category}: {', '.join(g.skills)}"
+                    lines.extend(_wrap(line, width=width))
+            else:
+                lines.extend(_wrap(", ".join(rendered.skills), width=width))
             lines.append("")
         elif section == "certifications" and rendered.certifications:
             _section_header("Certifications")
@@ -505,10 +623,20 @@ def render_plain_text(rendered: RenderedResume, *, width: int = 72) -> str:
         elif section == "education" and rendered.education:
             _section_header("Education")
             for ed in rendered.education:
-                bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
-                lines.append(", ".join(bits))
+                head_bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
+                head = ", ".join(head_bits)
+                if ed.gpa:
+                    head = f"{head} | GPA: {ed.gpa}"
+                lines.append(head)
+                for h in ed.honors:
+                    lines.append(f"  * {h}")
             lines.append("")
 
+    # Discreet preview footer if applicable.
+    if rendered.banner:
+        if lines and lines[-1].strip() != "":
+            lines.append("")
+        lines.append(f"({rendered.banner})")
     # Collapse trailing blanks.
     while lines and lines[-1].strip() == "":
         lines.pop()
@@ -546,26 +674,27 @@ def render_html(rendered: RenderedResume) -> str:
     parts.append("<style>")
     parts.append(
         "body{font-family:'Helvetica Neue',Helvetica,Arial,sans-serif;"
-        "max-width:780px;margin:40px auto;padding:0 24px;color:#222;"
-        "line-height:1.45;font-size:14px}"
-        "h1{margin:0;font-size:28px}"
-        ".headline{font-weight:600;color:#444}"
-        ".contact{color:#666;margin:4px 0 18px}"
-        "h2{font-size:14px;text-transform:uppercase;letter-spacing:1px;"
-        "color:#444;border-bottom:1px solid #ddd;padding-bottom:4px;"
-        "margin:24px 0 10px}"
-        "h3{margin:14px 0 2px;font-size:15px}"
-        ".meta{color:#666;font-size:13px;margin-bottom:4px}"
-        ".tech{color:#666;font-style:italic;margin-bottom:6px}"
-        "ul{margin:6px 0 12px 22px;padding:0}"
-        "li{margin:3px 0}"
-        ".skills{margin-bottom:12px}"
-        ".banner{background:#fff7d6;border:1px solid #e7d27a;"
-        "padding:6px 10px;border-radius:4px;color:#664400;margin-bottom:14px}"
+        "max-width:780px;margin:36px auto;padding:0 28px;color:#222;"
+        "line-height:1.4;font-size:13.5px}"
+        "h1{margin:0 0 2px 0;font-size:26px;letter-spacing:.2px}"
+        ".headline{color:#555;font-style:italic;margin-bottom:2px}"
+        ".contact{color:#666;font-size:12.5px;margin:0 0 4px}"
+        ".rule{border:0;border-top:1px solid #ddd;margin:10px 0 4px}"
+        "h2{font-size:12.5px;text-transform:uppercase;letter-spacing:1.2px;"
+        "color:#333;border-bottom:1px solid #ddd;padding-bottom:2px;"
+        "margin:14px 0 6px}"
+        ".role{display:flex;justify-content:space-between;"
+        "align-items:baseline;margin:8px 0 0}"
+        ".role .title{font-weight:600;font-size:13.5px}"
+        ".role .dates{color:#666;font-size:12px;white-space:nowrap;margin-left:12px}"
+        ".tech{color:#666;font-style:italic;font-size:12px;margin:0 0 4px}"
+        "ul{margin:4px 0 8px 20px;padding:0}"
+        "li{margin:2px 0}"
+        ".skills{margin-bottom:6px}"
+        ".preview{color:#888;font-style:italic;font-size:11.5px;"
+        "border-top:1px dotted #ccc;margin-top:18px;padding-top:6px}"
     )
     parts.append("</style></head><body>")
-    if rendered.banner:
-        parts.append(f'<div class="banner">{e(rendered.banner)}</div>')
     if rendered.name:
         parts.append(f"<h1>{e(rendered.name)}</h1>")
     if rendered.headline:
@@ -573,6 +702,8 @@ def render_html(rendered: RenderedResume) -> str:
     contact = " &middot; ".join(e(b) for b in (rendered.email, rendered.location) if b)
     if contact:
         parts.append(f'<div class="contact">{contact}</div>')
+    if rendered.name or rendered.headline or contact:
+        parts.append('<hr class="rule">')
 
     for section in rendered.section_order:
         if section == "summary" and rendered.summary:
@@ -583,10 +714,13 @@ def render_html(rendered: RenderedResume) -> str:
             parts.append("<h2>Experience</h2>")
             for it in rendered.experience:
                 head = " &middot; ".join(e(b) for b in (it.title, it.company) if b)
-                if head:
-                    parts.append(f"<h3>{head}</h3>")
-                if it.dates:
-                    parts.append(f'<div class="meta">{e(it.dates)}</div>')
+                if head or it.dates:
+                    parts.append('<div class="role">')
+                    if head:
+                        parts.append(f'<span class="title">{head}</span>')
+                    if it.dates:
+                        parts.append(f'<span class="dates">{e(it.dates)}</span>')
+                    parts.append("</div>")
                 if it.technologies:
                     parts.append(f'<div class="tech">{e(", ".join(it.technologies))}</div>')
                 if it.bullets:
@@ -594,9 +728,22 @@ def render_html(rendered: RenderedResume) -> str:
                     for b in it.bullets:
                         parts.append(f"<li>{e(b)}</li>")
                     parts.append("</ul>")
-        elif section == "skills" and rendered.skills:
+        elif section == "skills" and (rendered.skill_groups or rendered.skills):
             parts.append("<h2>Skills</h2>")
-            parts.append(f'<div class="skills">{e(" &middot; ".join(rendered.skills))}</div>')
+            if rendered.skill_groups:
+                # ADR-067: one row per category.
+                parts.append('<div class="skills">')
+                for g in rendered.skill_groups:
+                    parts.append(
+                        f'<div><strong>{e(g.category)}:</strong> '
+                        f'{" &middot; ".join(e(s) for s in g.skills)}</div>'
+                    )
+                parts.append("</div>")
+            else:
+                parts.append(
+                    f'<div class="skills">'
+                    f'{" &middot; ".join(e(s) for s in rendered.skills)}</div>'
+                )
         elif section == "certifications" and rendered.certifications:
             parts.append("<h2>Certifications</h2>")
             parts.append("<ul>")
@@ -609,10 +756,21 @@ def render_html(rendered: RenderedResume) -> str:
             parts.append("<h2>Education</h2>")
             parts.append("<ul>")
             for ed in rendered.education:
-                bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
-                parts.append(f"<li>{e(' &middot; '.join(bits))}</li>")
+                head_bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
+                head = e(" &middot; ".join(head_bits))
+                if ed.gpa:
+                    head += f' <span class="meta">&mdash; GPA: {e(ed.gpa)}</span>'
+                if ed.honors:
+                    inner_items = "".join(
+                        f"<li>{e(h)}</li>" for h in ed.honors
+                    )
+                    parts.append(f"<li>{head}<ul>{inner_items}</ul></li>")
+                else:
+                    parts.append(f"<li>{head}</li>")
             parts.append("</ul>")
 
+    if rendered.banner:
+        parts.append(f'<div class="preview">{e(rendered.banner)}</div>')
     parts.append("</body></html>")
     return "\n".join(parts)
 
@@ -641,12 +799,24 @@ def render_json_resume(rendered: RenderedResume) -> dict:
             }
             for it in rendered.experience
         ],
-        "skills": [{"name": s} for s in rendered.skills],
+        # ADR-067: emit skill_groups under JSON Resume's optional category
+        # via the `keywords` field of each skill entry. JSON Resume's schema
+        # supports skill.name + skill.keywords; using `keywords` for the
+        # category lets us preserve the grouping while staying within the
+        # schema. The flat skills list is still each skill's `name`.
+        "skills": (
+            [{"name": s, "keywords": [g.category]}
+             for g in rendered.skill_groups for s in g.skills]
+            if rendered.skill_groups else
+            [{"name": s} for s in rendered.skills]
+        ),
         "education": [
             {
                 "institution": ed.institution,
                 "area": ed.degree,
                 "endDate": ed.year or "",
+                "score": ed.gpa or "",          # ADR-067
+                "courses": list(ed.honors),     # ADR-067: honors stuffed in courses (schema-allowed list)
             }
             for ed in rendered.education
         ],
@@ -687,80 +857,129 @@ def render_docx(rendered: RenderedResume) -> bytes:
     # Imported lazily so the module can be imported in environments that have
     # not installed python-docx (e.g. partial test runs).
     from docx import Document
-    from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.enum.table import WD_TABLE_ALIGNMENT
+    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
     from docx.shared import Pt, RGBColor, Inches
 
     doc = Document()
-    # Margins: a touch tighter than default for a one-page-friendly resume.
+    # Tighter margins for a one-page resume.
     for section in doc.sections:
-        section.top_margin = Inches(0.6)
-        section.bottom_margin = Inches(0.6)
-        section.left_margin = Inches(0.7)
-        section.right_margin = Inches(0.7)
+        section.top_margin = Inches(0.5)
+        section.bottom_margin = Inches(0.5)
+        section.left_margin = Inches(0.6)
+        section.right_margin = Inches(0.6)
 
     base = doc.styles["Normal"]
     base.font.name = "Calibri"
-    base.font.size = Pt(11)
+    base.font.size = Pt(10.5)
+    base.paragraph_format.space_after = Pt(2)
+    base.paragraph_format.space_before = Pt(0)
 
-    if rendered.banner:
-        p = doc.add_paragraph()
-        run = p.add_run(rendered.banner)
-        run.italic = True
-        run.font.size = Pt(10)
-        run.font.color.rgb = RGBColor(0x66, 0x44, 0x00)
+    # Tighter style for the bullet list (otherwise it inherits Word's default
+    # 8pt-after spacing which spreads bullets apart).
+    try:
+        bullet_style = doc.styles["List Bullet"]
+        bullet_style.paragraph_format.space_after = Pt(1)
+        bullet_style.paragraph_format.space_before = Pt(0)
+    except KeyError:
+        pass
 
+    # Available width (page width minus margins): 8.5" - 0.6" - 0.6" = 7.3".
+    # Use this as the right-tab stop position so dates align flush right.
+    USABLE_WIDTH = Inches(7.3)
+
+    def _add_bottom_border(paragraph) -> None:
+        """Add a thin grey rule below the given paragraph."""
+        pPr = paragraph._p.get_or_add_pPr()
+        pBdr = OxmlElement("w:pBdr")
+        bottom = OxmlElement("w:bottom")
+        bottom.set(qn("w:val"), "single")
+        bottom.set(qn("w:sz"), "6")     # half-points -> 0.75pt
+        bottom.set(qn("w:space"), "1")
+        bottom.set(qn("w:color"), "BFBFBF")
+        pBdr.append(bottom)
+        pPr.append(pBdr)
+
+    # Header block
     if rendered.name:
         p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(0)
         run = p.add_run(rendered.name)
         run.bold = True
-        run.font.size = Pt(20)
+        run.font.size = Pt(18)
     if rendered.headline:
         p = doc.add_paragraph()
+        p.paragraph_format.space_after = Pt(0)
         run = p.add_run(rendered.headline)
-        run.bold = True
-        run.font.size = Pt(11)
+        run.italic = True
+        run.font.size = Pt(10)
+        run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
     contact_bits = [b for b in (rendered.email, rendered.location) if b]
     if contact_bits:
         p = doc.add_paragraph(" | ".join(contact_bits))
+        p.paragraph_format.space_after = Pt(2)
         for r in p.runs:
-            r.font.size = Pt(10)
-            r.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
+            r.font.size = Pt(9.5)
+            r.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+        _add_bottom_border(p)
 
     def _section_heading(title: str) -> None:
         p = doc.add_paragraph()
         run = p.add_run(title.upper())
         run.bold = True
-        run.font.size = Pt(11)
+        run.font.size = Pt(10)
         run.font.color.rgb = RGBColor(0x33, 0x33, 0x33)
-        p.paragraph_format.space_before = Pt(10)
-        p.paragraph_format.space_after = Pt(2)
+        p.paragraph_format.space_before = Pt(6)
+        p.paragraph_format.space_after = Pt(1)
+        _add_bottom_border(p)
 
     for section in rendered.section_order:
         if section == "summary" and rendered.summary:
             _section_heading("Summary")
             for para in rendered.summary.split("\n\n"):
-                doc.add_paragraph(para.strip())
+                ps = doc.add_paragraph(para.strip())
+                ps.paragraph_format.space_after = Pt(2)
         elif section == "experience" and rendered.experience:
             _section_heading("Experience")
             for it in rendered.experience:
-                p = doc.add_paragraph()
                 head = " | ".join(b for b in (it.title, it.company) if b)
+                # Role line with a right-aligned tab stop for the dates.
+                p = doc.add_paragraph()
+                p.paragraph_format.space_before = Pt(2)
+                p.paragraph_format.space_after = Pt(0)
+                p.paragraph_format.tab_stops.add_tab_stop(
+                    USABLE_WIDTH, WD_TAB_ALIGNMENT.RIGHT,
+                )
                 if head:
                     head_run = p.add_run(head)
                     head_run.bold = True
                 if it.dates:
-                    p.add_run("\t" + it.dates)
+                    dates_run = p.add_run("\t" + it.dates)
+                    dates_run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+                    dates_run.font.size = Pt(9.5)
                 if it.technologies:
                     tp = doc.add_paragraph()
+                    tp.paragraph_format.space_after = Pt(1)
                     tech_run = tp.add_run(", ".join(it.technologies))
                     tech_run.italic = True
-                    tech_run.font.size = Pt(10)
+                    tech_run.font.size = Pt(9.5)
                     tech_run.font.color.rgb = RGBColor(0x55, 0x55, 0x55)
                 for b in it.bullets:
                     doc.add_paragraph(b, style="List Bullet")
-        elif section == "skills" and rendered.skills:
+        elif section == "skills" and (rendered.skill_groups or rendered.skills):
             _section_heading("Skills")
-            doc.add_paragraph(", ".join(rendered.skills))
+            if rendered.skill_groups:
+                for g in rendered.skill_groups:
+                    p = doc.add_paragraph()
+                    p.paragraph_format.space_after = Pt(1)
+                    cat_run = p.add_run(f"{g.category}: ")
+                    cat_run.bold = True
+                    p.add_run(", ".join(g.skills))
+            else:
+                p = doc.add_paragraph(" · ".join(rendered.skills))
+                p.paragraph_format.space_after = Pt(2)
         elif section == "certifications" and rendered.certifications:
             _section_heading("Certifications")
             for c in rendered.certifications:
@@ -770,8 +989,27 @@ def render_docx(rendered: RenderedResume) -> bytes:
         elif section == "education" and rendered.education:
             _section_heading("Education")
             for ed in rendered.education:
-                bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
-                doc.add_paragraph(", ".join(bits), style="List Bullet")
+                head_bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
+                head = ", ".join(head_bits)
+                if ed.gpa:
+                    head = f"{head} | GPA: {ed.gpa}"
+                doc.add_paragraph(head, style="List Bullet")
+                for h in ed.honors:
+                    p = doc.add_paragraph()
+                    p.paragraph_format.left_indent = Inches(0.5)
+                    p.paragraph_format.space_after = Pt(0)
+                    run = p.add_run(f"· {h}")
+                    run.font.size = Pt(9.5)
+                    run.font.color.rgb = RGBColor(0x44, 0x44, 0x44)
+
+    # Discreet preview footer.
+    if rendered.banner:
+        p = doc.add_paragraph()
+        p.paragraph_format.space_before = Pt(10)
+        run = p.add_run(rendered.banner)
+        run.italic = True
+        run.font.size = Pt(9)
+        run.font.color.rgb = RGBColor(0x88, 0x88, 0x88)
 
     buf = io.BytesIO()
     doc.save(buf)
@@ -781,12 +1019,13 @@ def render_docx(rendered: RenderedResume) -> bytes:
 # ── PDF (reportlab) ──────────────────────────────────────────────────────────
 
 def render_pdf(rendered: RenderedResume) -> bytes:
-    from reportlab.lib.enums import TA_LEFT
+    from reportlab.lib.enums import TA_LEFT, TA_RIGHT
     from reportlab.lib.pagesizes import LETTER
     from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
     from reportlab.lib.units import inch
     from reportlab.platypus import (
-        Paragraph, Spacer, SimpleDocTemplate, ListFlowable, ListItem, KeepTogether,
+        HRFlowable, KeepTogether, ListFlowable, ListItem, Paragraph,
+        SimpleDocTemplate, Spacer, Table, TableStyle,
     )
 
     buf = io.BytesIO()
@@ -810,13 +1049,18 @@ def render_pdf(rendered: RenderedResume) -> bytes:
     )
     headline_style = ParagraphStyle(
         "Headline", parent=styles["Normal"],
-        fontName="Helvetica-Bold", fontSize=11, leading=13,
-        textColor="#444444", spaceAfter=1,
+        fontName="Helvetica-Oblique", fontSize=10, leading=12,
+        textColor="#555555", spaceAfter=1,
     )
     contact_style = ParagraphStyle(
         "Contact", parent=styles["Normal"],
         fontName="Helvetica", fontSize=9.5, leading=11,
-        textColor="#666666", spaceAfter=6,
+        textColor="#666666", spaceAfter=2,
+    )
+    dates_style = ParagraphStyle(
+        "Dates", parent=styles["Normal"],
+        fontName="Helvetica", fontSize=9.5, leading=12,
+        textColor="#666666", alignment=TA_RIGHT,
     )
     section_style = ParagraphStyle(
         "Section", parent=styles["Normal"],
@@ -848,18 +1092,28 @@ def render_pdf(rendered: RenderedResume) -> bytes:
     )
     banner_style = ParagraphStyle(
         "Banner", parent=styles["Normal"],
-        fontName="Helvetica-Oblique", fontSize=9, leading=11,
-        textColor="#664400", backColor="#fff7d6", borderColor="#e7d27a",
-        borderWidth=0.5, borderPadding=4, spaceAfter=8,
+        fontName="Helvetica-Oblique", fontSize=8.5, leading=10,
+        textColor="#888888", spaceBefore=10, spaceAfter=0,
     )
+
+    # Page width minus margins (LETTER 8.5" - 0.6" - 0.6" = 7.3")
+    USABLE_WIDTH = 7.3 * inch
+    DATES_COL = 1.3 * inch
+    TITLE_COL = USABLE_WIDTH - DATES_COL
+
+    def _hr() -> HRFlowable:
+        return HRFlowable(width="100%", thickness=0.5, color="#cccccc",
+                          spaceBefore=0, spaceAfter=4)
+
+    def _section_hr() -> HRFlowable:
+        return HRFlowable(width="100%", thickness=0.5, color="#dddddd",
+                          spaceBefore=0, spaceAfter=2)
 
     story: list = []
 
     def P(text: str, style):
         return Paragraph(_esc(text), style)
 
-    if rendered.banner:
-        story.append(Paragraph(_esc(rendered.banner), banner_style))
     if rendered.name:
         story.append(P(rendered.name, name_style))
     if rendered.headline:
@@ -867,6 +1121,8 @@ def render_pdf(rendered: RenderedResume) -> bytes:
     contact_bits = [b for b in (rendered.email, rendered.location) if b]
     if contact_bits:
         story.append(P(" &middot; ".join(_esc(b) for b in contact_bits), contact_style))
+    if rendered.name or rendered.headline or contact_bits:
+        story.append(_hr())
 
     section_h_label = {
         "summary": "Summary",
@@ -884,13 +1140,25 @@ def render_pdf(rendered: RenderedResume) -> bytes:
                     story.append(P(para.strip(), body_style))
         elif section == "experience" and rendered.experience:
             story.append(P(section_h_label[section].upper(), section_style))
+            story.append(_section_hr())
             for it in rendered.experience:
                 head = " | ".join(b for b in (it.title, it.company) if b)
                 block: list = []
-                if head:
-                    block.append(P(head, role_style))
-                if it.dates:
-                    block.append(P(it.dates, meta_style))
+                # Two-column role/dates row: title left, dates flush-right.
+                if head or it.dates:
+                    cells = [[
+                        P(head, role_style) if head else "",
+                        P(it.dates, dates_style) if it.dates else "",
+                    ]]
+                    t = Table(cells, colWidths=[TITLE_COL, DATES_COL])
+                    t.setStyle(TableStyle([
+                        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                        ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                        ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                        ("TOPPADDING", (0, 0), (-1, -1), 0),
+                        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+                    ]))
+                    block.append(t)
                 if it.technologies:
                     block.append(P(", ".join(it.technologies), tech_style))
                 if it.bullets:
@@ -903,12 +1171,23 @@ def render_pdf(rendered: RenderedResume) -> bytes:
                     ))
                 if block:
                     story.append(KeepTogether(block))
-        elif section == "skills" and rendered.skills:
+        elif section == "skills" and (rendered.skill_groups or rendered.skills):
             story.append(P(section_h_label[section].upper(), section_style))
-            story.append(P(" &middot; ".join(_esc(s) for s in rendered.skills),
-                           body_style))
+            story.append(_section_hr())
+            if rendered.skill_groups:
+                for g in rendered.skill_groups:
+                    # Bold category prefix, then the skills.
+                    line = (
+                        f"<b>{_esc(g.category)}:</b> "
+                        f"{' &middot; '.join(_esc(s) for s in g.skills)}"
+                    )
+                    story.append(Paragraph(line, body_style))
+            else:
+                story.append(P(" &middot; ".join(_esc(s) for s in rendered.skills),
+                               body_style))
         elif section == "certifications" and rendered.certifications:
             story.append(P(section_h_label[section].upper(), section_style))
+            story.append(_section_hr())
             items = []
             for c in rendered.certifications:
                 meta = ", ".join(b for b in (c.issuer, c.year) if b)
@@ -920,14 +1199,36 @@ def render_pdf(rendered: RenderedResume) -> bytes:
                                       bulletFontSize=8))
         elif section == "education" and rendered.education:
             story.append(P(section_h_label[section].upper(), section_style))
+            story.append(_section_hr())
             items = []
             for ed in rendered.education:
-                bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
-                items.append(ListItem(P(", ".join(bits), bullet_style),
-                                      leftIndent=10, value="bullet"))
+                head_bits = [b for b in (ed.degree, ed.institution, ed.year) if b]
+                head = ", ".join(head_bits)
+                if ed.gpa:
+                    head = f"{head}  |  GPA: {ed.gpa}"
+                # If honors are present, put them under the entry as a sub-list.
+                if ed.honors:
+                    sub = ListFlowable(
+                        [ListItem(P(h, bullet_style), leftIndent=10,
+                                  value="bullet", bulletColor="#888888")
+                         for h in ed.honors],
+                        bulletType="bullet", start="·",
+                        leftIndent=20, bulletFontSize=7,
+                    )
+                    items.append(ListItem(
+                        KeepTogether([P(head, bullet_style), sub]),
+                        leftIndent=10, value="bullet",
+                    ))
+                else:
+                    items.append(ListItem(P(head, bullet_style),
+                                          leftIndent=10, value="bullet"))
             story.append(ListFlowable(items, bulletType="bullet",
                                       start="•", leftIndent=10,
                                       bulletFontSize=8))
+
+    # Discreet preview footer.
+    if rendered.banner:
+        story.append(Paragraph(_esc(rendered.banner), banner_style))
 
     doc.build(story)
     return buf.getvalue()

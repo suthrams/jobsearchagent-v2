@@ -135,6 +135,24 @@ class ResumeParser:
         def _to_cert(c: dict) -> CertificationEntry:
             return CertificationEntry.model_validate(c) if isinstance(c, dict) else c
 
+        # ADR-067: skill_groups is the categorised view; skills is the flat
+        # union. When the LLM populates skill_groups, derive skills as the
+        # ordered union of all groups' skills (de-duplicated, first-seen
+        # order). This keeps the Scoring Agent and the keyword filters
+        # (which read the flat list) working unchanged.
+        flat_skills = list(fields.get("skills", []) or [])
+        skill_groups = fields.get("skill_groups", []) or []
+        if skill_groups and not flat_skills:
+            seen: set[str] = set()
+            for g in skill_groups:
+                if not isinstance(g, dict):
+                    continue
+                for s in g.get("skills", []) or []:
+                    key = str(s).strip().lower()
+                    if key and key not in seen:
+                        flat_skills.append(s)
+                        seen.add(key)
+
         profile = ResumeProfile(
             resume_id=resume_id,
             file_name=file_name,
@@ -145,7 +163,8 @@ class ResumeParser:
             location=fields.get("location"),
             summary=fields.get("summary"),
             experience=[_to_exp(e) for e in fields.get("experience", [])],
-            skills=fields.get("skills", []),
+            skills=flat_skills,
+            skill_groups=skill_groups,
             education=[_to_edu(e) for e in fields.get("education", [])],
             certifications=[_to_cert(c) for c in fields.get("certifications", [])],
             parsed_at=utcnow_iso(),

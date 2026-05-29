@@ -1,5 +1,5 @@
 """v2 parsed resume schema — produced by ResumeParser, consumed by all agents."""
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 
 class ExperienceEntry(BaseModel):
@@ -15,12 +15,27 @@ class EducationEntry(BaseModel):
     institution: str
     degree: str
     year: int | None = None
+    # ADR-067: preserve resume content the v1 schema had no slot for.
+    gpa: str | None = None                       # as-written, e.g. "3.9/4.0", "First Class"
+    honors: list[str] = Field(default_factory=list)  # free-text awards / dean's list / etc.
 
 
 class CertificationEntry(BaseModel):
     name: str
     issuer: str | None = None
     year: int | None = None
+
+
+class SkillGroup(BaseModel):
+    """ADR-067: a categorised view of skills, when the source resume listed
+    them under category headings (e.g. "Security & Monitoring: SIEM, ...").
+
+    The flat `ResumeProfile.skills` list stays as the canonical input for the
+    Scoring Agent and the keyword filters; `skill_groups` is the structural
+    overlay used by the resume renderer to preserve the source's grouping.
+    """
+    category: str
+    skills: list[str] = Field(default_factory=list)
 
 
 class ResumeProfile(BaseModel):
@@ -36,6 +51,10 @@ class ResumeProfile(BaseModel):
     summary: str | None = None
     experience: list[ExperienceEntry] = []
     skills: list[str] = []
+    # ADR-067: optional categorised view. When populated, the flat `skills`
+    # list above is the union of all groups' skills. When empty, downstream
+    # consumers fall back to the flat list.
+    skill_groups: list[SkillGroup] = Field(default_factory=list)
     education: list[EducationEntry] = []
     certifications: list[CertificationEntry] = []
     parsed_at: str  # ISO 8601 UTC

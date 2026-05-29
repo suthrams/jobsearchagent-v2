@@ -6,6 +6,56 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-28
 
+### Changed — Preserve full resume fidelity at parse time (ADR-067)
+
+A Resume Clinic export of an early-career profile surfaced two content-loss
+bugs that turned out to be parser-layer, not renderer-layer: the source's
+`GPA: 3.9/4.0`, `3x Presidents List and Deans List Scholar`, and the five
+skill categories (`Security & Monitoring`, `Networking & Protocols`,
+`Security Tools`, `Scripting & Operating Systems`, `Cloud & Collaboration`)
+were dropped because the `ResumeProfile` schema had no slot for them. ADR-067
+extends the schema additively to preserve them end-to-end.
+
+- **Schema additions** (`app/schemas/resume_profile.py`):
+  - `EducationEntry.gpa: str | None` (as-written, e.g. "3.9/4.0").
+  - `EducationEntry.honors: list[str]` (free-text awards, dean's list, etc.).
+  - New `SkillGroup` model = `{category: str, skills: list[str]}`.
+  - `ResumeProfile.skill_groups: list[SkillGroup]` — the categorised view.
+  - The flat `ResumeProfile.skills` list is kept (the Scoring Agent and
+    keyword filters read it). When `skill_groups` is populated, `skills`
+    is derived as the union (first-seen-order, de-duplicated).
+- **`_ResumeEnhancement`** (the LLM-output schema in
+  `app/providers/claude_provider.py`) gets the same fields so the parser's
+  Sonnet enhancement call can return them.
+- **Parser prompt v2** (`app/prompts/agents/resume_parser.txt`): asks for
+  `gpa`, `honors`, and `skill_groups` explicitly, with the "extract verbatim,
+  never invent, empty when absent" rule applied.
+- **Parser pass-through** (`app/services/resume_parser.py`): when the LLM
+  populates `skill_groups` but not the flat `skills` list, the parser
+  derives the flat list from the groups (preserves the Scoring path).
+- **Renderer** (`app/services/resume_text_renderer.py`): every format
+  (Markdown, plain text, HTML, JSON Resume, DOCX, PDF) now reads the new
+  fields. GPA and honors render under each Education entry; skills render
+  as a categorised list when `skill_groups` is populated, falling back to
+  the flat list otherwise. Resumes parsed BEFORE this change render exactly
+  as before (the new fields default to empty/None on old rows).
+- **Tests**: 11 new ADR-067 tests covering composer pickup, the markdown /
+  HTML / plain-text / JSON / DOCX / PDF renderers with grouped skills and
+  GPA + honors, plus the flat-skills fallback for stale rows. Full suite
+  at 675 (was 664; +11).
+- **ADR-067**:
+  `docs/architecture/adr/ADR-067-preserve-resume-fidelity-at-parse-time.md`
+  (decision + tradeoffs + non-goals); ADR index updated.
+
+**How to get the new fields populated on your existing resume:** re-upload
+the PDF. The parser cache is keyed by raw_text hash, so the cached profile
+returns unchanged for the same file - to force a fresh parse with the new
+prompt, upload again with a different filename or modify the source PDF.
+
+---
+
+## 2026-05-28
+
 ### Added — Resume Clinic: text/file export in six formats (ADR-066 nice-to-have)
 
 The "later nice-to-have / full resume-text export" that ADR-066 named is now
