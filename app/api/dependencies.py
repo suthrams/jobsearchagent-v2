@@ -441,6 +441,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     # creds are missing or no roles were given (caller falls back to the built-in).
     from app.services.concurrent_adzuna_scraper import (
         ConcurrentAdzunaScraper, relevance_tokens, SENIOR_TERMS,
+        SENIOR_TERMS_API_EXCLUDE,
     )
     from models.config_schema import AdzunaConfig as _AdzunaConfig
     from models.filters import EXCLUDED_TITLE_KEYWORDS as _EXCLUDED
@@ -463,7 +464,14 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
             })
             # ADR-065: exclude senior roles at the source (what_exclude) and in the
             # per-run title gate (EXCLUDED + SENIOR_TERMS) when the profile opts in.
-            what_exclude = SENIOR_TERMS if exclude_senior else None
+            # The two lists are deliberately different sizes (calibrated 2026-05-29):
+            # - what_exclude is narrow (SENIOR_TERMS_API_EXCLUDE) because Adzuna
+            #   matches it against title + description, so polysemic words like
+            #   "manager"/"lead"/"staff" would drop entry-level postings.
+            # - The local title gate uses the broader SENIOR_TERMS list because
+            #   it's substring-matched against the TITLE only, where those same
+            #   words are reliable seniority signals.
+            what_exclude = SENIOR_TERMS_API_EXCLUDE if exclude_senior else None
             excluded_kw = (list(_EXCLUDED) + SENIOR_TERMS) if exclude_senior else None
             return ConcurrentAdzunaScraper.make(
                 cfg, list(roles),

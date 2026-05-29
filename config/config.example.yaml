@@ -38,7 +38,8 @@ scrapers:
     locations:
       - Atlanta, GA
     radius_km: 80
-    results_per_page: 20
+    results_per_page: 25   # 25/call. Adzuna free tier maxes at 50; 25 is the
+                           # post-2026-05-29 default after the senior-exclude tuning.
     # Remote search — no location filter, "remote" appended to each keyword.
     remote_keywords:
       - software architect

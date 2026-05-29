@@ -6,6 +6,58 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-29
 
+### Fixed — Adzuna senior-exclude was too aggressive; split into two lists + bump results_per_page
+
+Third diagnostic in today's discovery debugging series. The previous two
+fixes (dedup narrowing, URL canonicalization) restored re-discovery and
+plugged the rotating-token bug, but the cyber-grad profile was still only
+seeing 5 raw postings from Adzuna across 36 (role x location) queries.
+That ratio (≈0.14 postings per query) was the next thing to chase.
+
+**Root cause.** `SENIOR_TERMS = ["senior", "principal", "staff", "lead",
+"director", "vp", "vice president", "head of", "manager", "architect"]`
+was being passed verbatim as Adzuna's `what_exclude` parameter. Adzuna
+matches `what_exclude` against title AND description, not title alone.
+Words like "manager", "lead", "staff", "head" appear in countless entry-
+level posting descriptions ("reports to the security manager", "works
+with the team lead", "staff member of the SOC", "headquartered in NYC")
+and excluded those postings at the source.
+
+A title-level gate is the right place to drop "Senior Security Analyst."
+The Adzuna API gate is the wrong place — it gates on text where those
+words have legitimate non-senior meanings.
+
+**Fix.** Split SENIOR_TERMS into two lists by purpose:
+
+- `SENIOR_TERMS` (unchanged) — the broader list, used at the LOCAL title
+  gate (substring-matched against the JOB TITLE only). Still drops
+  "Senior X", "X Lead", "X Manager", "X Principal" etc by title.
+- `SENIOR_TERMS_API_EXCLUDE = ["senior", "principal", "vp", "director"]`
+  (new) — high-precision tokens that reliably indicate senior content
+  wherever they appear in text. Used for Adzuna's `what_exclude`.
+
+`app/api/dependencies.py::_adzuna_factory` wires the narrow list to
+`what_exclude` and the broad list to the local title gate. Both behaviors
+remain conditional on `search.exclude_senior=true`.
+
+**Also: bumped `results_per_page` 10 -> 25** in `config/config.yaml` and
+the example. The narrowed what_exclude lets more matches through per
+query; 25 is the new default to take advantage. Free tier max is 50.
+
+**Expected impact.** Cyber-grad profile run that just yielded 5 raw
+postings should now produce 30-50+ raw, with senior titles still dropped
+by the title gate. Will measure on the next live run.
+
+**Tests** (`tests/v2/test_adr064_discovery.py`): 3 new cases. The load-
+bearing one is `test_senior_terms_api_exclude_is_narrower_than_local_gate`
+- asserts the invariant directly: the API list must be strictly narrower
+than the title gate, and polysemic terms (manager / lead / staff / head /
+architect / vice president) must NOT appear in the API list but MUST
+appear in the title gate. Catches a future refactor that re-conflates
+the two lists. Plus a regression test that the title gate still drops
+"Senior X" / "X Lead" / "X Manager" / "Principal X" after the split.
+Full suite at 741 (was 738; +3).
+
 ### Fixed — Adzuna URL canonicalization (closes the "same job over and over" loop)
 
 Follow-up to the discovery dedup commit earlier today. After shipping the

@@ -21,13 +21,26 @@ _DEFAULT_WORKERS = 5
 # role list, so a per-run search keeps titles matching the searched roles.
 _ROLE_STOPWORDS = frozenset({"of", "the", "and", "for", "to", "a", "an", "in", "on", "or"})
 
-# ADR-065: curated seniority terms. When a profile sets search.exclude_senior, these
-# are passed to Adzuna's what_exclude (drop at the source) and added to the per-run
-# title-exclusion gate (drop senior-titled results that slip through).
+# ADR-065: curated seniority terms used at the LOCAL title gate. When a profile
+# sets search.exclude_senior, these are appended to the per-run title-exclusion
+# allowlist - substring match against the JOB TITLE only, so e.g. "Senior Security
+# Analyst" and "Security Lead" are dropped. Includes polysemic terms (manager,
+# lead, staff, head of) because at the title level they are reliable seniority
+# signals.
 SENIOR_TERMS = [
     "senior", "principal", "staff", "lead", "director", "vp", "vice president",
     "head of", "manager", "architect",
 ]
+
+# ADR-065 calibration (2026-05-29): high-precision senior terms suitable for
+# Adzuna's what_exclude. Adzuna matches what_exclude against TITLE AND
+# DESCRIPTION, not title alone. The broader SENIOR_TERMS list above includes
+# words like "manager", "lead", "staff", "head" that appear in countless
+# entry-level posting descriptions ("reports to the security manager", "works
+# with the team lead", "staff member of the SOC", "headquartered in NYC") and
+# nuked legitimate matches at the source. This narrowed list keeps only the
+# terms that are reliably senior wherever they appear in text.
+SENIOR_TERMS_API_EXCLUDE = ["senior", "principal", "vp", "director"]
 
 
 def relevance_tokens(roles: list[str]) -> list[str]:

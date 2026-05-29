@@ -122,3 +122,76 @@ def test_node_honors_titles_alias_for_roles():
     node({"workflow_id": "wf", "search_criteria": {"titles": ["Principal Engineer"]}})
     assert cap["skip"] is True
     assert sentinel in cap["extra"]
+
+
+# ── SENIOR_TERMS split (2026-05-29 tuning) ────────────────────────────────────
+
+def test_senior_terms_api_exclude_is_narrower_than_local_gate():
+    """The API what_exclude list MUST be narrower than the local title gate.
+    Adzuna matches what_exclude against title + description, so polysemic
+    words ("manager", "lead", "staff", "head", "architect") would nuke
+    entry-level postings whose descriptions just reference team structure.
+    The local title gate is fine with those terms because it's substring-
+    matched against the TITLE only."""
+    from app.services.concurrent_adzuna_scraper import (
+        SENIOR_TERMS, SENIOR_TERMS_API_EXCLUDE,
+    )
+    assert len(SENIOR_TERMS_API_EXCLUDE) < len(SENIOR_TERMS), \
+        "API exclude list should be strictly narrower than local title gate"
+    for narrow_term in SENIOR_TERMS_API_EXCLUDE:
+        assert narrow_term in SENIOR_TERMS, \
+            f"{narrow_term!r} in API list must also be in local title gate"
+    polysemic = {"manager", "lead", "staff", "head of", "architect", "vice president"}
+    for term in polysemic:
+        assert term not in SENIOR_TERMS_API_EXCLUDE, \
+            (f"{term!r} is polysemic in description text and should not be in "
+             "the API what_exclude list")
+        assert term in SENIOR_TERMS, \
+            f"{term!r} must remain in the local title gate"
+
+
+def test_local_title_gate_still_drops_senior_titles_after_split():
+    """Regression check: even though we narrowed the API list, the local
+    title gate must still reject "Senior X" and "X Lead" style titles when
+    exclude_senior=True (the whole point of the option)."""
+    from scrapers.adzuna import AdzunaScraper
+    from models.config_schema import AdzunaConfig
+    from models.filters import EXCLUDED_TITLE_KEYWORDS
+    from app.services.concurrent_adzuna_scraper import (
+        SENIOR_TERMS, relevance_tokens,
+    )
+    import os
+    os.environ.setdefault("ADZUNA_APP_ID", "x")
+    os.environ.setdefault("ADZUNA_APP_KEY", "y")
+    cfg = AdzunaConfig(enabled=True, country="us", locations=["Atlanta, GA"])
+    excluded_kw = list(EXCLUDED_TITLE_KEYWORDS) + SENIOR_TERMS
+    scraper = AdzunaScraper(
+        cfg, ["Security Analyst"],
+        relevant_keywords=relevance_tokens(["Security Analyst", "SOC Analyst"]),
+        excluded_keywords=excluded_kw,
+    )
+    assert scraper._is_relevant_title("Security Analyst") is True
+    assert scraper._is_relevant_title("SOC Analyst") is True
+    assert scraper._is_relevant_title("Senior Security Analyst") is False  # senior in title
+    assert scraper._is_relevant_title("Security Team Lead") is False       # lead in title
+    assert scraper._is_relevant_title("Information Security Manager") is False
+    assert scraper._is_relevant_title("Principal Security Engineer") is False
+
+
+def test_adzuna_scraper_joins_what_exclude_with_spaces():
+    """Adzuna's what_exclude takes a single space-separated string. The v1
+    scraper joins the list via " ". With the narrow list this produces a
+    short string of high-precision tokens. Catches any future refactor
+    that switches to comma separators (which Adzuna does not accept)."""
+    from scrapers.adzuna import AdzunaScraper
+    from models.config_schema import AdzunaConfig
+    from app.services.concurrent_adzuna_scraper import SENIOR_TERMS_API_EXCLUDE
+    import os
+    os.environ.setdefault("ADZUNA_APP_ID", "x")
+    os.environ.setdefault("ADZUNA_APP_KEY", "y")
+    cfg = AdzunaConfig(enabled=True, country="us", locations=["Atlanta, GA"])
+    scraper = AdzunaScraper(
+        cfg, ["Security Analyst"],
+        what_exclude=SENIOR_TERMS_API_EXCLUDE,
+    )
+    assert scraper._what_exclude == "senior principal vp director"
