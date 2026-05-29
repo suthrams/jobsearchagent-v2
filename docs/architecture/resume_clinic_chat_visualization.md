@@ -14,16 +14,16 @@ flowchart LR
     classDef svc   fill:#f4f4f4,stroke:#888,color:#222
     classDef store fill:#eef7ed,stroke:#2f8132,color:#1d4f1f
 
-    user[Human user] -->|runs clinic once| RR[ResumeReviewerAgent<br/>app/agents/resume_reviewer.py]
-    user -->|chats per turn| RC[ResumeChatAgent<br/>app/agents/resume_chat.py]
+    user[Human user] -->|runs clinic once| RR[ResumeReviewerAgent<br>app/agents/resume_reviewer.py]
+    user -->|chats per turn| RC[ResumeChatAgent<br>app/agents/resume_chat.py]
 
-    RR -->|ResumeClinicReview<br/>quality + alignment + overhaul| FID1[Fidelity Reviewer<br/>app/agents/fidelity_reviewer.py]
-    RC -->|ResumeChatTurnResult<br/>reply + revised overhaul| FID2[Fidelity Reviewer<br/>same agent, separate call]
+    RR -->|ResumeClinicReview<br>quality + alignment + overhaul| FID1[Fidelity Reviewer<br>app/agents/fidelity_reviewer.py]
+    RC -->|ResumeChatTurnResult<br>reply + revised overhaul| FID2[Fidelity Reviewer<br>same agent, separate call]
 
     FID1 -->|verdict| DB[(resume_clinic_reviews)]
     FID2 -->|verdict| DB
 
-    DB -->|edited_json | overhaul_json | decision| RENDER[Resume renderer<br/>app/services/resume_text_renderer.py]
+    DB -->|edited_json or overhaul_json + decision| RENDER[Resume renderer<br>app/services/resume_text_renderer.py]
     RENDER -->|md / txt / html / json / docx / pdf| user
 
     class RR,RC agent
@@ -43,26 +43,26 @@ session above for the lifecycle.
 ```mermaid
 sequenceDiagram
     autonumber
-    participant U as User (UI)
-    participant API as POST /resume-clinic/{id}/chat
-    participant CHAT as ResumeChatAgent
-    participant FID as FidelityReviewer
-    participant REPO as ResumeClinicRepository
-    participant RENDER as Resume renderer
+    participant U as "User (UI)"
+    participant API as "POST /resume-clinic/&#123;id&#125;/chat"
+    participant CHAT as "ResumeChatAgent"
+    participant FID as "FidelityReviewer"
+    participant REPO as "ResumeClinicRepository"
+    participant RENDER as "Resume renderer"
 
-    U->>API: {message, section, history}
-    API->>API: load clinic row + resume<br/>build current_overhaul<br/>(edited_json or overhaul_json)
-    API->>CHAT: parsed_profile + current_overhaul +<br/>history + section + message
-    CHAT-->>API: {reply, overhaul, changed_sections}
+    U->>API: message + section + history
+    API->>API: load clinic row + resume<br>build current_overhaul<br>(edited_json or overhaul_json)
+    API->>CHAT: parsed_profile + current_overhaul<br>+ history + section + message
+    CHAT-->>API: reply + overhaul + changed_sections
     alt overhaul has rewrites
-        API->>FID: translated context<br/>(build_fidelity_context_for_overhaul)
+        API->>FID: translated context<br>(build_fidelity_context_for_overhaul)
         FID-->>API: verdict (or 502 -> null)
     end
     API->>REPO: set_edited(clinic_id, new_overhaul, fidelity)
-    Note over REPO: decision UNCHANGED;<br/>edited_json + fidelity_review_json updated
-    API-->>U: {reply, overhaul, fidelity_review, changed_sections}
+    Note over REPO: decision UNCHANGED;<br>edited_json + fidelity_review_json updated
+    API-->>U: reply + overhaul + fidelity_review + changed_sections
     U->>RENDER: compose_resume(profile, overhaul, edited, decision)
-    Note over RENDER: edited wins regardless of decision<br/>(except reject)
+    Note over RENDER: edited wins regardless of decision<br>(except reject)
     RENDER-->>U: live markdown preview
 ```
 
@@ -84,8 +84,8 @@ stateDiagram-v2
     ChatEditing --> NoEditYet: Discard chat edits
     ChatEditing --> Rejected: Reject button
 
-    Approved --> ChatEditing: chat turn (decision stays approve;<br/>banner notes edits applied)
-    Revising  --> ChatEditing: chat turn (decision stays revise;<br/>banner notes edits in progress)
+    Approved --> ChatEditing: chat turn (decision stays approve;<br>banner notes edits applied)
+    Revising  --> ChatEditing: chat turn (decision stays revise;<br>banner notes edits in progress)
     FinalEdit --> [*]
     Rejected --> [*]: composer renders ORIGINAL resume
 
@@ -119,14 +119,14 @@ stateDiagram-v2
 ```mermaid
 flowchart TD
     subgraph SC ["Schemas"]
-        S1[app/schemas/resume_clinic.py<br/>ResumeOverhaul, RewriteSuggestion,<br/>Reorganization, ResumeClinicReview]
-        S2[app/schemas/resume_chat.py<br/>ResumeChatTurnResult]
+        S1[app/schemas/resume_clinic.py<br>ResumeOverhaul, RewriteSuggestion,<br>Reorganization, ResumeClinicReview]
+        S2[app/schemas/resume_chat.py<br>ResumeChatTurnResult]
     end
 
     subgraph AG ["Agents (BaseAgent subclasses)"]
-        A1[app/agents/resume_reviewer.py<br/>AGENT_NAME=resume_reviewer]
-        A2[app/agents/resume_chat.py<br/>AGENT_NAME=resume_chat]
-        A3[app/agents/fidelity_reviewer.py<br/>AGENT_NAME=fidelity_reviewer]
+        A1[app/agents/resume_reviewer.py<br>AGENT_NAME=resume_reviewer]
+        A2[app/agents/resume_chat.py<br>AGENT_NAME=resume_chat]
+        A3[app/agents/fidelity_reviewer.py<br>AGENT_NAME=fidelity_reviewer]
     end
 
     subgraph PR ["Prompts (versioned)"]
@@ -136,8 +136,8 @@ flowchart TD
     end
 
     subgraph RT ["Runtime services"]
-        RU[app/services/resume_clinic_runner.py<br/>run_clinic() + build_fidelity_context_for_overhaul()]
-        REN[app/services/resume_text_renderer.py<br/>compose_resume() + render_markdown / docx / pdf / ...]
+        RU[app/services/resume_clinic_runner.py<br>run_clinic() + build_fidelity_context_for_overhaul()]
+        REN[app/services/resume_text_renderer.py<br>compose_resume() + render_markdown / docx / pdf / ...]
     end
 
     subgraph EP ["REST endpoints (app/api/routers/resume_clinic.py)"]
@@ -156,7 +156,7 @@ flowchart TD
     subgraph UI ["UI (app/ui/streamlit_app.py - Resume Clinic view)"]
         U1[Quality scorecard]
         U2[Decision controls]
-        U3[Refine with feedback<br/>+ Live preview + Conversation]
+        U3[Refine with feedback<br>+ Live preview + Conversation]
         U4[Export panel]
     end
 
@@ -194,15 +194,15 @@ flowchart LR
     classDef cant fill:#fde7e7,stroke:#b22a2a,color:#6a1818
 
     in[User message + section focus] --> RC[ResumeChatAgent]
-    RC --> A1[Revise rewrites in the<br/>targeted section]:::can
-    RC --> A2[Reorder sections<br/>add/remove section_order moves]:::can
-    RC --> A3[Decline off-topic asks<br/>return overhaul unchanged]:::can
-    RC --> A4[Use placeholders &#91;N&#93; / &#91;X&#93;%<br/>when a metric is unstated]:::can
+    RC --> A1[Revise rewrites in the<br>targeted section]:::can
+    RC --> A2[Reorder sections<br>add/remove section_order moves]:::can
+    RC --> A3[Decline off-topic asks<br>return overhaul unchanged]:::can
+    RC --> A4[Use placeholders &#91;N&#93; / &#91;X&#93;%<br>when a metric is unstated]:::can
 
-    RC --> X1[Touch sections OTHER than<br/>the targeted one]:::cant
-    RC --> X2[Fabricate experience,<br/>metrics, scopes, certs]:::cant
+    RC --> X1[Touch sections OTHER than<br>the targeted one]:::cant
+    RC --> X2[Fabricate experience,<br>metrics, scopes, certs]:::cant
     RC --> X3[Empty supporting_evidence]:::cant
-    RC --> X4[Change the decision field<br/>(only Save/Reject buttons can)]:::cant
+    RC --> X4[Change the decision field<br>(only Save/Reject buttons can)]:::cant
 ```
 
 The "CAN" rules are enforced by the prompt. The "CANNOT" rules are enforced
@@ -215,17 +215,17 @@ evidence-binding check on every turn.
 ```mermaid
 flowchart LR
     subgraph SETUP ["Initial clinic"]
-        C1[ResumeReviewerAgent<br/>1 call, ~$0.08]
-        C2[FidelityReviewer<br/>1 call, ~$0.02]
+        C1[ResumeReviewerAgent<br>1 call, ~$0.08]
+        C2[FidelityReviewer<br>1 call, ~$0.02]
     end
     subgraph TURNS ["Per chat turn (typically 3-6 per session)"]
-        T1[ResumeChatAgent<br/>~$0.012 (uncached)]
-        T2[FidelityReviewer<br/>~$0.005]
+        T1[ResumeChatAgent<br>~$0.012 (uncached)]
+        T2[FidelityReviewer<br>~$0.005]
     end
     SETUP -. "$0.10 fixed" .-> TURNS
     TURNS -. "$0.05 to $0.15 across the session" .-> TOTAL[~$0.15 to $0.25 total]
 
-    NOTE[Parsed profile is cached in the second<br/>prompt block - subsequent turns get 10% pricing<br/>on that block, so real costs are lower]:::note
+    NOTE[Parsed profile is cached in the second<br>prompt block - subsequent turns get 10% pricing<br>on that block, so real costs are lower]:::note
     classDef note fill:#fef8d6,stroke:#b8a325,color:#5d4a15
 ```
 
