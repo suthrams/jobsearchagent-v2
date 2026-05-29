@@ -16,6 +16,7 @@ import uuid
 
 from app.providers.llm_client import LLMProviderError
 from app.repositories.database import utcnow_iso
+from app.services.context_trimmer import trim_resume_profile
 from app.workflows.limits import (
     AUDIT_QUALITY_THRESHOLD,
     MAX_REVIEW_ROUNDS,
@@ -58,14 +59,20 @@ def review_one_job(
     round_num = 1
     prior_feedback: str | None = None
 
+    # resume_profile is constant across every critic+auditor call in the loop
+    # (and across every job in a run). Compute the trimmed cache payload once
+    # so both agents send byte-identical content - which is what Anthropic's
+    # ephemeral cache needs to hit (any drift, even whitespace, misses).
+    _cached_profile = {"resume_profile": trim_resume_profile(resume_profile)}
+
     while round_num <= MAX_REVIEW_ROUNDS:
         # ── ResumeCritic ──────────────────────────────────────────────────
         try:
             review = resume_critic.run(workflow_id, {
+                "_cached": _cached_profile,
                 "job_id": job_id,
                 "resume_id": resume_id,
                 "job_description": job_desc,
-                "resume_profile": resume_profile,
                 "job_score": job_score,
                 "research_context": {},
                 "prior_audit_feedback": prior_feedback,
@@ -88,9 +95,9 @@ def review_one_job(
         # ── ReviewAuditor ─────────────────────────────────────────────────
         try:
             audit = review_auditor.run(workflow_id, {
+                "_cached": _cached_profile,
                 "job_id": job_id,
                 "resume_review": review.model_dump(),
-                "resume_profile": resume_profile,
                 "job_description": job_desc,
                 "job_score": job_score,
                 "review_round": round_num,

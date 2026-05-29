@@ -20,6 +20,7 @@ from app.agents.scoring_agent import ScoringAgent
 from app.providers.llm_client import LLMProviderError
 from app.repositories.database import utcnow_iso
 from app.repositories.score_repository import ScoreRepository
+from app.services.context_trimmer import trim_resume_profile
 from app.services.observability_service import ObservabilityService
 from app.workflows.limits import (
     MAX_LLM_CALLS_PER_RUN,
@@ -100,13 +101,19 @@ def make_score_jobs_node(
 
             # ── Scoring ───────────────────────────────────────────────────────
             try:
+                # resume_profile is identical across every job in a run; pull it
+                # into the cached system block so calls 2..N within the 5-min
+                # window read it back at 10% rate instead of re-paying full
+                # input price. raw_text is dropped via trim_resume_profile.
                 score = scoring_agent.run(workflow_id, {
+                    "_cached": {
+                        "resume_profile": trim_resume_profile(resume_profile),
+                    },
                     "job_id": job_id,
                     "resume_id": resume_id,
                     "job_title": job.get("title", ""),
                     "company": job.get("company", ""),
                     "job_description": job.get("job_description", ""),
-                    "resume_profile": resume_profile,
                     "career_track": career_track,
                     "research_context": research.model_dump(),
                 })

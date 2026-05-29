@@ -6,6 +6,73 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-29
 
+### Changed — Wire `_cached` resume_profile on four high-volume agents (cache hit fix)
+
+Diagnostic on `llm_calls` over the last 30 days showed five agents with
+near-0% prompt-cache hit ratio despite consuming the same `resume_profile`
+across every call in a workflow run:
+
+| Agent | Calls (30d) | Hit ratio | Why |
+|---|---|---|---|
+| scoring_agent | 111 | 0.00% | passed resume_profile as per-call field |
+| review_auditor | 46 | 0.00% | same |
+| resume_critic | 46 | 0.00% | same |
+| fidelity_reviewer | 12 | 0.00% | same |
+| resume_chat | 8 | 62.34% | already wired via _cached - the reference shape |
+
+`resume_chat` proves the wiring works: pull resume_profile into the
+`_cached` dict, and PromptLoader routes it into a second cached system
+block with `cache_control: ephemeral`. Anthropic charges 10% of input
+rate on the second+ call within the 5-min window.
+
+This commit applies the same shape to the four cold agents:
+
+- `app/workflows/nodes/score_jobs.py`: scoring_agent context now uses
+  `_cached: {resume_profile: trim_resume_profile(resume_profile)}`.
+  scoring runs 5-wide through `ThreadPoolExecutor`; the cache race is
+  partially mitigated by giving all five workers byte-identical cached
+  content (the first to land creates the entry; the rest read it).
+- `app/services/deep_review_runner.py`: resume_critic + review_auditor
+  share one `_cached_profile` dict computed once at the top of
+  `review_one_job`. Both agents send byte-identical cached content -
+  needed because Anthropic's cache key hashes the exact prefix; any
+  drift, even whitespace, misses.
+- `app/api/routers/tailoring.py`: the fidelity_reviewer call following
+  a tailoring draft now uses `_cached`. The tailoring_agent call right
+  above already warms the same key (it has used `_cached` since ADR-053
+  cost work), so the fidelity call should read it back within the
+  5-min window without a fresh write.
+- `app/services/resume_clinic_runner.py::build_fidelity_context_for_overhaul`:
+  the chat-revise loop's repeated fidelity calls now share a cached
+  resume_profile across turns. raw_text is preserved at top-level
+  (per-call) - fidelity reads it for evidence-binding and it must
+  match the resume_chat agent's prefix for cross-prompt sharing.
+
+Also: `trim_resume_profile` is now used in all four wirings to drop
+`raw_text` from the cached payload (saves 1-2k tokens per cached
+block; raw_text isn't read by these agents).
+
+**Invariant test** (`tests/v2/test_workflow_nodes.py`):
+`test_score_jobs_passes_resume_profile_via_cached_block` asserts the
+scoring node's context carries `_cached.resume_profile` and that
+`resume_profile` does NOT appear at top level. Catches a future
+refactor that silently un-wires the cache. Full suite at 725 (was 724;
++1).
+
+**Expected impact**: roughly 50-80% cache hit ratio on the four agents
+after the first run within a 5-min window. Cost savings depend on
+workflow mix; a 10-job run through deep review (~200+ calls touching
+resume_profile) should see noticeably reduced input-token spend on
+calls 2..N. Will measure on the next live workflow run.
+
+**Out of scope** (separate diagnostic): research_agent (no
+resume_profile in its context) and a curious pattern where Block 1
+(the always-cached system prefix) shows `cache_creation=0` on ~80% of
+calls. That's likely either the concurrent-scoring race, or the
+prefix dipping under the 1024-token minimum on some calls, or a
+LangChain transformation stripping `cache_control` on a path. Picking
+that up next if these wirings don't move the meter enough.
+
 ### Added — Headline as a Resume Clinic feedback target (ADR-068 follow-up)
 
 The clinic now treats the resume's `headline` (the one-line positioning

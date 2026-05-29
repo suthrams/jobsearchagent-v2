@@ -290,6 +290,27 @@ def test_score_jobs_budget_exhausted_marks_remaining_skipped():
     assert all(s == "budget_skipped" for s in statuses)
 
 
+def test_score_jobs_passes_resume_profile_via_cached_block():
+    """Invariant: the scoring_agent's context must carry resume_profile under
+    `_cached`, not as a top-level per-call field. PromptLoader routes
+    `_cached` into the cache_control system block; routing it elsewhere
+    misses Anthropic's 5-minute prompt cache and is the cost regression
+    diagnosed on 2026-05-29 (scoring at 0% cache hit ratio).
+
+    This test catches the regression mechanically: if a future refactor
+    moves resume_profile back to the per-call dict, this test fails."""
+    state = _base_state(normalized_jobs=[_make_job("job-001")])
+    scoring = _make_scoring_agent()
+    node = make_score_jobs_node(_make_research_agent(), scoring, _score_repo(), _obs())
+    node(state)
+    assert scoring.run.called
+    _, ctx = scoring.run.call_args[0]
+    assert "_cached" in ctx, "scoring_agent must receive resume_profile via _cached"
+    assert "resume_profile" in ctx["_cached"]
+    assert "resume_profile" not in ctx, \
+        "resume_profile must NOT also appear at top level (would duplicate tokens)"
+
+
 def test_score_jobs_multiple_jobs_all_scored():
     jobs = [_make_job(f"job-{i:03d}") for i in range(3)]
     state = _base_state(normalized_jobs=jobs)

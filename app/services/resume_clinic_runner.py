@@ -228,14 +228,22 @@ def build_fidelity_context_for_overhaul(
             "impact_rationale":    "Resume Clinic rewrite; no job context.",
             "unsupported_claims":  [],
         })
+    # Pull the parsed_profile into _cached so the chat-revise loop's repeated
+    # fidelity calls (one per turn) read it back at 10% rate within the 5-min
+    # window. Each turn re-uses the same trimmed profile bytes, so the cache
+    # key matches the chat agent's own cached prefix (also keyed on the
+    # parsed_profile). raw_text is kept top-level - fidelity reads it for
+    # evidence-binding and it must NOT be in the cached block (the chat agent
+    # and fidelity agent are different prompts; cache keys are per-prompt).
+    cached_profile = {k: v for k, v in (parsed_profile or {}).items() if k != "raw_text"}
     return {
+        "_cached": {"resume_profile": cached_profile},
         # job_id is required by the fidelity schema. Use a synthetic
         # "clinic:<clinic_id>" so the audit trail clearly identifies the
         # review's source as a clinic run rather than a job tailoring.
         "job_id": f"clinic:{clinic_id}",
         "resume_id": resume_id,
         "job_description": "",
-        "resume_profile": parsed_profile,
         "tailored_draft": {
             "job_id": f"clinic:{clinic_id}",
             "resume_id": resume_id,

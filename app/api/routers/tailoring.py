@@ -251,11 +251,17 @@ def trigger_tailoring(
     draft_dict = draft.model_dump() if hasattr(draft, "model_dump") else dict(draft)
 
     try:
+        # Cache the resume_profile: the tailoring call right above already
+        # warmed the same cache key (it uses trim_resume_profile in `_cached`
+        # too), so this fidelity call should read it back at 10% rate within
+        # the 5-min window.
         fidelity = deps.fidelity_reviewer.run(workflow_id, {
+            "_cached": {
+                "resume_profile": trim_resume_profile(resume_profile),
+            },
             "job_id": job_id,
             "resume_id": resume_id,
             "job_description": job.get("job_description", ""),
-            "resume_profile": resume_profile,
             "tailored_draft": draft_dict,
         })
         fidelity_dict = fidelity.model_dump() if hasattr(fidelity, "model_dump") else dict(fidelity)
