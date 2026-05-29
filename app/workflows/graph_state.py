@@ -30,6 +30,7 @@ class WorkflowGraphState(TypedDict, total=False):
     custom_urls: list[str]        # user-supplied URLs to scrape alongside built-in scrapers
     raw_jobs: list[dict]
     normalized_jobs: list[dict]
+    discovery_stats: dict         # per-stage funnel counts written by discover_jobs (2026-05-29 dedup fix)
     scored_jobs: list[dict]       # each dict gains a "status" field from scoring node
     selected_jobs: list[dict]
 

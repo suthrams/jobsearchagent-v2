@@ -42,9 +42,50 @@ class JobRepository:
         return dict(row) if row else None
 
     def url_exists(self, url: str) -> bool:
+        """Whether ANY row in `jobs` carries this URL. Retained for
+        backward compatibility; the discovery dedup path no longer uses it
+        (it dropped multi-profile + multi-run re-discovery). New callers
+        should prefer `url_excluded` or `url_scored_by_user`."""
         with get_connection(self.db_path) as conn:
             row = conn.execute(
                 "SELECT 1 FROM jobs WHERE url = ? LIMIT 1", (url,)
+            ).fetchone()
+        return row is not None
+
+    def url_excluded(self, url: str) -> bool:
+        """Whether this URL is currently flagged excluded.
+
+        Used by the discovery dedup path so excluded URLs are never
+        re-surfaced (ADR-057 "stay excluded"). Does NOT drop URLs that are
+        merely persisted from a prior run - those can be re-discovered by
+        a different profile, which is a feature, not a bug.
+        """
+        with get_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT 1 FROM jobs WHERE url = ? AND excluded = 1 LIMIT 1", (url,)
+            ).fetchone()
+        return row is not None
+
+    def url_scored_by_user(self, url: str, user_id: str) -> bool:
+        """Whether THIS user has already scored a job at this URL in a
+        prior workflow run.
+
+        Used by the discovery dedup path as the per-user cost saver: if a
+        user has already paid to score this URL, don't pay again on
+        re-runs. Different users (profiles) score independently - a job
+        scored by Primary may legitimately be re-scored by Vishal under
+        different criteria.
+        """
+        if not user_id:
+            return False
+        with get_connection(self.db_path) as conn:
+            row = conn.execute(
+                """SELECT 1 FROM job_scores js
+                   JOIN workflow_runs w ON js.workflow_run_id = w.id
+                   JOIN jobs j ON js.job_id = j.id
+                   WHERE j.url = ? AND w.user_id = ?
+                   LIMIT 1""",
+                (url, user_id),
             ).fetchone()
         return row is not None
 

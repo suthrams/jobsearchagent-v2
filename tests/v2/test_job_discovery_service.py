@@ -7,9 +7,16 @@ from app.schemas.job_posting import JobPosting, JobSource, WorkMode
 from app.services.job_discovery_service import JobDiscoveryService
 
 
-def _mock_repo(url_exists=False):
+def _mock_repo(url_exists=False, url_excluded=False, url_scored_by_user=False):
+    """Mock JobRepository. The dedup path uses `url_excluded` and
+    `url_scored_by_user` after the 2026-05-29 fix (the old `url_exists`
+    catch-all was retired because it accidentally dropped multi-profile +
+    multi-run re-discovery). `url_exists` is retained as a default-False
+    so legacy tests that still pass it keep working."""
     repo = MagicMock()
     repo.url_exists.return_value = url_exists
+    repo.url_excluded.return_value = url_excluded
+    repo.url_scored_by_user.return_value = url_scored_by_user
     return repo
 
 
@@ -124,12 +131,66 @@ def test_deduplicate_removes_batch_duplicates():
     assert len(result) == 2
 
 
-def test_deduplicate_removes_db_existing():
-    repo = _mock_repo(url_exists=True)  # all URLs already in DB
+def test_deduplicate_drops_excluded_urls():
+    """ADR-057 invariant: URLs flagged excluded in the jobs table are
+    never re-surfaced. After the 2026-05-29 dedup-narrowing fix, this is
+    the ONLY global dedup check - URLs that merely exist in the DB but
+    are NOT excluded must be re-discoverable (see
+    test_deduplicate_does_not_drop_merely_persisted_urls below)."""
+    repo = _mock_repo(url_excluded=True)
     svc = _svc(repo=repo)
     jobs = [svc.normalize(_mock_v1_job(), "wf")]
     result = svc.deduplicate(jobs)
     assert len(result) == 0
+
+
+def test_deduplicate_does_not_drop_merely_persisted_urls():
+    """Regression test for the 2026-05-29 'security profile finds the
+    same job over and over' bug. A URL that exists in `jobs` but is NOT
+    flagged excluded must be re-discoverable. Before the fix, the
+    cyber-grad profile saw 1 job per run for three runs in a row because
+    every newly-scraped URL had already been persisted by the previous
+    run and was silently filtered out."""
+    repo = _mock_repo(url_exists=True, url_excluded=False)
+    svc = _svc(repo=repo)
+    jobs = [svc.normalize(_mock_v1_job(), "wf")]
+    result = svc.deduplicate(jobs)
+    assert len(result) == 1, \
+        "persisted-but-not-excluded URLs must remain discoverable"
+
+
+def test_deduplicate_drops_urls_already_scored_by_this_user():
+    """Per-user dedup: if THIS user already scored this URL in a prior
+    workflow run, skip it (cost saver)."""
+    repo = _mock_repo(url_scored_by_user=True)
+    svc = _svc(repo=repo)
+    jobs = [svc.normalize(_mock_v1_job(), "wf")]
+    result = svc.deduplicate(jobs, user_id="user-A")
+    assert len(result) == 0
+
+
+def test_deduplicate_per_user_check_skipped_without_user_id():
+    """Backward compat: callers that don't pass user_id still get the
+    excluded check but not the per-user-already-scored check."""
+    repo = _mock_repo(url_scored_by_user=True)
+    svc = _svc(repo=repo)
+    jobs = [svc.normalize(_mock_v1_job(), "wf")]
+    result = svc.deduplicate(jobs)  # no user_id
+    assert len(result) == 1
+    assert not repo.url_scored_by_user.called
+
+
+def test_deduplicate_per_user_does_not_drop_other_users_scores():
+    """User isolation: a URL scored by User A must remain discoverable
+    for User B. The mock simulates 'scored by user-A' by returning True
+    only for user-A; user-B sees False."""
+    repo = MagicMock()
+    repo.url_excluded.return_value = False
+    repo.url_scored_by_user.side_effect = lambda url, uid: uid == "user-A"
+    svc = _svc(repo=repo)
+    jobs = [svc.normalize(_mock_v1_job(), "wf")]
+    assert len(svc.deduplicate(jobs, user_id="user-A")) == 0
+    assert len(svc.deduplicate(jobs, user_id="user-B")) == 1
 
 
 def test_deduplicate_preserves_unique():

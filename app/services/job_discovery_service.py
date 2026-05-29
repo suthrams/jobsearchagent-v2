@@ -63,8 +63,40 @@ class JobDiscoveryService:
         skip_builtin_adzuna: bool = False,
         max_years_experience: int | None = None,
         min_years_experience: int | None = None,
+        user_id: str | None = None,
     ) -> list[JobPosting]:
-        """Run all scrapers (per-run extras first, then built-ins), normalise, dedupe, cap, return.
+        """Backward-compat wrapper. Returns postings only; discards stats.
+
+        New callers that want the per-stage funnel counts should use
+        `discover_with_stats(...)` and persist the second tuple element to
+        the workflow state. See ADR-069 (or commit log dated 2026-05-29)
+        for the diagnostic that motivated the explicit stats: silent
+        dedup-against-DB drops were invisible at the workflow boundary.
+        """
+        postings, _stats = self.discover_with_stats(
+            workflow_id, search_criteria,
+            extra_scrapers=extra_scrapers,
+            skip_builtin_adzuna=skip_builtin_adzuna,
+            max_years_experience=max_years_experience,
+            min_years_experience=min_years_experience,
+            user_id=user_id,
+        )
+        return postings
+
+    def discover_with_stats(
+        self,
+        workflow_id: str,
+        search_criteria: dict,
+        extra_scrapers: list[Any] | None = None,
+        skip_builtin_adzuna: bool = False,
+        max_years_experience: int | None = None,
+        min_years_experience: int | None = None,
+        user_id: str | None = None,
+    ) -> tuple[list[JobPosting], dict]:
+        """Run all scrapers, normalise, filter, dedupe, cap. Returns
+        (postings, stats). The stats dict carries per-stage funnel counts
+        so the workflow can persist them and the UI can show what was
+        dropped, where.
 
         Per-run extras (e.g. CustomUrlScraper from user-pasted URLs) run BEFORE
         the always-on scrapers and their results land at the front of the list.
@@ -72,10 +104,9 @@ class JobDiscoveryService:
         explicitly-requested URLs in favour of auto-discovered ones.
 
         ADR-064: when skip_builtin_adzuna is True the always-on (startup) Adzuna
-        scraper is omitted for this run — the caller has supplied a per-run Adzuna
-        scraper built from the run's search_criteria as an extra, and running the
-        startup one too would re-search the senior startup titles.
+        scraper is omitted for this run.
         """
+        per_scraper_stats: list[dict] = []
         raw_jobs: list[Any] = []
         builtins = list(self._scrapers)
         if skip_builtin_adzuna:
@@ -84,49 +115,88 @@ class JobDiscoveryService:
         all_scrapers = list(extra_scrapers or []) + builtins
         for scraper in all_scrapers:
             pool = ThreadPoolExecutor(max_workers=1)
+            scraper_name = type(scraper).__name__
             try:
                 future = pool.submit(scraper.scrape)
                 try:
                     results = future.result(timeout=_SCRAPER_TIMEOUT_S)
-                    logger.info("Scraper %s returned %d jobs", type(scraper).__name__, len(results))
+                    logger.info("Scraper %s returned %d jobs", scraper_name, len(results))
                     raw_jobs.extend(results)
+                    per_scraper_stats.append({"name": scraper_name, "raw": len(results)})
                 except FuturesTimeoutError:
                     logger.warning(
                         "Scraper %s cancelled — exceeded %ds safety timeout",
-                        type(scraper).__name__, _SCRAPER_TIMEOUT_S,
+                        scraper_name, _SCRAPER_TIMEOUT_S,
                     )
+                    per_scraper_stats.append({"name": scraper_name, "raw": 0,
+                                              "error": "timeout"})
                 except Exception as exc:
-                    logger.error("Scraper %s failed — continuing: %s", type(scraper).__name__, exc)
+                    logger.error("Scraper %s failed — continuing: %s", scraper_name, exc)
+                    per_scraper_stats.append({"name": scraper_name, "raw": 0,
+                                              "error": str(exc)[:120]})
             finally:
                 pool.shutdown(wait=False)  # don't block — timed-out threads run to completion in bg
 
+        scraper_raw_total = sum(s.get("raw", 0) for s in per_scraper_stats)
         postings = [self.normalize(job, workflow_id) for job in raw_jobs]
+
+        before_title = len(postings)
         postings = [p for p in postings if not self._is_excluded_title(p.title)]
+        title_filter_dropped = before_title - len(postings)
 
         # ADR-065: per-profile years-of-experience window. Drop postings outside
         # [min, max]; keep postings with no detectable experience (silent JDs are
         # not penalized). max compares the JD's lowest bar, min its highest bar.
+        experience_filter_dropped = 0
         if max_years_experience is not None or min_years_experience is not None:
             from app.services.experience_filter import exceeds_cap, below_floor
-            before = len(postings)
+            before_exp = len(postings)
             if max_years_experience is not None:
                 postings = [p for p in postings
                             if not exceeds_cap(p.description, max_years_experience)]
             if min_years_experience is not None:
                 postings = [p for p in postings
                             if not below_floor(p.description, min_years_experience)]
-            if before != len(postings):
+            experience_filter_dropped = before_exp - len(postings)
+            if experience_filter_dropped > 0:
                 logger.info("Experience window (min=%s max=%s) dropped %d of %d postings",
                             min_years_experience, max_years_experience,
-                            before - len(postings), before)
+                            experience_filter_dropped, before_exp)
 
-        postings = self.deduplicate(postings)
+        before_dedup = len(postings)
+        postings, dedup_stats = self._dedup_with_stats(postings, user_id=user_id)
+        dedup_total_dropped = before_dedup - len(postings)
 
+        before_cap = len(postings)
+        max_jobs_truncated = 0
         if len(postings) > self._max_jobs:
             logger.info("Capping %d postings to max_jobs=%d", len(postings), self._max_jobs)
+            max_jobs_truncated = len(postings) - self._max_jobs
             postings = postings[: self._max_jobs]
 
-        return postings
+        stats = {
+            "per_scraper":               per_scraper_stats,
+            "scraper_raw_total":         scraper_raw_total,
+            "title_filter_dropped":      title_filter_dropped,
+            "experience_filter_dropped": experience_filter_dropped,
+            "dedup_total_dropped":       dedup_total_dropped,
+            "dedup_batch_dropped":       dedup_stats["batch"],
+            "dedup_excluded_dropped":    dedup_stats["excluded"],
+            "dedup_user_scored_dropped": dedup_stats["user_scored"],
+            "max_jobs_truncated":        max_jobs_truncated,
+            "returned":                  len(postings),
+            "user_id":                   user_id,
+        }
+        logger.info(
+            "discover funnel: scraped=%d -> title=%d -> exp=%d -> "
+            "dedup(batch=%d,excl=%d,user=%d) -> cap=%d -> returned=%d",
+            scraper_raw_total,
+            scraper_raw_total - title_filter_dropped,
+            scraper_raw_total - title_filter_dropped - experience_filter_dropped,
+            dedup_stats["batch"], dedup_stats["excluded"], dedup_stats["user_scored"],
+            before_cap, len(postings),
+        )
+        return postings, stats
 
     def normalize(self, v1_job: Any, workflow_id: str) -> JobPosting:
         """Convert a v1 models.job.Job to a v2 JobPosting. Assigns a fresh UUID as job_id."""
@@ -178,28 +248,60 @@ class JobDiscoveryService:
             posted_at=posted_at,
         )
 
-    def deduplicate(self, jobs: list[JobPosting]) -> list[JobPosting]:
-        """Remove URL duplicates within the batch and against already-persisted jobs in the DB.
+    def deduplicate(self, jobs: list[JobPosting],
+                    user_id: str | None = None) -> list[JobPosting]:
+        """Backward-compat wrapper around `_dedup_with_stats`. Returns the
+        deduped list only; stats are dropped. Accepts `user_id` so callers
+        that want per-user dedup (cost saver: don't re-score URLs this user
+        already scored) get it.
 
-        ADR-057 note: this implicitly filters re-discoveries of excluded URLs
-        too. Excluding a job leaves its row in `jobs` with `excluded=1`; a
-        future scraper that surfaces the same URL hits `url_exists(url) ->
-        True` here and is dropped before scoring. The cost saving from
-        ADR-057 is realised at this exact line — no extra logic required.
+        Three dedup stages, in order:
+          1. Batch dedup: drop URL duplicates within this batch.
+          2. Global excluded dedup: drop URLs flagged excluded in `jobs`
+             (ADR-057 "stay excluded" - excluded by ANY user stays
+             excluded for everyone).
+          3. Per-user already-scored dedup: drop URLs this user has
+             already scored in a prior run. Different users score
+             independently. Skipped if user_id is None or empty.
+
+        The old "drop any URL already persisted to `jobs`" behavior was
+        retired 2026-05-29 - it accidentally collapsed re-discovery for
+        new profiles and repeat runs (the cyber profile saw 1 job for
+        three runs in a row because Adzuna kept returning the same set
+        and dedup dropped everything as already-persisted).
         """
+        unique, _stats = self._dedup_with_stats(jobs, user_id=user_id)
+        return unique
+
+    def _dedup_with_stats(self, jobs: list[JobPosting],
+                          user_id: str | None) -> tuple[list[JobPosting], dict]:
         seen_urls: set[str] = set()
         unique: list[JobPosting] = []
+        batch_dropped = 0
+        excluded_dropped = 0
+        user_scored_dropped = 0
         for job in jobs:
             url = job.url
             if url in seen_urls:
+                batch_dropped += 1
                 logger.debug("Dedup (batch): skipping duplicate URL %s", url)
                 continue
-            if self._repo.url_exists(url):
-                logger.debug("Dedup (DB): URL already persisted — %s", url)
+            if self._repo.url_excluded(url):
+                excluded_dropped += 1
+                logger.debug("Dedup (excluded): URL is flagged excluded - %s", url)
+                continue
+            if user_id and self._repo.url_scored_by_user(url, user_id):
+                user_scored_dropped += 1
+                logger.debug("Dedup (user-scored): URL already scored by user %s - %s",
+                             user_id, url)
                 continue
             seen_urls.add(url)
             unique.append(job)
-        return unique
+        return unique, {
+            "batch":       batch_dropped,
+            "excluded":    excluded_dropped,
+            "user_scored": user_scored_dropped,
+        }
 
     @staticmethod
     def _is_excluded_title(title: str) -> bool:

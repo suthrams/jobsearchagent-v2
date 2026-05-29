@@ -27,6 +27,10 @@ def make_discover_jobs_node(
 ) -> Callable[[dict], dict]:
     def discover_jobs(state: dict) -> dict:
         workflow_id: str = state.get("workflow_id", "")
+        # ADR-062 + 2026-05-29 dedup fix: identity is required by per-user
+        # dedup (drop URLs this user already scored). Default to "0" so
+        # legacy / unscoped runs still work.
+        user_id: str = state.get("user_id") or "0"
         search_criteria: dict = state.get("search_criteria") or {}
         custom_urls: list[str] = list(state.get("custom_urls") or [])
         errors = list(state.get("errors") or [])
@@ -70,16 +74,22 @@ def make_discover_jobs_node(
             except Exception as exc:
                 logger.warning("discover_jobs: failed to build per-run Adzuna scraper: %s", exc)
 
+        discovery_stats: dict = {}
         try:
-            postings = discovery_service.discover(
+            postings, discovery_stats = discovery_service.discover_with_stats(
                 workflow_id, search_criteria, extra_scrapers=extra_scrapers,
                 skip_builtin_adzuna=skip_builtin_adzuna,
                 max_years_experience=max_years,
                 min_years_experience=min_years,
+                user_id=user_id,
             )
             # ADR-060: manual-selection mode casts a wider net (the user triages
             # before any scoring spend); otherwise cap at MAX_JOBS_PER_RUN.
-            postings = postings[:get_max_discovered_jobs(state)]
+            cap = get_max_discovered_jobs(state)
+            if len(postings) > cap:
+                discovery_stats["node_cap_truncated"] = len(postings) - cap
+                postings = postings[:cap]
+            discovery_stats["final_returned"] = len(postings)
         except Exception as exc:
             logger.error("discover_jobs: discovery failed: %s", exc)
             errors = append_error(state, "job_discovery", "discovery_error", str(exc), recoverable=True,
@@ -87,6 +97,7 @@ def make_discover_jobs_node(
             return {
                 "raw_jobs": [],
                 "normalized_jobs": [],
+                "discovery_stats": {"error": str(exc)[:200]},
                 "errors": errors,
                 "current_step": "job_discovery",
                 "updated_at": utcnow_iso(),
@@ -132,6 +143,7 @@ def make_discover_jobs_node(
         return {
             "raw_jobs": raw_jobs,
             "normalized_jobs": normalized_jobs,
+            "discovery_stats": discovery_stats,
             "errors": errors,
             "current_step": "job_discovery",
             "updated_at": utcnow_iso(),

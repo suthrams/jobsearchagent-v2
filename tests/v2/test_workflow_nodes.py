@@ -180,7 +180,7 @@ def test_discover_jobs_happy_path_returns_normalized_jobs():
         found_at=utcnow_iso(),
     )
     svc = MagicMock(spec=JobDiscoveryService)
-    svc.discover.return_value = [posting]
+    svc.discover_with_stats.return_value = ([posting], {})
     repo = _job_repo()
 
     node = make_discover_jobs_node(svc, repo, _obs())
@@ -194,7 +194,7 @@ def test_discover_jobs_happy_path_returns_normalized_jobs():
 
 def test_discover_jobs_service_error_returns_empty_with_error_appended():
     svc = MagicMock(spec=JobDiscoveryService)
-    svc.discover.side_effect = RuntimeError("scraper blocked")
+    svc.discover_with_stats.side_effect = RuntimeError("scraper blocked")
 
     node = make_discover_jobs_node(svc, _job_repo(), _obs())
     result = node(_base_state())
@@ -220,7 +220,7 @@ def test_discover_jobs_caps_at_max_jobs():
         for i in range(MAX_JOBS_PER_RUN + 5)
     ]
     svc = MagicMock(spec=JobDiscoveryService)
-    svc.discover.return_value = postings
+    svc.discover_with_stats.return_value = (postings, {})
 
     node = make_discover_jobs_node(svc, _job_repo(), _obs())
     result = node(_base_state())

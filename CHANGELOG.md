@@ -6,6 +6,67 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-05-29
 
+### Fixed — Discovery dedup no longer collapses re-discovery + per-user dedup + funnel instrumentation
+
+Live run on the cyber-grad (Vishal) profile surfaced a discovery bug: three
+back-to-back runs all returned the same single posting ("Digital Network
+Exploitation Analyst @ Booz Allen Hamilton") despite `max_discovered=50`,
+`max_scored=10`, `min_match_score=40`, no errors, no timeouts. Diagnosis
+traced to `JobDiscoveryService.deduplicate()` line that dropped any URL
+already in the `jobs` table — across every user, every prior run. Adzuna
+kept returning roughly the same posting set per run; everything was
+already persisted; dedup silently dropped all of it. ADR-057 designed this
+as a feature ("exclude once, stay excluded"), but it also collapsed
+multi-profile + repeat-run discovery into a near-empty result set with no
+visible signal anywhere.
+
+This commit ships three fixes that compose:
+
+**1. Discovery funnel instrumentation** (`app/services/job_discovery_service.py`,
+`app/workflows/nodes/discover_jobs.py`, `app/workflows/graph_state.py`):
+new `discover_with_stats(...)` returns `(postings, stats)` where stats
+carries per-stage funnel counts: `per_scraper`, `title_filter_dropped`,
+`experience_filter_dropped`, `dedup_batch_dropped`, `dedup_excluded_dropped`,
+`dedup_user_scored_dropped`, `max_jobs_truncated`, `returned`. The node
+persists this to `state["discovery_stats"]` (declared on
+`WorkflowGraphState` so LangGraph doesn't drop it). A summary log line
+prints the funnel on every run. Backward-compat: `discover(...)` is now a
+thin wrapper that discards stats.
+
+**2. Excluded-only global dedup**: new `JobRepository.url_excluded(url)`
+checks `jobs.url = ? AND excluded = 1`. The dedup loop now uses this
+instead of the old catch-all `url_exists`. ADR-057's "stay excluded"
+semantics are preserved — URLs flagged excluded by ANY user still drop on
+every subsequent discovery. URLs that are merely persisted are now
+re-discoverable, which is what enables multi-profile and repeat-run
+discovery.
+
+**3. Per-user already-scored dedup**: new
+`JobRepository.url_scored_by_user(url, user_id)` joins `job_scores ->
+workflow_runs (for user_id) -> jobs (for URL match)`. When the node passes
+`user_id` to `discover_with_stats`, the dedup loop drops URLs THIS user
+has already paid to score in a prior run — the cost saver. Different
+users (profiles) score independently, which is the correct semantic for
+ADR-062's multi-user model: a job scored by Primary may legitimately be
+re-scored by Vishal under different criteria.
+
+Old `url_exists` is retained on the repository for backward compat but is
+no longer called by the dedup path.
+
+**Tests** (`tests/v2/test_job_discovery_service.py`): 4 new cases.
+`test_deduplicate_does_not_drop_merely_persisted_urls` is the load-bearing
+regression test for this specific bug — fails on the old code, passes on
+the new. `test_deduplicate_drops_excluded_urls` keeps the ADR-057
+invariant under test. `test_deduplicate_drops_urls_already_scored_by_this_user`
+and `test_deduplicate_per_user_does_not_drop_other_users_scores` cover the
+multi-profile semantics. Full suite at 729 (was 725; +4).
+
+**What this means for the cyber profile.** Next run on Vishal's profile
+should re-surface the 22 cyber-relevant URLs already in `jobs` (now that
+they're not blocked by global dedup), score whatever Vishal hasn't already
+scored this session (per-user dedup catches the cost concern), and write
+the funnel counts to state so the UI / DB can show what got dropped where.
+
 ### Changed — Wire `_cached` resume_profile on four high-volume agents (cache hit fix)
 
 Diagnostic on `llm_calls` over the last 30 days showed five agents with

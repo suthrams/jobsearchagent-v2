@@ -156,7 +156,7 @@ def _make_deps(checkpointer=None) -> WorkflowDependencies:
         found_at=utcnow_iso(),
     )
     discovery_svc = MagicMock(spec=JobDiscoveryService)
-    discovery_svc.discover.return_value = [posting]
+    discovery_svc.discover_with_stats.return_value = ([posting], {})
 
     resume_parser = MagicMock(spec=ResumeParser)
 
