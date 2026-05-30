@@ -223,6 +223,7 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 - `data_model.md` — all 20 SQLite table definitions (incl. `users`, ADR-062, and `resume_clinic_reviews`, ADR-066), per-column data dictionary, and per-table workflow usage
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
 - `api_surface_overview.md` — one-page visual map (PNG + Mermaid) of every REST endpoint grouped by domain
+- `ui_architecture.md` — how the Streamlit UI is built: the thin entrypoint + views package, navigation, the read-path (`db_reader`) vs control-path (`api_client`) split, and Mermaid sequence diagrams for the key UI-to-backend flows. Companion: `ui_refactor_plan.md` (how it got that shape)
 - `adr/` — 70 Architecture Decision Records
 
 ---
