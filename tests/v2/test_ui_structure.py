@@ -20,10 +20,13 @@ _ENTRYPOINT = Path(__file__).resolve().parents[2] / "app" / "ui" / "streamlit_ap
 
 
 def test_refactor_packages_import_clean():
-    """The refactor packages import without a Streamlit runtime."""
+    """The refactor modules import without a Streamlit runtime (no st.* runs at
+    import: formatting is pure; data only applies @st.cache_data decorators)."""
     importlib.import_module("app.ui.nav")
     importlib.import_module("app.ui.views")
     importlib.import_module("app.ui.components")
+    importlib.import_module("app.ui.formatting")
+    importlib.import_module("app.ui.data")
 
 
 def test_nav_views_are_unique_and_exclude_separator():

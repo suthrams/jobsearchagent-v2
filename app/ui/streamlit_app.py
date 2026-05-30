@@ -34,7 +34,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-import yaml
 import app.ui.api_client as api
 import app.ui.nav as nav
 # Pure formatting helpers extracted to app/ui/formatting.py (UI refactor Phase 1).
@@ -52,6 +51,15 @@ from app.ui.formatting import (
     _section_display,
     _section_order,
     _word_count,
+)
+# Cached data-access wrappers extracted to app/ui/data.py (UI refactor Phase 2).
+# (_load_yaml_config also lives in data.py but is only used there by
+# _get_config_cached, so the entrypoint does not import it.)
+from app.ui.data import (
+    _cached_get_providers,
+    _cached_list_tailorings,
+    _cached_list_users,
+    _get_config_cached,
 )
 from app.services.constraint_analyzer import analyze, summary_metrics
 from app.services.cost_breakdown import (
@@ -79,42 +87,6 @@ from app.ui.db_reader import (
     load_workflow_run,
     load_workflow_runs,
 )
-
-
-@st.cache_data
-def _load_yaml_config() -> dict:
-    try:
-        with open("config/config.yaml", encoding="utf-8") as f:
-            return yaml.safe_load(f) or {}
-    except FileNotFoundError:
-        return {}
-
-
-# ── Cached HTTP wrappers ──────────────────────────────────────────────────────
-# Streamlit reruns the whole script on every interaction. Without caching, these
-# endpoints would fire on every keystroke / sidebar click. TTL keeps them fresh
-# enough to feel live; .clear() is called after any write that would invalidate.
-
-@st.cache_data(ttl=10)
-def _cached_list_tailorings(workflow_id: str) -> list[dict]:
-    return api.list_tailorings(workflow_id).get("tailorings") or []
-
-
-@st.cache_data(ttl=60)
-def _cached_get_providers() -> dict | None:
-    try:
-        return api.get_providers()
-    except Exception:
-        return None
-
-
-@st.cache_data(ttl=30)
-def _cached_list_users() -> list[dict]:
-    """Profiles for the sidebar selector (ADR-062). Default user 0 first."""
-    try:
-        return api.list_users().get("users") or []
-    except Exception:
-        return []
 
 
 # ── Page config ───────────────────────────────────────────────────────────────
@@ -269,18 +241,6 @@ def _stage_progress(row: dict) -> str:
     if step in ("career_advice", "interview_prep", "tailoring", "review_completed"):
         return f"{selected} job(s) advanced"
     return ""
-
-
-def _get_config_cached() -> dict:
-    """Pull config once per render and stash on session_state to avoid extra HTTP calls."""
-    if st.session_state.config_cache is None:
-        try:
-            st.session_state.config_cache = api.get_config()
-        except Exception as exc:
-            st.session_state.config_cache = {"effective_config": _load_yaml_config(),
-                                             "protected_keys": [],
-                                             "_offline_reason": str(exc)}
-    return st.session_state.config_cache
 
 
 _CLAIM_BADGE = {
