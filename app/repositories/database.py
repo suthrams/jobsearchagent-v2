@@ -378,11 +378,48 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
         )
 
 
+# Child tables keyed by workflow_run_id, cascade-deleted when their parent
+# workflow_runs row is purged (ADR-070). A purged run takes ALL its rows with it so
+# no orphaned children survive (the previous purge skipped these, leaving orphans
+# - finding B2 in pii_data_flow.md). memory_items is intentionally absent: it uses
+# source_workflow_run_id (nullable) and is meant to outlive workflow purges; jobs
+# is absent because it has no run FK (jobs are URL-deduped across runs).
+_RUN_CHILD_TABLES = (
+    "job_scores",
+    "review_rounds",
+    "resume_reviews",
+    "career_advice",
+    "interview_prep",
+    "tailored_resumes",
+    "resume_clinic_reviews",
+    "human_decisions",
+    "reports",
+    "run_metrics",
+    "step_executions",
+    "agent_events",
+    "llm_calls",
+    "security_events",
+)
+
+
 def purge_old_data(db_path: Path = DEFAULT_DB_PATH, config: dict | None = None) -> dict[str, int]:
     """
-    Delete rows older than configured retention windows.
-    Returns {table_name: rows_deleted} for logging.
-    Purge is explicit — never runs automatically.
+    Delete rows older than configured retention windows (ADR-070, implementing
+    ADR-040). Returns {table_name: rows_deleted} for logging.
+
+    Purge is explicit — never runs automatically. Trigger via POST /admin/purge
+    or tools/purge_data.py.
+
+    Three passes, all in one transaction:
+      1. Independent windows for the observability/security/jobs/memory tables —
+         cost and log data ages out faster than the run it belongs to.
+      2. Cascade: find workflow_runs older than `workflow_runs_days`, delete ALL
+         their child rows (by workflow_run_id) FIRST, then the parent runs — so the
+         DB is referentially clean at every step and no child is orphaned.
+      3. Resume guard: delete inactive resumes older than `resumes_days` that are
+         no longer referenced by any surviving run. The active resume is never
+         deleted; a resume is cache-keyed by raw_text_hash and can back multiple
+         runs, so the reference check (not age alone) is the gate.
     """
     retention = (config or {}).get("retention", {})
     workflow_days = retention.get("workflow_runs_days", 90)
@@ -390,23 +427,61 @@ def purge_old_data(db_path: Path = DEFAULT_DB_PATH, config: dict | None = None) 
     security_days = retention.get("security_events_days", 180)
     memory_days = retention.get("memory_items_days", 365)
     jobs_days = retention.get("jobs_days", 90)
+    resumes_days = retention.get("resumes_days", 365)
 
-    purge_plan = [
-        ("workflow_runs",  "started_at",  workflow_days),
-        ("jobs",           "created_at",  jobs_days),
-        ("step_executions","started_at",  observability_days),
-        ("agent_events",   "created_at",  observability_days),
-        ("llm_calls",      "created_at",  observability_days),
-        ("security_events","created_at",  security_days),
-        ("memory_items",   "updated_at",  memory_days),
+    # Pass 1: independent windows. These may delete a row whose parent run is still
+    # in-window (intended). Each (table, timestamp_col, days).
+    independent_plan = [
+        ("step_executions", "started_at", observability_days),
+        ("agent_events",    "created_at", observability_days),
+        ("llm_calls",       "created_at", observability_days),
+        ("security_events", "created_at", security_days),
+        ("memory_items",    "updated_at", memory_days),
+        ("jobs",            "created_at", jobs_days),
     ]
 
     results: dict[str, int] = {}
     with get_connection(db_path) as conn:
-        for table, col, days in purge_plan:
+        for table, col, days in independent_plan:
             cursor = conn.execute(
                 f"DELETE FROM {table} WHERE {col} < datetime('now', ?)",
                 (f"-{days} days",),
             )
             results[table] = cursor.rowcount
+
+        # Pass 2: cascade the expired runs and their children. A correlated
+        # subquery selects the expired run ids inside each DELETE, so there is no
+        # bound-parameter limit on the number of runs purged at once, and the runs
+        # row stays present until the child deletes have run (deleted last).
+        run_cutoff = (f"-{workflow_days} days",)
+        expired_child_filter = (
+            "workflow_run_id IN "
+            "(SELECT id FROM workflow_runs WHERE started_at < datetime('now', ?))"
+        )
+        for table in _RUN_CHILD_TABLES:
+            cursor = conn.execute(
+                f"DELETE FROM {table} WHERE {expired_child_filter}", run_cutoff
+            )
+            # accumulate: a table can also be hit by its independent window above
+            results[table] = results.get(table, 0) + cursor.rowcount
+        cursor = conn.execute(
+            "DELETE FROM workflow_runs WHERE started_at < datetime('now', ?)", run_cutoff
+        )
+        results["workflow_runs"] = cursor.rowcount
+
+        # Pass 3: resume retention guard. Runs the cascade BEFORE this so the
+        # reference subquery sees only surviving runs. NULL resume_ids are filtered
+        # out of the subquery so NOT IN behaves (a NULL in the set voids NOT IN).
+        cursor = conn.execute(
+            """
+            DELETE FROM resumes
+            WHERE is_active = 0
+              AND created_at < datetime('now', ?)
+              AND id NOT IN (
+                  SELECT resume_id FROM workflow_runs WHERE resume_id IS NOT NULL
+              )
+            """,
+            (f"-{resumes_days} days",),
+        )
+        results["resumes"] = cursor.rowcount
     return results

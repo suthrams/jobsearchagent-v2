@@ -3013,6 +3013,44 @@ elif view == "Settings":
     st.json({k: _get_nested(eff, k.split(".")) for k in sorted(protected)
              if _get_nested(eff, k.split(".")) is not None}, expanded=False)
 
+    # ── Data retention purge (ADR-070) ───────────────────────────────────────
+    st.subheader("Data retention")
+    st.caption(
+        "Delete data past the retention windows above. A purged workflow run takes "
+        "ALL its rows with it (scores, reviews, advice, prep, tailorings, clinic "
+        "reviews, decisions, observability); inactive resumes are removed only once "
+        "no surviving run still references them. The windows are read-only and live "
+        "in `config/config.yaml`. Purge is explicit and never runs automatically."
+    )
+    with st.expander("Run data-retention purge"):
+        st.warning(
+            "This permanently deletes rows older than the retention windows. It "
+            "cannot be undone. Make sure you have a backup of `data/v2.db` if you "
+            "might want this data back."
+        )
+        confirm = st.checkbox(
+            "I understand this permanently deletes data past the retention windows.",
+            key="purge_confirm",
+        )
+        if st.button("Run purge now", type="primary", disabled=not confirm,
+                     key="purge_run_btn"):
+            try:
+                with st.spinner("Purging..."):
+                    result = api.purge_data()
+            except Exception as exc:
+                st.error(f"Purge failed: {exc}")
+            else:
+                deleted = {t: n for t, n in (result or {}).items() if n}
+                total = sum(deleted.values())
+                if total:
+                    st.success(f"Purged {total} rows.")
+                    st.json(deleted, expanded=True)
+                else:
+                    st.info("Nothing was past the retention windows; no rows deleted.")
+                # The history/cost views read from the DB directly — invalidate any
+                # cached config so a re-render reflects the smaller dataset.
+                st.session_state.config_cache = None
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # CROSS-RUN ANALYTICS

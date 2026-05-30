@@ -155,10 +155,22 @@ boundary:
 > [`pii_data_flow.md`](pii_data_flow.md) for the full PII data-flow map (what
 > reaches the LLM per agent, what rests in `data/v2.db`, what is logged), the
 > conformance scorecard against ADR-020 / ADR-040 / ADR-015, and the remediation
-> plan. Open gaps currently tracked there: structured contact PII (name/email/
-> location) is still sent to every reasoning agent (ADR-020 only half-honored),
-> the Resume Clinic forwards `raw_text` to the Resume Reviewer, and `raw_text`
-> is stored unencrypted with no time-based purge.
+> plan.
+>
+> **Posture by surface:**
+> - *Send-side (PII to LLMs) — closed.* [ADR-069](adr/ADR-069-redact-direct-identifiers-at-the-llm-seam.md)
+>   redacts direct identifiers (name/email/location/file_name) and scrubs inline
+>   phone/email from free text before any agent call; only the Fidelity Reviewer
+>   sees `raw_text` (ADR-015). An invariant test enforces the seam.
+> - *At-rest retention + de-duplication — Phase 1, design ratified, impl pending.*
+>   [ADR-070](adr/ADR-070-data-retention-and-state-deduplication.md) wires/completes
+>   `purge_old_data()` to the PII tables with cascade and an explicit trigger, and
+>   stops duplicating the full profile into `state_json` (stores the redacted
+>   profile in state). Implements the accepted ADR-040.
+> - *At-rest encryption — Phase 2, deferred.* App-level field encryption (and
+>   SQLCipher for a hosted future) is analyzed in
+>   [`spike_data_at_rest_security.md`](spike_data_at_rest_security.md) and left to
+>   a later ADR; BitLocker is the assumed control for device theft.
 
 ### Rules
 

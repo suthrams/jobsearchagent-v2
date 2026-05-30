@@ -180,10 +180,16 @@ beyond filesystem permissions.
   resume storage" is not yet implemented.
 - **B2 - No automatic retention/purge.** `raw_text` lives forever unless a row is
   manually deleted. `DELETE /users/{user_id}/resume/{resume_id}` exists and
-  cascades to clinic reviews, but there is no time-based purge.
+  cascades to clinic reviews, but there is no time-based purge. **Design ratified
+  in [ADR-070](adr/ADR-070-data-retention-and-state-deduplication.md) (Phase 1 of
+  the at-rest track); implementation pending** - completes/wires `purge_old_data()`
+  to the PII tables with cascade and an explicit trigger.
 - **B3 - `raw_text` is duplicated** into both `resumes.raw_text` and
   `resumes.parsed_profile_json` (and again into `workflow_runs.state_json`),
-  widening the at-rest blast radius.
+  widening the at-rest blast radius. **ADR-070 de-duplicates the `state_json`
+  copy** (stores the redacted profile in state instead of the full `model_dump()`),
+  removing `raw_text` + direct identifiers from `state_json` and the LangGraph
+  checkpoints blob; implementation pending.
 
 ---
 
@@ -212,11 +218,12 @@ regress it:
 | Avoid sending email / phone / address unless required | ADR-020 | **Met** (ADR-069 closed A1) |
 | Do not log raw resume text | ADR-020 | Met (C1-C3) |
 | Only Fidelity Reviewer sees `raw_text` | ADR-015 | **Met** (ADR-069 closed A2) |
-| Avoid indefinite raw resume storage | ADR-040 | **Not met** (findings B1, B2 - open) |
+| Avoid indefinite raw resume storage | ADR-040 | **Partial** (B2/B3 design ratified in ADR-070, impl pending; B1 encryption deferred to Phase 2) |
 | Support delete operations | ADR-040 | Met (per-resume delete exists) |
 
-The remaining open gaps are B1/B2 (at-rest encryption + retention), deferred to
-the separate ADR-040 track in Section 7.
+The remaining open gaps are B1 (at-rest encryption, Phase 2) and the *pending
+implementation* of ADR-070's retention + de-duplication (B2/B3, Phase 1). Both
+are tracked in the ADR-040 / at-rest track in Section 7.
 
 ---
 
@@ -244,19 +251,26 @@ per unit of effort.
    failing the build if one bypasses the redaction helper (state-write sites are
    explicitly allowlisted). Forcing function, consistent with the model-pin
    invariant.
-4. **[OPEN] Encryption / retention at rest (closes B1, B2).** Separate, larger
-   track, analyzed in
-   [`spike_data_at_rest_security.md`](spike_data_at_rest_security.md). Spike
-   recommendation: Phase 1 = retention + de-duplication (Option A, wires/completes
-   `purge_old_data` and stops duplicating the full profile into `state_json`);
-   Phase 2 = app-level field encryption (Option B), with SQLCipher (Option C)
-   reserved for a hosted/multi-user future. SQLCipher is penalized here because the
-   LangGraph `SqliteSaver` shares `data/v2.db` with no key support and needs a
-   Windows-compiled dependency. Sequenced after the send-side fixes because it is
-   higher-effort and the send side was the larger live exposure.
+4. **[RATIFIED, IMPL PENDING - ADR-070] Retention + de-duplication (Phase 1,
+   closes B2 and B3).**
+   [ADR-070](adr/ADR-070-data-retention-and-state-deduplication.md) ratifies the
+   spike's Option A: complete and wire `purge_old_data()` to the PII tables with
+   cascade (a purged run deletes its child rows; resumes purged on a separate
+   longer window guarded by the active flag and a run-reference check), behind an
+   explicit trigger (`POST /admin/purge` + CLI, no scheduler); and de-duplicate the
+   profile out of `state_json` by storing the redacted profile in state. Design
+   ratified; implementation pending.
+5. **[OPEN - Phase 2] Encryption at rest (closes B1).** Deferred to a separate
+   Phase 2 ADR. Per the
+   [spike](spike_data_at_rest_security.md): app-level field encryption (Option B),
+   with SQLCipher (Option C) reserved for a hosted/multi-user future. SQLCipher is
+   penalized because the LangGraph `SqliteSaver` shares `data/v2.db` with no key
+   support and needs a Windows-compiled dependency. Sequenced after retention
+   because bounding the pile (Phase 1) shrinks the surface encryption must protect,
+   and the send side (ADR-069) was the larger live exposure.
 
-Findings A1 and A2 are the immediate "hole" the current work plugs; B1/B2 are the
-follow-on at-rest hardening.
+Findings A1 and A2 are the immediate "hole" the send-side work plugged; B2/B3
+(ADR-070, Phase 1) and B1 (Phase 2) are the follow-on at-rest hardening.
 
 ---
 

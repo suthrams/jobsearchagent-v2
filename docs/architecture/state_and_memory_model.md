@@ -120,7 +120,11 @@ class WorkflowState:
                          # memory write so learning stays isolated per profile.
 
     resume_id: str | None
-    resume_profile: dict | None
+    resume_profile: dict | None  # ADR-070: stored REDACTED (redact_pii_for_llm
+                                 # shape) - no raw_text / name / email / location /
+                                 # file_name. Keeps raw_text + direct identifiers
+                                 # out of state_json and the checkpoints blob; the
+                                 # un-redacted profile lives only in the resumes row.
     resume_version: int | None
 
     search_criteria: dict
@@ -238,6 +242,15 @@ Notes:
 * Raw resume text should not be passed to every agent by default.
 * Prefer parsed/redacted profile.
 * Store raw text only when needed for parsing or report generation.
+* **ADR-070 (design ratified, impl pending):** `load_resume` stores the
+  **redacted** profile (`redact_pii_for_llm`, ADR-069 shape) into
+  `state["resume_profile"]`, not the full `model_dump()`. So `raw_text`, `name`,
+  `email`, `location`, and `file_name` never enter `workflow_runs.state_json` or
+  the LangGraph `checkpoints` blob. Agents are unaffected (they already re-redact
+  at the seam, idempotently); the deterministic renderer reads the un-redacted
+  source from the `resumes` row, not from state. The un-redacted profile's only
+  at-rest home is `resumes.parsed_profile_json`, which retention (ADR-070) bounds.
+  See `data_model.md` Section 8A.
 
 ---
 

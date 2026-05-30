@@ -9,8 +9,10 @@ Two layers:
   1. The pure clinic fidelity-context builder is exercised directly.
   2. A source scan asserts every "resume_profile" placed into an agent context
      routes through redact_pii_for_llm / trim_resume_profile, with an explicit
-     allowlist for the two sites that write the profile into WorkflowState (not
-     an LLM context) - state egress trims per-agent; at-rest is ADR-040's track.
+     allowlist for the kickoff site that initializes the profile in WorkflowState
+     to None (not an LLM context). Since ADR-070, load_resume also stores the
+     REDACTED profile in state, so it passes via the helper branch like any agent
+     context rather than being allowlisted.
 """
 from __future__ import annotations
 
@@ -22,12 +24,17 @@ from app.services.resume_clinic_runner import build_fidelity_context_for_overhau
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 
-# Sites that legitimately carry the full profile into WorkflowState (NOT an LLM
-# context). The profile is redacted at egress when each agent context is built;
-# the un-redacted state row is the deferred at-rest concern (ADR-040). Each entry
-# is (relative posix path, allowed right-hand-side substrings).
+# Sites that write resume_profile into WorkflowState (NOT an LLM context) with a
+# value that is not itself a redaction-helper call. Each entry is (relative posix
+# path, allowed right-hand-side substrings).
+#
+# ADR-070 note: load_resume.py was previously allowlisted because it stored the
+# full profile (`model_dump()`). It now stores `redact_pii_for_llm(...)` so
+# raw_text + direct identifiers never reach state_json / the checkpoints blob, and
+# it passes the scan via the redaction-helper branch like any agent context - so it
+# is no longer in this allowlist. Only workflows.py remains: it initializes the
+# state key to None at kickoff.
 _STATE_WRITE_ALLOWLIST = {
-    "app/workflows/nodes/load_resume.py": ("model_dump()",),
     "app/api/routers/workflows.py": ("None",),
 }
 
@@ -70,6 +77,40 @@ def test_clinic_fidelity_context_redacts_cached_profile_but_keeps_raw_text():
     assert cached["skills"] == ["Python"]
     # the one sanctioned raw_text path: top-level, outside the profile block
     assert ctx["raw_text"] == parsed_profile["raw_text"]
+
+
+def test_load_resume_stores_redacted_profile_in_state():
+    """ADR-070: load_resume writes the REDACTED profile into WorkflowState, so
+    raw_text + direct identifiers never reach state_json / the checkpoints blob."""
+    from app.schemas.resume_profile import ResumeProfile
+    from app.workflows.nodes.load_resume import make_load_resume_node
+
+    profile = ResumeProfile(
+        resume_id="r1",
+        raw_text="JANE SMITH full resume blob",
+        name="Jane Smith",
+        email="jane@example.com",
+        location="Atlanta, GA",
+        headline="Security Architect | (555) 123-4567",
+        skills=["Python"],
+        parsed_at="2026-01-01T00:00:00.000Z",
+    )
+
+    class _Repo:
+        def get_by_id(self, _id):
+            return {"parsed_profile_json": profile.model_dump_json(), "version": 2}
+
+    node = make_load_resume_node(resume_parser=None, observability=None, resume_repo=_Repo())
+    out = node({"workflow_id": "wf1", "resume_id": "r1"})
+
+    rp = out["resume_profile"]
+    assert "raw_text" not in rp
+    assert rp["name"] == PII_NAME_PLACEHOLDER
+    assert rp["email"] is None
+    assert rp["location"] is None
+    assert "[PHONE]" in rp["headline"]   # ADR-069 addendum scrub still applies
+    assert rp["skills"] == ["Python"]    # reasoning fields preserved
+    assert out["resume_version"] == 2
 
 
 def test_no_agent_context_carries_an_unredacted_profile():

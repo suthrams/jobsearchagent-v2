@@ -8,6 +8,7 @@ from typing import Callable
 from app.repositories.database import DEFAULT_USER_ID, utcnow_iso
 from app.repositories.resume_repository import ResumeRepository
 from app.schemas.resume_profile import ResumeProfile
+from app.services.context_trimmer import redact_pii_for_llm
 from app.services.observability_service import ObservabilityService
 from app.services.resume_parser import ResumeParser
 
@@ -40,8 +41,12 @@ def make_load_resume_node(
                 json.loads(row["parsed_profile_json"])
             )
             logger.info("load_resume: cache hit for resume_id %s in workflow %s", resume_id, workflow_id)
+            # ADR-070: store the REDACTED profile in state so raw_text + direct
+            # identifiers never enter workflow_runs.state_json or the checkpoints
+            # blob. Agents re-redact at their own seam (idempotent); the renderer
+            # reads the un-redacted source from the resumes row, not from state.
             return {
-                "resume_profile": profile.model_dump(),
+                "resume_profile": redact_pii_for_llm(profile.model_dump()),
                 "resume_version": row.get("version", 1),
                 "current_step": "resume_profile_loading",
                 "updated_at": utcnow_iso(),
@@ -65,8 +70,9 @@ def make_load_resume_node(
         )
         logger.info("load_resume: parsed PDF %s for workflow %s", resume_id, workflow_id)
 
+        # ADR-070: store the REDACTED profile in state (see cache-hit branch above).
         return {
-            "resume_profile": profile.model_dump(),
+            "resume_profile": redact_pii_for_llm(profile.model_dump()),
             "resume_version": 1,
             "current_step": "resume_profile_loading",
             "updated_at": utcnow_iso(),

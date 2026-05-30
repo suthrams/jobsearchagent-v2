@@ -1123,6 +1123,80 @@ the planner does fine without it.
 
 ---
 
+## 8A. Retention and Purge (ADR-070 — design ratified, implementation pending)
+
+[ADR-070](adr/ADR-070-data-retention-and-state-deduplication.md) implements the
+long-accepted [ADR-040](adr/ADR-040-define-data-retention-and-privacy-policy.md)
+retention policy. `purge_old_data()` (`database.py:381`) is extended from its
+current observability-only coverage to the PII tables, with cascade, and wired to
+an explicit trigger. **Purge is explicit — it never runs automatically** (no
+scheduler; precedent: "gate the irreversible", ADR-059).
+
+### Retention windows (read from `config.retention.*`)
+
+| Config key | Default | Drives deletion of |
+|---|---|---|
+| `workflow_runs_days` | 90 | `workflow_runs` rows older than the window (and their cascade children) |
+| `observability_days` | 30 | `step_executions`, `agent_events`, `llm_calls` (independent shorter window) |
+| `security_events_days` | 180 | `security_events` |
+| `memory_items_days` | 365 | `memory_items` |
+| `jobs_days` | 90 | `jobs` |
+| `resumes_days` | 365 (**new, ADR-070**) | **inactive** `resumes` older than the window, **only if not referenced by a non-purged run** |
+
+### Cascade map (a purged `workflow_runs` row deletes its children)
+
+When a run is purged, all rows that FK to its `workflow_run_id` are deleted in the
+same transaction, **children first then the parent** (referentially clean at every
+step):
+
+```text
+workflow_runs (purged on workflow_runs_days)
+  ├── job_scores
+  ├── review_rounds
+  ├── resume_reviews
+  ├── career_advice
+  ├── interview_prep
+  ├── tailored_resumes          (+ its decision columns)
+  ├── resume_clinic_reviews     (workflow_type="resume_clinic" correlation rows)
+  ├── human_decisions
+  └── step_executions / agent_events / llm_calls
+        (also swept earlier on observability_days; cascade catches any remainder)
+```
+
+`reports` / `run_metrics` (one per run) are deleted with their run as well.
+
+### Resume retention guard (not cascaded)
+
+The `resumes` row is **user-owned and longer-lived**, so it is NOT cascaded from a
+run. It is deleted only when ALL of:
+
+- `is_active = 0` (never delete the user's current resume, regardless of age), AND
+- `created_at` older than `resumes_days`, AND
+- **not referenced by any non-purged `workflow_run`** — a resume is cache-keyed by
+  `raw_text_hash` and can back multiple runs (spike Q4), so the reference check is
+  the gate, not age alone.
+
+### Trigger
+
+- `POST /admin/purge` — manual endpoint, returns the `{table: rows_deleted}` map
+  (identity via the ADR-062 seam). See `api_reference.md`.
+- `tools/purge_data.py` — CLI for headless runs (confirm-by-default, `--yes` to skip).
+- Streamlit Settings page — a confirm-gated "Run data-retention purge" control
+  that calls the endpoint and shows the result.
+- No automatic startup or scheduled sweep (opt-in startup flag is a named future
+  extension, not built).
+
+### De-duplication note (B3)
+
+ADR-070 also stops writing the full un-redacted profile into
+`workflow_runs.state_json`: `load_resume` stores the **redacted** profile
+(`redact_pii_for_llm`, ADR-069 shape) in state, so `raw_text` + direct identifiers
+no longer appear in `state_json` or the LangGraph `checkpoints` blob. The
+un-redacted profile lives only in the `resumes` row (which retention bounds). See
+`state_and_memory_model.md`.
+
+---
+
 ## 9. JSON Storage Strategy
 
 Most agent outputs are stored as JSON columns:

@@ -67,6 +67,7 @@ POST /users/{id}/resume-clinic                 → run a Resume Clinic review on
 GET  /users/{id}/resume-clinic                 → list past clinic runs for a profile
 POST /resume-clinic/{id}/decisions             → record approve / revise / reject / edit for a clinic review
 GET  /resume-clinic/{id}/export                → render the clinic resume in md/txt/html/json/docx/pdf (200)
+POST /admin/purge                              → run the data-retention purge (ADR-070; contract, impl pending, 200)
 ```
 
 **Identity (ADR-062).** Every endpoint resolves the acting profile through a
@@ -966,6 +967,52 @@ the source PDF or delete the resume row first via
 ### DELETE /users/{user_id}/resume/{resume_id}
 
 See [Resume management](#resume-management) above.
+
+---
+
+## Admin (ADR-070 — contract; implementation pending)
+
+### POST /admin/purge
+
+Run the configured data-retention purge (ADR-070, implementing ADR-040). Deletes
+rows older than the windows in `config.retention.*` across the PII and
+observability tables, cascading a purged `workflow_runs` row to its child rows
+(scores, reviews, advice, prep, tailorings, clinic reviews, decisions, events).
+The `resumes` row is purged on its own longer window and only when inactive and
+not referenced by a non-purged run (see `data_model.md` Section 8A).
+
+**Purge is explicit** — it never runs automatically. This endpoint, the
+`tools/purge_data.py` CLI, and a confirm-gated control on the Streamlit Settings
+page (which calls this endpoint) are the only triggers; no scheduler exists.
+
+**Request** — no body. Identity via the ADR-062 `?user_id=` seam (acting profile;
+purge windows are global, not per-user).
+
+**Response — 200 OK** — the `{table: rows_deleted}` map:
+
+```json
+{
+  "workflow_runs": 4,
+  "job_scores": 31,
+  "review_rounds": 12,
+  "resume_reviews": 4,
+  "career_advice": 9,
+  "interview_prep": 3,
+  "tailored_resumes": 5,
+  "resume_clinic_reviews": 2,
+  "human_decisions": 6,
+  "step_executions": 40,
+  "agent_events": 220,
+  "llm_calls": 180,
+  "security_events": 0,
+  "memory_items": 0,
+  "jobs": 18,
+  "resumes": 1
+}
+```
+
+**Idempotency** — Safe to re-run; a second immediate call returns mostly zeros
+(the window has not advanced).
 
 ---
 

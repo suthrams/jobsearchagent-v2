@@ -52,13 +52,17 @@ scrapers:
 
 # ─── v2 Data Retention ───────────────────────────────────────────────────────
 # Windows for the explicit purge (app.repositories.database.purge_old_data).
-# Purge is always manual — never runs automatically. Omit any key for the default.
+# Purge is always manual — never runs automatically (POST /admin/purge or
+# tools/purge_data.py). Omit any key for the default. ADR-070: purging a
+# workflow_runs row cascades to ALL its child rows; resumes are purged on their
+# own window and only when inactive AND no longer referenced by a surviving run.
 retention:
   workflow_runs_days: 90
   observability_days: 30
   security_events_days: 180
   memory_items_days: 365
   jobs_days: 90
+  resumes_days: 365
 
 # ─── v2 Per-Agent Model Assignment (ADR-053 + ADR-058) ───────────────────────
 # Each agent's default (provider, model). Per-profile overrides via the Settings

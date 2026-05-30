@@ -36,6 +36,7 @@ _PROTECTED_KEYS = {
     "retention.security_events_days",
     "retention.memory_items_days",
     "retention.jobs_days",
+    "retention.resumes_days",
 }
 
 # ADR-061: this is the discovery-SERVICE backstop (how many postings the scraper

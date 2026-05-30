@@ -431,3 +431,22 @@ def unexclude_job(job_id: str) -> dict:
     )
     r.raise_for_status()
     return r.json()
+
+
+# ── ADR-070: data-retention purge ────────────────────────────────────────────
+
+def purge_data() -> dict:
+    """POST /admin/purge - run the explicit data-retention purge (ADR-070).
+
+    Returns the `{table: rows_deleted}` map. Destructive and irreversible; the
+    UI must confirm before calling this. Windows come from config.yaml
+    (protected keys), not from the request. A first purge on a long-lived DB can
+    touch many tables, so use a generous timeout.
+    """
+    r = httpx.post(
+        f"{BASE_URL}/admin/purge",
+        params=_user_params(),
+        timeout=60.0,
+    )
+    r.raise_for_status()
+    return r.json()

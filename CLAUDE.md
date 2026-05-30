@@ -126,6 +126,8 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - `generate_report` updates `workflow_runs` with terminal status and final metrics
 - The langgraph SqliteSaver `checkpoints` table is for resumption only — query `workflow_runs` for UI / history reads
 - Schema changes to `data/v2.db` require updating BOTH the repository layer AND `app/ui/db_reader.py` (the UI read-path bypasses the API for performance — documented in `db_reader.py` header)
+- **Retention is explicit-trigger-only (ADR-070).** `purge_old_data()` never runs automatically — fire it via `POST /admin/purge`, the `tools/purge_data.py` CLI, or the confirm-gated control on the Streamlit Settings page. It deletes per `config.retention.*` windows, cascades a purged `workflow_runs` row to ALL its child rows (scores/reviews/advice/prep/tailorings/clinic-reviews/decisions/observability), and purges `resumes` on a separate longer window only when inactive AND not referenced by a non-purged run. See `data_model.md` Section 8A. (Design ratified; implementation pending.)
+- **`state["resume_profile"]` is stored REDACTED (ADR-070).** `load_resume` writes `redact_pii_for_llm(profile)` (the ADR-069 shape) into state, so `raw_text` + direct identifiers never enter `workflow_runs.state_json` or the `checkpoints` blob. The un-redacted profile's only at-rest home is the `resumes` row. (Design ratified; implementation pending.)
 
 **Resume Clinic rules (ADR-066)**
 - The clinic is out-of-graph (same pattern as on-demand tailoring, ADR-055). Endpoints: `POST /users/{id}/resume-clinic`, `GET /users/{id}/resume-clinic`, `POST /resume-clinic/{id}/decisions`, `GET /resume-clinic/{id}/export?format=...`. No `interrupt()`, no LangGraph entry. The runner writes a lightweight `workflow_runs` row (`workflow_type="resume_clinic"`, `user_id=profile`) used only as the cost-attribution correlation id for `llm_calls` / `agent_events`
@@ -179,7 +181,7 @@ app/
   ui/               ← Streamlit frontend (streamlit_app.py + db_reader.py + api_client.py)
 
 docs/architecture/
-  adr/              ← 68 Architecture Decision Records (start at ADR-000-index.md)
+  adr/              ← 70 Architecture Decision Records (start at ADR-000-index.md)
   implementation_plan.md
   agent_model.md · workflow_model.md · state_and_memory_model.md
   data_model.md · observability.md · security.model.md
@@ -213,7 +215,7 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 - `data_model.md` — all 20 SQLite table definitions (incl. `users`, ADR-062, and `resume_clinic_reviews`, ADR-066), per-column data dictionary, and per-table workflow usage
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
 - `api_surface_overview.md` — one-page visual map (PNG + Mermaid) of every REST endpoint grouped by domain
-- `adr/` — 68 Architecture Decision Records
+- `adr/` — 70 Architecture Decision Records
 
 ---
 

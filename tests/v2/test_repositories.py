@@ -421,3 +421,94 @@ def test_purge_does_not_remove_recent_rows(db_path):
 
     results = purge_old_data(db_path, config={"retention": {"jobs_days": 90}})
     assert results["jobs"] == 0
+
+
+_OLD_TS = "2020-01-01T00:00:00.000Z"
+
+
+def _insert_run(conn, run_id, ts, resume_id=None):
+    conn.execute(
+        "INSERT INTO workflow_runs (id, workflow_type, status, state_json, "
+        "resume_id, started_at, updated_at) VALUES (?, 'full', 'completed', '{}', ?, ?, ?)",
+        (run_id, resume_id, ts, ts),
+    )
+
+
+def test_purge_cascades_run_children(db_path):
+    """ADR-070: purging an expired run deletes ALL its child rows; a recent run and
+    its children survive (no cross-run over-deletion)."""
+    conn = sqlite3.connect(str(db_path))
+    _insert_run(conn, "old_run", _OLD_TS)
+    _insert_run(conn, "new_run", utcnow_iso())
+    # children of the OLD run (one per representative child table)
+    conn.execute("INSERT INTO job_scores (id, workflow_run_id, job_id, resume_id, score_json, created_at) "
+                 "VALUES ('s1','old_run','j1','r1','{}',?)", (_OLD_TS,))
+    conn.execute("INSERT INTO tailored_resumes (id, workflow_run_id, job_id, resume_id, tailored_json, created_at) "
+                 "VALUES ('t1','old_run','j1','r1','{}',?)", (_OLD_TS,))
+    conn.execute("INSERT INTO resume_clinic_reviews (id, user_id, resume_id, workflow_run_id, review_json, overhaul_json, created_at) "
+                 "VALUES ('c1','0','r1','old_run','{}','{}',?)", (_OLD_TS,))
+    conn.execute("INSERT INTO human_decisions (id, workflow_run_id, presented_at, decided_at) "
+                 "VALUES ('d1','old_run',?,?)", (_OLD_TS, _OLD_TS))
+    # a child of the NEW run that must survive
+    conn.execute("INSERT INTO job_scores (id, workflow_run_id, job_id, resume_id, score_json, created_at) "
+                 "VALUES ('s2','new_run','j2','r2','{}',?)", (utcnow_iso(),))
+    conn.commit()
+    conn.close()
+
+    results = purge_old_data(db_path, config={"retention": {"workflow_runs_days": 90}})
+
+    assert results["workflow_runs"] == 1
+    assert results["job_scores"] == 1          # only s1 cascaded; s2 (new run) kept
+    assert results["tailored_resumes"] == 1
+    assert results["resume_clinic_reviews"] == 1
+    assert results["human_decisions"] == 1
+
+    conn = sqlite3.connect(str(db_path))
+    assert [r[0] for r in conn.execute("SELECT id FROM workflow_runs")] == ["new_run"]
+    assert [r[0] for r in conn.execute("SELECT id FROM job_scores")] == ["s2"]
+    assert conn.execute("SELECT COUNT(*) FROM tailored_resumes").fetchone()[0] == 0
+    assert conn.execute("SELECT COUNT(*) FROM human_decisions").fetchone()[0] == 0
+    conn.close()
+
+
+def test_purge_keeps_active_resume_regardless_of_age(db_path):
+    """The user's active resume is never purged, even when old."""
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("INSERT INTO resumes (id, is_active, created_at) VALUES ('active_old', 1, ?)", (_OLD_TS,))
+    conn.commit()
+    conn.close()
+
+    results = purge_old_data(db_path, config={"retention": {"resumes_days": 365}})
+    assert results["resumes"] == 0
+
+
+def test_purge_deletes_inactive_unreferenced_resume(db_path):
+    """An inactive resume past the window, referenced only by a purged run, is deleted."""
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("INSERT INTO resumes (id, is_active, created_at) VALUES ('stale', 0, ?)", (_OLD_TS,))
+    _insert_run(conn, "old_run", _OLD_TS, resume_id="stale")  # the only referer is expired
+    conn.commit()
+    conn.close()
+
+    results = purge_old_data(db_path, config={"retention": {"workflow_runs_days": 90, "resumes_days": 365}})
+    assert results["workflow_runs"] == 1
+    assert results["resumes"] == 1
+
+
+def test_purge_keeps_inactive_resume_referenced_by_surviving_run(db_path):
+    """The reference guard: an old inactive resume still backing a NON-purged run
+    survives (a resume can back multiple runs - cache-keyed by raw_text_hash)."""
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("INSERT INTO resumes (id, is_active, created_at) VALUES ('shared', 0, ?)", (_OLD_TS,))
+    _insert_run(conn, "old_run", _OLD_TS, resume_id="shared")        # expired
+    _insert_run(conn, "recent_run", utcnow_iso(), resume_id="shared")  # surviving referer
+    conn.commit()
+    conn.close()
+
+    results = purge_old_data(db_path, config={"retention": {"workflow_runs_days": 90, "resumes_days": 365}})
+    assert results["workflow_runs"] == 1   # only old_run
+    assert results["resumes"] == 0         # 'shared' kept: still referenced by recent_run
+
+    conn = sqlite3.connect(str(db_path))
+    assert [r[0] for r in conn.execute("SELECT id FROM resumes")] == ["shared"]
+    conn.close()
