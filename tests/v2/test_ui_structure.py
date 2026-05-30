@@ -21,9 +21,11 @@ _ENTRYPOINT = Path(__file__).resolve().parents[2] / "app" / "ui" / "streamlit_ap
 
 def test_refactor_packages_import_clean():
     """The refactor modules import without a Streamlit runtime (no st.* runs at
-    import: formatting is pure; data only applies @st.cache_data decorators)."""
+    import: formatting is pure; data only applies @st.cache_data decorators; view
+    bodies live inside render())."""
     importlib.import_module("app.ui.nav")
-    importlib.import_module("app.ui.views")
+    importlib.import_module("app.ui.views")          # also builds REGISTRY
+    importlib.import_module("app.ui.views.run_report")
     importlib.import_module("app.ui.components")
     importlib.import_module("app.ui.components.bullets")
     importlib.import_module("app.ui.components.tailoring")
@@ -40,22 +42,23 @@ def test_nav_views_are_unique_and_exclude_separator():
 
 
 def test_view_registry_is_a_subset_of_nav_and_all_callable():
-    """During migration VIEW_REGISTRY grows from {} until it covers every view. It
-    must never name something that is not a real view, and every entry must be a
-    callable render(). When migration completes, set(VIEW_REGISTRY) == NAV_VIEWS."""
-    assert set(nav.VIEW_REGISTRY) <= set(nav.NAV_VIEWS), (
-        "VIEW_REGISTRY has a key that is not a nav view"
+    """During migration REGISTRY grows from {} until it covers every view. It must
+    never name something that is not a real view, and every entry must be a
+    callable render(). When migration completes, set(REGISTRY) == set(NAV_VIEWS)."""
+    from app.ui.views import REGISTRY
+    assert set(REGISTRY) <= set(nav.NAV_VIEWS), (
+        "REGISTRY has a key that is not a nav view"
     )
-    for name, fn in nav.VIEW_REGISTRY.items():
-        assert callable(fn), f"VIEW_REGISTRY[{name!r}] is not callable"
+    for name, fn in REGISTRY.items():
+        assert callable(fn), f"REGISTRY[{name!r}] is not callable"
 
 
 def test_registered_views_expose_render_without_running_streamlit():
-    """Every migrated view module must expose a callable render(); importing it
-    must not execute Streamlit (the body lives inside render()). Trivially passes
-    while VIEW_REGISTRY is empty (Phase 0) and tightens as views migrate."""
-    for name in nav.VIEW_REGISTRY:
-        fn = nav.VIEW_REGISTRY[name]
+    """Every migrated view exposes a callable render(ctx); importing its module did
+    not execute Streamlit (else app.ui.views import above would have raised). The
+    set tightens toward full coverage as views migrate."""
+    from app.ui.views import REGISTRY
+    for name, fn in REGISTRY.items():
         assert callable(fn), f"{name!r} render is not callable"
 
 

@@ -60,7 +60,9 @@ from app.ui.data import (
 # Shared render components extracted to app/ui/components/ (UI refactor Phase 2).
 from app.ui.components.bullets import _bullets, _para
 from app.ui.components.tailoring import _render_tailoring_card
-from app.ui.components.tracks import render_track_table
+# Migrated per-screen views + their dispatch registry (UI refactor Phase 3).
+# (render_track_table / load_scored_jobs now live in the migrated analytics view.)
+from app.ui.views import REGISTRY as VIEW_REGISTRY
 from app.services.constraint_analyzer import analyze, summary_metrics
 from app.services.cost_breakdown import (
     all_runs_by_cost,
@@ -79,7 +81,6 @@ from app.ui.db_reader import (
     load_llm_calls,
     load_persisted_workflow_runs,
     load_recent_workflows,
-    load_scored_jobs,
     load_step_executions,
     load_user_clinic_reviews,
     load_user_resumes,
@@ -267,6 +268,15 @@ with st.sidebar:
 
 if view == nav.SEPARATOR:
     st.info("Select a view from the sidebar.")
+    st.stop()
+
+# ── Registry dispatch (UI refactor Phase 3) ───────────────────────────────────
+# Views migrated into app/ui/views/ render here via REGISTRY[view](ctx); the
+# legacy if/elif chain below handles the rest until they migrate too. ctx carries
+# the sidebar filter widgets; workflow_id / current_user_id stay on session_state.
+ctx = nav.ViewContext(min_score=min_score, search=search, include_excluded=include_excluded)
+if view in VIEW_REGISTRY:
+    VIEW_REGISTRY[view](ctx)
     st.stop()
 
 
@@ -1466,32 +1476,6 @@ elif view == "Live Run Monitor":
 # ══════════════════════════════════════════════════════════════════════════════
 # RUN REPORT
 # ══════════════════════════════════════════════════════════════════════════════
-
-elif view == "Run Report":
-    st.header("Run Report")
-    wf_id = st.session_state.workflow_id
-    if not wf_id:
-        st.warning("No active workflow.")
-        st.stop()
-    status = st.session_state.last_status
-    if status not in ("completed", "completed_with_errors"):
-        st.info(f"Report is available when the workflow completes. Current status: `{status or 'not started'}`.")
-        st.stop()
-    try:
-        with st.spinner("Loading report…"):
-            resp = api.get_report(wf_id)
-        report = resp.get("report") or {}
-        st.caption(f"Generated: {report.get('generated_at', '—')}")
-        st.markdown(report.get("markdown", "_No report content._"))
-        st.download_button(
-            "Download Markdown",
-            data=report.get("markdown", ""),
-            file_name=f"report_{wf_id}.md",
-            mime="text/markdown",
-        )
-    except Exception as exc:
-        st.error(f"Could not fetch report: {exc}")
-
 
 # ══════════════════════════════════════════════════════════════════════════════
 # RESUME CLINIC (ADR-066) — standalone, job-agnostic resume review
@@ -2833,95 +2817,5 @@ elif view == "Cost Dashboard":
                 st.success(f"Gap: ${gap:+.4f} ({gap_pct:+.0f}%) — within the normal range.")
 
 
-elif view == "Top Matches":
-    st.header("Top Matches (across all runs)")
-    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
-    if df.empty:
-        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
-                "results will populate this view automatically.")
-        st.stop()
-    if search:
-        mask = (
-            df["title"].str.contains(search, case=False, na=False)
-            | df["company"].str.contains(search, case=False, na=False)
-        )
-        df = df[mask]
-    filtered = df[df["overall_score"] >= min_score].copy()
-    m1, m2, m3 = st.columns(3)
-    m1.metric("Total scored", len(df))
-    m2.metric(f"Score >= {min_score}", len(filtered))
-    m3.metric("Companies", filtered["company"].nunique())
-    render_track_table(filtered, "overall_score", min_score)
-
-
-elif view == "IC Track":
-    st.header("IC Engineering Track")
-    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
-    if df.empty:
-        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
-                "jobs scored on the IC track will appear here.")
-        st.stop()
-    render_track_table(df, "technical_score", min_score)
-
-
-elif view == "Architect Track":
-    st.header("Architect Track")
-    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
-    if df.empty:
-        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
-                "jobs scored on the Architect track will appear here.")
-        st.stop()
-    render_track_table(df, "architecture_score", min_score)
-
-
-elif view == "Management Track":
-    st.header("Management Track")
-    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
-    if df.empty:
-        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
-                "jobs scored on the Management track will appear here.")
-        st.stop()
-    render_track_table(df, "leadership_score", min_score)
-
-
-elif view == "Companies":
-    st.header("Top Target Companies")
-    df = load_scored_jobs(include_excluded=include_excluded, user_id=st.session_state.current_user_id)
-    if df.empty:
-        st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
-                "this view aggregates the best score per company across all runs.")
-        st.stop()
-    agg = (
-        df.groupby("company")
-        .agg(
-            jobs=("job_id", "count"),
-            best_overall=("overall_score", "max"),
-            best_technical=("technical_score", "max"),
-            best_arch=("architecture_score", "max"),
-            best_lead=("leadership_score", "max"),
-        )
-        .reset_index()
-        .sort_values("best_overall", ascending=False)
-    )
-    agg = agg[agg["best_overall"] >= min_score]
-    top = agg.head(20).sort_values("best_overall")
-    fig = px.bar(
-        top, x="best_overall", y="company", orientation="h",
-        color="best_overall", color_continuous_scale="teal",
-        labels={"best_overall": "Best Score", "company": "Company"},
-        title=f"Top {len(top)} Companies by Best Match Score",
-        text="best_overall",
-    )
-    fig.update_layout(showlegend=False, coloraxis_showscale=False, height=500)
-    fig.update_traces(textposition="outside")
-    st.plotly_chart(fig, use_container_width=True)
-    st.dataframe(
-        agg.rename(columns={
-            "company": "Company", "jobs": "Roles",
-            "best_overall": "Best", "best_technical": "Tech",
-            "best_arch": "Arch", "best_lead": "Lead",
-        }),
-        hide_index=True, use_container_width=True,
-    )
 
 

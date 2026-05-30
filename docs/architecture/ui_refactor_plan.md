@@ -311,10 +311,20 @@ views**; never break the running app between commits. Each phase is its own comm
   Tests grew (component import-smoke + `_stage_progress` unit test). Entrypoint
   3,388 -> 2,927 lines. 813 pass.
 
-- **Phase 3 — Extract leaf views.**
-  Move the small, dependency-light views first: Run Report, Companies, the three
-  Track views + Top Matches (-> `analytics.py`), Live Run Monitor, Job Detail,
-  Start New Run. Each becomes a `views/*.py` with `render()`, registered in `nav.py`.
+- **Phase 3 — Extract leaf views.** Split into 3a (done) and 3b (pending).
+  - **3a [DONE 2026-05-30]:** established the dispatch mechanism — a frozen
+    `ViewContext` (the sidebar filters: `min_score` / `search` /
+    `include_excluded`) built after the sidebar and passed to every `render(ctx)`;
+    a `REGISTRY` in `views/__init__.py` (kept there, not in `nav.py`, so view
+    modules import `ViewContext` from the leaf `nav` without a cycle); and a
+    registry-dispatch block before the legacy `if/elif` chain. Migrated the
+    `ctx`-only views: Run Report (`views/run_report.py`) and the five analytics
+    views -> `views/analytics.py` (Top Matches, IC/Architect/Management Track,
+    Companies). The structure test now checks `views.REGISTRY` (a subset of
+    `NAV_VIEWS`, all callable). Entrypoint 2,927 -> 2,821 lines; 6 views off the
+    `if/elif` chain (9 remain). 813 pass.
+  - **3b [PENDING]:** move `_navigate` to `nav.py`, then migrate Live Run Monitor,
+    Job Detail, Start New Run (these use `_navigate`).
 
 - **Phase 4 — Extract hub views.**
   The big ones, one commit each: Workflow History, Workflow Detail, Cost Dashboard,
