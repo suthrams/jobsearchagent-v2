@@ -244,11 +244,16 @@ per unit of effort.
    failing the build if one bypasses the redaction helper (state-write sites are
    explicitly allowlisted). Forcing function, consistent with the model-pin
    invariant.
-4. **[OPEN] Encryption / retention at rest (closes B1, B2).** Separate, larger track:
-   evaluate SQLCipher or application-level field encryption for `raw_text` and
-   `state_json`, plus a time-based purge honoring ADR-040. Sequenced after the
-   send-side fixes because it is higher-effort and the send side is the larger
-   live exposure.
+4. **[OPEN] Encryption / retention at rest (closes B1, B2).** Separate, larger
+   track, analyzed in
+   [`spike_data_at_rest_security.md`](spike_data_at_rest_security.md). Spike
+   recommendation: Phase 1 = retention + de-duplication (Option A, wires/completes
+   `purge_old_data` and stops duplicating the full profile into `state_json`);
+   Phase 2 = app-level field encryption (Option B), with SQLCipher (Option C)
+   reserved for a hosted/multi-user future. SQLCipher is penalized here because the
+   LangGraph `SqliteSaver` shares `data/v2.db` with no key support and needs a
+   Windows-compiled dependency. Sequenced after the send-side fixes because it is
+   higher-effort and the send side was the larger live exposure.
 
 Findings A1 and A2 are the immediate "hole" the current work plugs; B1/B2 are the
 follow-on at-rest hardening.
