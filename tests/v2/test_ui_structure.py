@@ -27,6 +27,7 @@ def test_refactor_packages_import_clean():
     importlib.import_module("app.ui.views")          # also builds REGISTRY
     importlib.import_module("app.ui.views.run_report")
     importlib.import_module("app.ui.views.history")
+    importlib.import_module("app.ui.views.workflow_detail")
     importlib.import_module("app.ui.views.cost_dashboard")
     importlib.import_module("app.ui.views.profiles")
     importlib.import_module("app.ui.views.settings")
@@ -50,13 +51,15 @@ def test_nav_views_are_unique_and_exclude_separator():
     assert nav.NAV_VIEWS == [i for i in nav.NAV_ITEMS if i != nav.SEPARATOR]
 
 
-def test_view_registry_is_a_subset_of_nav_and_all_callable():
-    """During migration REGISTRY grows from {} until it covers every view. It must
-    never name something that is not a real view, and every entry must be a
-    callable render(). When migration completes, set(REGISTRY) == set(NAV_VIEWS)."""
+def test_view_registry_covers_every_nav_view_and_all_callable():
+    """Migration is complete: every nav view has a registered render(ctx), and the
+    registry names nothing that is not a real view. A new nav entry without a
+    render (or a typo'd key) fails here."""
     from app.ui.views import REGISTRY
-    assert set(REGISTRY) <= set(nav.NAV_VIEWS), (
-        "REGISTRY has a key that is not a nav view"
+    assert set(REGISTRY) == set(nav.NAV_VIEWS), (
+        "REGISTRY must map exactly the nav views; "
+        f"missing={set(nav.NAV_VIEWS) - set(REGISTRY)}, "
+        f"extra={set(REGISTRY) - set(nav.NAV_VIEWS)}"
     )
     for name, fn in REGISTRY.items():
         assert callable(fn), f"REGISTRY[{name!r}] is not callable"

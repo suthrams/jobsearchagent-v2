@@ -332,7 +332,7 @@ views**; never break the running app between commits. Each phase is its own comm
     `_bullets` / `_para`). Entrypoint 2,821 -> 2,300 lines; 9 views now off the
     `if/elif` chain, 6 hub views remain (Phase 4). 813 pass.
 
-- **Phase 4 — Extract hub views. [IN PROGRESS]** One commit each:
+- **Phase 4 — Extract hub views. [DONE 2026-05-30]** One commit each:
   - [x] Workflow History -> `views/history.py` (was the leading `if`; Workflow
         Detail promoted to the chain's `if`). Entrypoint 2,300 -> 2,107 lines.
   - [x] Cost Dashboard -> `views/cost_dashboard.py`. Entrypoint 2,107 -> 1,809.
@@ -342,7 +342,13 @@ views**; never break the running app between commits. Each phase is its own comm
   - [x] Resume Clinic -> `views/resume_clinic.py` (extracted whole; the body was
         already 4-space indented so it dropped straight into render()). Entrypoint
         1,308 -> 752.
-  - [ ] Workflow Detail (the last inline view)
+  - [x] Workflow Detail -> `views/workflow_detail.py` (the last inline view).
+        With it gone the legacy `if/elif` chain is empty, so 16 now-unused imports
+        were dropped from the entrypoint (the registry dispatch is the sole view
+        path). The registry test was tightened from subset to `== NAV_VIEWS`.
+        Entrypoint 752 -> 215 lines.
+
+  **Phase 4 result: entrypoint 3,665 -> 215 lines; all 15 views in `app/ui/views/`.**
 
 - **Phase 5 — Thin the entrypoint + nav.**
   Move the sidebar builder and `_navigate` into `nav.py`; reduce

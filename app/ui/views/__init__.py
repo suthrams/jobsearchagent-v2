@@ -28,11 +28,13 @@ from app.ui.views import (
     run_report,
     settings,
     start_run,
+    workflow_detail,
 )
 
-# name -> render(ctx) callable. Grows one entry per migrated view (Phases 3-4).
+# name -> render(ctx) callable. Every nav view is now registered (Phase 4 complete).
 REGISTRY: dict[str, Callable[[ViewContext], None]] = {
     "Workflow History": history.render,
+    "Workflow Detail": workflow_detail.render,
     "Cost Dashboard": cost_dashboard.render,
     "Profiles": profiles.render,
     "Settings": settings.render,
