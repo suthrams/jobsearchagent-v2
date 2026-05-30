@@ -122,10 +122,9 @@ a behavioral test.
 ### Out of scope
 
 - **Free-text scrubbing.** `headline` and `summary` are prose that could, in
-  principle, contain the candidate's name or a contact detail. v1 of this seam
-  does not scrub free text. Residual risk is accepted and recorded; a softer
-  control (instructing the parser prompt to keep `summary` free of direct
-  identifiers) can follow.
+  principle, contain the candidate's name or a contact detail. The initial seam
+  did not scrub free text. **Partially addressed by the 2026-05-30 addendum
+  below** (phone + email now scrubbed); name-in-prose remains residual.
 - **PII at rest.** Encryption of `raw_text` / `state_json` and a time-based purge
   (ADR-040, findings B1/B2 in `pii_data_flow.md`) are a separate, higher-effort
   track. This ADR is send-side only - the larger live exposure.
@@ -164,8 +163,8 @@ a behavioral test.
 
 ### Tradeoffs
 
-- Free-text `summary` / `headline` may still carry a name; not scrubbed in v1
-  (documented residual risk).
+- Free-text `summary` / `headline` may still carry a **name** in prose; not
+  scrubbed (phone + email now are - see addendum). Documented residual risk.
 - One more transformation between the stored profile and the agent context;
   contributors must route new profile-bearing contexts through the helper (the
   test enforces this).
@@ -179,6 +178,68 @@ a behavioral test.
 - Tests: redaction unit cases (name placeholdered, email/location/raw_text gone,
   experience/education/skills intact), clinic-routes-through-helper, and the
   boundary invariant across all context sites.
+
+## Addendum (2026-05-30): scrub inline phone + email from free-text fields
+
+**Status: Implemented** (same day as the base ADR).
+
+### Context
+
+The base ADR redacts the *structured* direct identifiers (`name`, `email`,
+`location`, `file_name`) but keeps `headline` and `summary` because agents reason
+over them, leaving free-text contact details as documented residual risk. The
+most common instance is a **phone number on the resume's headline/contact line** -
+e.g. the parser captures `"Jane Doe | Security Architect | (555) 123-4567"` as the
+headline. Phone is not a `ResumeProfile` field, so the base seam never touched it;
+the number rode into every agent context inside `headline`/`summary`.
+
+### Decision
+
+Scrub inline phone numbers and email addresses out of the kept free-text fields
+(`_FREE_TEXT_PII_FIELDS = ("headline", "summary")`) inside `redact_pii_for_llm`,
+replacing matches with `[PHONE]` / `[EMAIL]` placeholders. Deterministic regex, no
+LLM:
+
+- **Phone** (`_PHONE_RE`) matches the common resume layouts - `(555) 123-4567`,
+  `555-123-4567`, `555.123.4567`, `555 123 4567`, `+1 ...`, `1-800-555-0199`, and
+  bare 10-11 digit runs - and is tuned **against** the numeric content that is not
+  a phone number on a resume: years (`2019-2021`), percentages (`300%`), counts
+  (`50`, `1,000`), money (`$2.5M`), GPAs (`3.9/4.0`), versions (`3.11`), IP
+  addresses (`10.0.0.1`). The digit/dot lookaround boundaries and the
+  required-separator grouping exclude those.
+- **Email** (`_EMAIL_RE`, same pattern as the parser) catches an address written
+  into prose even though the structured `email` field is already dropped. Scrubbed
+  first so a phone-shaped run inside an address cannot be partially matched.
+
+The prose is otherwise preserved, so positioning/skills reasoning is unaffected.
+
+### Options considered
+
+- **Regex scrub of headline + summary (chosen).** Deterministic, free, transparent,
+  matches the project's existing regex-filter style (ADR-065). Limitation: only the
+  common phone shapes; unusual international groupings and spelled-out numbers slip.
+- **Scrub every free-text field (experience/education descriptions too).** Rejected
+  for now - low likelihood of a phone there, and a wider scrub raises the
+  false-positive surface (those fields are dense with metrics). Easy to extend the
+  tuple if a real case appears.
+- **LLM-based PII detection (Presidio / NER).** Rejected - adds cost and a quality
+  failure mode for a contact-line problem a tuned regex solves deterministically.
+  Remains the production-grade upgrade path noted in `pii_data_flow.md`.
+
+### Residual (narrowed, not closed)
+
+- A **name** in free-text prose is still not redacted (needs NER; out of scope).
+- Unusual/international phone groupings and spelled-out numbers may slip - the
+  regex covers the common numeric forms (same recall-oriented stance as ADR-065).
+- The sanctioned `raw_text` paths (parser, clinic Fidelity Reviewer) are
+  intentionally **not** scrubbed - they must see the resume faithfully.
+
+### Tests
+
+`tests/v2/test_context_trimmer.py` gains phone-format cases (parenthesized,
+dashed, dotted, spaced, `+cc`, bare) and email-in-prose, plus false-positive
+guards (years, percentages, counts, money, GPA, version, IP must survive
+untouched).
 
 ## References
 

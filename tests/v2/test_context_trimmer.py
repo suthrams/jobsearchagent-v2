@@ -10,7 +10,9 @@ from __future__ import annotations
 import pytest
 
 from app.services.context_trimmer import (
+    PII_EMAIL_PLACEHOLDER,
     PII_NAME_PLACEHOLDER,
+    PII_PHONE_PLACEHOLDER,
     redact_pii_for_llm,
     trim_career_advice,
     trim_resume_profile,
@@ -85,6 +87,64 @@ def test_resume_profile_handles_empty_or_none():
     assert trim_resume_profile({}) == {}
     assert redact_pii_for_llm(None) == {}
     assert redact_pii_for_llm({}) == {}
+
+
+# ── free-text contact scrubbing (ADR-069 addendum) ───────────────────────────
+
+@pytest.mark.parametrize("phone", [
+    "(555) 123-4567",
+    "555-123-4567",
+    "555.123.4567",
+    "555 123 4567",
+    "+1 555-123-4567",
+    "1-800-555-0199",
+    "5551234567",
+])
+def test_headline_phone_is_scrubbed(phone):
+    """A phone number on the headline/contact line is the common case (ADR-069
+    addendum). It must not reach the model."""
+    out = redact_pii_for_llm({
+        "headline": f"Jane Doe | Security Architect | {phone}",
+        "skills": ["Python"],
+    })
+    assert phone not in out["headline"]
+    assert PII_PHONE_PLACEHOLDER in out["headline"]
+    # surrounding prose is preserved
+    assert "Security Architect" in out["headline"]
+
+
+def test_summary_phone_and_email_scrubbed():
+    out = redact_pii_for_llm({
+        "summary": "Reach me at jane@example.com or (555) 123-4567 anytime.",
+    })
+    assert "jane@example.com" not in out["summary"]
+    assert "(555) 123-4567" not in out["summary"]
+    assert PII_EMAIL_PLACEHOLDER in out["summary"]
+    assert PII_PHONE_PLACEHOLDER in out["summary"]
+
+
+@pytest.mark.parametrize("text", [
+    "Reduced costs 300% over 2019-2021.",
+    "Led 50 engineers across 12 teams.",
+    "Grew revenue to $2,500,000 in FY2024.",
+    "Maintained 99.99% uptime on Python 3.11.",
+    "GPA 3.9/4.0; deployed to 10.0.0.1.",
+    "Scaled from 1,000 to 1,000,000 users.",
+])
+def test_resume_metrics_are_not_mistaken_for_phone(text):
+    """False-positive guard: numeric resume content (years, percentages, counts,
+    money, GPA, versions, IPs) must survive untouched - it is load-bearing for
+    fit reasoning."""
+    out = redact_pii_for_llm({"summary": text})
+    assert out["summary"] == text
+    assert PII_PHONE_PLACEHOLDER not in out["summary"]
+
+
+def test_scrub_leaves_clean_free_text_unchanged():
+    profile = {"headline": "Senior Security Architect", "summary": "Cloud and IAM leader."}
+    out = redact_pii_for_llm(profile)
+    assert out["headline"] == "Senior Security Architect"
+    assert out["summary"] == "Cloud and IAM leader."
 
 
 # ── trim_review ──────────────────────────────────────────────────────────────

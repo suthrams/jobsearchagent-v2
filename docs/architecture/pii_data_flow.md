@@ -96,8 +96,12 @@ every agent (finding A1).
 `BaseAgent._run` still forwards the context dict straight to
 `provider.complete()` and `PromptLoader` serializes it as-is - so redaction must
 happen before the profile enters the context, which is exactly what the seam
-guarantees. Residual: free-text `summary` / `headline` are not scrubbed and could
-contain a name (accepted, see ADR-069 "out of scope").
+guarantees. The free-text `headline` / `summary` fields are kept (agents reason
+over them) but have inline **phone numbers and email addresses scrubbed** to
+`[PHONE]` / `[EMAIL]` via a deterministic regex (ADR-069 addendum) - this closes
+the common case of a phone number on the resume's headline/contact line. Residual:
+a **name** written into that prose is still not redacted (needs NER; accepted, see
+ADR-069 "out of scope").
 
 ### 3.2 Per-agent PII reaching the model (post ADR-069)
 

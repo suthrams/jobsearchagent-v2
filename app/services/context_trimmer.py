@@ -14,6 +14,8 @@ context is being assembled.
 """
 from __future__ import annotations
 
+import re
+
 
 # Direct identifiers redacted before a resume profile enters any agent LLM
 # context (ADR-069). The name is replaced with a placeholder rather than dropped
@@ -23,7 +25,47 @@ from __future__ import annotations
 # renderer (resume_text_renderer.compose_resume) re-inserts real identity from
 # the STORED profile, not from LLM output.
 PII_NAME_PLACEHOLDER = "[CANDIDATE]"
+PII_PHONE_PLACEHOLDER = "[PHONE]"
+PII_EMAIL_PLACEHOLDER = "[EMAIL]"
 _PII_DROP_FIELDS = ("email", "location", "file_name")
+
+# Free-text fields that SURVIVE redaction (agents reason over them) but can still
+# carry an inline contact detail - most commonly a phone number on a resume's
+# headline/contact line, e.g. "Jane Doe | Security Architect | (555) 123-4567"
+# (ADR-069 addendum, 2026-05-30). These are scrubbed deterministically below.
+_FREE_TEXT_PII_FIELDS = ("headline", "summary")
+
+# Phone numbers in the common resume layouts: (555) 123-4567, 555-123-4567,
+# 555.123.4567, 555 123 4567, +1 555-123-4567, 1-800-555-0199, and bare 10-11
+# digit runs. Tuned to NOT match the numeric content that is *not* a phone on a
+# resume: years (2019-2021), percentages (300%), counts (50 / 1,000), money
+# ($2.5M), GPAs (3.9/4.0), versions (3.11), IPs (10.0.0.1). Each either lacks the
+# phone-shaped grouping or is excluded by the digit/dot boundaries. Unusual
+# international groupings (e.g. "+44 20 7946 0958") are covered only when they
+# fit the area-3-3/4 shape - the rest is documented residual (ADR-069).
+_PHONE_RE = re.compile(
+    r"(?<![\w.])"                       # left boundary; not after a word char or dot
+    r"(?:\+?\d{1,3}[\s.\-]?)?"          # optional country code
+    r"(?:"
+    r"\(\d{2,4}\)[\s.\-]?\d{3}[\s.\-]?\d{3,4}"   # (xxx) xxx-xxxx
+    r"|\d{2,4}[\s.\-]\d{3}[\s.\-]\d{3,4}"        # xxx-xxx-xxxx (separator required)
+    r"|\d{10,11}"                                 # bare 10-11 digit run
+    r")"
+    r"(?![\w.])"                        # right boundary; not before a word char or dot
+)
+
+_EMAIL_RE = re.compile(r"[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}")
+
+
+def _scrub_contact_pii(text: str) -> str:
+    """Replace inline phone numbers and email addresses in free text with
+    placeholders (ADR-069 addendum). Deterministic, no LLM. Email is also a
+    structured field we drop, but an address written into prose would otherwise
+    survive. Email is scrubbed first so a phone-shaped digit run inside an
+    address cannot be partially matched."""
+    text = _EMAIL_RE.sub(PII_EMAIL_PLACEHOLDER, text)
+    text = _PHONE_RE.sub(PII_PHONE_PLACEHOLDER, text)
+    return text
 
 
 def redact_pii_for_llm(profile: dict | None) -> dict:
@@ -35,11 +77,14 @@ def redact_pii_for_llm(profile: dict | None) -> dict:
     - ``name`` -> replaced with ``PII_NAME_PLACEHOLDER`` when present (``None``
       stays ``None``).
     - ``email`` / ``location`` / ``file_name`` -> dropped (set to ``None``).
+    - ``headline`` / ``summary`` -> inline phone numbers and email addresses
+      scrubbed to placeholders (ADR-069 addendum); the prose is otherwise kept
+      because agents reason over it.
 
     Kept (quasi-identifiers the agents reason over): headline, summary, skills,
-    skill_groups, experience[], education[], certifications[]. Phone and street
-    address are not structured profile fields - they live only in raw_text,
-    which is dropped here.
+    skill_groups, experience[], education[], certifications[]. Phone numbers have
+    no structured field of their own - they live only in raw_text (dropped here)
+    or inline in the free-text fields (scrubbed here).
     """
     if not profile:
         return {}
@@ -49,6 +94,10 @@ def redact_pii_for_llm(profile: dict | None) -> dict:
     for field in _PII_DROP_FIELDS:
         if field in out:
             out[field] = None
+    for field in _FREE_TEXT_PII_FIELDS:
+        val = out.get(field)
+        if isinstance(val, str) and val:
+            out[field] = _scrub_contact_pii(val)
     return out
 
 
