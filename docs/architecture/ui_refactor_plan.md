@@ -332,10 +332,14 @@ views**; never break the running app between commits. Each phase is its own comm
     `_bullets` / `_para`). Entrypoint 2,821 -> 2,300 lines; 9 views now off the
     `if/elif` chain, 6 hub views remain (Phase 4). 813 pass.
 
-- **Phase 4 — Extract hub views.**
-  The big ones, one commit each: Workflow History, Workflow Detail, Cost Dashboard,
-  Settings (carry the ADR-070 purge control intact), Profiles, Resume Clinic
-  (largest — may split into `resume_clinic.py` + a private helpers module).
+- **Phase 4 — Extract hub views. [IN PROGRESS]** One commit each:
+  - [x] Workflow History -> `views/history.py` (was the leading `if`; Workflow
+        Detail promoted to the chain's `if`). Entrypoint 2,300 -> 2,107 lines.
+  - [ ] Workflow Detail
+  - [ ] Cost Dashboard
+  - [ ] Settings (carry the ADR-070 purge control intact)
+  - [ ] Profiles
+  - [ ] Resume Clinic (largest — may split into `resume_clinic.py` + helpers)
 
 - **Phase 5 — Thin the entrypoint + nav.**
   Move the sidebar builder and `_navigate` into `nav.py`; reduce

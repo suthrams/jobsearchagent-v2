@@ -26,6 +26,7 @@ def test_refactor_packages_import_clean():
     importlib.import_module("app.ui.nav")
     importlib.import_module("app.ui.views")          # also builds REGISTRY
     importlib.import_module("app.ui.views.run_report")
+    importlib.import_module("app.ui.views.history")
     importlib.import_module("app.ui.views.analytics")
     importlib.import_module("app.ui.views.live_monitor")
     importlib.import_module("app.ui.views.job_detail")
