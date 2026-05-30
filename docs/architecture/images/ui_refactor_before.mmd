@@ -1,0 +1,24 @@
+flowchart TB
+    subgraph MONO["streamlit_app.py - ONE FILE, 3,665 lines"]
+        direction TB
+        setup["imports + sys.path bootstrap - L1-64<br/>@st.cache_data wrappers - L65-103<br/>st.set_page_config + setup - L105-132"]
+        helpers["26 helpers, MIXED concerns - L134-894<br/>pure formatting + render components<br/>+ navigation + cached data access"]
+        nav["sidebar nav, view = st.radio - L896-1013"]
+        subgraph DISPATCH["flat if / elif view == ... chain - L1015-3665"]
+            direction TB
+            row1["Workflow History 189   Workflow Detail 510   Job Detail 183"]
+            row2["Start New Run 187   Live Run Monitor 124   Run Report 30"]
+            row3["Resume Clinic 555   Settings 270   Profiles 229"]
+            row4["Cost Dashboard 282   Analytics x5 92 - Top Matches, IC, Architect, Mgmt, Companies"]
+        end
+        setup --> helpers --> nav --> DISPATCH
+    end
+    api["api_client.py - control-path writes"]
+    db["db_reader.py - direct DB reads"]
+    MONO --> api
+    MONO --> db
+
+    classDef big fill:#5a1f1f,stroke:#c0392b,color:#fff
+    classDef seam fill:#1f3a5a,stroke:#2980b9,color:#fff
+    class MONO big
+    class api,db seam

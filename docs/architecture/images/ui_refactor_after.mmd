@@ -1,0 +1,36 @@
+flowchart TB
+    entry["streamlit_app.py - THIN entrypoint, target < 120 lines<br/>page config + bootstrap + set_user_id + dispatch"]
+    nav["nav.py - view registry, _navigate, session-state key constants"]
+
+    subgraph VIEWS["app/ui/views/ - one render() per screen"]
+        direction TB
+        vrow1["history.py   workflow_detail.py   job_detail.py   start_run.py"]
+        vrow2["live_monitor.py   run_report.py   resume_clinic.py   settings.py"]
+        vrow3["profiles.py   cost_dashboard.py   analytics.py"]
+    end
+
+    subgraph SHARED["shared presentation layer"]
+        direction TB
+        comp["components/ - bullets, tailoring, tracks, status"]
+        fmt["formatting.py - pure formatters, unit-testable, no st"]
+        data["data.py - @st.cache_data wrappers"]
+    end
+
+    api["api_client.py - unchanged"]
+    db["db_reader.py - unchanged"]
+
+    entry --> nav
+    nav --> VIEWS
+    VIEWS --> comp
+    VIEWS --> fmt
+    VIEWS --> data
+    comp --> fmt
+    data --> api
+    data --> db
+
+    classDef thin fill:#1f5a2f,stroke:#27ae60,color:#fff
+    classDef pkg fill:#2a2a3a,stroke:#8e8eb0,color:#fff
+    classDef seam fill:#1f3a5a,stroke:#2980b9,color:#fff
+    class entry,nav thin
+    class VIEWS,SHARED,comp,fmt,data pkg
+    class api,db seam
