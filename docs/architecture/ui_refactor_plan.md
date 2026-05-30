@@ -323,8 +323,14 @@ views**; never break the running app between commits. Each phase is its own comm
     Companies). The structure test now checks `views.REGISTRY` (a subset of
     `NAV_VIEWS`, all callable). Entrypoint 2,927 -> 2,821 lines; 6 views off the
     `if/elif` chain (9 remain). 813 pass.
-  - **3b [PENDING]:** move `_navigate` to `nav.py`, then migrate Live Run Monitor,
-    Job Detail, Start New Run (these use `_navigate`).
+  - **3b [DONE 2026-05-30]:** moved `_navigate` to `nav.py` (its natural home;
+    used by the sidebar and the remaining inline views too), then migrated Live Run
+    Monitor (`views/live_monitor.py`), Job Detail (`views/job_detail.py`), and Start
+    New Run (`views/start_run.py` - reads `ctx.min_score`). Dropped entrypoint
+    imports that left with them (`MAX_LLM_CALLS_PER_RUN`, `load_step_executions` /
+    `load_agent_events` / `load_llm_calls` / `load_job_pipeline`, and the now-unused
+    `_bullets` / `_para`). Entrypoint 2,821 -> 2,300 lines; 9 views now off the
+    `if/elif` chain, 6 hub views remain (Phase 4). 813 pass.
 
 - **Phase 4 — Extract hub views.**
   The big ones, one commit each: Workflow History, Workflow Detail, Cost Dashboard,

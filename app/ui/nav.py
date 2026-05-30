@@ -20,6 +20,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import streamlit as st
+
 # The non-selectable group header shown in the sidebar radio. Selecting it shows a
 # hint and stops; it is not a view. (Box-drawing glyphs are fine here - this string
 # is rendered in the browser, and Streamlit UI files may use non-ASCII.)
@@ -62,3 +64,21 @@ class ViewContext:
     min_score: int
     search: str
     include_excluded: bool
+
+
+def _navigate(view_name: str, **state_updates) -> None:
+    """Programmatic sidebar navigation.
+
+    Cannot write directly to sidebar_view after the radio widget is instantiated.
+    Store the destination in _pending_nav instead; the pre-sidebar block picks it
+    up on the next render cycle before the radio widget is created.
+    """
+    for k, v in state_updates.items():
+        st.session_state[k] = v
+    # When navigation explicitly changes the detail target, force the Detail
+    # view's text_input to re-sync. Without this, a user-typed value in that
+    # input would survive the next history row click and override the new target.
+    if "detail_workflow_id" in state_updates:
+        st.session_state.pop("_detail_wf_synced", None)
+    st.session_state._pending_nav = view_name
+    st.rerun()
