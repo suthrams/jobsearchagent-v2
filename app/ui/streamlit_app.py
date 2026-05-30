@@ -36,6 +36,7 @@ load_dotenv()
 
 import yaml
 import app.ui.api_client as api
+import app.ui.nav as nav
 from app.services.constraint_analyzer import analyze, summary_metrics
 from app.services.cost_breakdown import (
     all_runs_by_cost,
@@ -937,26 +938,11 @@ with st.sidebar:
         _navigate("Profiles")
 
     st.markdown("---")
+    # View list + (later) dispatch live in app/ui/nav.py — the single source of
+    # truth for the UI refactor (docs/architecture/ui_refactor_plan.md, Phase 0).
     view = st.radio(
         "View",
-        [
-            "Workflow History",
-            "Workflow Detail",
-            "Job Detail",
-            "Start New Run",
-            "Live Run Monitor",
-            "Run Report",
-            "Resume Clinic",
-            "Settings",
-            "Profiles",
-            "─── Cross-Run Analytics ───",
-            "Cost Dashboard",
-            "Top Matches",
-            "IC Track",
-            "Architect Track",
-            "Management Track",
-            "Companies",
-        ],
+        nav.NAV_ITEMS,
         key="sidebar_view",
     )
     st.markdown("---")
@@ -1003,7 +989,7 @@ with st.sidebar:
         if _b2.button("Live", key="sb_open_live", use_container_width=True):
             _navigate("Live Run Monitor")
 
-if view.startswith("───"):
+if view == nav.SEPARATOR:
     st.info("Select a view from the sidebar.")
     st.stop()
 

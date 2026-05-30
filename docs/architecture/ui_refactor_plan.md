@@ -274,12 +274,19 @@ The ordering principle: **move the lowest-risk, most-shared code first** so late
 view extraction has stable imports to lean on; extract **leaf views before hub
 views**; never break the running app between commits. Each phase is its own commit.
 
-- **Phase 0 — Skeleton + registry, no logic moved.**
-  Create the package dirs and an empty `views/` + `components/`. Introduce the
-  dispatch registry in the entrypoint while the view bodies still live inline
-  (registry entries call local functions wrapping the existing blocks). Add the
-  verification harness (Section 5). This proves the dispatch pattern with zero
-  behavior change.
+- **Phase 0 — Skeleton + registry seam + harness, no logic moved. [DONE 2026-05-30]**
+  Created the `app/ui/views/` and `app/ui/components/` packages and
+  `app/ui/nav.py` (the single source of truth: `NAV_ITEMS`, `NAV_VIEWS`,
+  `SEPARATOR`, and an empty `VIEW_REGISTRY`). Wired the entrypoint's sidebar radio
+  to `nav.NAV_ITEMS` and its separator guard to `nav.SEPARATOR` (identical
+  behavior). Added the verification harness (`tests/v2/test_ui_structure.py`:
+  import-smoke, nav-uniqueness, registry-subset-and-callable, render-contract,
+  and a source-scan that the entrypoint sources its radio from nav).
+  **Refinement vs. the original sketch:** rather than wrap all 15 inline blocks in
+  functions up front (a large, risky mass-indent), the registry starts empty and
+  the entrypoint keeps its `if/elif` chain. Views cut over to `VIEW_REGISTRY` one
+  at a time as they are extracted (Phases 3-4), with the `if/elif` as the fallback
+  for not-yet-migrated views. Same end state, lower per-commit risk. 800 tests pass.
 
 - **Phase 1 — Extract pure formatting (`formatting.py`).**
   Move the 12 pure helpers. Zero `st.*`, zero I/O — the safest possible move, and
