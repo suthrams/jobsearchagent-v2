@@ -10,6 +10,8 @@ from __future__ import annotations
 import pytest
 
 from app.services.context_trimmer import (
+    PII_NAME_PLACEHOLDER,
+    redact_pii_for_llm,
     trim_career_advice,
     trim_resume_profile,
     trim_review,
@@ -17,36 +19,72 @@ from app.services.context_trimmer import (
 )
 
 
-# ── trim_resume_profile ──────────────────────────────────────────────────────
+# ── trim_resume_profile / redact_pii_for_llm (ADR-069) ───────────────────────
 
-def test_resume_profile_drops_raw_text():
+def test_resume_profile_drops_raw_text_and_redacts_identifiers():
     out = trim_resume_profile({
-        "name": "Jane",
+        "name": "Jane Smith",
         "headline": "Engineer",
+        "email": "jane@example.com",
+        "location": "Atlanta, GA",
         "summary": "...",
         "skills": ["Python"],
         "raw_text": "JANE SMITH\n... (huge blob)",
     })
+    # raw_text gone; direct identifiers redacted (ADR-069)
     assert "raw_text" not in out
-    assert out["name"] == "Jane"
+    assert out["name"] == PII_NAME_PLACEHOLDER
+    assert out["email"] is None
+    assert out["location"] is None
+    # quasi-identifiers the agents reason over are kept
     assert out["headline"] == "Engineer"
+    assert out["skills"] == ["Python"]
 
 
-def test_resume_profile_keeps_all_other_fields():
+def test_resume_profile_keeps_reasoning_fields():
+    """Experience / education / skills / headline / summary are load-bearing and
+    must survive redaction; only direct identifiers + raw_text are removed."""
     profile = {
         "name": "X", "headline": "Y", "email": "a@b.c", "location": "Atlanta",
         "summary": "S", "experience": [{"company": "A"}], "skills": ["Py"],
         "education": [{"institution": "MIT"}], "certifications": [],
+        "skill_groups": [{"category": "Cloud", "skills": ["AWS"]}],
     }
     out = trim_resume_profile(profile)
-    for k in profile:
-        assert k in out
-    assert out == profile
+    assert out["headline"] == "Y"
+    assert out["summary"] == "S"
+    assert out["experience"] == [{"company": "A"}]
+    assert out["skills"] == ["Py"]
+    assert out["education"] == [{"institution": "MIT"}]
+    assert out["skill_groups"] == [{"category": "Cloud", "skills": ["AWS"]}]
+    # identifiers redacted
+    assert out["name"] == PII_NAME_PLACEHOLDER
+    assert out["email"] is None
+    assert out["location"] is None
+
+
+def test_redact_drops_file_name():
+    out = redact_pii_for_llm({"file_name": "John_Doe_CV.pdf", "skills": ["Py"]})
+    assert out["file_name"] is None
+    assert out["skills"] == ["Py"]
+
+
+def test_redact_none_name_stays_none():
+    """A missing/empty name is left as-is (no spurious placeholder)."""
+    assert redact_pii_for_llm({"name": None, "skills": []})["name"] is None
+    assert redact_pii_for_llm({"name": "", "skills": []})["name"] == ""
+
+
+def test_trim_resume_profile_delegates_to_redact():
+    profile = {"name": "Jane", "email": "j@x.c", "raw_text": "blob", "skills": ["Py"]}
+    assert trim_resume_profile(profile) == redact_pii_for_llm(profile)
 
 
 def test_resume_profile_handles_empty_or_none():
     assert trim_resume_profile(None) == {}
     assert trim_resume_profile({}) == {}
+    assert redact_pii_for_llm(None) == {}
+    assert redact_pii_for_llm({}) == {}
 
 
 # ── trim_review ──────────────────────────────────────────────────────────────

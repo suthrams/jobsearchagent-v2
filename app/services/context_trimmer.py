@@ -15,22 +15,58 @@ context is being assembled.
 from __future__ import annotations
 
 
-def trim_resume_profile(profile: dict | None) -> dict:
-    """Drop raw_text from the resume profile.
+# Direct identifiers redacted before a resume profile enters any agent LLM
+# context (ADR-069). The name is replaced with a placeholder rather than dropped
+# so prompt phrasing that references it still reads naturally; email, location,
+# and file_name are dropped (set to None). This is quality-neutral: no agent
+# conditions on the candidate's name or contact details, and the deterministic
+# renderer (resume_text_renderer.compose_resume) re-inserts real identity from
+# the STORED profile, not from LLM output.
+PII_NAME_PLACEHOLDER = "[CANDIDATE]"
+_PII_DROP_FIELDS = ("email", "location", "file_name")
 
-    Justification: every downstream agent (scoring, critic, advisor, coach,
-    tailoring) reads structured fields (name, headline, summary, experience[],
-    skills, etc.). Only Fidelity Reviewer needs raw_text to validate that
-    suggestions cite real resume content (ADR-015), and FidelityReviewer is
-    given the raw_text separately if needed.
 
-    Typical saving: 1-2K tokens per agent call (raw resume text is the largest
-    field in the profile).
+def redact_pii_for_llm(profile: dict | None) -> dict:
+    """Drop raw_text and redact direct identifiers from a resume profile (ADR-069).
+
+    - ``raw_text`` -> dropped. Only the resume parser (which must read it) and
+      the clinic Fidelity Reviewer (ADR-015 evidence-binding, passed top-level
+      outside the profile) see raw resume text.
+    - ``name`` -> replaced with ``PII_NAME_PLACEHOLDER`` when present (``None``
+      stays ``None``).
+    - ``email`` / ``location`` / ``file_name`` -> dropped (set to ``None``).
+
+    Kept (quasi-identifiers the agents reason over): headline, summary, skills,
+    skill_groups, experience[], education[], certifications[]. Phone and street
+    address are not structured profile fields - they live only in raw_text,
+    which is dropped here.
     """
     if not profile:
         return {}
     out = {k: v for k, v in profile.items() if k != "raw_text"}
+    if out.get("name"):
+        out["name"] = PII_NAME_PLACEHOLDER
+    for field in _PII_DROP_FIELDS:
+        if field in out:
+            out[field] = None
     return out
+
+
+def trim_resume_profile(profile: dict | None) -> dict:
+    """Prepare a resume profile for an agent LLM context.
+
+    Thin wrapper over :func:`redact_pii_for_llm` (ADR-069). Kept as the
+    established name every context-build site imports; folding redaction in here
+    means every existing caller (scoring, critic, auditor, advisor, coach,
+    tailoring, tailoring-fidelity) drops raw_text AND redacts direct identifiers
+    for free.
+
+    Justification for the kept fields: every downstream agent reads structured
+    fields (headline, summary, experience[], skills, education) - none reads the
+    candidate's name, email, or location. Dropping raw_text also saves ~1-2K
+    input tokens per call (it is the largest field in the profile).
+    """
+    return redact_pii_for_llm(profile)
 
 
 def trim_review(review: dict | None) -> dict:

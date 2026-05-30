@@ -31,6 +31,7 @@ from app.api.schemas.responses import (
     ResumeClinicResponse,
 )
 from app.providers.llm_client import LLMProviderError
+from app.services.context_trimmer import redact_pii_for_llm
 from app.services.resume_clinic_runner import (
     ResumeClinicError,
     build_fidelity_context_for_overhaul,
@@ -461,10 +462,12 @@ def chat_resume_clinic(
     current_overhaul: dict = row.get("edited") or row.get("overhaul") or {}
 
     # Build the agent context. The parsed profile is cached so subsequent
-    # turns hit the second cached prompt block at the 10% rate. raw_text is
-    # NOT in the agent context - only the Fidelity Reviewer sees raw_text.
+    # turns hit the second cached prompt block at the 10% rate.
+    # redact_pii_for_llm drops raw_text AND direct identifiers (ADR-069): the
+    # chat agent never needs them, and only the Fidelity Reviewer sees raw_text
+    # (passed top-level in build_fidelity_context_for_overhaul).
     chat_context: dict = {
-        "_cached": {"resume_profile": parsed_profile},
+        "_cached": {"resume_profile": redact_pii_for_llm(parsed_profile)},
         "resume_id": resume.get("id"),
         "current_overhaul": current_overhaul,
         "history": [

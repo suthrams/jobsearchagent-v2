@@ -38,6 +38,7 @@ from app.providers.llm_client import LLMProviderError
 from app.repositories.resume_clinic_repository import ResumeClinicRepository
 from app.repositories.resume_repository import ResumeRepository
 from app.repositories.workflow_repository import WorkflowRepository
+from app.services.context_trimmer import redact_pii_for_llm
 from app.services.role_data import RoleDataProvider
 
 logger = logging.getLogger(__name__)
@@ -110,10 +111,11 @@ def run_clinic(
 
     # 4) Build reviewer context. resume_profile is moved into "_cached" so
     #    PromptLoader puts it in a second cached system block (10% rate on
-    #    subsequent calls within the 5-min window). raw_text is NOT in the
-    #    reviewer context — it goes to fidelity only (prompt rule).
+    #    subsequent calls within the 5-min window). redact_pii_for_llm drops
+    #    raw_text AND the direct identifiers (ADR-069): the reviewer never needs
+    #    them, and raw_text goes to fidelity only (ADR-015).
     reviewer_context: dict[str, Any] = {
-        "_cached": {"resume_profile": parsed_profile},
+        "_cached": {"resume_profile": redact_pii_for_llm(parsed_profile)},
         "resume_id": resume_id,
         "target_role": target_role,
         "target_track": target_track,
@@ -230,14 +232,15 @@ def build_fidelity_context_for_overhaul(
         })
     # Pull the parsed_profile into _cached so the chat-revise loop's repeated
     # fidelity calls (one per turn) read it back at 10% rate within the 5-min
-    # window. Each turn re-uses the same trimmed profile bytes, so the cache
+    # window. Each turn re-uses the same redacted profile bytes, so the cache
     # key matches the chat agent's own cached prefix (also keyed on the
-    # parsed_profile). raw_text is kept top-level - fidelity reads it for
-    # evidence-binding and it must NOT be in the cached block (the chat agent
-    # and fidelity agent are different prompts; cache keys are per-prompt).
-    cached_profile = {k: v for k, v in (parsed_profile or {}).items() if k != "raw_text"}
+    # parsed_profile). redact_pii_for_llm drops raw_text + direct identifiers
+    # from the cached block (ADR-069); raw_text is kept TOP-LEVEL below, the one
+    # sanctioned path that gives fidelity the resume text for evidence-binding
+    # (it must NOT be in the cached block - the chat and fidelity agents are
+    # different prompts; cache keys are per-prompt).
     return {
-        "_cached": {"resume_profile": cached_profile},
+        "_cached": {"resume_profile": redact_pii_for_llm(parsed_profile)},
         # job_id is required by the fidelity schema. Use a synthetic
         # "clinic:<clinic_id>" so the audit trail clearly identifies the
         # review's source as a clinic run rather than a job tailoring.

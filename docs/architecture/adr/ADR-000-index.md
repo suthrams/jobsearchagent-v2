@@ -74,3 +74,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-066 | [Standalone Resume Clinic (Job-Agnostic Review, Advice, and Overhaul)](ADR-066-standalone-resume-clinic.md) | Accepted |
 | ADR-067 | [Preserve Full Resume Fidelity at Parse Time (GPA, Honors, Skill Groups)](ADR-067-preserve-resume-fidelity-at-parse-time.md) | Accepted |
 | ADR-068 | [Chat-Revise Loop for the Resume Clinic](ADR-068-chat-revise-loop-for-the-resume-clinic.md) | Accepted |
+| ADR-069 | [Redact Direct Identifiers at the LLM Context Seam](ADR-069-redact-direct-identifiers-at-the-llm-seam.md) | Accepted |

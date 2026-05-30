@@ -151,6 +151,15 @@ boundary:
 
 ## 6. PII Protection
 
+> **End-to-end trace and gap analysis:** see
+> [`pii_data_flow.md`](pii_data_flow.md) for the full PII data-flow map (what
+> reaches the LLM per agent, what rests in `data/v2.db`, what is logged), the
+> conformance scorecard against ADR-020 / ADR-040 / ADR-015, and the remediation
+> plan. Open gaps currently tracked there: structured contact PII (name/email/
+> location) is still sent to every reasoning agent (ADR-020 only half-honored),
+> the Resume Clinic forwards `raw_text` to the Resume Reviewer, and `raw_text`
+> is stored unencrypted with no time-based purge.
+
 ### Rules
 
 * Do not send raw resume text to all agents
