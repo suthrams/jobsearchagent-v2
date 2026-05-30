@@ -288,9 +288,15 @@ views**; never break the running app between commits. Each phase is its own comm
   at a time as they are extracted (Phases 3-4), with the `if/elif` as the fallback
   for not-yet-migrated views. Same end state, lower per-commit risk. 800 tests pass.
 
-- **Phase 1 — Extract pure formatting (`formatting.py`).**
-  Move the 12 pure helpers. Zero `st.*`, zero I/O — the safest possible move, and
-  it makes them unit-testable for the first time. Add unit tests for them.
+- **Phase 1 — Extract pure formatting (`formatting.py`). [DONE 2026-05-30]**
+  Moved the 12 pure helpers (`_fmt_ts`, `score_badge`, `_checked`, `_get_nested`,
+  `_label_with_cost`, `_friendly_stage`, `_safe_int`, `_word_count`, `_tokenize`,
+  `_estimate_track_impact`, `_section_display`, `_section_order`) plus their
+  constants (`_STAGE_LABEL`, `_TRACK_KEYWORDS`) to `app/ui/formatting.py`. The
+  entrypoint imports them by bare name so call sites are unchanged;
+  `score_badge`/`_tokenize` live in formatting for reuse but the entrypoint no
+  longer references them. Added `tests/v2/test_ui_formatting.py` (12 tests) — the
+  first automated coverage of UI code. Entrypoint 3,665 -> 3,388 lines. 812 pass.
 
 - **Phase 2 — Extract shared components + data access.**
   Move the render components into `components/` and the `@st.cache_data` wrappers
