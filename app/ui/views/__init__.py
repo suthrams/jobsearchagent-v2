@@ -25,6 +25,7 @@ from app.ui.views import (
     live_monitor,
     profiles,
     run_report,
+    settings,
     start_run,
 )
 
@@ -33,6 +34,7 @@ REGISTRY: dict[str, Callable[[ViewContext], None]] = {
     "Workflow History": history.render,
     "Cost Dashboard": cost_dashboard.render,
     "Profiles": profiles.render,
+    "Settings": settings.render,
     "Run Report": run_report.render,
     "Top Matches": analytics.render_top_matches,
     "IC Track": analytics.render_ic_track,
