@@ -335,8 +335,8 @@ views**; never break the running app between commits. Each phase is its own comm
 - **Phase 4 — Extract hub views. [IN PROGRESS]** One commit each:
   - [x] Workflow History -> `views/history.py` (was the leading `if`; Workflow
         Detail promoted to the chain's `if`). Entrypoint 2,300 -> 2,107 lines.
+  - [x] Cost Dashboard -> `views/cost_dashboard.py`. Entrypoint 2,107 -> 1,809.
   - [ ] Workflow Detail
-  - [ ] Cost Dashboard
   - [ ] Settings (carry the ADR-070 purge control intact)
   - [ ] Profiles
   - [ ] Resume Clinic (largest — may split into `resume_clinic.py` + helpers)

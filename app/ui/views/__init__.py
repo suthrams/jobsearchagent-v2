@@ -17,11 +17,20 @@ from __future__ import annotations
 from typing import Callable
 
 from app.ui.nav import ViewContext
-from app.ui.views import analytics, history, job_detail, live_monitor, run_report, start_run
+from app.ui.views import (
+    analytics,
+    cost_dashboard,
+    history,
+    job_detail,
+    live_monitor,
+    run_report,
+    start_run,
+)
 
 # name -> render(ctx) callable. Grows one entry per migrated view (Phases 3-4).
 REGISTRY: dict[str, Callable[[ViewContext], None]] = {
     "Workflow History": history.render,
+    "Cost Dashboard": cost_dashboard.render,
     "Run Report": run_report.render,
     "Top Matches": analytics.render_top_matches,
     "IC Track": analytics.render_ic_track,
