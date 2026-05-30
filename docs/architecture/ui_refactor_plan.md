@@ -336,9 +336,9 @@ views**; never break the running app between commits. Each phase is its own comm
   - [x] Workflow History -> `views/history.py` (was the leading `if`; Workflow
         Detail promoted to the chain's `if`). Entrypoint 2,300 -> 2,107 lines.
   - [x] Cost Dashboard -> `views/cost_dashboard.py`. Entrypoint 2,107 -> 1,809.
+  - [x] Profiles -> `views/profiles.py`. Entrypoint 1,809 -> 1,577.
   - [ ] Workflow Detail
   - [ ] Settings (carry the ADR-070 purge control intact)
-  - [ ] Profiles
   - [ ] Resume Clinic (largest — may split into `resume_clinic.py` + helpers)
 
 - **Phase 5 — Thin the entrypoint + nav.**
