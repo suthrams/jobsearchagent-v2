@@ -114,6 +114,10 @@ env/
 # secret-audit rule travels to every clone. Personal overrides remain in
 # .claude/settings.local.json (still ignored above).
 !.claude/settings.json
+# Project-own Claude skills travel with the repo so every clone gets them (the
+# addyosmani pack lives in top-level skills/; these are this project's own).
+!.claude/skills
+!.claude/skills/**
 
 # ─── Obsidian ─────────────────────────────────────────────────────────────────
 .obsidian/
