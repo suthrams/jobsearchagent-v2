@@ -178,7 +178,15 @@ app/
   prompts/
     shared/         ← guardrails.txt (injected into every agent)
     agents/         ← one prompt file per agent
-  ui/               ← Streamlit frontend (streamlit_app.py + db_reader.py + api_client.py)
+  ui/               ← Streamlit frontend. Refactored into a thin entrypoint + package
+                       (docs/architecture/ui_refactor_plan.md): streamlit_app.py (~215-line
+                       shell: page config + sidebar + dispatch) · nav.py (NAV_ITEMS,
+                       ViewContext, _navigate) · views/<name>.py (one render(ctx) per
+                       screen, wired in views/REGISTRY) · components/ (shared render
+                       helpers) · formatting.py (pure) · data.py (cached reads) ·
+                       db_reader.py (direct DB reads) · api_client.py (FastAPI calls).
+                       Add a screen: new views/<name>.py with render(ctx), register it
+                       in views/__init__.py, add its name to nav.NAV_ITEMS.
 
 docs/architecture/
   adr/              ← 70 Architecture Decision Records (start at ADR-000-index.md)

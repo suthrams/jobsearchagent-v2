@@ -1,19 +1,20 @@
-"""v2 Streamlit UI.
+"""v2 Streamlit UI - thin entrypoint.
 
-Layout (sidebar order is intentional — top of the page first):
+This file is the page shell only (UI refactor, docs/architecture/ui_refactor_plan.md):
+it sets page config, initializes session state, renders the sidebar (profile
+selector + view radio + filters), builds a ViewContext from the sidebar filters,
+and dispatches the selected view through `app/ui/views/REGISTRY`. It deliberately
+holds no screen-rendering logic.
 
-  * Workflow History (default landing) — list of all runs, click to drill in
-  * Workflow Detail                    — per-run unified view: jobs, scores,
-                                         deep review, advice, prep, settings
-                                         used for that run, constraints hit
-  * Start New Run                      — settings inline + custom URLs textarea
-  * Live Run Monitor                   — activity feed for the currently running run
-  * Run Report                         — generated markdown report
-  * Settings                           — view + edit user-overridable config
-  * (Cross-run analytics — Top Matches, IC/Architect/Mgmt Track, Companies)
+Where everything lives:
+  * app/ui/nav.py          - NAV_ITEMS / NAV_VIEWS / SEPARATOR, ViewContext, _navigate
+  * app/ui/views/<name>.py - one render(ctx) per screen; REGISTRY maps name -> render
+  * app/ui/components/      - shared render helpers (bullets, tailoring card, tracks)
+  * app/ui/formatting.py    - pure formatters (no st.*); app/ui/data.py - cached reads
+  * app/ui/db_reader.py     - direct data/v2.db reads; app/ui/api_client.py - FastAPI calls
 
-Browse views read data/v2.db directly via db_reader.py.
-Control actions (start workflow, edit config) call FastAPI via api_client.py.
+The sidebar order (Workflow History default, then Detail / Start New Run / Live
+Monitor / Run Report / Settings / analytics) is defined by NAV_ITEMS in nav.py.
 """
 from __future__ import annotations
 
@@ -202,12 +203,15 @@ if view == nav.SEPARATOR:
     st.info("Select a view from the sidebar.")
     st.stop()
 
-# ── Registry dispatch (UI refactor Phase 3) ───────────────────────────────────
-# Views migrated into app/ui/views/ render here via REGISTRY[view](ctx); the
-# legacy if/elif chain below handles the rest until they migrate too. ctx carries
-# the sidebar filter widgets; workflow_id / current_user_id stay on session_state.
+# ── View dispatch ─────────────────────────────────────────────────────────────
+# Every nav view renders through the registry (app/ui/views/). ctx carries the
+# sidebar filter widgets; workflow_id / current_user_id stay on session_state.
+# The registry covers every nav view (enforced by test_ui_structure), so the
+# fallback only fires if NAV_ITEMS and the registry ever drift.
 ctx = nav.ViewContext(min_score=min_score, search=search, include_excluded=include_excluded)
-if view in VIEW_REGISTRY:
-    VIEW_REGISTRY[view](ctx)
-    st.stop()
+_render_view = VIEW_REGISTRY.get(view)
+if _render_view is not None:
+    _render_view(ctx)
+else:
+    st.error(f"No view registered for {view!r}. This is a bug — see app/ui/views/.")
 
