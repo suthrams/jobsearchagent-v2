@@ -96,6 +96,53 @@ def _word_count(text: str | None) -> int:
     return len((text or "").split())
 
 
+def _stage_progress(row: dict) -> str:
+    """Build a 'where exactly is this run' string from a workflow_runs row.
+
+    Examples:
+      "5 / 10 scored"            during scoring
+      "review 1 / 2 selected"    during deep review
+      "8 jobs · 3 reviewed"      after completion
+      ""                         when nothing meaningful to show
+    """
+    step = row.get("current_step") or ""
+    status = row.get("status") or ""
+    scored = _safe_int(row.get("jobs_scored"))
+    max_jobs = _safe_int(row.get("max_jobs")) or None
+    selected = _safe_int(row.get("selected_count"))
+    rounds = _safe_int(row.get("review_rounds_count"))
+    normalized = _safe_int(row.get("normalized_count"))
+
+    if status in ("completed", "completed_with_errors"):
+        bits = []
+        if scored:
+            bits.append(f"{scored} scored")
+        if selected:
+            bits.append(f"{selected} reviewed")
+        return " · ".join(bits) or "—"
+    if status == "failed":
+        return "halted"
+
+    # Running: derive progress from the current step
+    if step in ("job_discovery", "registered", "initialized"):
+        return f"{normalized} found" if normalized else "discovering…"
+    if step in ("load_resume",):
+        return "parsing resume…"
+    if step in ("scoring", "score_jobs"):
+        if max_jobs:
+            return f"{scored} / {max_jobs} scored"
+        if normalized:
+            return f"{scored} / {normalized} scored"
+        return f"{scored} scored"
+    if step == "deep_review_in_progress":
+        if selected:
+            return f"review {min(rounds, selected)} / {selected} jobs"
+        return f"{rounds} review rounds"
+    if step in ("career_advice", "interview_prep", "tailoring", "review_completed"):
+        return f"{selected} job(s) advanced"
+    return ""
+
+
 # ── Track-impact heuristic (per-track directional lift, no LLM call) ─────────
 # Curated keyword buckets for the three career tracks the ScoringAgent grades.
 # These are intentionally narrow — generic verbs like "delivered" only land in a

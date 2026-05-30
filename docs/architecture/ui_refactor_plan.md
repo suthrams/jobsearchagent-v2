@@ -298,10 +298,18 @@ views**; never break the running app between commits. Each phase is its own comm
   longer references them. Added `tests/v2/test_ui_formatting.py` (12 tests) — the
   first automated coverage of UI code. Entrypoint 3,665 -> 3,388 lines. 812 pass.
 
-- **Phase 2 — Extract shared components + data access.**
-  Move the render components into `components/` and the `@st.cache_data` wrappers
-  into `data.py`. Update call sites to import them. Still one entrypoint file for
-  the views.
+- **Phase 2 — Extract shared components + data access. [DONE 2026-05-30]**
+  Split into two commits. **2a:** moved the cached wrappers
+  (`_load_yaml_config`, `_cached_*`, `_get_config_cached`) to `app/ui/data.py`.
+  **2b:** moved the render components to `app/ui/components/` — `bullets.py`
+  (`_bullets`, `_para`), `tailoring.py` (`_render_tailoring_card` + its internal
+  helpers `_render_estimated_impact` / `_render_one_bullet` /
+  `_render_tailored_sections` + the status-badge constants), `tracks.py`
+  (`render_track_table`); the tailoring card is decoupled via an `on_decision`
+  callback so it does no I/O. Also relocated the pure `_stage_progress` to
+  `formatting.py` (where it belongs) and dropped now-unused entrypoint imports.
+  Tests grew (component import-smoke + `_stage_progress` unit test). Entrypoint
+  3,388 -> 2,927 lines. 813 pass.
 
 - **Phase 3 — Extract leaf views.**
   Move the small, dependency-light views first: Run Report, Companies, the three

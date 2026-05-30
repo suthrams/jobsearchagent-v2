@@ -25,6 +25,9 @@ def test_refactor_packages_import_clean():
     importlib.import_module("app.ui.nav")
     importlib.import_module("app.ui.views")
     importlib.import_module("app.ui.components")
+    importlib.import_module("app.ui.components.bullets")
+    importlib.import_module("app.ui.components.tailoring")
+    importlib.import_module("app.ui.components.tracks")
     importlib.import_module("app.ui.formatting")
     importlib.import_module("app.ui.data")
 

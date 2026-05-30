@@ -108,6 +108,18 @@ def test_section_display_variants():
     assert f._section_display("weird", {}) == "weird"
 
 
+def test_stage_progress_by_status_and_step():
+    assert f._stage_progress({"status": "completed", "jobs_scored": 8, "selected_count": 3}) == "8 scored · 3 reviewed"
+    assert f._stage_progress({"status": "failed"}) == "halted"
+    assert f._stage_progress({"status": "running", "current_step": "score_jobs",
+                              "jobs_scored": 5, "max_jobs": 10}) == "5 / 10 scored"
+    assert f._stage_progress({"status": "running", "current_step": "job_discovery",
+                              "normalized_count": 12}) == "12 found"
+    assert f._stage_progress({"status": "running", "current_step": "deep_review_in_progress",
+                              "selected_count": 2, "review_rounds_count": 1}) == "review 1 / 2 jobs"
+    assert f._stage_progress({"status": "running", "current_step": "unknown_step"}) == ""
+
+
 def test_section_order_follows_resume_shape():
     profile = {
         "experience": [{"company": "Acme", "title": "Eng"}, {"company": "", "title": "skip"}],
