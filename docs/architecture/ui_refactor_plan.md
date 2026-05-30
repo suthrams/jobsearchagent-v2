@@ -339,8 +339,10 @@ views**; never break the running app between commits. Each phase is its own comm
   - [x] Profiles -> `views/profiles.py`. Entrypoint 1,809 -> 1,577.
   - [x] Settings (ADR-070 purge control carried intact) -> `views/settings.py`.
         Entrypoint 1,577 -> 1,308.
-  - [ ] Workflow Detail
-  - [ ] Resume Clinic (largest — may split into `resume_clinic.py` + helpers)
+  - [x] Resume Clinic -> `views/resume_clinic.py` (extracted whole; the body was
+        already 4-space indented so it dropped straight into render()). Entrypoint
+        1,308 -> 752.
+  - [ ] Workflow Detail (the last inline view)
 
 - **Phase 5 — Thin the entrypoint + nav.**
   Move the sidebar builder and `_navigate` into `nav.py`; reduce
