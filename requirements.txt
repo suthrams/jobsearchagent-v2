@@ -1,11 +1,23 @@
 # ─── AI ──────────────────────────────────────────────────────────────────────
 # Official Anthropic SDK — used transitively by langchain-anthropic
 anthropic>=0.40.0
+# Official OpenAI SDK — used directly by the OpenAIProvider (ADR-053 multi-provider;
+# OpenAI models register only when OPENAI_API_KEY is set)
+openai>=1.40.0
+# Token counting for the OpenAIProvider's cost/usage estimation
+tiktoken>=0.7.0
 # LangChain core + Anthropic integration — agent framework (Phase 3+)
 langchain>=0.3.0
 langchain-anthropic>=0.3.0
 # LangGraph — stateful workflow orchestration with HITL checkpointing (Phase 5+)
 langgraph>=0.2.0
+# SqliteSaver checkpoint backend for LangGraph — resumable runs (Phase 7+)
+langgraph-checkpoint-sqlite>=2.0.0
+
+# ─── API backend ─────────────────────────────────────────────────────────────
+# FastAPI REST backend + ASGI server (app/api). starlette is pulled in by FastAPI.
+fastapi>=0.115.0
+uvicorn>=0.30.0
 
 # ─── Data validation ─────────────────────────────────────────────────────────
 # Pydantic v2 — enforces data shapes at every agent boundary
