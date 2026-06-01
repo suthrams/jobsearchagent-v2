@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import pandas as pd
 import plotly.express as px
 import streamlit as st

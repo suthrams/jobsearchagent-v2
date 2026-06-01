@@ -1,0 +1,42 @@
+# Bug RCAs
+
+Root-cause analyses for critical *runtime* bugs -- the ones that reach a user as a
+crash or wrong behavior because no test caught them first. Each gets its own file
+and, wherever possible, a forcing-function test so the same class of bug cannot
+return silently.
+
+This is distinct from `docs/incidents/` (operational/postmortem log). `bugs/` is
+specifically for code-level runtime defects and their static/dynamic guards.
+
+## When to add an entry
+
+Add an RCA when a bug:
+- reached runtime (was not caught by the test suite or a review), AND
+- is critical: it crashes a screen/flow, corrupts data, leaks something, or
+  produces a materially wrong result.
+
+Skip trivial typos fixed in the same breath with no test gap to explain.
+
+## Naming
+
+`BUG-NNN-short-slug.md`, zero-padded, monotonically increasing. Newest bug takes
+the next free number; never reuse a retired number.
+
+## Required sections
+
+Use `_TEMPLATE.md`. Every RCA must answer four questions in order:
+
+1. **What happened** -- symptom + traceback/observed behavior.
+2. **Root cause** -- the actual defect, not the symptom.
+3. **Why it was not caught** -- the specific test/review gap (this is the most
+   valuable section; it is what drives prevention).
+4. **Prevention** -- the fix AND the forcing function (test/lint/process) that
+   makes recurrence fail the build. Link the test file.
+
+ASCII only (repo convention).
+
+## Index
+
+| ID | Title | Severity | Status | Forcing function |
+|----|-------|----------|--------|------------------|
+| [BUG-001](BUG-001-ui-missing-httpx-import.md) | UI view crashes: `httpx` referenced but not imported | High | Fixed | `tests/v2/test_ui_undefined_names.py` |

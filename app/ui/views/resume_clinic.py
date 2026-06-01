@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 
+import httpx
 import streamlit as st
 
 import app.ui.api_client as api
