@@ -69,11 +69,19 @@ search:
     - Atlanta, GA
     - Remote
 
-tracks:
-  ic: true
-  architect: true
-  management: true
+scoring:
+  # ADR-071: which career tracks this profile is scored on. Subset of
+  # ic / architect / management. Omit (or list all three) to score every track
+  # like the Primary profile. Usually set per profile in Settings -> Scoring.
+  tracks:
+    - ic
+    - architect
+    - management
 ```
+
+Most profiles fit one or two tracks, not all three (ADR-071). Inactive tracks are
+not scored, do not trigger deep review, and are hidden in the results. You normally
+set this per profile in **Settings → Scoring** rather than editing the YAML.
 
 **Create `.env` in the project root:**
 
@@ -173,10 +181,11 @@ following views, top-down:
 - **Live Run Monitor** — activity feed for the currently running workflow
 - **Run Report** — generated markdown report
 - **Settings** — view and edit the active profile's config (search criteria,
-  threshold, salary, staleness, **per-agent provider + model**). Each profile has
-  its own overrides layered over the shared YAML defaults; a new profile starts
-  on pure defaults. Protected keys (hard limits, retention windows, prompt
-  definitions) remain read-only and shared by every profile.
+  threshold, **active scoring tracks** (ADR-071), salary, staleness, **per-agent
+  provider + model**). Each profile has its own overrides layered over the shared
+  YAML defaults; a new profile starts on pure defaults. Protected keys (hard
+  limits, retention windows, prompt definitions) remain read-only and shared by
+  every profile.
 - **Profiles** — manage profiles and run the **Add profile** onboarding wizard
   (ADR-062; see [section 7a](#7a-profiles-multi-user-adr-062)).
 
@@ -187,7 +196,8 @@ following views, top-down:
 
 **Sidebar controls**
 - **Minimum match score** slider — 0–100, default 75, step 5. Same value drives
-  the auto-selection of jobs for deep review (any track score ≥ this qualifies).
+  the auto-selection of jobs for deep review (any **active** track score ≥ this
+  qualifies; ADR-071).
 - **Search** — filter by title or company across browse views
 - **Refresh data** — clears the data cache and reloads from `data/v2.db`
 
@@ -268,7 +278,7 @@ history. Fill in the form:
 | **Resume** | A **picker** over the active profile's stored resumes (active one first). If the profile has no stored resume yet, this is a text box instead — enter `resume.pdf` to parse a file in the project root. |
 | **Roles** | Comma-separated job titles — pre-filled from the active profile's saved settings. **These drive auto-discovery** (ADR-064): the search fetches these roles, not a fixed global list. |
 | **Locations** | **One per line** — pre-filled from the profile's settings. Keep "City, State" on one line (e.g. `Atlanta, GA`); put `Remote` on its own line for a US-wide remote search. |
-| **Min match score** | Slider, defaults to 75 — any track score (tech / arch / lead) at or above this triggers deep review |
+| **Min match score** | Slider, defaults to 75 — any **active** track score (the profile's subset of tech / arch / lead, ADR-071) at or above this triggers deep review |
 | **Max jobs** | Hard cap on jobs surfaced for processing (default 10) |
 | **Custom job URLs** | Optional textarea — paste up to 25 URLs (LinkedIn, company career pages, ATS pages, etc.), one per line. They're scraped alongside Adzuna for this run. |
 | **Save these settings as my defaults** | Persists the slider / max jobs / titles / locations as your defaults for future runs |
@@ -279,11 +289,11 @@ The backend runs end-to-end with no required user input:
 
 1. **Job discovery** — Adzuna + your custom URLs (each custom URL is fetched and parsed via heuristics first, then via Claude if heuristics fall short; failures are logged per URL and skipped)
 2. **Research** each company (Research Agent — Haiku)
-3. **Scoring** across all three career tracks (Scoring Agent — Haiku, concurrent)
-4. **Auto-select** up to 10 top-scoring jobs where any track ≥ your threshold (raised from 3 in ADR-054 — every qualifying job now reaches deep review)
-5. **Deep review** (Resume Critic + Review Auditor reflection loop, up to 3 rounds)
+3. **Scoring** across the profile's active career tracks (Scoring Agent — Haiku, concurrent; inactive tracks are scored `null`, ADR-071)
+4. **Auto-select** the top-scoring jobs where any **active** track ≥ your threshold — a job that clears the threshold only on an inactive track does not qualify (ADR-071)
+5. **Deep review** (Resume Critic + Review Auditor reflection loop)
 6. **Career advice** (Sonnet) per selected job
-7. **Interview prep** (Sonnet) if any selected job's best track score ≥ threshold
+7. **Interview prep** (Sonnet) if any selected job's best active-track score ≥ threshold
 8. **Report generation** as the final step
 
 If no jobs clear the threshold, deep review and prep are skipped and the run goes straight to report generation. The "Limits & Constraints" section in **Workflow Detail** will flag this so you can lower the threshold or broaden search.
@@ -366,6 +376,10 @@ Each track view shows jobs sorted by the track-specific score column:
 | Management Track | `leadership_score` |
 
 All track tables include: Job ID, Title, Company, Location, Score (progress bar), Summary, Recommended Next Action, and a direct link to the job posting.
+
+If a track is not active for the current profile (ADR-071), its view shows a "not
+active for this profile" notice instead of an empty table — enable it under
+**Settings → Scoring** if you want it.
 
 ---
 
@@ -582,7 +596,7 @@ the delete is what triggers a fresh parse.
 
 ### Companies
 
-Horizontal bar chart of the top 20 companies by best overall match score, filtered by the sidebar minimum score. The table below shows per-company job count and best score per track (Technical, Architecture, Leadership).
+Horizontal bar chart of the top 20 companies by best overall match score, filtered by the sidebar minimum score. The table below shows per-company job count and best score per **active** track (ADR-071: only the profile's active tracks among Technical / Architecture / Leadership are shown).
 
 ### Run History
 

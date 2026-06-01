@@ -264,7 +264,7 @@ MAX_LLM_CALLS_PER_RUN  = 200  # global budget — raised in ADR-054
 **v1:** All scored jobs were shown in the terminal. Tailoring was a separate command. No conditional routing.
 
 **v2:** Execution is gated at multiple points:
-- Deep review runs **only for jobs that meet `min_match_score`** on any track (≤ `MAX_SELECTED_JOBS`, auto-selected — ADR-054)
+- Deep review runs **only for jobs that meet `min_match_score`** on any **active** track (the profile's `scoring.tracks` subset — ADR-071; ≤ `MAX_SELECTED_JOBS`, auto-selected — ADR-054)
 - Interview Coach runs **only when match_score ≥ 75** or user requests it
 - Tailoring runs **on user request only** — either pre-run via `user_requested_tailoring=True` (in-graph node) or post-hoc via the dedicated tailoring router (ADR-055)
 - Fidelity Reviewer runs **only after tailoring**, on both paths

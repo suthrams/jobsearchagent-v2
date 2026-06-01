@@ -4,6 +4,51 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-01
+
+### Added — Per-profile active scoring tracks (ADR-071)
+
+A profile now declares which of the three fixed career tracks
+(`ic` / `architect` / `management`) it pursues, via
+`effective_config.scoring.tracks` (a subset; default all three). Inactive tracks
+are **not scored**, **do not gate deep review**, and are **hidden in the UI**. This
+fixes the correctness gap where a spurious `leadership_score` could push an IC-only
+profile's job into a paid deep-review + interview-prep pass.
+
+- **Schema**: `JobScore.{technical,architecture,leadership}_score` are now
+  `int | None` (null when the track is inactive). `overall_score` / `domain_score`
+  stay required.
+- **Helpers** (`app/workflows/limits.py`): `VALID_TRACKS`, `TRACK_TO_SCORE_KEY`,
+  `get_active_tracks(state)`, `active_track_keys(state)`. `best_track_score` /
+  `qualifies_for_deep_review` take `active_keys` (default all three). Threaded
+  through `await_job_selection`, `routers.py`, `interview_prep`,
+  `constraint_analyzer`.
+- **Scoring**: `scoring_agent.txt` -> v2 scores only the active tracks and computes
+  `overall_score` across them; `score_jobs` passes `active_tracks` into context.
+- **Config**: `ConfigService` validates/clamps `scoring.tracks` (not protected).
+- **UI**: Settings multiselect; Start New Run inherits the profile's tracks;
+  Workflow Detail renders only active track columns; Job Detail shows only scored
+  track metrics; Analytics gates the per-track pages and trims the Companies
+  aggregation.
+- No DB migration (track scores live in `score_json`; the per-run active set is
+  recoverable from `workflow_runs.state_json.effective_config`). Default = all
+  three keeps the Primary profile and existing runs unchanged.
+
+### Fixed — Missing `httpx` import in two Streamlit views (BUG-001)
+
+`app/ui/views/workflow_detail.py` and `resume_clinic.py` referenced `httpx`
+(in `except httpx.ReadTimeout` / `except httpx.HTTPStatusError`) but never
+imported it — a NameError on a live click, lost when the view bodies were lifted
+out of the monolithic `streamlit_app.py` during the UI refactor. Added the import.
+
+Established the `bugs/` RCA convention (`bugs/README.md`, `_TEMPLATE.md`,
+`BUG-001-...md`) and a forcing-function test
+(`tests/v2/test_ui_undefined_names.py`) that statically scans `app/ui/` for
+undefined names via the stdlib `symtable` analyzer — catches the whole
+"lifted body, dropped import" class.
+
+---
+
 ## 2026-05-29
 
 ### Fixed — SSRF defense on CustomUrlScraper (boundary check on user-supplied URLs)

@@ -46,7 +46,7 @@
 | 9 | Cost optimization — model tiering, volume caps | ✓ complete |
 | post-9 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + section grouping + headline + strategy summary + impact estimate (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062) | ✓ complete |
 
-**Test count:** 599 passing (mock mode, no real API calls in CI)
+**Test count:** 836 passing (mock mode, no real API calls in CI)
 
 ---
 
@@ -286,6 +286,7 @@ Each phase has a dedicated deep-dive document:
 | [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic, langchain-openai) + v1 shared (anthropic, pydantic, httpx, pdfplumber) |
 | [disclaimer.md](disclaimer.md) | Apache 2.0 terms, no-warranty statement, user responsibility for API costs, scraper compliance notes (Adzuna official, LinkedIn/Ladders grey-area), resume data privacy |
 | [../skills/README.md](../skills/README.md) | Index for the `skills/` agent-skills pack — maps each of the 21 skills to the jobsearchagent-v2 workflow stage where it applies |
+| [../bugs/README.md](../bugs/README.md) | Root-cause analyses for critical *runtime* bugs (distinct from operational postmortems). Convention + four-section template (`_TEMPLATE.md`), an index table, and one RCA per bug (e.g. `BUG-001` — a dropped `httpx` import in two Streamlit views). Each RCA pairs with a forcing-function test so the same class cannot return silently. |
 
 ---
 
@@ -294,9 +295,10 @@ Each phase has a dedicated deep-dive document:
 | Location | Count |
 |---|---|
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
+| bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
 | docs/ top-level | 9 |
 | docs/architecture/ | 17 |
-| docs/architecture/adr/ | 57 (index + 56 ADRs) |
+| docs/architecture/adr/ | 72 (index + 71 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/agents/ | 3 |
 | docs/claude/ | 3 |

@@ -82,7 +82,8 @@ are scoped to the resolved id. Isolation is cooperative, not enforced — see
 
 > **Behaviour note.** The workflow graph runs end-to-end with no `interrupt()`
 > pauses (ADR-059). Job selection auto-selects up to `MAX_SELECTED_JOBS` top
-> scoring jobs where any track score (technical / architecture / leadership)
+> scoring jobs where any **active** track score (the profile's `scoring.tracks`
+> subset of technical / architecture / leadership, ADR-071)
 > meets `effective_config.scoring.min_match_score` (default 75). The only HITL
 > in the system is the out-of-graph tailoring decision
 > (`POST /tailorings/{id}/decisions`). The former in-graph
@@ -189,7 +190,7 @@ Content-Type: application/json
 | `resume_id` | string | yes | ID of the parsed resume to use |
 | `search_criteria` | object | yes | Passed to `JobDiscoveryService.discover()` |
 | `workflow_type` | string | no | Default: `"full_career_review"` |
-| `effective_config` | object | no | Config overrides; merged with `config.yaml` defaults. Default: `{}`. Use `effective_config.scoring.min_match_score` (default 75) to set the per-run deep-review / interview-prep threshold (any track score ≥ this qualifies). |
+| `effective_config` | object | no | Config overrides; merged with `config.yaml` defaults. Default: `{}`. Use `effective_config.scoring.min_match_score` (default 75) to set the per-run deep-review / interview-prep threshold (any **active** track score ≥ this qualifies). `effective_config.scoring.tracks` (ADR-071) sets the profile's active-track subset; inactive tracks are scored `null`. |
 | `custom_urls` | string[] | no | Up to 25 absolute URLs (LinkedIn, company career pages, ATS pages, etc.). Each is fetched and parsed via heuristics (JSON-LD, OpenGraph) → Claude (sonnet) fallback. Per-URL failures are logged in `errors[]` and do not abort the run. Default: `[]`. |
 
 **Response — 202 Accepted**
@@ -1047,12 +1048,15 @@ determined by the discovery implementation.
 ```json
 {
   "scoring": {
-    "career_track": "all"
+    "career_track": "all",
+    "tracks": ["ic", "architect"]
   }
 }
 ```
 
-Valid `career_track` values: `"ic"` | `"architect"` | `"management"` | `"all"` (default — weights all three tracks equally)
+Valid `career_track` values: `"ic"` | `"architect"` | `"management"` | `"all"` (default — weights all active tracks equally). `career_track` is the *weighting emphasis*.
+
+`scoring.tracks` (ADR-071) is the per-profile *active-track set* — a subset of `["ic", "architect", "management"]`. Absent/empty/all-invalid = all three (the Primary default). Inactive tracks are not scored (their `*_score` comes back `null`) and do not gate deep review. Distinct from `career_track`; if `career_track` is not in `tracks`, the active set wins.
 
 ---
 
@@ -1094,14 +1098,18 @@ title                     string
 company                   string
 status                    string         Job lifecycle status (e.g. "scored", "shortlisted")
 overall_score             int | null     0–100
-technical_score           int | null     0–100
-architecture_score        int | null     0–100
-leadership_score          int | null     0–100
+technical_score           int | null     0–100 (null if track 'ic' inactive, ADR-071)
+architecture_score        int | null     0–100 (null if track 'architect' inactive)
+leadership_score          int | null     0–100 (null if track 'management' inactive)
 domain_score              int | null     0–100
 strengths                 array[string]
 gaps                      array[string]
 recommended_next_action   string | null
 ```
+
+A track `*_score` is `null` either because the job was not scored at all or because
+that track is not active for the profile (ADR-071). The active set is in the run's
+`effective_config.scoring.tracks`.
 
 ---
 

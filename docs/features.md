@@ -1,6 +1,6 @@
 # Job Search Agent v2 — Features & Capabilities
 
-A multi-agent career intelligence system: discovers jobs, scores fit across three career tracks, reviews high-match roles in depth, prepares you for interviews, and tailors your resume — all via a FastAPI backend and Streamlit UI powered by Claude.
+A multi-agent career intelligence system: discovers jobs, scores fit across the career tracks each profile pursues (ADR-071), reviews high-match roles in depth, prepares you for interviews, and tailors your resume — all via a FastAPI backend and Streamlit UI powered by Claude.
 
 ---
 
@@ -9,7 +9,7 @@ A multi-agent career intelligence system: discovers jobs, scores fit across thre
 1. [Job Discovery](#1-job-discovery)
 2. [Pre-Filter Gate](#2-pre-filter-gate)
 3. [Company Research](#3-company-research)
-4. [Job Scoring — Three Career Tracks](#4-job-scoring--three-career-tracks)
+4. [Job Scoring — Career Tracks](#4-job-scoring--career-tracks-per-profile-adr-071)
 5. [Deep Review — Critic + Auditor Loop](#5-deep-review--critic--auditor-loop)
 6. [Career Advice](#6-career-advice)
 7. [Interview Preparation](#7-interview-preparation)
@@ -76,25 +76,32 @@ Research context is injected into the Scoring Agent prompt, improving score accu
 
 ---
 
-## 4. Job Scoring — Three Career Tracks
+## 4. Job Scoring — Career Tracks (per-profile, ADR-071)
 
-Each job is scored against your resume independently on three career tracks.
+Each job is scored against your resume independently on the career tracks the
+profile pursues. The three tracks are fixed; a profile picks the subset that
+applies to it (ADR-071), defaulting to all three.
 
-| Track | Target Roles |
-|---|---|
-| `ic` | Senior / Staff / Principal Engineer |
-| `architect` | Solutions / Principal / Enterprise Architect |
-| `management` | Senior Manager / Director / Head of Engineering / VP |
+| Track | Score field | Target Roles |
+|---|---|---|
+| `ic` | `technical_score` | Senior / Staff / Principal Engineer |
+| `architect` | `architecture_score` | Solutions / Principal / Enterprise Architect |
+| `management` | `leadership_score` | Senior Manager / Director / Head of Engineering / VP |
 
 ### How scoring works
-- All 10 jobs are scored **concurrently** via `ThreadPoolExecutor` (5 workers) — wall-clock time ~20s for 10 jobs
-- Each job receives an overall score (0–100) plus sub-scores: technical, architecture, leadership, domain
+- All scored jobs run **concurrently** via `ThreadPoolExecutor` (5 workers)
+- Each job receives an overall score (0–100), a `domain_score`, plus a sub-score for each **active** track. Inactive tracks are scored `null` — they are not evaluated at all (ADR-071), so they cannot be confused with a genuine low score
 - Output includes: match summary, strengths, gaps, recommended next action, confidence
 - Model: **Haiku** (already the cheapest model; concurrent execution keeps latency low)
-- Only tracks enabled in `config.yaml` are scored
+- Active tracks come from `effective_config.scoring.tracks` (set per profile in **Settings → Scoring**). Absent/empty = all three. `scoring.career_track` is a separate weighting-emphasis hint, not an inclusion list
 
 ### Score-driven routing
-After scoring, every job whose best track score (`max(technical_score, architecture_score, leadership_score)`) meets `effective_config.scoring.min_match_score` (default 75) auto-advances to deep review, up to `MAX_SELECTED_JOBS = 10` (= `MAX_JOBS_PER_RUN`). Job-selection HITL was removed in the v2 usability refactor; the cap was raised from 3 to 10 in ADR-054.
+After scoring, every job whose best **active** track score meets
+`effective_config.scoring.min_match_score` (default 75) auto-advances to deep
+review (ADR-071: a job that clears the threshold only on an inactive track does
+**not** qualify). Use `qualifies_for_deep_review()` / `best_track_score()` with
+the run's `active_track_keys(state)`. Job-selection HITL was removed in the v2
+usability refactor.
 
 ---
 
@@ -353,7 +360,7 @@ The Streamlit UI calls these endpoints. You can also drive the workflow directly
 | Concurrent Adzuna scraping (5 workers) | ✅ |
 | Two-layer pre-filter gate (title + description) | ✅ |
 | Company research — bounded ReAct agent | ✅ |
-| Concurrent job scoring — 3 career tracks (5 workers) | ✅ |
+| Concurrent job scoring — per-profile active career tracks (5 workers) | ✅ |
 | Deep review — critic + auditor reflection loop (≤ 3 rounds) | ✅ |
 | Resume gap vs career gap distinction | ✅ |
 | Career advice — cross-job positioning synthesis | ✅ |

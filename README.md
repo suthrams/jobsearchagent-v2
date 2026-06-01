@@ -1,6 +1,6 @@
 # Job Search Agent v2
 
-A multi-agent career intelligence system that discovers jobs, scores fit across three career tracks, identifies resume gaps, prepares you for interviews, and tailors your resume — all orchestrated with LangGraph.
+A multi-agent career intelligence system that discovers jobs, scores fit across the career tracks each profile pursues (ADR-071), identifies resume gaps, prepares you for interviews, and tailors your resume — all orchestrated with LangGraph.
 
 Built as a real-world exploration of **production agentic AI patterns**: stateful workflow graphs, structured output, bounded ReAct loops, critique-reflection cycles, evidence-bound generation, and human-in-the-loop checkpointing.
 
@@ -9,7 +9,7 @@ Built as a real-world exploration of **production agentic AI patterns**: statefu
 1. **Discovers** jobs from Adzuna (aggregates Indeed, Glassdoor, etc.) and LinkedIn (manual URL intake) — concurrently
 2. **Filters** noise with keyword gates before spending any API tokens
 3. **Researches** each company with a bounded ReAct agent — culture, tech signals, risk flags
-4. **Scores** each job against your resume across three career tracks concurrently
+4. **Scores** each job against your resume across the profile's active career tracks concurrently
 5. **Reviews** high-match jobs with a critic → auditor reflection loop
 6. **Advises** on career positioning after the scoring pass
 7. **Coaches** interview prep for roles above the match threshold
@@ -35,7 +35,7 @@ flowchart TD
     subgraph WORKFLOW["LangGraph Workflow"]
         DISC["Discover Jobs"]
         RES["Research Agent\ncompany + role context"]
-        SCORE["Scoring Agent\n3 tracks concurrently"]
+        SCORE["Scoring Agent\nactive tracks concurrently"]
         CRITIC["Resume Critic\nhigh-match jobs only"]
         AUDIT["Review Auditor\nreflection loop"]
         ADVISOR["Career Advisor"]
@@ -73,13 +73,13 @@ flowchart TD
 
 ## Career Tracks
 
-| Track | Target Roles |
-|---|---|
-| `ic` | Senior / Staff / Principal Engineer |
-| `architect` | Solutions / Principal / Enterprise Architect |
-| `management` | Senior Manager / Director / Head of Engineering / VP |
+| Track | Score field | Target Roles |
+|---|---|---|
+| `ic` | `technical_score` | Senior / Staff / Principal Engineer |
+| `architect` | `architecture_score` | Solutions / Principal / Enterprise Architect |
+| `management` | `leadership_score` | Senior Manager / Director / Head of Engineering / VP |
 
-Each job receives a score (0–100) per active track, a match summary, identified strengths and gaps, and a recommended next action.
+Each profile picks the subset of tracks it pursues (`scoring.tracks`, default all three — ADR-071). Each job receives a score (0–100) per **active** track, a match summary, identified strengths and gaps, and a recommended next action. Inactive tracks are not scored and do not trigger deep review.
 
 ---
 

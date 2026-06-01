@@ -239,6 +239,15 @@ service), **C** = control path (`api_client`).
 The five tiny analytics screens share `views/analytics.py` because they all read the
 same scored-jobs source and differ only by score column.
 
+**Active-track gating (ADR-071).** A profile is scored only on its active tracks
+(`effective_config.scoring.tracks`, default all three). The per-track analytics
+screens show a "not active for this profile" notice instead of an empty table when
+their track is inactive, and the Companies aggregation drops inactive-track columns.
+Workflow Detail renders only the active track columns (read from the run's stored
+`effective_config`), and Job Detail shows only the track metrics that were scored
+(inactive tracks are `null`). The active set is resolved via
+`app/workflows/limits.py::get_active_tracks`.
+
 ---
 
 ## 7. Backend interaction — the key flows

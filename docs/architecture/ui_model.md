@@ -216,6 +216,7 @@ Effective Config = YAML Defaults + DB Overrides
 * max jobs to fetch
 * max jobs to review
 * scoring preference sliders (optional)
+* active scoring tracks multiselect (ADR-071: the subset of ic / architect / management this profile is scored on; default all three)
 * tailoring preference (conservative / moderate)
 * save button
 * reset to defaults
