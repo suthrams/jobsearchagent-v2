@@ -15,6 +15,7 @@ from app.workflows.limits import (
     MAX_REVIEW_ROUNDS,
     MAX_SELECTED_JOBS,
     MIN_MATCH_SCORE_DEFAULT,
+    active_track_keys,
     best_track_score,
     get_max_scored,
 )
@@ -54,9 +55,10 @@ def analyze(state: dict, agent_events: list[dict] | None = None) -> list[dict]:
         })
 
     # ── deep review eligibility ────────────────────────────────────────────────
+    active_keys = active_track_keys(state)
     qualifying = [
         j for j in scored_jobs
-        if j.get("status") == "scored" and best_track_score(j) >= threshold
+        if j.get("status") == "scored" and best_track_score(j, active_keys) >= threshold
     ]
     if scored_jobs and not qualifying:
         findings.append({

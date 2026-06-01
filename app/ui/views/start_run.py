@@ -147,12 +147,22 @@ def render(ctx: ViewContext) -> None:
             "roles": [r.strip() for r in roles.split(",") if r.strip()],
             "locations": [l.strip() for l in locations.splitlines() if l.strip()],
         }
+        # ADR-071: the run inherits the profile's active scoring tracks. Validate
+        # against the three known names; an empty/invalid set is omitted so the
+        # backend's all-three default applies (Primary unchanged).
+        _valid_tracks = ("ic", "architect", "management")
+        _profile_tracks = scoring_cfg.get("tracks")
+        run_tracks = (
+            [t for t in _valid_tracks if t in _profile_tracks]
+            if isinstance(_profile_tracks, list) else []
+        )
         effective_config = {
             "scoring": {
                 "career_track": "all",
                 "min_match_score": int(run_threshold),
                 "manual_selection": bool(manual_scoring),
                 "max_scored": int(max_scored),
+                **({"tracks": run_tracks} if run_tracks else {}),
             },
             "search": {
                 "max_discovered": int(max_discovered),

@@ -311,6 +311,30 @@ def test_score_jobs_passes_resume_profile_via_cached_block():
         "resume_profile must NOT also appear at top level (would duplicate tokens)"
 
 
+def test_score_jobs_passes_active_tracks_to_scoring_context():
+    """ADR-071: score_jobs must thread the profile's active track subset into the
+    scoring agent context so the agent scores only those tracks. Default (no
+    scoring.tracks) sends all three."""
+    state = _base_state(
+        normalized_jobs=[_make_job("job-001")],
+        effective_config={"scoring": {"career_track": "all", "tracks": ["ic", "architect"]}},
+    )
+    scoring = _make_scoring_agent()
+    node = make_score_jobs_node(_make_research_agent(), scoring, _score_repo(), _obs())
+    node(state)
+    _, ctx = scoring.run.call_args[0]
+    assert ctx.get("active_tracks") == ["ic", "architect"]
+
+
+def test_score_jobs_default_active_tracks_is_all_three():
+    state = _base_state(normalized_jobs=[_make_job("job-001")])  # no scoring.tracks
+    scoring = _make_scoring_agent()
+    node = make_score_jobs_node(_make_research_agent(), scoring, _score_repo(), _obs())
+    node(state)
+    _, ctx = scoring.run.call_args[0]
+    assert ctx.get("active_tracks") == ["ic", "architect", "management"]
+
+
 def test_score_jobs_multiple_jobs_all_scored():
     jobs = [_make_job(f"job-{i:03d}") for i in range(3)]
     state = _base_state(normalized_jobs=jobs)

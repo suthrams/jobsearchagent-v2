@@ -338,7 +338,7 @@ CREATE TABLE job_scores (
 | `workflow_run_id` | TEXT        | FK → `workflow_runs.id`. |
 | `job_id`          | TEXT        | FK → `jobs.id`. |
 | `resume_id`       | TEXT        | FK → `resumes.id`. Captures which resume was scored against. |
-| `score_json`      | TEXT (JSON) | Full `JobScore` Pydantic dict — `technical_score`, `architecture_score`, `leadership_score`, `domain_score`, `match_summary`, `strengths[]`, `gaps[]`, `recommended_next_action`. |
+| `score_json`      | TEXT (JSON) | Full `JobScore` Pydantic dict — `technical_score`, `architecture_score`, `leadership_score` (each `int` or `null` when that track is inactive for the profile, ADR-071), `domain_score`, `match_summary`, `strengths[]`, `gaps[]`, `recommended_next_action`. The run's active-track set is recoverable from `workflow_runs.state_json.effective_config.scoring.tracks`. |
 | `overall_score`   | INT         | Mirror of `score_json.overall_score` for indexed sort/filter. |
 | `created_at`      | TEXT        | ISO 8601 UTC. |
 

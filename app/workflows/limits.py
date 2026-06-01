@@ -58,6 +58,16 @@ MIN_MATCH_SCORE_DEFAULT = 75
 # Track score keys checked by qualifies_for_deep_review().
 _TRACK_SCORE_KEYS = ("technical_score", "architecture_score", "leadership_score")
 
+# ADR-071: per-profile active scoring tracks. The three tracks are fixed; a profile
+# pursues a subset via effective_config.scoring.tracks. Canonical track -> score-key
+# map. Default active set is all three (Primary profile unchanged).
+VALID_TRACKS = ("ic", "architect", "management")
+TRACK_TO_SCORE_KEY = {
+    "ic": "technical_score",
+    "architect": "architecture_score",
+    "management": "leadership_score",
+}
+
 
 class BudgetExceededError(Exception):
     """Raised when MAX_LLM_CALLS_PER_RUN is hit during a scoring or review loop."""
@@ -211,10 +221,43 @@ def get_max_discovered_jobs(state: dict) -> int:
     return max(1, min(val, MAX_DISCOVERED_JOBS))
 
 
-def best_track_score(scored_job: dict) -> int:
-    """Highest of the three track scores on a scored job dict. Missing scores treated as 0."""
+def get_active_tracks(state: dict) -> list[str]:
+    """Return the profile's active scoring tracks for this run (ADR-071).
+
+    Reads effective_config['scoring']['tracks'], validates against VALID_TRACKS,
+    and falls back to all three when nothing valid is set (absent, empty, not a
+    list, or all-invalid). This is the single source of truth for the active set —
+    callers must not inline scoring.tracks. Order follows VALID_TRACKS so the set
+    is deterministic regardless of how the user listed it.
+    """
+    cfg = state.get("effective_config") or {}
+    scoring = cfg.get("scoring") or {}
+    raw = scoring.get("tracks")
+    if not isinstance(raw, (list, tuple)):
+        return list(VALID_TRACKS)
+    chosen = {t for t in raw if t in VALID_TRACKS}
+    if not chosen:
+        return list(VALID_TRACKS)
+    return [t for t in VALID_TRACKS if t in chosen]
+
+
+def active_track_keys(state: dict) -> tuple[str, ...]:
+    """The JobScore score-field keys for this run's active tracks (ADR-071)."""
+    return tuple(TRACK_TO_SCORE_KEY[t] for t in get_active_tracks(state))
+
+
+def best_track_score(
+    scored_job: dict, active_keys: tuple[str, ...] = _TRACK_SCORE_KEYS
+) -> int:
+    """Highest track score on a scored job dict, considering only active_keys.
+
+    Missing or null scores are treated as 0. active_keys defaults to all three
+    tracks (backward compatible); callers in a per-run context should pass
+    active_track_keys(state) so an inactive track cannot influence the result
+    (ADR-071).
+    """
     best = 0
-    for key in _TRACK_SCORE_KEYS:
+    for key in active_keys:
         try:
             v = int(scored_job.get(key, 0) or 0)
         except (TypeError, ValueError):
@@ -224,9 +267,11 @@ def best_track_score(scored_job: dict) -> int:
     return best
 
 
-def qualifies_for_deep_review(scored_job: dict, threshold: int) -> bool:
-    """True if any of the three track scores meets or exceeds the threshold."""
-    return best_track_score(scored_job) >= threshold
+def qualifies_for_deep_review(
+    scored_job: dict, threshold: int, active_keys: tuple[str, ...] = _TRACK_SCORE_KEYS
+) -> bool:
+    """True if any active track score meets or exceeds the threshold (ADR-071)."""
+    return best_track_score(scored_job, active_keys) >= threshold
 
 
 def append_error(

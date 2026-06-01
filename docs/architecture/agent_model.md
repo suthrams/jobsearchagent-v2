@@ -224,9 +224,9 @@ Structured `JobScore`:
 job_id
 resume_id
 overall_score
-technical_score
-architecture_score
-leadership_score
+technical_score       # int | None — null when track 'ic' is inactive (ADR-071)
+architecture_score    # int | None — null when track 'architect' is inactive (ADR-071)
+leadership_score      # int | None — null when track 'management' is inactive (ADR-071)
 domain_score
 match_summary
 strengths
@@ -234,6 +234,12 @@ gaps
 recommended_next_action
 confidence
 ```
+
+The orchestrator passes `active_tracks` (the profile's `scoring.tracks` subset, via
+`get_active_tracks(state)`) into the scoring context. The agent scores ONLY the
+active tracks, emits `null` for the rest, and computes `overall_score` across the
+active set (ADR-071). Default active set is all three, so the Primary profile is
+unchanged.
 
 ---
 

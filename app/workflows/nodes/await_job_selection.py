@@ -13,6 +13,7 @@ from typing import Callable
 from app.repositories.database import utcnow_iso
 from app.workflows.limits import (
     MAX_SELECTED_JOBS,
+    active_track_keys,
     best_track_score,
     get_min_match_score,
     qualifies_for_deep_review,
@@ -26,12 +27,14 @@ def make_await_job_selection_node() -> Callable[[dict], dict]:
     def auto_select_jobs(state: dict) -> dict:
         scored_jobs: list[dict] = state.get("scored_jobs") or []
         threshold = get_min_match_score(state)
+        active_keys = active_track_keys(state)
 
         eligible = [
             j for j in scored_jobs
-            if j.get("status") == "scored" and qualifies_for_deep_review(j, threshold)
+            if j.get("status") == "scored"
+            and qualifies_for_deep_review(j, threshold, active_keys)
         ]
-        eligible.sort(key=best_track_score, reverse=True)
+        eligible.sort(key=lambda j: best_track_score(j, active_keys), reverse=True)
         selected_jobs = eligible[:MAX_SELECTED_JOBS]
 
         human_decisions = list(state.get("human_decisions") or [])

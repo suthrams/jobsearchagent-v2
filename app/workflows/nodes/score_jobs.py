@@ -25,6 +25,7 @@ from app.services.observability_service import ObservabilityService
 from app.workflows.limits import (
     MAX_LLM_CALLS_PER_RUN,
     add_llm_calls_bulk,
+    get_active_tracks,
     get_max_scored,
     get_metrics,
     safe_agent_usage_typed,
@@ -48,6 +49,9 @@ def make_score_jobs_node(
         normalized_jobs: list[dict] = state.get("normalized_jobs") or []
         effective_config: dict = state.get("effective_config") or {}
         career_track: str = effective_config.get("scoring", {}).get("career_track", "all")
+        # ADR-071: the profile's active track subset. The agent scores ONLY these
+        # and emits null for the rest; default is all three (Primary unchanged).
+        active_tracks: list[str] = get_active_tracks(state)
 
         metrics = get_metrics(state)
         errors = list(state.get("errors") or [])
@@ -115,6 +119,7 @@ def make_score_jobs_node(
                     "company": job.get("company", ""),
                     "job_description": job.get("job_description", ""),
                     "career_track": career_track,
+                    "active_tracks": active_tracks,
                     "research_context": research.model_dump(),
                 })
                 u = safe_agent_usage_typed(scoring_agent)

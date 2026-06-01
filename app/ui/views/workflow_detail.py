@@ -26,6 +26,7 @@ from app.ui.db_reader import (
 )
 from app.ui.formatting import _checked, _fmt_ts
 from app.ui.nav import ViewContext, _navigate
+from app.workflows.limits import TRACK_TO_SCORE_KEY, get_active_tracks
 
 
 def render(ctx: ViewContext) -> None:
@@ -145,35 +146,44 @@ def render(ctx: ViewContext) -> None:
         view_df["✅ Advised"] = view_df["advised_at"].apply(_checked)
         view_df["✅ Prep"] = view_df["prep_at"].apply(_checked)
 
+        # ADR-071: show only the track columns active for this run's profile.
+        # The active set is read from the run's stored effective_config.
+        _track_short = {"ic": "Tech", "architect": "Arch", "management": "Lead"}
+        active_tracks = get_active_tracks(state)
+        active_score_cols = [TRACK_TO_SCORE_KEY[t] for t in active_tracks]
+        active_short = {TRACK_TO_SCORE_KEY[t]: _track_short[t] for t in active_tracks}
+
+        display_cols = (
+            ["🚫", "title", "company", "location", "url", "overall_score"]
+            + active_score_cols
+            + ["✅ Reviewed", "✅ Advised", "✅ Prep", "found_at", "scored_at"]
+        )
+        rename_map = {
+            "title": "Title", "company": "Company", "location": "Location", "url": "URL",
+            "overall_score": "Overall",
+            "found_at": "Found", "scored_at": "Scored",
+            **{col: active_short[col] for col in active_score_cols},
+        }
+        col_config = {
+            "🚫":      st.column_config.TextColumn("🚫", width="small",
+                                                   help="🚫 = excluded from cross-run analytics + future discovery"),
+            "URL":     st.column_config.LinkColumn("URL", width="small"),
+            "Overall": st.column_config.ProgressColumn("Overall", min_value=0, max_value=100, format="%d"),
+            **{
+                active_short[col]: st.column_config.ProgressColumn(
+                    active_short[col], min_value=0, max_value=100, format="%d"
+                )
+                for col in active_score_cols
+            },
+        }
         ev = st.dataframe(
-            view_df[[
-                "🚫",
-                "title", "company", "location", "url",
-                "overall_score", "technical_score", "architecture_score", "leadership_score",
-                "✅ Reviewed", "✅ Advised", "✅ Prep",
-                "found_at", "scored_at",
-            ]].rename(columns={
-                "title": "Title", "company": "Company", "location": "Location", "url": "URL",
-                "overall_score": "Overall",
-                "technical_score": "Tech",
-                "architecture_score": "Arch",
-                "leadership_score": "Lead",
-                "found_at": "Found", "scored_at": "Scored",
-            }),
+            view_df[display_cols].rename(columns=rename_map),
             key=f"jobs_table_{wf_id}",
             hide_index=True,
             use_container_width=True,
             on_select="rerun",
             selection_mode="single-row",
-            column_config={
-                "🚫":      st.column_config.TextColumn("🚫", width="small",
-                                                       help="🚫 = excluded from cross-run analytics + future discovery"),
-                "URL":     st.column_config.LinkColumn("URL", width="small"),
-                "Overall": st.column_config.ProgressColumn("Overall", min_value=0, max_value=100, format="%d"),
-                "Tech":    st.column_config.ProgressColumn("Tech",    min_value=0, max_value=100, format="%d"),
-                "Arch":    st.column_config.ProgressColumn("Arch",    min_value=0, max_value=100, format="%d"),
-                "Lead":    st.column_config.ProgressColumn("Lead",    min_value=0, max_value=100, format="%d"),
-            },
+            column_config=col_config,
         )
 
         # ADR-057: per-row exclude / un-exclude action. Single-row selection

@@ -99,6 +99,33 @@ def render(ctx: ViewContext) -> None:
     # ── Scoring ────────────────────────────────────────────────────────────
     st.subheader("Scoring")
     scoring = (eff.get("scoring") or {}).copy()
+
+    # ADR-071: per-profile active scoring tracks. Default all three (Primary).
+    _TRACK_LABELS = {
+        "ic": "IC (technical)",
+        "architect": "Architect (architecture)",
+        "management": "Management (leadership)",
+    }
+    _all_tracks = ["ic", "architect", "management"]
+    _current_tracks = scoring.get("tracks")
+    if not isinstance(_current_tracks, list) or not _current_tracks:
+        _current_tracks = _all_tracks
+    chosen_tracks = st.multiselect(
+        "scoring.tracks (which career tracks this profile is scored on)",
+        options=_all_tracks,
+        default=[t for t in _all_tracks if t in _current_tracks],
+        format_func=lambda t: _TRACK_LABELS.get(t, t),
+        help="ADR-071: most profiles fit 1-2 tracks, not all 3. Inactive tracks "
+             "are not scored, do not trigger deep review, and are hidden in the "
+             "results. Leave all three selected to score like the Primary profile.",
+    )
+    if st.button("Save tracks"):
+        # Persist in canonical order; empty selection means 'all three' (the
+        # backend treats absent/empty as all, but store the explicit full set so
+        # the saved value is unambiguous).
+        ordered = [t for t in _all_tracks if t in chosen_tracks] or _all_tracks
+        _save("scoring.tracks", ordered)
+
     threshold = st.slider(
         "scoring.min_match_score (any track ≥ this triggers deep review)",
         min_value=0, max_value=100,

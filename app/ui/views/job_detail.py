@@ -111,11 +111,18 @@ def render(ctx: ViewContext) -> None:
     if score:
         st.subheader(f"Score — produced `{_fmt_ts(score['created_at'])}`")
         sd = score["data"] or {}
-        s1, s2, s3, s4 = st.columns(4)
-        s1.metric("Overall",      sd.get("overall_score", "—"))
-        s2.metric("Technical",    sd.get("technical_score", "—"))
-        s3.metric("Architecture", sd.get("architecture_score", "—"))
-        s4.metric("Leadership",   sd.get("leadership_score", "—"))
+        # ADR-071: a track scored null means it is inactive for this profile —
+        # show Overall plus only the tracks that were actually scored.
+        track_metrics = [("Overall", sd.get("overall_score"))]
+        for label, key in (
+            ("Technical", "technical_score"),
+            ("Architecture", "architecture_score"),
+            ("Leadership", "leadership_score"),
+        ):
+            if sd.get(key) is not None:
+                track_metrics.append((label, sd.get(key)))
+        for col, (label, value) in zip(st.columns(len(track_metrics)), track_metrics):
+            col.metric(label, value if value is not None else "—")
         st.markdown("")
         _para("Summary",     sd.get("match_summary"))
         _para("Recommended", sd.get("recommended_next_action"))

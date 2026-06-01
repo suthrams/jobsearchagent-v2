@@ -12,8 +12,33 @@ import plotly.express as px
 import streamlit as st
 
 from app.ui.components.tracks import render_track_table
+from app.ui.data import _get_config_cached
 from app.ui.db_reader import load_scored_jobs
 from app.ui.nav import ViewContext
+
+_VALID_TRACKS = ["ic", "architect", "management"]
+
+
+def _active_tracks() -> list[str]:
+    """The current profile's active scoring tracks (ADR-071), default all three."""
+    cfg = _get_config_cached() or {}
+    eff = cfg.get("effective_config", {}) or {}
+    raw = (eff.get("scoring") or {}).get("tracks")
+    if not isinstance(raw, list):
+        return list(_VALID_TRACKS)
+    chosen = [t for t in _VALID_TRACKS if t in raw]
+    return chosen or list(_VALID_TRACKS)
+
+
+def _inactive_track_notice(track: str, label: str) -> bool:
+    """If `track` is not active for this profile, show a note and return True."""
+    if track not in _active_tracks():
+        st.info(
+            f"The {label} track is not active for this profile, so no jobs are "
+            f"scored on it. Enable it under **Settings -> Scoring** if you want it."
+        )
+        return True
+    return False
 
 
 def render_top_matches(ctx: ViewContext) -> None:
@@ -39,6 +64,8 @@ def render_top_matches(ctx: ViewContext) -> None:
 
 def render_ic_track(ctx: ViewContext) -> None:
     st.header("IC Engineering Track")
+    if _inactive_track_notice("ic", "IC"):
+        return
     df = load_scored_jobs(include_excluded=ctx.include_excluded, user_id=st.session_state.current_user_id)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
@@ -49,6 +76,8 @@ def render_ic_track(ctx: ViewContext) -> None:
 
 def render_architect_track(ctx: ViewContext) -> None:
     st.header("Architect Track")
+    if _inactive_track_notice("architect", "Architect"):
+        return
     df = load_scored_jobs(include_excluded=ctx.include_excluded, user_id=st.session_state.current_user_id)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
@@ -59,6 +88,8 @@ def render_architect_track(ctx: ViewContext) -> None:
 
 def render_management_track(ctx: ViewContext) -> None:
     st.header("Management Track")
+    if _inactive_track_notice("management", "Management"):
+        return
     df = load_scored_jobs(include_excluded=ctx.include_excluded, user_id=st.session_state.current_user_id)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
@@ -74,15 +105,22 @@ def render_companies(ctx: ViewContext) -> None:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "this view aggregates the best score per company across all runs.")
         st.stop()
+    # ADR-071: only aggregate the track columns active for this profile.
+    active = _active_tracks()
+    _track_agg = {
+        "ic": ("best_technical", ("technical_score", "max"), "Tech"),
+        "architect": ("best_arch", ("architecture_score", "max"), "Arch"),
+        "management": ("best_lead", ("leadership_score", "max"), "Lead"),
+    }
+    agg_spec = {"jobs": ("job_id", "count"), "best_overall": ("overall_score", "max")}
+    rename_map = {"company": "Company", "jobs": "Roles", "best_overall": "Best"}
+    for t in active:
+        col, spec, short = _track_agg[t]
+        agg_spec[col] = spec
+        rename_map[col] = short
     agg = (
         df.groupby("company")
-        .agg(
-            jobs=("job_id", "count"),
-            best_overall=("overall_score", "max"),
-            best_technical=("technical_score", "max"),
-            best_arch=("architecture_score", "max"),
-            best_lead=("leadership_score", "max"),
-        )
+        .agg(**agg_spec)
         .reset_index()
         .sort_values("best_overall", ascending=False)
     )
@@ -99,10 +137,6 @@ def render_companies(ctx: ViewContext) -> None:
     fig.update_traces(textposition="outside")
     st.plotly_chart(fig, use_container_width=True)
     st.dataframe(
-        agg.rename(columns={
-            "company": "Company", "jobs": "Roles",
-            "best_overall": "Best", "best_technical": "Tech",
-            "best_arch": "Arch", "best_lead": "Lead",
-        }),
+        agg.rename(columns=rename_map),
         hide_index=True, use_container_width=True,
     )

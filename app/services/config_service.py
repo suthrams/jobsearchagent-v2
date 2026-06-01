@@ -117,6 +117,21 @@ class ConfigService:
                 )
             except (TypeError, ValueError):
                 del scoring["max_scored"]
+        # ADR-071: validate the per-profile active-track subset. Keep only valid
+        # track names, in canonical order; drop the key entirely when nothing
+        # valid remains so the get_active_tracks() all-three default applies.
+        if "tracks" in scoring:
+            from app.workflows.limits import VALID_TRACKS
+
+            raw = scoring.get("tracks")
+            if isinstance(raw, (list, tuple)):
+                cleaned = [t for t in VALID_TRACKS if t in set(raw)]
+            else:
+                cleaned = []
+            if cleaned:
+                scoring["tracks"] = cleaned
+            else:
+                del scoring["tracks"]
         return config
 
     @staticmethod

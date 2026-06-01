@@ -292,9 +292,12 @@ earlier drafts was retired in ADR-059; the graph now runs end to end.
 ### Steps
 
 ```text
-1. Filter to jobs where ANY track score (technical/architecture/leadership)
+1. Filter to jobs where ANY *active* track score (the profile's scoring.tracks
+   subset; default all of technical/architecture/leadership, ADR-071)
    >= effective_config.scoring.min_match_score (default 75)
-   — use qualifies_for_deep_review() / best_track_score(), never overall_score
+   — use qualifies_for_deep_review() / best_track_score() with
+   active_track_keys(state), never overall_score; an inactive (null) track
+   never qualifies a job
 2. Sort qualifying jobs by best track score, descending
 3. Keep the top MAX_SELECTED_JOBS (3)
 4. If none qualify, deep_review_gate skips straight to generate_report

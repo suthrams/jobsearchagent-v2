@@ -28,6 +28,22 @@ search:
   # min_years_experience: 5    # drop postings asking for FEWER than N years (0 = off)
   # exclude_senior: true       # drop senior/principal/staff/lead/director/etc.
 
+# ─── Scoring ────────────────────────────────────────────────────────────────
+# Usually set per profile via the Settings UI (writes to user_config), not here.
+scoring:
+  # ADR-071: active scoring tracks — the subset of the three career tracks this
+  # profile pursues. Inactive tracks are NOT scored, do not gate deep review, and
+  # are hidden in the UI. Omit (or list all three) to score all tracks like the
+  # Primary profile. Valid names: ic (technical), architect (architecture),
+  # management (leadership).
+  tracks:
+    - ic
+    - architect
+    - management
+  # career_track: all   # weighting emphasis among the active tracks (ic | architect
+  #                     # | management | all). Distinct from `tracks` (inclusion).
+  # min_match_score: 75 # any active track >= this triggers deep review + prep.
+
 # ─── Job Sources ──────────────────────────────────────────────────────────────
 # Adzuna (AdzunaConfig). Quota guard: len(search.titles) x len(locations)
 # + len(remote_keywords) must stay < 100/day.

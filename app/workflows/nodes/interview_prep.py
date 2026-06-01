@@ -11,6 +11,7 @@ from app.repositories.advice_repository import AdviceRepository
 from app.repositories.database import utcnow_iso
 from app.services.observability_service import ObservabilityService
 from app.workflows.limits import (
+    active_track_keys,
     add_llm_call,
     append_error,
     best_track_score,
@@ -42,13 +43,14 @@ def make_interview_prep_node(
         if not selected_jobs:
             return {"current_step": "interview_prep", "updated_at": utcnow_iso()}
 
-        top_job = max(selected_jobs, key=best_track_score)
+        active_keys = active_track_keys(state)
+        top_job = max(selected_jobs, key=lambda j: best_track_score(j, active_keys))
         job_id = top_job.get("job_id", top_job.get("id", ""))
         threshold = get_min_match_score(state)
 
         # Routing guard — this node only runs when the router decided to call it,
         # but we keep the check here as a safety net.
-        if best_track_score(top_job) < threshold and not state.get("user_requested_interview_prep"):
+        if best_track_score(top_job, active_keys) < threshold and not state.get("user_requested_interview_prep"):
             return {"current_step": "interview_prep", "updated_at": utcnow_iso()}
 
         score_by_job = {sj.get("job_id", sj.get("id", "")): sj for sj in scored_jobs}

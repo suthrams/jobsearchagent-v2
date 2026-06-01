@@ -6,6 +6,7 @@ Routers are pure functions — no side effects, no DB calls.
 from __future__ import annotations
 
 from app.workflows.limits import (
+    active_track_keys,
     best_track_score,
     get_manual_selection,
     get_min_match_score,
@@ -48,8 +49,12 @@ def interview_router(state: dict) -> str:
     meets the per-run min_match_score, or if the user explicitly requested coaching.
     """
     threshold = get_min_match_score(state)
+    active_keys = active_track_keys(state)
     selected = state.get("selected_jobs") or []
-    top_track = max((best_track_score(j) for j in selected if isinstance(j, dict)), default=0)
+    top_track = max(
+        (best_track_score(j, active_keys) for j in selected if isinstance(j, dict)),
+        default=0,
+    )
     if top_track >= threshold or state.get("user_requested_interview_prep"):
         return "interview_prep"
     return "generate_report"

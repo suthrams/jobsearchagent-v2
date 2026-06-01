@@ -103,9 +103,15 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 
 **Auto-selection rules**
 - `MIN_MATCH_SCORE_DEFAULT = 75` in `app/workflows/limits.py`. `effective_config.scoring.min_match_score` overrides per run
-- A job qualifies for deep review when ANY of `{technical_score, architecture_score, leadership_score} >= threshold` — never just `overall_score`. Use `qualifies_for_deep_review()` / `best_track_score()` helpers; do not inline the comparison
+- A job qualifies for deep review when ANY of the profile's **active** track scores `>= threshold` — never just `overall_score`. Use `qualifies_for_deep_review()` / `best_track_score()` helpers, passing the run's `active_track_keys(state)` (ADR-071); do not inline the comparison. Default active set is all three (`technical_score, architecture_score, leadership_score`)
 - `await_job_selection` node auto-selects up to `MAX_SELECTED_JOBS` qualifying jobs (highest best-track score wins). It does NOT call `interrupt()`
 - `deep_review_gate` router skips deep review → ... → tailoring entirely when `selected_jobs` is empty, jumping straight to `generate_report`
+
+**Scoring tracks — per-profile active subset (ADR-071)**
+- The three tracks are fixed: `ic`->`technical_score`, `architect`->`architecture_score`, `management`->`leadership_score` (`TRACK_TO_SCORE_KEY` in `app/workflows/limits.py`). A profile declares which it pursues via `effective_config.scoring.tracks` (subset of `["ic","architect","management"]`). Default/absent/empty/all-invalid = all three (Primary unchanged)
+- Read the active set ONLY via `get_active_tracks(state)` / `active_track_keys(state)` — never inline `scoring.tracks`. These validate against `VALID_TRACKS` and fall back to all three
+- **Inactive tracks are not scored.** `JobScore.{technical,architecture,leadership}_score` are `int | None`; the Scoring Agent emits `null` for tracks not in the active set (`scoring_agent.txt` v2). `overall_score`/`domain_score` stay required. A `None` track is treated as 0 and, being outside `active_track_keys`, never qualifies a job
+- `scoring.career_track` (emphasis/weighting) is orthogonal to `scoring.tracks` (inclusion). If `career_track` is not in `tracks`, the active set wins. `scoring.tracks` is NOT in `_PROTECTED_KEYS` (users set it); `ConfigService._enforce_limits` clamps it to valid names
 
 **Manual scoring selection — opt-in curate-before-scoring (ADR-060)**
 - Default off. When `effective_config.scoring.manual_selection` is true, discovery casts a wider net (`MAX_DISCOVERED_JOBS`) and the graph parks at `await_scoring_selection` (status `awaiting_scoring_selection`) WITHOUT scoring — no `interrupt()`. The human picks which jobs to score so research+scoring spend (2 LLM calls/job) is paid only on kept jobs
@@ -189,7 +195,7 @@ app/
                        in views/__init__.py, add its name to nav.NAV_ITEMS.
 
 docs/architecture/
-  adr/              ← 70 Architecture Decision Records (start at ADR-000-index.md)
+  adr/              ← 71 Architecture Decision Records (start at ADR-000-index.md)
   implementation_plan.md
   agent_model.md · workflow_model.md · state_and_memory_model.md
   data_model.md · observability.md · security.model.md
@@ -224,7 +230,7 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
 - `api_surface_overview.md` — one-page visual map (PNG + Mermaid) of every REST endpoint grouped by domain
 - `ui_architecture.md` — how the Streamlit UI is built: the thin entrypoint + views package, navigation, the read-path (`db_reader`) vs control-path (`api_client`) split, and Mermaid sequence diagrams for the key UI-to-backend flows. Companion: `ui_refactor_plan.md` (how it got that shape)
-- `adr/` — 70 Architecture Decision Records
+- `adr/` — 71 Architecture Decision Records
 
 ---
 

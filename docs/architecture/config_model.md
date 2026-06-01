@@ -76,6 +76,7 @@ Used for:
 * experience targeting (ADR-065): a `[min, max]` years window via `search.min_years_experience` / `search.max_years_experience` (0 = that bound off) plus `search.exclude_senior` (bool; drops senior roles). Per-profile, off by default; postings that don't state experience are kept.
 * job limits (within bounds)
 * scoring preferences (`scoring.min_match_score` — the per-profile lever for non-senior personas)
+* active scoring tracks (ADR-071): `scoring.tracks` — the subset of `["ic","architect","management"]` a profile pursues. Default all three (Primary unchanged). Inactive tracks are not scored, do not gate deep review, and are hidden in the UI. Read via `get_active_tracks(state)`; distinct from `scoring.career_track` (weighting emphasis)
 * tailoring style
 
 ---
