@@ -7,7 +7,7 @@ import logging
 import uuid
 from pathlib import Path
 
-from app.repositories.database import DEFAULT_DB_PATH
+from app.repositories.database import DEFAULT_DB_PATH, utcnow_iso
 from app.repositories.decision_repository import DecisionRepository
 from app.repositories.observability_repository import ObservabilityRepository
 from app.repositories.security_repository import SecurityRepository
@@ -45,6 +45,39 @@ def emit_security_event_safe(
         )
     except Exception:
         logger.exception("emit_security_event_safe failed")
+
+
+def log_artifact_decision(
+    observability: "ObservabilityService",
+    *,
+    workflow_id: str | None,
+    decision_type: str,
+    decision_value: str,
+    presented_at: str | None,
+    payload: dict,
+) -> None:
+    """Mirror a human approve/revise/reject/edit decision into the
+    `human_decisions` audit trail (ADR-074 Gap 1), alongside the domain-table
+    write that already persists it.
+
+    The decision endpoints record the decision in the artifact's own table
+    (`tailored_resumes.decision` / `resume_clinic_reviews.decision`); this adds
+    the cross-cutting observability/accountability row so "who decided what, when,
+    on which artifact" is answerable in one place (ADR-059 / Article 8).
+
+    `payload` must be PII-safe — ids, flags, and counts only, never resume content
+    or identifiers. `decided_at` is stamped now; `presented_at` is the artifact's
+    creation time. Routes through `log_human_decision`, which swallows errors, so a
+    missing audit row never breaks the user's decision.
+    """
+    observability.log_human_decision(
+        workflow_id=workflow_id or "",
+        decision_type=decision_type,
+        decision_value=str(decision_value),
+        payload=payload,
+        presented_at=presented_at or utcnow_iso(),
+        decided_at=utcnow_iso(),
+    )
 
 
 def fidelity_review_security_description(fidelity: dict | None) -> str | None:

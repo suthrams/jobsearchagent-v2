@@ -6,6 +6,25 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-02
 
+### Added — human_decisions audit trail (ADR-074 Gap 1)
+
+The `human_decisions` table (dead since the in-graph HITL was retired in ADR-059)
+is now **wired**. The out-of-graph decision endpoints (`POST /tailorings/{id}/
+decisions`, `POST /resume-clinic/{id}/decisions`) mirror each approve/revise/
+reject/edit into `human_decisions` via `log_artifact_decision` ->
+`log_human_decision` (never-crash), alongside the existing domain-table write.
+
+- **PII-safe payload**: ids + flags only (`tailoring_id`/`review_id`, `job_id`,
+  `edited`) — never resume content.
+- **Read**: `DecisionRepository.list_for_user` (profile-scoped, orphans COALESCE
+  to `"0"`) + `system_health.decisions_summary`; surfaced as a **Human decisions**
+  section on the System Dashboard (governance/accountability, ADR-059/Article 8).
+- **Tests**: `tests/v2/test_human_decisions.py` (5) — forcing-function (emit sites
+  must exist), behavioral, PII-safety, scoping.
+- Part of **ADR-074** (catalog of remaining observability gaps); Gaps 2-4
+  (`step_executions`, out-of-graph `run_metrics`, the thread-local cost race)
+  remain open.
+
 ### Added — Security-event wiring + unified System Dashboard (ADR-073)
 
 The `security_events` table (built since ADR-026 but never written to) is now

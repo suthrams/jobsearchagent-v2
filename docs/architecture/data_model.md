@@ -730,21 +730,26 @@ CREATE TABLE human_decisions (
 |-------------------|-------------|-------------|
 | `id`              | TEXT PK     | UUID. |
 | `workflow_run_id` | TEXT        | FK → `workflow_runs.id`. |
-| `decision_type`   | TEXT        | e.g. `"approve_tailoring"`, historical: `"select_jobs_for_deep_review"`. |
-| `decision_value`  | TEXT        | The decision value (e.g. `"approve"`). Free-form per type. |
-| `payload_json`    | TEXT (JSON) | Optional structured context for the decision. |
-| `presented_at`    | TEXT        | ISO 8601 UTC; when the UI surfaced the choice. |
+| `decision_type`   | TEXT        | Artifact class: `"tailoring"` \| `"resume_clinic"` (ADR-074). |
+| `decision_value`  | TEXT        | The decision: `approve` \| `revise` \| `reject` \| `edit` (ADR-059). |
+| `payload_json`    | TEXT (JSON) | **PII-safe** structured context — ids + flags only (`tailoring_id`/`review_id`, `job_id`, `edited`); never resume content. |
+| `presented_at`    | TEXT        | ISO 8601 UTC; the artifact's creation time (when the choice was surfaced). |
 | `decided_at`      | TEXT        | ISO 8601 UTC; when the user acted. The latency `decided_at - presented_at` is a useful UX metric. |
 
 ### Workflow usage
 
-- **Written by**: in-graph HITL approvals via `DecisionRepository.create`.
-  The job-selection HITL has been removed (ADR-054 auto-select); the
-  in-graph tailoring approval still writes here when that path runs.
-- **Not written by**: `POST /tailorings/{id}/decisions` (out-of-graph
-  tailoring) — it writes only to `tailored_resumes.decision`. Both
-  paths land at the same user intent; the row in `human_decisions`
-  exists as a graph-correlated audit when the in-graph path fires.
+- **Written by** (ADR-074 Gap 1, via `observability_service.log_artifact_decision`
+  -> `log_human_decision`, never-crash): the out-of-graph decision endpoints
+  `POST /tailorings/{id}/decisions` and `POST /resume-clinic/{id}/decisions`,
+  **alongside** the domain-table write (`tailored_resumes.decision` /
+  `resume_clinic_reviews.decision`). The domain table holds the artifact's current
+  decision; this table is the cross-cutting "who decided what, when, on which
+  artifact" audit. (The in-graph HITL writer was retired in ADR-059; before
+  ADR-074 this table had zero writers.)
+- **Read by**: the System Dashboard's Human-decisions section (system-level, via
+  `DecisionRepository.list_for_user` + `system_health.decisions_summary`, scoped
+  by the active profile with orphans COALESCEd to `"0"`); `get_by_run` for the
+  per-run view.
 
 ---
 

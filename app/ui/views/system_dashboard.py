@@ -98,6 +98,7 @@ def render(ctx: ViewContext) -> None:
 
     # ── Sections ──────────────────────────────────────────────────────────────
     _render_security(sec)
+    _render_decisions(window_days, view_uid)
     _render_performance(window_days, view_uid)
     _render_reliability(rel)
     _render_scalability(window_days, view_uid)
@@ -186,6 +187,39 @@ def _render_security(sec: dict) -> None:
             tbl = recent[["When", "event_type", "severity", "Run", "description"]].rename(
                 columns={"event_type": "Type", "severity": "Sev", "description": "Detail"})
             st.dataframe(tbl, hide_index=True, use_container_width=True, height=300)
+
+
+# ── Decisions (governance / accountability, ADR-074) ─────────────────────────
+
+
+def _render_decisions(window_days: int | None, view_uid: str | None) -> None:
+    dec = sh.decisions_summary(days=window_days, user_id=view_uid)
+    st.markdown("---")
+    st.subheader("Human decisions")
+    st.caption("Every approve / revise / reject / edit on a tailoring or clinic "
+               "draft, from the `human_decisions` audit trail (ADR-074). The "
+               "accountable human is the final author (ADR-059); this is the "
+               "unified record of who decided what.")
+    if dec["total"] == 0:
+        st.caption("No human decisions recorded in this window.")
+        return
+    c1, c2 = st.columns(2)
+    with c1:
+        by_val = dec["by_value"]
+        st.markdown("**By decision** - " + " - ".join(
+            f"{k}: {v}" for k, v in sorted(by_val.items())))
+        by_type = dec["by_type"]
+        st.markdown("**By artifact** - " + " - ".join(
+            f"{k}: {v}" for k, v in sorted(by_type.items())))
+    with c2:
+        recent = pd.DataFrame(dec["recent"])
+        if not recent.empty:
+            recent["When"] = recent["decided_at"].apply(_fmt_ts)
+            recent["Run"] = recent["workflow_run_id"].apply(
+                lambda s: (s[:8] + "...") if isinstance(s, str) and len(s) > 8 else s)
+            tbl = recent[["When", "decision_type", "decision_value", "Run"]].rename(
+                columns={"decision_type": "Artifact", "decision_value": "Decision"})
+            st.dataframe(tbl, hide_index=True, use_container_width=True, height=260)
 
 
 # ── Performance ───────────────────────────────────────────────────────────────

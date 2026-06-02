@@ -33,6 +33,7 @@ from app.api.schemas.responses import (
 )
 from app.providers.llm_client import LLMProviderError
 from app.services.context_trimmer import redact_pii_for_llm
+from app.services.observability_service import log_artifact_decision
 from app.services.resume_clinic_runner import (
     ResumeClinicError,
     build_fidelity_context_for_overhaul,
@@ -345,6 +346,16 @@ def submit_resume_clinic_decision(
             },
         )
     deps.resume_clinic_repo.set_decision(review_id, body.approval, edited=body.edited)
+    # ADR-074 Gap 1: mirror the decision into the human_decisions audit trail.
+    log_artifact_decision(
+        deps.observability,
+        workflow_id=row.get("workflow_run_id"),
+        decision_type="resume_clinic",
+        decision_value=body.approval,
+        presented_at=row.get("created_at"),
+        payload={"review_id": review_id, "job_id": row.get("job_id"),
+                 "edited": bool(body.edited)},
+    )
     updated = deps.resume_clinic_repo.get_by_id(review_id)
     return _serialize_row(updated or row)
 

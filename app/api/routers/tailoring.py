@@ -37,7 +37,10 @@ from app.services.context_trimmer import (
     trim_score,
 )
 from app.services.deep_review_runner import review_one_job
-from app.services.observability_service import fidelity_review_security_description
+from app.services.observability_service import (
+    fidelity_review_security_description,
+    log_artifact_decision,
+)
 from app.workflows.workflow_graph import WorkflowDependencies
 
 logger = logging.getLogger(__name__)
@@ -351,6 +354,16 @@ def submit_tailoring_decision(
             },
         )
     deps.tailoring_repo.set_decision(tailoring_id, body.approval, edited=body.edited)
+    # ADR-074 Gap 1: mirror the decision into the human_decisions audit trail.
+    log_artifact_decision(
+        deps.observability,
+        workflow_id=row.get("workflow_run_id"),
+        decision_type="tailoring",
+        decision_value=body.approval,
+        presented_at=row.get("created_at"),
+        payload={"tailoring_id": tailoring_id, "job_id": row.get("job_id"),
+                 "edited": bool(body.edited)},
+    )
     updated = deps.tailoring_repo.get_by_id(tailoring_id)
     return _serialize_row(updated or row)
 

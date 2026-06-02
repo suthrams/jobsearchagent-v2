@@ -23,6 +23,7 @@ import sqlite3
 from pathlib import Path
 
 from app.repositories.database import DEFAULT_DB_PATH
+from app.repositories.decision_repository import DecisionRepository
 from app.repositories.security_repository import SecurityRepository
 
 # Severity buckets the UI renders in a fixed order (ADR-073 severity scale).
@@ -124,6 +125,42 @@ def security_summary(
         "total": len(rows),
         "by_type": by_type_sorted,
         "by_severity": by_sev,
+        "recent": rows[:recent_n],
+    }
+
+
+# ── Human decisions (ADR-074 Gap 1) ──────────────────────────────────────────
+
+
+def decisions_summary(
+    days: int | None = None,
+    user_id: str | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+    recent_n: int = 25,
+) -> dict:
+    """Governance rollup over the `human_decisions` audit trail (ADR-074 Gap 1).
+
+    Reuses DecisionRepository.list_for_user (COALESCE-to-'0' scoping in one place)
+    and aggregates in Python.
+
+    Returns:
+      {"total": int,
+       "by_type": {decision_type: count},          # e.g. tailoring / resume_clinic
+       "by_value": {decision_value: count},        # approve / revise / reject / edit
+       "recent": [ {..., owner_user_id}, ... ]}     # newest first
+    """
+    rows = DecisionRepository(db_path).list_for_user(user_id=user_id, days=days)
+    by_type: dict[str, int] = {}
+    by_value: dict[str, int] = {}
+    for r in rows:
+        dt = r.get("decision_type") or "?"
+        dv = r.get("decision_value") or "?"
+        by_type[dt] = by_type.get(dt, 0) + 1
+        by_value[dv] = by_value.get(dv, 0) + 1
+    return {
+        "total": len(rows),
+        "by_type": by_type,
+        "by_value": by_value,
         "recent": rows[:recent_n],
     }
 

@@ -2,9 +2,12 @@
 
 ## Status
 
-Proposed (2026-06-02). Catalog ADR — ratifies the gaps and the intended fixes;
+Accepted (2026-06-02). Catalog ADR — ratifies the gaps and the intended fixes;
 implementation is phased (priority order below). Each phase may land under this
 ADR or spin out its own if it grows a real contract.
+
+**Progress:** Gap 1 (`human_decisions`) — **implemented** 2026-06-02. Gaps 2-4 and
+the minors remain open.
 
 Follows ADR-073 (which wired the first dead audit table, `security_events`) and
 implements ADR-023 (Make Observability First-Class). Touches ADR-059 / Article 8
@@ -36,7 +39,7 @@ Close the gaps, in priority order. Every fix routes through `ObservabilityServic
 (never the repositories directly) and inherits its never-crash contract (a missing
 audit row must never break a run or a user action), mirroring ADR-073.
 
-### Gap 1 (HIGH) — `human_decisions` is a dead audit table
+### Gap 1 (HIGH) — `human_decisions` is a dead audit table [IMPLEMENTED]
 
 Human decisions are persisted only in **domain** tables
 (`tailored_resumes.decision`, `resume_clinic_reviews.decision`); the cross-cutting
