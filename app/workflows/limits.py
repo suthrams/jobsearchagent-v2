@@ -1,7 +1,7 @@
 """Execution limit constants and enforcement helpers for the workflow orchestrator.
 
-All budget checks must go through check_budget() before calling any agent.
-Never inline the limit logic inside nodes.
+Read limits through the helpers here (get_max_scored, get_min_match_score, etc.)
+rather than inlining the constants inside nodes.
 """
 from __future__ import annotations
 
@@ -69,10 +69,6 @@ TRACK_TO_SCORE_KEY = {
 }
 
 
-class BudgetExceededError(Exception):
-    """Raised when MAX_LLM_CALLS_PER_RUN is hit during a scoring or review loop."""
-
-
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
 def get_metrics(state: dict) -> dict:
@@ -83,15 +79,6 @@ def get_metrics(state: dict) -> dict:
     if hasattr(m, "model_dump"):
         return m.model_dump()
     return dict(m)
-
-
-def check_budget(state: dict) -> None:
-    """Raise BudgetExceededError if the LLM call budget is exhausted."""
-    calls = get_metrics(state).get("llm_calls", 0)
-    if calls >= MAX_LLM_CALLS_PER_RUN:
-        raise BudgetExceededError(
-            f"LLM call budget exhausted ({calls}/{MAX_LLM_CALLS_PER_RUN})"
-        )
 
 
 def add_llm_call(

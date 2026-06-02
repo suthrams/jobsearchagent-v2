@@ -171,13 +171,6 @@ def _zero_aggregate() -> dict:
 # All time-window arguments are in days. Pass days=None to scan all-time.
 
 
-def _window_clause(days: int | None) -> str:
-    """Return a SQL fragment scoped to the last N days, or empty for all-time."""
-    if days is None or days <= 0:
-        return ""
-    return f"WHERE created_at >= datetime('now', '-{int(days)} days')"
-
-
 def _scope_clause(days: int | None, user_id: str | None) -> tuple[str, tuple]:
     """Build a combined WHERE clause for an `llm_calls` query, scoping by time
     window and (ADR-062) owning profile.

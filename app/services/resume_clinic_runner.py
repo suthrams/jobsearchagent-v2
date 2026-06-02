@@ -29,7 +29,6 @@ from __future__ import annotations
 import json
 import logging
 import uuid
-from dataclasses import dataclass
 from typing import Any
 
 from app.agents.fidelity_reviewer import FidelityReviewer
@@ -261,12 +260,3 @@ def build_fidelity_context_for_overhaul(
         # raw_text directly (the clinic's source of truth for evidence-binding).
         "raw_text": raw_text,
     }
-
-
-@dataclass
-class _ClinicResult:
-    """Convenience holder; the public function returns a plain dict, but tests
-    that want fidelity / review separately can build this from the return."""
-    clinic_id: str
-    workflow_run_id: str
-    row: dict

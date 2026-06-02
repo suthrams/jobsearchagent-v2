@@ -11,7 +11,6 @@ import json
 import logging
 import re
 import uuid
-from pathlib import Path
 from typing import Callable
 
 from app.repositories.database import DEFAULT_USER_ID, utcnow_iso

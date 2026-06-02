@@ -16,8 +16,6 @@ from app.providers.model_registry import (
     assignment_from_config,
     catalog_from_config,
     defaults_from_config,
-    is_cost_capped_agent,
-    is_high_volume_safe_model,
     known_models_from_catalog,
 )
 from app.providers.openai_provider import OpenAIProvider
@@ -239,14 +237,6 @@ def test_high_volume_safe_models_includes_haiku_and_gpt4o_mini():
     assert "claude-sonnet-4-6" not in HIGH_VOLUME_SAFE_MODELS
     assert "claude-opus-4-7" not in HIGH_VOLUME_SAFE_MODELS
     assert "gpt-4o" not in HIGH_VOLUME_SAFE_MODELS
-
-
-def test_helpers_match_constants():
-    assert is_cost_capped_agent("scoring_agent") is True
-    assert is_cost_capped_agent("research_agent") is True
-    assert is_cost_capped_agent("career_advisor") is False
-    assert is_high_volume_safe_model("claude-haiku-4-5-20251001") is True
-    assert is_high_volume_safe_model("claude-sonnet-4-6") is False
 
 
 def test_build_snaps_high_volume_agent_back_when_assigned_sonnet(tmp_path, caplog):

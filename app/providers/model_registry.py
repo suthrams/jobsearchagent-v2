@@ -49,16 +49,6 @@ HIGH_VOLUME_SAFE_MODELS: frozenset[str] = frozenset({
 })
 
 
-def is_cost_capped_agent(agent_name: str) -> bool:
-    """True if `agent_name` is in the high-volume tier (cheap-only allowlist)."""
-    return agent_name in HIGH_VOLUME_AGENTS
-
-
-def is_high_volume_safe_model(model_id: str) -> bool:
-    """True if `model_id` is in the cost-capped allowlist for high-volume agents."""
-    return model_id in HIGH_VOLUME_SAFE_MODELS
-
-
 class CostCapViolationError(ValueError):
     """Raised when a cost-capped agent is assigned a model outside HIGH_VOLUME_SAFE_MODELS."""
 

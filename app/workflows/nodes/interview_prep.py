@@ -30,7 +30,6 @@ def make_interview_prep_node(
 ) -> Callable[[dict], dict]:
     def interview_prep(state: dict) -> dict:
         workflow_id: str = state.get("workflow_id", "")
-        resume_id: str = state.get("resume_id") or ""
         resume_profile: dict = state.get("resume_profile") or {}
         selected_jobs: list[dict] = state.get("selected_jobs") or []
         scored_jobs: list[dict] = state.get("scored_jobs") or []

@@ -22,7 +22,7 @@ from app.agents.review_auditor import ReviewAuditor
 from app.agents.scoring_agent import ScoringAgent
 from app.agents.tailoring_agent import TailoringAgent
 from app.repositories.advice_repository import AdviceRepository
-from app.repositories.database import DEFAULT_DB_PATH, DEFAULT_USER_ID, utcnow_iso
+from app.repositories.database import DEFAULT_USER_ID, utcnow_iso
 from app.repositories.decision_repository import DecisionRepository
 from app.repositories.job_repository import JobRepository
 from app.repositories.observability_repository import ObservabilityRepository
@@ -328,7 +328,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     """Build WorkflowDependencies wired to real Claude agents and SQLite repos."""
     from pathlib import Path
 
-    from app.providers.claude_provider import ClaudeProvider, make_resume_enhance_fn
+    from app.providers.claude_provider import make_resume_enhance_fn
     from app.providers.model_registry import (
         ModelRegistry,
         catalog_from_config,
@@ -410,8 +410,6 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     )
     resume_parser = ResumeParser(resume_repo, enhance_fn=enhance_fn)
 
-    # ConfigService for the rest of the build (already loaded above for the registry)
-    config_svc = config_svc_for_models
     config_dict = _eff
 
     # JobDiscoveryService with real scrapers (only include scrapers whose creds are present)

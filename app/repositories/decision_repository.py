@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from .database import DEFAULT_DB_PATH, get_connection, utcnow_iso
+from .database import DEFAULT_DB_PATH, get_connection
 
 
 class DecisionRepository:

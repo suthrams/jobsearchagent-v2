@@ -16,7 +16,7 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
@@ -67,13 +67,6 @@ class CustomUrlResult:
     job: SimpleNamespace | None = None
     error: str | None = None
     extraction_method: str | None = None  # "heuristic" | "llm" | None
-
-
-@dataclass
-class CustomUrlScraperOutput:
-    """Holds both the produced jobs and per-URL fetch_errors for the workflow state."""
-    jobs: list[SimpleNamespace] = field(default_factory=list)
-    errors: list[dict] = field(default_factory=list)
 
 
 # ── Scraper ────────────────────────────────────────────────────────────────────

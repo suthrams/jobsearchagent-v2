@@ -18,18 +18,6 @@ def _fmt_ts(raw) -> str:
     return s[:19] if len(s) >= 19 else s
 
 
-def score_badge(score: int | None) -> str:
-    if score is None:
-        return "—"
-    if score >= 80:
-        return f"🟢 {score}"
-    if score >= 65:
-        return f"🟡 {score}"
-    if score >= 50:
-        return f"🟠 {score}"
-    return f"🔴 {score}"
-
-
 def _checked(flag) -> str:
     return "✅" if pd.notna(flag) and flag else "—"
 

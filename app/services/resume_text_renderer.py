@@ -885,8 +885,7 @@ def render_docx(rendered: RenderedResume) -> bytes:
     # Imported lazily so the module can be imported in environments that have
     # not installed python-docx (e.g. partial test runs).
     from docx import Document
-    from docx.enum.table import WD_TABLE_ALIGNMENT
-    from docx.enum.text import WD_ALIGN_PARAGRAPH, WD_TAB_ALIGNMENT
+    from docx.enum.text import WD_TAB_ALIGNMENT
     from docx.oxml.ns import qn
     from docx.oxml import OxmlElement
     from docx.shared import Pt, RGBColor, Inches
@@ -1053,7 +1052,7 @@ def render_pdf(rendered: RenderedResume) -> bytes:
     from reportlab.lib.units import inch
     from reportlab.platypus import (
         HRFlowable, KeepTogether, ListFlowable, ListItem, Paragraph,
-        SimpleDocTemplate, Spacer, Table, TableStyle,
+        SimpleDocTemplate, Table, TableStyle,
     )
 
     buf = io.BytesIO()
@@ -1099,11 +1098,6 @@ def render_pdf(rendered: RenderedResume) -> bytes:
         "Role", parent=styles["Normal"],
         fontName="Helvetica-Bold", fontSize=10.5, leading=12,
         spaceBefore=5, spaceAfter=0,
-    )
-    meta_style = ParagraphStyle(
-        "Meta", parent=styles["Normal"],
-        fontName="Helvetica", fontSize=9.5, leading=11,
-        textColor="#666666", spaceAfter=0,
     )
     tech_style = ParagraphStyle(
         "Tech", parent=styles["Normal"],

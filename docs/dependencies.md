@@ -9,7 +9,7 @@ Versions reflect the current development environment — pin to these in `requir
 
 | Package | Version | Licence | Purpose |
 |---|---|---|---|
-| [langchain](https://python.langchain.com) | 1.2.14 | MIT | Agent framework — chains, prompts, tool use |
+| [langchain-core](https://python.langchain.com) | 1.3.2 | MIT | Message / prompt-template types used by `PromptLoader`. (The `langchain` meta-package is not imported directly.) |
 | [langchain-anthropic](https://github.com/langchain-ai/langchain-anthropic) | 1.4.2 | MIT | LangChain integration for Claude via `ChatAnthropic` |
 | [openai](https://github.com/openai/openai-python) | 2.30.0 | Apache 2.0 | Official OpenAI SDK — used directly by the `OpenAIProvider` (ADR-053 multi-provider); OpenAI models register only when `OPENAI_API_KEY` is set |
 | [tiktoken](https://github.com/openai/tiktoken) | 0.8.0 | MIT | Token counting for the `OpenAIProvider`'s cost/usage estimation |
@@ -33,11 +33,8 @@ Versions reflect the current development environment — pin to these in `requir
 | [PyYAML](https://pyyaml.org) | 6.0.3 | MIT | Parses `config/config.yaml` |
 | [python-dotenv](https://github.com/theskumar/python-dotenv) | 1.1.1 | BSD 3-Clause | Loads `.env` file (API keys) |
 | [httpx](https://www.python-httpx.org) | 0.28.1 | BSD 3-Clause | HTTP client for scrapers and API calls |
-| [feedparser](https://feedparser.readthedocs.io) | 6.0.12 | BSD 2-Clause | Parses RSS/Atom feeds from job sources |
-| [pdfplumber](https://github.com/jsvine/pdfplumber) | 0.11.9 | MIT | Extracts text from `resume.pdf` |
 | [beautifulsoup4](https://www.crummy.com/software/BeautifulSoup) | 4.13.5 | MIT | Parses HTML from scraped job pages |
 | [tenacity](https://tenacity.readthedocs.io) | 9.1.4 | Apache 2.0 | Retry with exponential backoff on API calls |
-| [rich](https://rich.readthedocs.io) | 14.2.0 | MIT | Terminal formatting for run output and tables |
 | [streamlit](https://streamlit.io) | 1.56.0 | Apache 2.0 | Browser UI (`app/ui/streamlit_app.py`) |
 | [pandas](https://pandas.pydata.org) | 2.3.3 | BSD 3-Clause | DataFrame operations in the UI |
 | [plotly](https://plotly.com/python) | 6.7.0 | MIT | Bar charts in the UI dashboard view |
@@ -60,9 +57,8 @@ Versions reflect the current development environment — pin to these in `requir
 | Licence | Packages | Key obligations |
 |---|---|---|
 | **Apache 2.0** | anthropic, openai, tenacity, streamlit | Retain licence + NOTICE, patent grant included |
-| **MIT** | pydantic, PyYAML, pdfplumber, pdfminer.six, python-docx, beautifulsoup4, rich, plotly, tiktoken, langchain, langchain-anthropic, langgraph, langgraph-checkpoint-sqlite, fastapi | Retain copyright notice |
+| **MIT** | pydantic, PyYAML, pdfminer.six, python-docx, beautifulsoup4, plotly, tiktoken, langchain-core, langchain-anthropic, langgraph, langgraph-checkpoint-sqlite, fastapi | Retain copyright notice |
 | **BSD 3-Clause** | python-dotenv, httpx, pandas, uvicorn, starlette, reportlab | Retain copyright notice, no endorsement of derivatives |
-| **BSD 2-Clause** | feedparser | Retain copyright notice |
 
 All licences are permissive — none impose copyleft requirements on your own code.
 
@@ -87,5 +83,5 @@ This project uses the following standard library modules, which require no third
 To check installed versions:
 
 ```bash
-pip show anthropic openai tiktoken pydantic pyyaml python-dotenv httpx feedparser pdfplumber pdfminer.six python-docx reportlab beautifulsoup4 tenacity rich streamlit pandas plotly pytest langchain langchain-anthropic langgraph langgraph-checkpoint-sqlite fastapi uvicorn starlette | grep -E "^(Name|Version):"
+pip show anthropic openai tiktoken pydantic pyyaml python-dotenv httpx pdfminer.six python-docx reportlab beautifulsoup4 tenacity streamlit pandas plotly pytest langchain-core langchain-anthropic langgraph langgraph-checkpoint-sqlite fastapi uvicorn starlette | grep -E "^(Name|Version):"
 ```

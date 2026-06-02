@@ -6,8 +6,10 @@ anthropic>=0.40.0
 openai>=1.40.0
 # Token counting for the OpenAIProvider's cost/usage estimation
 tiktoken>=0.7.0
-# LangChain core + Anthropic integration — agent framework (Phase 3+)
-langchain>=0.3.0
+# LangChain core (message/prompt types) + Anthropic integration — agent framework
+# (Phase 3+). Only langchain-core is imported directly; the langchain meta-package
+# is not used.
+langchain-core>=0.3.0
 langchain-anthropic>=0.3.0
 # LangGraph — stateful workflow orchestration with HITL checkpointing (Phase 5+)
 langgraph>=0.2.0
@@ -32,11 +34,7 @@ python-dotenv>=1.0.0
 # ─── HTTP and scraping ───────────────────────────────────────────────────────
 # Async-capable HTTP client — used by scrapers to fetch job pages
 httpx>=0.27.0
-# Parses Indeed and Glassdoor RSS feeds without needing a browser
-feedparser>=6.0.0
-# Extracts text from your resume PDF (v1)
-pdfplumber>=0.11.0
-# Direct pdfminer access for ResumeParser — better multi-column layout handling (v2)
+# pdfminer access for the v2 ResumeParser — multi-column layout handling
 pdfminer.six>=20221105
 # Parses HTML from scraped job pages to extract description text
 beautifulsoup4>=4.12.0
@@ -44,10 +42,6 @@ beautifulsoup4>=4.12.0
 # ─── Reliability ─────────────────────────────────────────────────────────────
 # Retry logic with exponential backoff for API calls and scrapers
 tenacity>=8.0.0
-
-# ─── Terminal output ─────────────────────────────────────────────────────────
-# Beautiful terminal formatting for run summaries and progress display
-rich>=13.0.0
 
 # ─── Dashboard ───────────────────────────────────────────────────────────────
 # Browser-based results dashboard — run with: streamlit run dashboard.py

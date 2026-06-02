@@ -1,7 +1,7 @@
 """API response schemas — Pydantic v2 models for all HTTP response bodies."""
 from __future__ import annotations
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class WorkflowStatusResponse(BaseModel):

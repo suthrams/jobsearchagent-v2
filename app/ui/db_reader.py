@@ -9,7 +9,6 @@ SQLite's json_extract(). The main job table is 'jobs', not 'job_postings'.
 """
 from __future__ import annotations
 
-import json
 import sqlite3
 from pathlib import Path
 

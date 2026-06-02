@@ -62,7 +62,6 @@ def make_generate_report_node(
         if workflow_id:
             try:
                 totals = observability.compute_run_totals_from_llm_calls(workflow_id)
-                started_at = state.get("started_at") or utcnow_iso()
                 # Best-effort wall-clock; full duration tracking lives in step_executions.
                 state_metrics = state.get("run_metrics") or {}
                 duration_ms = int(state_metrics.get("total_duration_ms") or 0)

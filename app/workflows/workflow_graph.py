@@ -6,7 +6,7 @@ to get a compiled, checkpointed graph ready for invocation.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 from langgraph.checkpoint.sqlite import SqliteSaver

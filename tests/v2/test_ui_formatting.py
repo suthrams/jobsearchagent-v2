@@ -18,14 +18,6 @@ def test_fmt_ts_truncates_iso_and_handles_missing():
     assert f._fmt_ts(float("nan")) == "—"
 
 
-def test_score_badge_thresholds():
-    assert f.score_badge(None) == "—"
-    assert f.score_badge(80).endswith("80") and "🟢" in f.score_badge(80)
-    assert "🟡" in f.score_badge(65)
-    assert "🟠" in f.score_badge(50)
-    assert "🔴" in f.score_badge(49)
-
-
 def test_checked():
     assert f._checked(True) == "✅"
     assert f._checked(1) == "✅"
