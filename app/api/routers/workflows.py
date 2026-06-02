@@ -21,8 +21,9 @@ from app.providers.model_registry import (
     defaults_from_config,
     known_models_from_catalog,
 )
-from app.repositories.database import utcnow_iso
+from app.repositories.database import SYSTEM_RUN_ID, utcnow_iso
 from app.services.config_service import ConfigService
+from app.services.observability_service import emit_security_event_safe
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +264,15 @@ def _resolve_agent_snapshot(
                                    f"Known: {known_models[provider]}"},
             )
         if agent_name in HIGH_VOLUME_AGENTS and model not in HIGH_VOLUME_SAFE_MODELS:
+            # ADR-073: audit the blocked cost-cap violation. Override validation
+            # runs before the run UUID is minted, so use the SYSTEM_RUN_ID
+            # sentinel. PII-safe (agent + model only); never-crash.
+            emit_security_event_safe(
+                SYSTEM_RUN_ID,
+                "cost_cap_violation",
+                "warning",
+                f"Rejected cost-cap violation at kickoff: agent={agent_name} model={model}",
+            )
             raise HTTPException(
                 status_code=422,
                 detail={

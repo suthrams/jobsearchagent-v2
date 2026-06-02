@@ -17,6 +17,14 @@ DEFAULT_DB_PATH = Path("data/v2.db")
 # here so the "0" literal lives in exactly one place.
 DEFAULT_USER_ID = "0"
 
+# ADR-073: reserved sentinel workflow_run_id for security events with no run
+# context (e.g. a cost-cap violation raised on a config edit, or at kickoff
+# before the run UUID is minted). Real run ids are UUIDs, so "system" never
+# collides. The system-level read LEFT JOINs workflow_runs and COALESCEs a
+# missing user_id to DEFAULT_USER_ID, so sentinel events surface in the "0"
+# bucket and the all-profiles view.
+SYSTEM_RUN_ID = "system"
+
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS users (
     id INTEGER PRIMARY KEY,   -- ADR-062: 0 reserved for pre-existing data; new profiles auto-increment from 1

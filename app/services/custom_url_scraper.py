@@ -20,6 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -139,6 +140,7 @@ class CustomUrlScraper:
         try:
             html = self._fetch(url)
         except UnsafeURLError as exc:
+            self._record_security_event(url, exc)
             return CustomUrlResult(url=url, error=f"unsafe_url: {exc}")
         except httpx.HTTPError as exc:
             return CustomUrlResult(url=url, error=f"fetch failed: {exc}")
@@ -333,6 +335,29 @@ class CustomUrlScraper:
             )
         except Exception:
             logger.exception("CustomUrlScraper: log_llm_call failed")
+
+    def _record_security_event(self, url: str, exc: Exception) -> None:
+        """Emit a `blocked_url_fetch` security event (ADR-073) when the SSRF guard
+        rejects a user-supplied URL.
+
+        PII-safe by construction: records only the host and the reason class from
+        UnsafeURLError (e.g. "loopback address ... not allowed"), never any
+        fetched content. No-op unless both observability and workflow_id were
+        supplied at construction; `log_security_event` itself swallows errors, so
+        a failed audit write never crashes the scraper.
+        """
+        if self._observability is None or not self._workflow_id:
+            return
+        try:
+            host = urlparse(url).hostname or "unknown"
+        except Exception:
+            host = "unknown"
+        self._observability.log_security_event(
+            workflow_id=self._workflow_id,
+            event_type="blocked_url_fetch",
+            severity="high",
+            description=f"Blocked unsafe URL ({exc}); host={host}",
+        )
 
     @staticmethod
     def _html_to_text(html: str) -> str:

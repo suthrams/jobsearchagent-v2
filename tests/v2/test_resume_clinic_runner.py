@@ -137,7 +137,7 @@ def test_run_clinic_loads_resume_and_persists_review(repos):
         user_id="0", resume_id="r-1",
         target_role=None, target_track=None, seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     assert row["id"]
     assert row["user_id"] == "0"
@@ -155,7 +155,7 @@ def test_run_clinic_raises_on_unknown_resume(repos):
             user_id="0", resume_id="missing",
             target_role=None, target_track=None, seniority_aware=False,
             resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-            reviewer=MagicMock(), fidelity=MagicMock(), role_data=NullRoleDataProvider(),
+            reviewer=MagicMock(), fidelity=MagicMock(), role_data=NullRoleDataProvider(), observability=MagicMock(),
         )
 
 
@@ -167,7 +167,7 @@ def test_run_clinic_raises_on_resume_owned_by_different_user(repos):
             user_id="0", resume_id="r-7",
             target_role=None, target_track=None, seniority_aware=False,
             resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-            reviewer=MagicMock(), fidelity=MagicMock(), role_data=NullRoleDataProvider(),
+            reviewer=MagicMock(), fidelity=MagicMock(), role_data=NullRoleDataProvider(), observability=MagicMock(),
         )
 
 
@@ -182,7 +182,7 @@ def test_run_clinic_writes_lightweight_workflow_runs_row(repos):
         user_id="0", resume_id="r-1",
         target_role=None, target_track=None, seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     wf = workflow_repo.get_by_id(row["workflow_run_id"])
     assert wf is not None
@@ -202,7 +202,7 @@ def test_run_clinic_always_runs_fidelity_when_rewrites_exist(repos):
         user_id="0", resume_id="r-1",
         target_role=None, target_track=None, seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     fidelity.run.assert_called_once()
     # The fidelity prompt expects a tailored_draft envelope.
@@ -220,7 +220,7 @@ def test_run_clinic_skips_fidelity_when_no_rewrites(repos):
         user_id="0", resume_id="r-1",
         target_role=None, target_track=None, seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     fidelity.run.assert_not_called()
     assert row["fidelity_review"] is None
@@ -237,7 +237,7 @@ def test_run_clinic_never_passes_raw_text_to_reviewer(repos):
         user_id="0", resume_id="r-1",
         target_role=None, target_track=None, seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     ctx = reviewer.run.call_args.args[1]
     flat = json.dumps(ctx)
@@ -258,7 +258,7 @@ def test_run_clinic_passes_target_role_and_track_to_reviewer(repos):
         user_id="0", resume_id="r-1",
         target_role="security analyst", target_track="ic", seniority_aware=True,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     ctx = reviewer.run.call_args.args[1]
     assert ctx["target_role"] == "security analyst"
@@ -275,7 +275,7 @@ def test_run_clinic_persists_target_role_and_seniority_on_row(repos):
         user_id="0", resume_id="r-1",
         target_role="security analyst", target_track="ic", seniority_aware=True,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     assert row["target_role"] == "security analyst"
     assert row["target_track"] == "ic"
@@ -291,7 +291,7 @@ def test_run_clinic_persists_null_alignment_when_reviewer_returns_none(repos):
         user_id="0", resume_id="r-1",
         target_role=None, target_track=None, seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     assert row["alignment"] is None
 
@@ -313,7 +313,7 @@ def test_run_clinic_consults_role_data_provider(repos):
         user_id="0", resume_id="r-1",
         target_role="security analyst", target_track="ic", seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=provider,
+        reviewer=reviewer, fidelity=fidelity, role_data=provider, observability=MagicMock(),
     )
     provider.lookup.assert_called_once_with("security analyst", "ic")
     ctx = reviewer.run.call_args.args[1]
@@ -329,7 +329,7 @@ def test_run_clinic_role_data_provider_returning_none_proceeds(repos):
         user_id="0", resume_id="r-1",
         target_role="security analyst", target_track="ic", seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     ctx = reviewer.run.call_args.args[1]
     assert ctx["role_data"] is None
@@ -348,7 +348,7 @@ def test_run_clinic_reviewer_failure_flips_workflow_to_failed_and_reraises(repos
             user_id="0", resume_id="r-1",
             target_role=None, target_track=None, seniority_aware=False,
             resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-            reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+            reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
         )
     # A workflow_runs row was created at startup with status="running"; it
     # should be flipped to "failed" on the reviewer error.
@@ -368,7 +368,7 @@ def test_run_clinic_fidelity_failure_persists_row_with_null_fidelity(repos):
         user_id="0", resume_id="r-1",
         target_role=None, target_track=None, seniority_aware=False,
         resume_repo=resume_repo, clinic_repo=clinic_repo, workflow_repo=workflow_repo,
-        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(),
+        reviewer=reviewer, fidelity=fidelity, role_data=NullRoleDataProvider(), observability=MagicMock(),
     )
     assert row["fidelity_review"] is None
     # The clinic should still be marked as a completed workflow run; the user

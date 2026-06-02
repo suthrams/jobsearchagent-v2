@@ -5,7 +5,9 @@ must never crash workflows — a broken audit trail is better than a broken run.
 """
 import logging
 import uuid
+from pathlib import Path
 
+from app.repositories.database import DEFAULT_DB_PATH
 from app.repositories.decision_repository import DecisionRepository
 from app.repositories.observability_repository import ObservabilityRepository
 from app.repositories.security_repository import SecurityRepository
@@ -13,6 +15,59 @@ from app.repositories.step_repository import StepRepository
 from app.state.workflow_state import WorkflowStep
 
 logger = logging.getLogger(__name__)
+
+
+def emit_security_event_safe(
+    workflow_id: str,
+    event_type: str,
+    severity: str,
+    description: str,
+    *,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    """Append one security event from a call site that has no ObservabilityService.
+
+    For the cost-cap emit sites (ADR-073): config-edit validation and kickoff
+    override validation run in module-level helpers, the latter before the run
+    UUID even exists, so they cannot reach the injected ObservabilityService.
+    This constructs a SecurityRepository on the default DB and appends the row,
+    swallowing any error — mirroring ObservabilityService.log_security_event's
+    never-crash contract (a missing audit row must never break a user action).
+    Pair with the SYSTEM_RUN_ID sentinel when there is no real run context.
+    """
+    try:
+        SecurityRepository(db_path).create(
+            event_id=str(uuid.uuid4()),
+            workflow_run_id=workflow_id,
+            event_type=event_type,
+            severity=severity,
+            description=description,
+        )
+    except Exception:
+        logger.exception("emit_security_event_safe failed")
+
+
+def fidelity_review_security_description(fidelity: dict | None) -> str | None:
+    """Return a PII-safe `unsupported_claim` description if a Fidelity review
+    tripped the fabrication guardrail, else None (ADR-073).
+
+    The guardrail trips when the reviewer recommends `reject` OR reports any
+    unsupported_claims / fabricated_metrics. The description is counts + status
+    ONLY — never the claim text, which can echo resume content. Shared by the
+    tailoring router and the resume_clinic_runner so the wording + the
+    trip condition are defined and tested in one place.
+    """
+    if not fidelity:
+        return None
+    unsupported = len(fidelity.get("unsupported_claims") or [])
+    fabricated = len(fidelity.get("fabricated_metrics") or [])
+    recommendation = fidelity.get("approval_recommendation")
+    if recommendation != "reject" and unsupported == 0 and fabricated == 0:
+        return None
+    return (
+        f"Fidelity flagged {unsupported} unsupported claim(s), "
+        f"{fabricated} fabricated metric(s); recommendation={recommendation}"
+    )
 
 
 class ObservabilityService:

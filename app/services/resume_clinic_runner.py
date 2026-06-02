@@ -38,6 +38,10 @@ from app.repositories.resume_clinic_repository import ResumeClinicRepository
 from app.repositories.resume_repository import ResumeRepository
 from app.repositories.workflow_repository import WorkflowRepository
 from app.services.context_trimmer import redact_pii_for_llm
+from app.services.observability_service import (
+    ObservabilityService,
+    fidelity_review_security_description,
+)
 from app.services.role_data import RoleDataProvider
 
 logger = logging.getLogger(__name__)
@@ -64,6 +68,7 @@ def run_clinic(
     reviewer: ResumeReviewerAgent,
     fidelity: FidelityReviewer,
     role_data: RoleDataProvider,
+    observability: ObservabilityService,
 ) -> dict:
     """Run one clinic review end-to-end and return the persisted row.
 
@@ -145,6 +150,16 @@ def run_clinic(
                 rewrites=review.rewrites,
             ))
             fidelity_dict = fidelity_result.model_dump()
+            # ADR-073: record a security event when the fabrication guardrail
+            # trips (reject or any unsupported/fabricated claim). PII-safe.
+            _sec_desc = fidelity_review_security_description(fidelity_dict)
+            if _sec_desc:
+                observability.log_security_event(
+                    workflow_id=workflow_run_id,
+                    event_type="unsupported_claim",
+                    severity="warning",
+                    description=_sec_desc,
+                )
         except LLMProviderError as exc:
             # Persist the review anyway so the user can still see the quality
             # scorecard + alignment + reorganization plan; fidelity unavailable.

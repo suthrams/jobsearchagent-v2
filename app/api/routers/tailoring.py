@@ -37,6 +37,7 @@ from app.services.context_trimmer import (
     trim_score,
 )
 from app.services.deep_review_runner import review_one_job
+from app.services.observability_service import fidelity_review_security_description
 from app.workflows.workflow_graph import WorkflowDependencies
 
 logger = logging.getLogger(__name__)
@@ -265,6 +266,16 @@ def trigger_tailoring(
             "tailored_draft": draft_dict,
         })
         fidelity_dict = fidelity.model_dump() if hasattr(fidelity, "model_dump") else dict(fidelity)
+        # ADR-073: record a security event when the fabrication guardrail trips
+        # (reject or any unsupported/fabricated claim). PII-safe counts + status.
+        _sec_desc = fidelity_review_security_description(fidelity_dict)
+        if _sec_desc:
+            deps.observability.log_security_event(
+                workflow_id=workflow_id,
+                event_type="unsupported_claim",
+                severity="warning",
+                description=_sec_desc,
+            )
     except LLMProviderError as exc:
         logger.warning("trigger_tailoring: FidelityReviewer failed for %s/%s: %s",
                        workflow_id, job_id, exc)

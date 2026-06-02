@@ -14,6 +14,38 @@ from app.services.resume_parser import ResumeParser
 
 logger = logging.getLogger(__name__)
 
+# Direct-identifier fields redact_pii_for_llm strips before any LLM context
+# (ADR-069). raw_text is dropped; name -> placeholder; email/location/file_name
+# -> None. Used only to COUNT what was redacted for the audit event (ADR-073).
+_PII_FIELDS = ("name", "email", "location", "file_name", "raw_text")
+
+
+def _emit_pii_redaction(
+    observability: ObservabilityService, workflow_id: str, profile: dict
+) -> None:
+    """Emit a `pii_redacted` security event (ADR-073) recording how many direct
+    identifier fields were stripped before the profile entered LLM context.
+
+    PII-safe by construction: logs the field NAMES and a count only, never the
+    values. Severity `info` — this is a control working as designed, recorded for
+    auditability, not an alarm. No-op when observability is unwired (mock-mode /
+    tests) or when nothing was present to redact.
+    """
+    if observability is None:
+        return
+    present = [f for f in _PII_FIELDS if profile.get(f)]
+    if not present:
+        return
+    observability.log_security_event(
+        workflow_id=workflow_id,
+        event_type="pii_redacted",
+        severity="info",
+        description=(
+            f"Redacted {len(present)} direct identifier field(s) before LLM "
+            f"context: {', '.join(present)}"
+        ),
+    )
+
 
 def make_load_resume_node(
     resume_parser: ResumeParser,
@@ -45,8 +77,10 @@ def make_load_resume_node(
             # identifiers never enter workflow_runs.state_json or the checkpoints
             # blob. Agents re-redact at their own seam (idempotent); the renderer
             # reads the un-redacted source from the resumes row, not from state.
+            full_profile = profile.model_dump()
+            _emit_pii_redaction(observability, workflow_id, full_profile)
             return {
-                "resume_profile": redact_pii_for_llm(profile.model_dump()),
+                "resume_profile": redact_pii_for_llm(full_profile),
                 "resume_version": row.get("version", 1),
                 "current_step": "resume_profile_loading",
                 "updated_at": utcnow_iso(),
@@ -71,8 +105,10 @@ def make_load_resume_node(
         logger.info("load_resume: parsed PDF %s for workflow %s", resume_id, workflow_id)
 
         # ADR-070: store the REDACTED profile in state (see cache-hit branch above).
+        full_profile = profile.model_dump()
+        _emit_pii_redaction(observability, workflow_id, full_profile)
         return {
-            "resume_profile": redact_pii_for_llm(profile.model_dump()),
+            "resume_profile": redact_pii_for_llm(full_profile),
             "resume_version": 1,
             "current_step": "resume_profile_loading",
             "updated_at": utcnow_iso(),

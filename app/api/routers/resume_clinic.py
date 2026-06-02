@@ -209,6 +209,7 @@ def run_resume_clinic(
             reviewer=deps.resume_reviewer,
             fidelity=deps.fidelity_reviewer,
             role_data=NullRoleDataProvider(),
+            observability=deps.observability,
         )
     except ResumeClinicError as exc:
         # Unknown resume or ownership mismatch -> 404 (the entity the caller

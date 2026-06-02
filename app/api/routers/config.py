@@ -26,8 +26,9 @@ from app.providers.model_registry import (
     known_models_from_catalog,
 )
 from app.repositories.config_repository import ConfigRepository
-from app.repositories.database import DEFAULT_DB_PATH
+from app.repositories.database import DEFAULT_DB_PATH, SYSTEM_RUN_ID
 from app.services.config_service import _PROTECTED_KEYS, ConfigService
+from app.services.observability_service import emit_security_event_safe
 
 logger = logging.getLogger(__name__)
 
@@ -227,6 +228,15 @@ def _check_cost_cap(agent_name: str, model: object) -> None:
     if agent_name not in HIGH_VOLUME_AGENTS:
         return
     if model not in HIGH_VOLUME_SAFE_MODELS:
+        # ADR-073: audit the blocked cost-cap violation. A config edit has no run
+        # context, so use the SYSTEM_RUN_ID sentinel. PII-safe (agent + model
+        # only); never-crash (emit_security_event_safe swallows).
+        emit_security_event_safe(
+            SYSTEM_RUN_ID,
+            "cost_cap_violation",
+            "warning",
+            f"Rejected cost-cap violation on config edit: agent={agent_name} model={model}",
+        )
         raise HTTPException(
             status_code=422,
             detail={
