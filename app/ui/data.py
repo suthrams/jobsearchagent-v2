@@ -161,6 +161,34 @@ def _cached_run_metrics(workflow_id: str) -> dict:
                 "duration_ms": 0, "started_at": None, "completed_at": None, "computed": True}
 
 
+@st.cache_data(ttl=15)
+def _cached_system_dashboard(days, view_uid: str | None) -> dict:
+    """Composite System Dashboard payload via the API (ADR-075 Phase 7). Degrades
+    to empty sections when the backend is unavailable."""
+    try:
+        return api.get_system_dashboard(days=days, view_user_id=view_uid)
+    except Exception:
+        return {
+            "cost": {"window_days": days, "totals": {"calls": 0, "tokens_input": 0,
+                     "tokens_output": 0, "cost_usd": 0.0, "distinct_runs": 0},
+                     "by_agent": [], "by_model": []},
+            "daily_trend": [], "top_runs": [], "all_runs": [], "top_calls": [],
+            "security": {"total": 0, "by_type": [], "by_severity": {"high": 0, "warning": 0, "info": 0}, "recent": []},
+            "performance": {"llm": {"p50_ms": 0.0, "p95_ms": 0.0, "calls": 0},
+                            "agent": {"p50_ms": 0.0, "p95_ms": 0.0, "events": 0},
+                            "slowest_agents": [], "slowest_steps": []},
+            "reliability": {"runs_total": 0, "runs_completed": 0, "runs_failed": 0,
+                            "success_rate": 0.0, "agent_failures": 0,
+                            "failures_by_agent": [], "recent_failures": []},
+            "scalability": {"avg_jobs_per_run": 0.0, "runs_per_day": 0.0,
+                            "peak_jobs_in_run": 0, "distinct_runs": 0},
+            "api": {"total": 0, "error_count": 0, "error_rate": 0.0, "p50_ms": 0.0,
+                    "p95_ms": 0.0, "by_endpoint": []},
+            "decisions": {"total": 0, "by_type": {}, "by_value": {}, "recent": []},
+            "profiles": [],
+        }
+
+
 def _get_config_cached() -> dict:
     """Pull config once per render and stash on session_state to avoid extra HTTP calls."""
     if st.session_state.config_cache is None:

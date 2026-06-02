@@ -16,6 +16,8 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.repositories.database import DEFAULT_DB_PATH, get_connection
+from app.services import cost_breakdown as cb
+from app.services import system_health as sh
 from app.services.reads.paging import page
 
 _SCORED_SQL = """
@@ -41,6 +43,32 @@ _SCORED_SQL = """
     {where}
     ORDER BY js.overall_score DESC
 """
+
+
+def system_dashboard_payload(
+    *, days: int | None, user_id: str | None, db_path: Path = DEFAULT_DB_PATH,
+) -> dict:
+    """One composite payload for the whole System Dashboard (ADR-075 Phase 7).
+
+    Assembles every section (cost + the PSSR/security/decisions rollups + the
+    by-profile breakdown) in one call so the view makes a single cached request
+    per render instead of ~12. `user_id=None` => all profiles. Each piece is the
+    existing service's return value, unchanged.
+    """
+    return {
+        "cost": cb.compute_dashboard_aggregate(days=days, db_path=db_path, user_id=user_id),
+        "daily_trend": cb.daily_spend_trend(days=days or 30, db_path=db_path, user_id=user_id) if days else [],
+        "top_runs": cb.top_runs_by_cost(n=5, days=days, db_path=db_path, user_id=user_id),
+        "all_runs": cb.all_runs_by_cost(days=days, db_path=db_path, user_id=user_id),
+        "top_calls": cb.top_calls_by_cost(n=10, days=days, db_path=db_path, user_id=user_id),
+        "security": sh.security_summary(days=days, user_id=user_id, db_path=db_path),
+        "performance": sh.performance_summary(days=days, user_id=user_id, db_path=db_path),
+        "reliability": sh.reliability_summary(days=days, user_id=user_id, db_path=db_path),
+        "scalability": sh.scalability_summary(days=days, user_id=user_id, db_path=db_path),
+        "api": sh.api_summary(days=days, user_id=user_id, db_path=db_path),
+        "decisions": sh.decisions_summary(days=days, user_id=user_id, db_path=db_path),
+        "profiles": sh.profiles_overview(days=days, db_path=db_path),
+    }
 
 
 def list_scored_jobs(

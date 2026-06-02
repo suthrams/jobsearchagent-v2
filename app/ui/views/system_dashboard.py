@@ -16,14 +16,7 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
-from app.services import system_health as sh
-from app.services.cost_breakdown import (
-    all_runs_by_cost,
-    compute_dashboard_aggregate,
-    daily_spend_trend,
-    top_calls_by_cost,
-    top_runs_by_cost,
-)
+from app.ui.data import _cached_system_dashboard
 from app.ui.formatting import _fmt_ts
 from app.ui.nav import ViewContext, _navigate
 
@@ -70,10 +63,11 @@ def render(ctx: ViewContext) -> None:
     st.caption(f"Window: {window_choice.lower()} - viewing: {scope_label}")
 
     # ── Headline metrics ──────────────────────────────────────────────────────
-    cost_dash = compute_dashboard_aggregate(days=window_days, user_id=view_uid)
+    dash = _cached_system_dashboard(window_days, view_uid)
+    cost_dash = dash["cost"]
     totals = cost_dash["totals"]
-    sec = sh.security_summary(days=window_days, user_id=view_uid)
-    rel = sh.reliability_summary(days=window_days, user_id=view_uid)
+    sec = dash["security"]
+    rel = dash["reliability"]
 
     h1, h2, h3, h4, h5 = st.columns(5)
     h1.metric("Total spend", f"${totals['cost_usd']:.4f}")
@@ -90,7 +84,7 @@ def render(ctx: ViewContext) -> None:
 
     # ── By-profile breakdown (all-profiles mode only) ─────────────────────────
     if view_uid is None:
-        _render_by_profile(window_days)
+        _render_by_profile(dash["profiles"])
 
     # ── Drill breadcrumb ──────────────────────────────────────────────────────
     if drill is not None:
@@ -98,25 +92,24 @@ def render(ctx: ViewContext) -> None:
 
     # ── Sections ──────────────────────────────────────────────────────────────
     _render_security(sec)
-    _render_decisions(window_days, view_uid)
-    _render_performance(window_days, view_uid)
+    _render_decisions(dash["decisions"])
+    _render_performance(dash["performance"])
     _render_reliability(rel)
-    _render_api(window_days, view_uid)
-    _render_scalability(window_days, view_uid)
-    _render_cost(window_choice, window_days, view_uid, cost_dash)
+    _render_api(dash["api"])
+    _render_scalability(dash["scalability"])
+    _render_cost(window_choice, window_days, dash)
 
 
 # ── By-profile drilldown navigator ────────────────────────────────────────────
 
 
-def _render_by_profile(window_days: int | None) -> None:
+def _render_by_profile(rows: list[dict]) -> None:
     st.markdown("---")
     st.subheader("By profile")
     st.caption("Click a row to drill into that profile - every section below "
                "re-scopes to it. The 'system / legacy' row holds run-less "
                "(sentinel) and pre-multiuser events; it is excluded from a "
                "specific profile's drilldown.")
-    rows = sh.profiles_overview(days=window_days)
     if not rows:
         st.caption("No runs in this window.")
         return
@@ -193,8 +186,7 @@ def _render_security(sec: dict) -> None:
 # ── Decisions (governance / accountability, ADR-074) ─────────────────────────
 
 
-def _render_decisions(window_days: int | None, view_uid: str | None) -> None:
-    dec = sh.decisions_summary(days=window_days, user_id=view_uid)
+def _render_decisions(dec: dict) -> None:
     st.markdown("---")
     st.subheader("Human decisions")
     st.caption("Every approve / revise / reject / edit on a tailoring or clinic "
@@ -226,8 +218,7 @@ def _render_decisions(window_days: int | None, view_uid: str | None) -> None:
 # ── Performance ───────────────────────────────────────────────────────────────
 
 
-def _render_performance(window_days: int | None, view_uid: str | None) -> None:
-    perf = sh.performance_summary(days=window_days, user_id=view_uid)
+def _render_performance(perf: dict) -> None:
     st.markdown("---")
     st.subheader("Performance")
     st.caption("Latency from the data already captured (`llm_calls.latency_ms`, "
@@ -308,8 +299,7 @@ def _render_reliability(rel: dict) -> None:
 # ── API requests (ADR-074 Gap 5) ─────────────────────────────────────────────
 
 
-def _render_api(window_days: int | None, view_uid: str | None) -> None:
-    api = sh.api_summary(days=window_days, user_id=view_uid)
+def _render_api(api: dict) -> None:
     st.markdown("---")
     st.subheader("API requests")
     st.caption("HTTP-layer observability (ADR-074): every REST request by route "
@@ -337,8 +327,7 @@ def _render_api(window_days: int | None, view_uid: str | None) -> None:
 # ── Scalability (light) ───────────────────────────────────────────────────────
 
 
-def _render_scalability(window_days: int | None, view_uid: str | None) -> None:
-    scl = sh.scalability_summary(days=window_days, user_id=view_uid)
+def _render_scalability(scl: dict) -> None:
     st.markdown("---")
     st.subheader("Scalability")
     st.caption("Throughput. Deliberately light - a single-node SQLite app has "
@@ -352,8 +341,8 @@ def _render_scalability(window_days: int | None, view_uid: str | None) -> None:
 # ── Cost (the former Cost Dashboard, refactored into a section) ────────────────
 
 
-def _render_cost(window_choice: str, window_days: int | None,
-                 view_uid: str | None, dash: dict) -> None:
+def _render_cost(window_choice: str, window_days: int | None, payload: dict) -> None:
+    dash = payload["cost"]
     st.markdown("---")
     st.subheader("Cost")
     st.caption("System-wide LLM spend. Numbers come from the `llm_calls` audit "
@@ -385,7 +374,7 @@ def _render_cost(window_choice: str, window_days: int | None,
 
     # Daily spend trend
     if window_days:
-        trend_rows = daily_spend_trend(days=window_days, user_id=view_uid)
+        trend_rows = payload["daily_trend"]
         if trend_rows:
             trend_df = pd.DataFrame(trend_rows)
             fig = px.line(trend_df, x="day", y="cost_usd", markers=True,
@@ -408,7 +397,7 @@ def _render_cost(window_choice: str, window_days: int | None,
 
     # Drill-through tables tucked into an expander to keep the unified page tidy
     with st.expander("Top runs, all runs, and most expensive calls", expanded=False):
-        _render_cost_tables(window_days, view_uid)
+        _render_cost_tables(payload)
 
     with st.expander("Reconcile against the provider billing console", expanded=False):
         st.markdown(
@@ -420,8 +409,8 @@ def _render_cost(window_choice: str, window_days: int | None,
         )
 
 
-def _render_cost_tables(window_days: int | None, view_uid: str | None) -> None:
-    runs = top_runs_by_cost(n=5, days=window_days, user_id=view_uid)
+def _render_cost_tables(payload: dict) -> None:
+    runs = payload["top_runs"]
     if runs:
         st.markdown("**Top 5 most expensive runs** (click to open)")
         runs_df = pd.DataFrame(runs)
@@ -440,7 +429,7 @@ def _render_cost_tables(window_days: int | None, view_uid: str | None) -> None:
             if chosen_wf and chosen_wf != st.session_state.get("detail_workflow_id"):
                 _navigate("Workflow Detail", detail_workflow_id=chosen_wf, detail_job_id=None)
 
-    all_runs = all_runs_by_cost(days=window_days, user_id=view_uid)
+    all_runs = payload["all_runs"]
     if all_runs:
         st.markdown(f"**All runs by cost** ({len(all_runs)} in window, "
                     f"sum ${sum(r['cost_usd'] for r in all_runs):.4f})")
@@ -460,7 +449,7 @@ def _render_cost_tables(window_days: int | None, view_uid: str | None) -> None:
             if chosen_wf and chosen_wf != st.session_state.get("detail_workflow_id"):
                 _navigate("Workflow Detail", detail_workflow_id=chosen_wf, detail_job_id=None)
 
-    calls = top_calls_by_cost(n=10, days=window_days, user_id=view_uid)
+    calls = payload["top_calls"]
     if calls:
         st.markdown("**Top 10 most expensive single calls**")
         calls_df = pd.DataFrame(calls)

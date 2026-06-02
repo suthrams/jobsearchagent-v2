@@ -15,12 +15,10 @@ from pathlib import Path
 
 VIEWS_DIR = Path(__file__).resolve().parents[2] / "app" / "ui" / "views"
 
-# Views NOT yet migrated to the API read path (ADR-075). Each is removed as its
-# phase lands; empty at Phase 9. Only system_dashboard remains — it still imports
-# the DB-reading aggregators (system_health / cost_breakdown) until Phase 7.
-_ALLOWLIST = {
-    "system_dashboard",  # Phase 7
-}
+# Views NOT yet migrated to the API read path (ADR-075). EMPTY at completion
+# (Phase 7 migrated the last one, system_dashboard): no UI view opens the DB
+# directly. db_reader is deleted in Phase 9.
+_ALLOWLIST: set[str] = set()
 
 # A migrated view must not open the DB directly: not via db_reader/sqlite3, and not
 # via the DB-reading aggregator services (cost_breakdown / system_health). Pure

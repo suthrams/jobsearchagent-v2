@@ -284,6 +284,19 @@ def get_run_metrics(workflow_id: str) -> dict:
     return _get_json(f"/workflows/{workflow_id}/run-metrics")
 
 
+def get_system_dashboard(days: int | None = None, view_user_id: str | None = None) -> dict:
+    """Composite System Dashboard payload (ADR-075 Phase 7). view_user_id None =
+    all profiles; days None = all-time."""
+    params: dict = {}
+    if days is not None:
+        params["days"] = days
+    if view_user_id is not None:
+        params["view_user_id"] = view_user_id
+    r = httpx.get(f"{BASE_URL}/dashboard/system", params=params, timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
 # ── On-demand resume tailoring ───────────────────────────────────────────────
 
 # Sized for the v5 tailoring prompts (ADR-056). Observed median latency for
