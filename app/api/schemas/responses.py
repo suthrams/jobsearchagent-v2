@@ -4,6 +4,47 @@ from __future__ import annotations
 from pydantic import BaseModel
 
 
+# ── Read funnel (ADR-075) ────────────────────────────────────────────────────
+# List endpoints use the uniform envelope {items, total, limit, offset} (§B.1).
+# Each list gets a concrete XxxList model (Pydantic v2 + OpenAPI clarity beats a
+# single generic Page[T]).
+
+
+class WorkflowRunRow(BaseModel):
+    """One Workflow History row (ADR-075 Phase 1). Permissive: derived/legacy runs
+    leave most fields null. snake_case keys; nulls kept (not omitted) so the UI
+    shape is stable."""
+    workflow_id: str
+    workflow_type: str | None = None
+    status: str | None = None
+    current_step: str | None = None
+    started_at: str | None = None
+    updated_at: str | None = None
+    completed_at: str | None = None
+    error_message: str | None = None
+    roles_json: str | None = None        # JSON-array text from state_json (or null)
+    locations_json: str | None = None
+    threshold: int | None = None
+    max_jobs: int | None = None
+    custom_url_count: int | None = None
+    normalized_count: int | None = None
+    selected_count: int | None = None
+    review_rounds_count: int | None = None
+    cost_usd: float | None = None
+    llm_calls: int | None = None
+    jobs_scored: int | None = None
+    best_score: int | None = None
+    avg_score: float | None = None
+
+
+class WorkflowRunList(BaseModel):
+    """Paged Workflow History list (the ADR-075 §B.1 envelope)."""
+    items: list[WorkflowRunRow]
+    total: int
+    limit: int
+    offset: int
+
+
 class WorkflowStatusResponse(BaseModel):
     workflow_id: str
     status: str  # running | completed | failed

@@ -11,7 +11,7 @@ from pydantic import BaseModel, Field
 from app.api.dependencies import get_graph
 from app.api.identity import get_current_user_id
 from app.api.schemas.requests import StartWorkflowRequest
-from app.api.schemas.responses import WorkflowStatusResponse
+from app.api.schemas.responses import WorkflowRunList, WorkflowStatusResponse
 from app.workflows.limits import get_max_scored
 from app.providers.model_registry import (
     HIGH_VOLUME_AGENTS,
@@ -24,6 +24,8 @@ from app.providers.model_registry import (
 from app.repositories.database import SYSTEM_RUN_ID, utcnow_iso
 from app.services.config_service import ConfigService
 from app.services.observability_service import emit_security_event_safe
+from app.services.reads.paging import clamp_limit
+from app.services.reads.workflow_reads import list_workflow_runs
 
 logger = logging.getLogger(__name__)
 
@@ -291,6 +293,27 @@ def _resolve_agent_snapshot(
         "resolve through the global registry assignment."
     )
     return snapshot, warnings
+
+
+@router.get("", response_model=WorkflowRunList)
+def list_runs(
+    limit: int = 50,
+    offset: int = 0,
+    sort: str = "started_at",
+    order: str = "desc",
+    user_id: str = Depends(get_current_user_id),
+) -> WorkflowRunList:
+    """Workflow History list (ADR-075 Phase 1), profile-scoped (ADR-062).
+
+    Paged + sortable per the §B.1 contract: `limit` (default 50, max 200),
+    `offset`, `sort` (allowlisted server-side), `order` asc|desc. Returns the
+    uniform envelope `{items, total, limit, offset}`.
+    """
+    page = list_workflow_runs(
+        user_id=user_id, limit=clamp_limit(limit), offset=offset,
+        sort=sort, order=order,
+    )
+    return WorkflowRunList(**page)
 
 
 @router.get("/{workflow_id}", response_model=WorkflowStatusResponse)

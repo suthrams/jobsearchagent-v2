@@ -192,6 +192,22 @@ def get_report(workflow_id: str) -> dict:
     return r.json()
 
 
+# ── Read funnel (ADR-075) — UI reads routed through the API ───────────────────
+
+def list_workflow_runs(limit: int = 50, offset: int = 0,
+                       sort: str = "started_at", order: str = "desc") -> dict:
+    """Workflow History page (ADR-075 Phase 1). Profile-scoped via _user_params.
+    Returns the {items, total, limit, offset} envelope."""
+    r = httpx.get(
+        f"{BASE_URL}/workflows",
+        params=_user_params({"limit": limit, "offset": offset,
+                             "sort": sort, "order": order}),
+        timeout=_TIMEOUT_GET,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # ── On-demand resume tailoring ───────────────────────────────────────────────
 
 # Sized for the v5 tailoring prompts (ADR-056). Observed median latency for

@@ -6,6 +6,29 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-02
 
+### Added — UI read funnel Phase 0 + 1 (ADR-075)
+
+First slice of routing UI reads through the API instead of opening SQLite
+directly. The Phase-1 latency gate passed (`GET /workflows` ~26 ms p95 locally,
+far under the bar) and the read now appears in `api_requests` — the observability
+blind spot it used to bypass.
+
+- **Phase 0 (foundation):** `app/services/reads/` package + `paging.py`
+  (`clamp_limit`/`safe_sort`/`page` — the §B.1 list contract); `WorkflowRunRow` /
+  `WorkflowRunList` response models; a resilient `api_client`/`data.py` read
+  wrapper that degrades to an empty page when the backend is down (so browse
+  views never crash); and a forcing-function guard
+  (`tests/v2/test_ui_no_direct_db.py`) that bans `db_reader`/`sqlite3` imports
+  from migrated views via a shrinking allowlist.
+- **Phase 1 (Workflow History):** `workflow_reads.list_workflow_runs` (the
+  History SQL moved out of `db_reader`, plus paging/sorting + the legacy
+  job_scores fallback folded in) -> `GET /workflows` (typed `response_model`,
+  PFS params, profile-scoped) -> `api_client.list_workflow_runs` ->
+  `data._cached_workflow_runs` -> the History view swapped off `db_reader`.
+- Tests: `test_reads_workflows.py` (6: service paging/sort/scoping/legacy +
+  endpoint contract) + the guard (3). Suite 839 -> 848; ruff clean; UI smoke
+  15/15. `db_reader` stays until Phase 9 for the un-migrated screens.
+
 ### Changed — ADR-074 minors: resume-upload cost attribution + doc surface
 
 Closes the last two items in ADR-074 (now fully closed).

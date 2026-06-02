@@ -48,6 +48,17 @@ def _cached_list_users() -> list[dict]:
         return []
 
 
+@st.cache_data(ttl=10)
+def _cached_workflow_runs(user_id: str | None, limit: int = 50) -> dict:
+    """Workflow History page via the API (ADR-075 Phase 1). `user_id` is a cache
+    key (api_client attaches the acting profile itself). Degrades to an empty page
+    when the backend is unavailable, so browse views never crash on a cold API."""
+    try:
+        return api.list_workflow_runs(limit=limit)
+    except Exception:
+        return {"items": [], "total": 0, "limit": limit, "offset": 0}
+
+
 def _get_config_cached() -> dict:
     """Pull config once per render and stash on session_state to avoid extra HTTP calls."""
     if st.session_state.config_cache is None:

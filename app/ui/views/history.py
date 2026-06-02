@@ -10,7 +10,7 @@ import json
 import pandas as pd
 import streamlit as st
 
-from app.ui.db_reader import load_persisted_workflow_runs, load_workflow_runs
+from app.ui.data import _cached_workflow_runs
 from app.ui.formatting import _fmt_ts, _friendly_stage, _stage_progress
 from app.ui.nav import ViewContext, _navigate
 
@@ -20,29 +20,14 @@ def render(ctx: ViewContext) -> None:
     st.caption("All workflow runs, newest first. **Select a row, then click Open detail** "
                "(or just click a different row to switch).")
 
+    # ADR-075 Phase 1: read via the API (GET /workflows) instead of db_reader.
+    # The endpoint folds in the legacy job_scores-derived fallback, so the view no
+    # longer needs its own. Empty rows render as null columns the table handles.
     _uid = st.session_state.current_user_id
-    df = load_persisted_workflow_runs(user_id=_uid)
-
-    # Fall back to the derived view (job_scores aggregation) if workflow_runs is still empty
-    # — this keeps old runs visible while new ones populate the table.
-    using_legacy = False
+    df = pd.DataFrame(_cached_workflow_runs(_uid).get("items") or [])
     if df.empty:
-        df_legacy = load_workflow_runs(user_id=_uid)
-        if df_legacy.empty:
-            st.info("No workflow runs yet. Start one from **Start New Run**.")
-            st.stop()
-        df = df_legacy.rename(columns={"id": "workflow_id"})
-        df["status"] = df.get("status", "completed")
-        df["current_step"] = df.get("current_step", "—")
-        df["completed_at"] = df.get("completed_at", df.get("updated_at"))
-        df["error_message"] = df.get("error_message", None)
-        # Fill in the columns the new query exposes so the table renders consistently
-        for _col in ("max_jobs", "normalized_count", "selected_count",
-                     "review_rounds_count", "cost_usd", "llm_calls",
-                     "threshold", "custom_url_count", "roles_json", "locations_json"):
-            if _col not in df.columns:
-                df[_col] = None
-        using_legacy = True
+        st.info("No workflow runs yet. Start one from **Start New Run**.")
+        st.stop()
 
     # Filter input
     fcol1, fcol2 = st.columns([3, 1])
@@ -75,10 +60,6 @@ def render(ctx: ViewContext) -> None:
     m3.metric("Completed", int(_completed))
     _failed = df["status"].isin(["failed", "completed_with_errors"]).sum() if "status" in df.columns else 0
     m4.metric("Failed / Errors", int(_failed))
-
-    if using_legacy:
-        st.caption("⚠ Showing legacy aggregation — these runs predate the workflow_runs snapshot. "
-                   "Stage / progress / threshold won't be visible until you run a new workflow.")
 
     # ── Build a display dataframe with friendly columns ──────────────────────
     _STATUS_DISPLAY = {

@@ -1,5 +1,11 @@
 # UI Read Funnel — Implementation Plan
 
+> **Progress:** Phase 0 (foundation) + Phase 1 (Workflow History) shipped
+> 2026-06-02. The Phase-1 latency gate **passed**: `GET /workflows` measured
+> ~24-29 ms (p95 ~26 ms) locally on real data, far under the ~400 ms bar, and the
+> read now appears in `api_requests` (the blind spot it was bypassing). Funnel
+> confirmed viable — Phases 2-9 cleared to proceed.
+>
 > Companion to [ADR-075](adr/ADR-075-funnel-ui-reads-through-api.md). The ADR
 > records the decision + conventions (placement, paging/filtering/sorting, shapes,
 > caching, contracts). **This doc is the buildable approach**: the module layout,
