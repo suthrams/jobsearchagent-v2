@@ -40,3 +40,25 @@ def list_user_resumes(user_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
         return page([], 0, 0, 0)
     items = [dict(r) for r in rows]
     return page(items, len(items), len(items), 0)
+
+
+def get_resume_profile(resume_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """Parsed profile for one resume (ADR-075 Phase 8). Backs the tailoring/clinic
+    chat live preview, which renders against the same parsed profile the backend
+    saw. Returns {} when absent. The caller's own resume, shown in its own UI."""
+    import json
+    if not Path(db_path).exists():
+        return {}
+    try:
+        with get_connection(db_path) as conn:
+            row = conn.execute(
+                "SELECT parsed_profile_json FROM resumes WHERE id = ?", (str(resume_id),)
+            ).fetchone()
+    except Exception:
+        return {}
+    if not row or not row["parsed_profile_json"]:
+        return {}
+    try:
+        return json.loads(row["parsed_profile_json"])
+    except Exception:
+        return {}

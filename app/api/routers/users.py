@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from app.api.dependencies import get_deps, get_user_repo
 from app.api.schemas.responses import ResumeList
 from app.repositories.user_repository import UserRepository
-from app.services.reads.user_reads import list_user_resumes
+from app.services.reads.user_reads import get_resume_profile, list_user_resumes
 from app.workflows.workflow_graph import WorkflowDependencies
 
 logger = logging.getLogger(__name__)
@@ -55,6 +55,13 @@ def list_user_resumes_endpoint(user_id: int) -> ResumeList:
     to the profile, matching the users-router convention. Returns the §B.1
     envelope (unpaged — a profile has few resumes)."""
     return ResumeList(**list_user_resumes(str(user_id)))
+
+
+@router.get("/{user_id}/resumes/{resume_id}/profile")
+def get_resume_profile_endpoint(user_id: int, resume_id: str) -> dict:
+    """Parsed profile for one resume (ADR-075 Phase 8) — backs the tailoring/clinic
+    chat live preview. Returns {"profile": {...}} ({} if absent)."""
+    return {"profile": get_resume_profile(resume_id)}
 
 
 @router.post("", status_code=201)

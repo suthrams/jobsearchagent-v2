@@ -16,14 +16,10 @@ session-state key for "the current review" is parameterized (`state_key`).
 """
 from __future__ import annotations
 
-import json
-import sqlite3
-
 import httpx
 import streamlit as st
 
 import app.ui.api_client as api
-from app.ui.db_reader import DB_PATH
 from app.services.resume_text_renderer import compose_resume, render_markdown
 
 
@@ -57,21 +53,14 @@ def render_chat_panel(review: dict, *, user_id: str,
     _rc_resume_id = _rc_preview_review.get("resume_id")
     _clinic_id = _rc_preview_review.get("clinic_id") or review.get("clinic_id")
 
-    # Fetch the parsed profile fresh from the DB so we render against the same
-    # data the backend chat agent saw. Falls back to an empty dict if the resume
-    # can't be loaded (the chat still works but the preview may be sparse).
+    # Fetch the parsed profile via the API (ADR-075 Phase 8) so we render against
+    # the same data the backend chat agent saw, without the UI opening the DB.
+    # Falls back to an empty dict if it can't be loaded (the chat still works but
+    # the preview may be sparse).
     _rc_profile_dict: dict = {}
     if _rc_resume_id:
         try:
-            _db = sqlite3.connect(str(DB_PATH))
-            _db.row_factory = sqlite3.Row
-            _row = _db.execute(
-                "SELECT parsed_profile_json FROM resumes WHERE id = ?",
-                (_rc_resume_id,),
-            ).fetchone()
-            if _row and _row["parsed_profile_json"]:
-                _rc_profile_dict = json.loads(_row["parsed_profile_json"])
-            _db.close()
+            _rc_profile_dict = api.get_resume_profile(user_id, _rc_resume_id)
         except Exception:
             _rc_profile_dict = {}
 

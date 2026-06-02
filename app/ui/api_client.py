@@ -284,6 +284,12 @@ def get_run_metrics(workflow_id: str) -> dict:
     return _get_json(f"/workflows/{workflow_id}/run-metrics")
 
 
+def get_resume_profile(user_id: int | str, resume_id: str) -> dict:
+    """Parsed profile for one resume (ADR-075 Phase 8). Returns the profile dict
+    ({} if absent)."""
+    return _get_json(f"/users/{user_id}/resumes/{resume_id}/profile").get("profile") or {}
+
+
 def get_system_dashboard(days: int | None = None, view_user_id: str | None = None) -> dict:
     """Composite System Dashboard payload (ADR-075 Phase 7). view_user_id None =
     all profiles; days None = all-time."""

@@ -303,8 +303,8 @@ def _render_api(api: dict) -> None:
     st.markdown("---")
     st.subheader("API requests")
     st.caption("HTTP-layer observability (ADR-074): every REST request by route "
-               "template (never the raw path/query - PII-safe). Covers the control "
-               "path; the UI's browse reads bypass the API by design.")
+               "template (never the raw path/query - PII-safe). Now covers the whole "
+               "UI surface - reads are funnelled through the API too (ADR-075).")
     if api["total"] == 0:
         st.caption("No API requests recorded in this window.")
         return

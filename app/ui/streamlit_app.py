@@ -11,11 +11,15 @@ Where everything lives:
   * app/ui/views/<name>.py - one render(ctx) per screen; REGISTRY maps name -> render
   * app/ui/components/      - shared render helpers (bullets, tailoring card, tracks)
   * app/ui/formatting.py    - pure formatters (no st.*); app/ui/data.py - cached reads
-  * app/ui/db_reader.py     - direct data/v2.db reads; app/ui/api_client.py - FastAPI calls
+  * app/ui/api_client.py    - ALL backend calls (reads + writes); app/ui/data.py - cached wrappers
+                              (ADR-075 funnelled reads through the API; db_reader is gone)
 
 The sidebar order (Workflow History default, then Detail / Start New Run / Live
 Monitor / Run Report / Settings / analytics) is defined by NAV_ITEMS in nav.py.
 """
+# sys.path setup + load_dotenv() must run before the app.* imports below, so those
+# imports are intentionally not at the top of the file. E402 suppressed file-wide.
+# ruff: noqa: E402
 from __future__ import annotations
 
 import sys
@@ -38,8 +42,7 @@ load_dotenv()
 import app.ui.api_client as api
 import app.ui.nav as nav
 from app.ui.nav import _navigate
-from app.ui.data import _cached_list_users
-from app.ui.db_reader import load_recent_workflows
+from app.ui.data import _cached_list_users, _cached_recent_workflows
 from app.ui.views import REGISTRY as VIEW_REGISTRY
 
 
@@ -82,7 +85,7 @@ if "workflow_reconnect_attempted" not in st.session_state:
     st.session_state.workflow_reconnect_error = None
     if st.session_state.workflow_id is None:
         try:
-            _recent = load_recent_workflows()
+            _recent = _cached_recent_workflows()
             if not _recent.empty and "workflow_id" in _recent.columns:
                 _reconnect_id = _recent.iloc[0]["workflow_id"]
                 st.session_state.workflow_id = _reconnect_id

@@ -8,23 +8,26 @@
 
 ---
 
-## 1. The one idea to hold first: two data paths
+## 1. The one idea to hold first: one data path (ADR-075)
 
-The UI talks to the system through **two distinct channels**, and which one a piece
-of code uses is the single most important architectural fact here:
+The UI talks to the system through **one channel** — `app/ui/api_client.py` to the
+FastAPI backend. **No UI code opens `data/v2.db` directly.** (Before ADR-075 there
+was a second, read-only path via `db_reader.py` that opened SQLite directly for
+browse performance; ADR-075 retired it — the observability blind spot and
+dual-write hazard outweighed the saved round-trip, and it blocked auth/remote.)
 
-| Path | Module | Used for | Touches |
-|---|---|---|---|
-| **Read path** | `app/ui/db_reader.py` (+ the `services/cost_breakdown.py` and `services/constraint_analyzer.py` aggregators) | Browse / history / analytics / cost — anything that only *displays* stored data | Opens `data/v2.db` directly with `sqlite3` + `json_extract()` |
-| **Control path** | `app/ui/api_client.py` | Every *action*: start a run, edit config, tailor, decide, run the clinic, upload a resume, purge | `httpx` to the FastAPI backend (`http://localhost:8000`) |
+| Concern | Module | Notes |
+|---|---|---|
+| **Reads** (history / analytics / detail / dashboard) | `app/ui/api_client.py` `get_*` + `app/ui/data.py` `_cached_*` | `httpx` GET to the backend; cached with `st.cache_data`; server-side SQL lives in `app/services/reads/` + the `cost_breakdown` / `system_health` aggregators |
+| **Writes / actions** (start run, decide, tailor, clinic, upload, purge) | `app/ui/api_client.py` | `httpx` to the backend (`http://localhost:8000`) |
 
-The read path **bypasses the API on purpose** (documented in `db_reader.py`'s
-header and `db_reader.py`'s relationship to `data_model.md`): browse views are
-high-frequency and read-only, so paying an HTTP round-trip + a FastAPI process for
-them buys nothing. Writes *always* go through the API so that validation,
-orchestration, observability, and persistence stay server-owned (the orchestration
-rules in `CLAUDE.md`: agents never touch the DB; all LLM output is schema-validated
-before persistence).
+Everything goes through the API so that validation, orchestration, observability
+(every read now records an `api_requests` row, ADR-074 Gap 5), and persistence stay
+server-owned, and so the UI can run on a different host / behind auth later. A
+forcing-function test (`tests/v2/test_ui_no_direct_db.py`) fails the build if any
+UI view re-imports `db_reader` / `sqlite3` / a DB-reading aggregator. Pure helpers
+that operate on already-fetched data (e.g. `constraint_analyzer` on the run state)
+are fine.
 
 ```mermaid
 flowchart LR

@@ -5,12 +5,13 @@ state_json.run_metrics.estimated_cost_usd (the in-memory aggregator).
 The aggregator is lossy and was empty in production for weeks, so the
 History page reported zero or stale cost.
 
-Fix: db_reader.load_persisted_workflow_runs now COALESCEs the SUM of
+Fix: the Workflow History query now COALESCEs the SUM of
 llm_calls.estimated_cost first, falling back to the state_json value
 only for runs that predate the observability fix.
 
 This file pins that behavior. If a future refactor reverts to reading
-state_json directly, these tests fail.
+state_json directly, these tests fail. ADR-075 moved the query out of
+db_reader into services/reads/workflow_reads.list_workflow_runs.
 """
 from __future__ import annotations
 
@@ -22,7 +23,12 @@ from pathlib import Path
 import pytest
 
 from app.repositories.database import init_db
-from app.ui import db_reader
+from app.services.reads import workflow_reads as wr
+
+
+def _cost_row(db_path: Path, wf_id: str) -> dict:
+    page = wr.list_workflow_runs(user_id=None, limit=50, db_path=db_path)
+    return next(r for r in page["items"] if r["workflow_id"] == wf_id)
 
 
 def _seed_workflow(db_path: Path, wf_id: str, state_json: dict | None = None) -> None:
@@ -60,13 +66,9 @@ def _seed_llm_call(db_path: Path, wf_id: str, cost: float, ti: int = 100, to: in
 
 
 @pytest.fixture
-def db_path(tmp_path, monkeypatch) -> Path:
-    """Init a tmp DB and point db_reader.DB_PATH at it for the duration of the test."""
+def db_path(tmp_path) -> Path:
     path = tmp_path / "history.db"
     init_db(path)
-    monkeypatch.setattr(db_reader, "DB_PATH", path)
-    # Streamlit caches results; clear so each test starts clean.
-    db_reader.load_persisted_workflow_runs.clear()
     return path
 
 
@@ -80,8 +82,7 @@ def test_history_cost_uses_llm_calls_when_present(db_path):
     _seed_llm_call(db_path, "wf-truth-1", cost=0.010)
     _seed_llm_call(db_path, "wf-truth-1", cost=0.015)
 
-    df = db_reader.load_persisted_workflow_runs()
-    row = df[df["workflow_id"] == "wf-truth-1"].iloc[0]
+    row = _cost_row(db_path, "wf-truth-1")
     assert row["cost_usd"] == pytest.approx(0.025)
     assert int(row["llm_calls"]) == 2
 
@@ -89,24 +90,20 @@ def test_history_cost_uses_llm_calls_when_present(db_path):
 def test_history_cost_falls_back_to_state_json_when_no_llm_calls(db_path):
     """Older runs that completed before the observability fix have no
     llm_calls rows. The state_json estimate is still useful as fallback."""
-    db_reader.load_persisted_workflow_runs.clear()
     _seed_workflow(db_path, "wf-legacy-1", {
         "run_metrics": {"estimated_cost_usd": 0.42, "llm_calls": 38}
     })
     # No llm_call rows seeded — simulating a pre-fix run.
 
-    df = db_reader.load_persisted_workflow_runs()
-    row = df[df["workflow_id"] == "wf-legacy-1"].iloc[0]
+    row = _cost_row(db_path, "wf-legacy-1")
     assert row["cost_usd"] == pytest.approx(0.42)
     assert int(row["llm_calls"]) == 38
 
 
 def test_history_cost_zero_when_neither_source_has_data(db_path):
     """Runs with no llm_calls AND no state_json metrics show $0, not NULL."""
-    db_reader.load_persisted_workflow_runs.clear()
     _seed_workflow(db_path, "wf-empty-1", {})  # no run_metrics in state_json
 
-    df = db_reader.load_persisted_workflow_runs()
-    row = df[df["workflow_id"] == "wf-empty-1"].iloc[0]
+    row = _cost_row(db_path, "wf-empty-1")
     assert row["cost_usd"] == 0.0
     assert int(row["llm_calls"]) == 0

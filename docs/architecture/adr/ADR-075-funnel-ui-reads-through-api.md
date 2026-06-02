@@ -2,8 +2,11 @@
 
 ## Status
 
-Proposed (2026-06-02). Phased implementation (migration plan below) — both paths
-coexist until each screen is cut over.
+Accepted (2026-06-02). **Fully implemented** — all phases (0-9) landed
+2026-06-02; `db_reader.py` is deleted and the forcing-function guard
+(`tests/v2/test_ui_no_direct_db.py`) has an empty allowlist, so no UI code opens
+`data/v2.db`. The Phase-1 latency gate passed (`GET /workflows` ~26 ms p95), so the
+read-gateway fallback was not needed.
 
 Supersedes the read-path bypass established in `ui_architecture.md` (and the
 spirit of ADR-003 "separate frontend and backend"): the UI's read path opened

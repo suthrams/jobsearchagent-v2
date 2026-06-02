@@ -1,6 +1,10 @@
 # UI Read Funnel — Implementation Plan
 
-> **Progress:** Phases 0-2 shipped 2026-06-02.
+> **Progress: COMPLETE — all phases (0-9) shipped 2026-06-02.** `db_reader.py` is
+> deleted; the forcing-function guard's allowlist is empty (no UI view opens the
+> DB); every screen reads through the API. The Phase-1 latency gate passed
+> (`GET /workflows` ~26 ms p95; `GET /users/{id}/resumes` ~10 ms), so the
+> read-gateway fallback was not needed. Summary of the earlier phases:
 > - **Phase 0** (foundation) + **Phase 1** (Workflow History) — the latency gate
 >   passed: `GET /workflows` ~26 ms p95 locally, far under the ~400 ms bar, and the
 >   read now appears in `api_requests` (the blind spot it was bypassing). Funnel

@@ -6,6 +6,29 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-02
 
+### Changed — UI read funnel COMPLETE: db_reader retired (ADR-075 Phases 3-9)
+
+The UI no longer opens `data/v2.db` directly — every read goes through FastAPI.
+`app/ui/db_reader.py` is **deleted**; the forcing-function guard
+(`test_ui_no_direct_db`) has an empty allowlist.
+
+- **Phase 3** Analytics -> `/dashboard/scored-jobs` (new `/dashboard` router).
+- **Phase 4-5** Job Detail + Live Monitor -> a new `reads.py` router
+  (`/workflows/{id}/scored-jobs|reviews|interview-prep|steps|agent-events|llm-calls|`
+  `jobs/{job}/pipeline|detail`, `/workflows/recent`).
+- **Phase 6** Workflow Detail -> per-sub-resource cached endpoints (+ cost-breakdown
+  and run-metrics); guard extended to ban DB-reading aggregator imports in views.
+- **Phase 7** System Dashboard -> one composite `/dashboard/system` payload.
+- **Phase 8** sidebar (`load_recent_workflows`) + the chat panel's resume-profile
+  read -> API (`GET /users/{id}/resumes/{rid}/profile`).
+- **Phase 9** deleted `db_reader.py`; ported its field-name + cost-truth-source
+  invariant tests to the read-services; flipped `ui_architecture.md` to one path
+  and removed the "reads bypass the API" language across the docs.
+
+All UI reads now record `api_requests` rows (ADR-074 Gap 5 observes the whole UI
+surface), the dual-write hazard is gone (one query definition per read), and the
+UI can run on a separate host / behind auth.
+
 ### Added — UI read funnel Phase 2: user reads (ADR-075)
 
 Routes the profile resume/clinic reads through the API.
