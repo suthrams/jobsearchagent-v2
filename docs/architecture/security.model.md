@@ -420,6 +420,12 @@ Visualized system-level (profile-scoped, ADR-062) on the **System Dashboard**.
 A future JD prompt-injection detector (ADR-019) can add a 5th emit site without
 changing this contract. See `security_observability_design.md`.
 
+**API-request logging is PII-safe too (ADR-074 Gap 5).** The HTTP middleware that
+records `api_requests` stores the matched route TEMPLATE
+(`/tailorings/{tailoring_id}`), never the raw path or query string — so resource
+ids and the `?user_id=` value never land in the route field, and cardinality stays
+bounded. Same "log summaries / structure, not raw content" rule as Section 14.
+
 ---
 
 ## 15. Human-in-the-Loop Safety

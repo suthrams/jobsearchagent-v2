@@ -22,6 +22,7 @@ import math
 import sqlite3
 from pathlib import Path
 
+from app.repositories.api_request_repository import ApiRequestRepository
 from app.repositories.database import DEFAULT_DB_PATH
 from app.repositories.decision_repository import DecisionRepository
 from app.repositories.security_repository import SecurityRepository
@@ -308,6 +309,53 @@ def reliability_summary(
              "output_summary": (o or "")[:200], "created_at": ts}
             for a, wf, o, ts in recent
         ],
+    }
+
+
+# ── API requests (ADR-074 Gap 5) ─────────────────────────────────────────────
+
+
+def api_summary(
+    days: int | None = None,
+    user_id: str | None = None,
+    db_path: Path = DEFAULT_DB_PATH,
+    slowest_n: int = 8,
+) -> dict:
+    """HTTP-layer rollup over api_requests (ADR-074 Gap 5).
+
+    Reuses ApiRequestRepository.list_for_user (profile-scoped, COALESCE to '0')
+    and aggregates in Python.
+
+    Returns:
+      {"total", "error_count" (status>=400), "error_rate", "p50_ms", "p95_ms",
+       "by_endpoint": [{"route_template","method","count","errors","p95_ms"}...]}
+    """
+    rows = ApiRequestRepository(db_path).list_for_user(user_id=user_id, days=days)
+    if not rows:
+        return {"total": 0, "error_count": 0, "error_rate": 0.0,
+                "p50_ms": 0.0, "p95_ms": 0.0, "by_endpoint": []}
+    lat = [float(r.get("latency_ms") or 0) for r in rows]
+    errors = sum(1 for r in rows if int(r.get("status_code") or 0) >= 400)
+    per: dict[tuple, dict] = {}
+    for r in rows:
+        key = (r.get("method") or "?", r.get("route_template") or "?")
+        slot = per.setdefault(key, {"lat": [], "errors": 0})
+        slot["lat"].append(float(r.get("latency_ms") or 0))
+        if int(r.get("status_code") or 0) >= 400:
+            slot["errors"] += 1
+    by_endpoint = sorted(
+        ({"method": m, "route_template": rt, "count": len(v["lat"]),
+          "errors": v["errors"], "p95_ms": _percentile(v["lat"], 0.95)}
+         for (m, rt), v in per.items()),
+        key=lambda d: d["count"], reverse=True,
+    )[:slowest_n]
+    return {
+        "total": len(rows),
+        "error_count": errors,
+        "error_rate": errors / len(rows),
+        "p50_ms": _percentile(lat, 0.50),
+        "p95_ms": _percentile(lat, 0.95),
+        "by_endpoint": by_endpoint,
     }
 
 

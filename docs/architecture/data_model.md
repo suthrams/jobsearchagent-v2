@@ -1050,6 +1050,56 @@ CREATE TABLE security_events (
 
 ---
 
+## 6.2 api_requests
+
+### Purpose
+
+HTTP-layer observability (ADR-074 Gap 5). One append-only row per REST request,
+written by the FastAPI middleware. Net-new in ADR-074 — before it, the API surface
+had no observability at all. Covers the control path (writes/actions) plus the few
+read endpoints the UI calls; the UI's browse reads bypass the API by design
+(`db_reader` direct SQLite).
+
+### Schema
+
+```sql
+CREATE TABLE api_requests (
+    id             TEXT PRIMARY KEY,
+    user_id        TEXT,        -- acting profile (?user_id=, ADR-062); '0' default
+    method         TEXT,        -- GET / POST / ...
+    route_template TEXT,        -- matched route pattern; '<unmatched>' for 404s
+    status_code    INTEGER,
+    latency_ms     INTEGER,
+    created_at     TEXT NOT NULL
+);
+```
+
+### Column dictionary
+
+| Column           | Type    | Description |
+|------------------|---------|-------------|
+| `id`             | TEXT PK | UUID. |
+| `user_id`        | TEXT    | Acting profile from the `?user_id=` identity seam (ADR-062); `"0"` default. |
+| `method`         | TEXT    | HTTP method. |
+| `route_template` | TEXT    | The **matched route pattern** (`/tailorings/{tailoring_id}`), never the raw path or query string — PII-safe and bounded cardinality. Unmatched routes (404) record `"<unmatched>"`. |
+| `status_code`    | INTEGER | Response status (500 if the handler raised). |
+| `latency_ms`     | INTEGER | Wall-clock request duration. |
+| `created_at`     | TEXT    | ISO 8601 UTC. |
+
+### Workflow usage
+
+- **Written by**: the `@app.middleware("http")` in `app/api/main.py` via
+  `observability_service.record_api_request_safe` (never-crash; runs in `finally`
+  so it fires even on a handler exception). Indexes `idx_api_requests_created_at`
+  / `idx_api_requests_user` support the dashboard reads.
+- **Read by**: the System Dashboard's API section (`ApiRequestRepository.list_for_user`
+  + `system_health.api_summary` — total, p50/p95 latency, error rate, by-endpoint),
+  profile-scoped (COALESCE null `user_id` to `"0"`).
+- **Retention**: `retention.observability_days` (30), purged on the independent
+  window (no run FK — not part of the workflow_runs cascade).
+
+---
+
 ## 7. Memory Table
 
 ---

@@ -2,8 +2,13 @@
 
 Start with: uvicorn app.api.main:app --reload
 """
+# load_dotenv() must run before the app/router imports below (they transitively
+# read env vars like ANTHROPIC_API_KEY at import time), so those imports are
+# intentionally not at the top of the file. E402 is suppressed file-wide for that.
+# ruff: noqa: E402
 from __future__ import annotations
 
+import time
 from contextlib import asynccontextmanager
 
 from dotenv import load_dotenv
@@ -25,6 +30,7 @@ from app.api.routers.resume_clinic import router as resume_clinic_router
 from app.api.routers.tailoring import router as tailoring_router
 from app.api.routers.users import router as users_router
 from app.api.routers.workflows import router as workflows_router
+from app.services.observability_service import record_api_request_safe
 
 
 @asynccontextmanager
@@ -66,6 +72,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def _observe_requests(request: Request, call_next):
+    """Record one api_requests row per REST request (ADR-074 Gap 5).
+
+    Captures method, the matched route TEMPLATE (never the raw path/query - PII-safe
+    + bounded cardinality), status code, latency, and the acting profile
+    (?user_id=, ADR-062). Recording is never-crash and runs in `finally`, so it
+    fires even when the handler raises (status 500) and never masks the original
+    exception.
+    """
+    start = time.perf_counter()
+    status_code = 500
+    try:
+        response = await call_next(request)
+        status_code = response.status_code
+        return response
+    finally:
+        latency_ms = int((time.perf_counter() - start) * 1000)
+        route = request.scope.get("route")
+        template = getattr(route, "path", None) or "<unmatched>"
+        user_id = request.query_params.get("user_id") or "0"
+        record_api_request_safe(
+            user_id=user_id,
+            method=request.method,
+            route_template=template,
+            status_code=status_code,
+            latency_ms=latency_ms,
+        )
 
 app.include_router(workflows_router)
 app.include_router(jobs_router)

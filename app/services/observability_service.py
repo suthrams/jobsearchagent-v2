@@ -7,6 +7,7 @@ import logging
 import uuid
 from pathlib import Path
 
+from app.repositories.api_request_repository import ApiRequestRepository
 from app.repositories.database import DEFAULT_DB_PATH, utcnow_iso
 from app.repositories.decision_repository import DecisionRepository
 from app.repositories.observability_repository import ObservabilityRepository
@@ -78,6 +79,36 @@ def log_artifact_decision(
         presented_at=presented_at or utcnow_iso(),
         decided_at=utcnow_iso(),
     )
+
+
+def record_api_request_safe(
+    user_id: str,
+    method: str,
+    route_template: str,
+    status_code: int,
+    latency_ms: int,
+    *,
+    db_path: Path = DEFAULT_DB_PATH,
+) -> None:
+    """Append one api_requests row from the FastAPI middleware (ADR-074 Gap 5).
+
+    The middleware runs at the app layer with no injected ObservabilityService, so
+    this constructs the repository directly and swallows any error — request
+    handling must never fail because an audit write failed (the same never-crash
+    contract as emit_security_event_safe). `route_template` must be the matched
+    route pattern, never the raw path/query (PII-safe + bounded cardinality).
+    """
+    try:
+        ApiRequestRepository(db_path).create(
+            request_id=str(uuid.uuid4()),
+            user_id=str(user_id or "0"),
+            method=method,
+            route_template=route_template,
+            status_code=int(status_code),
+            latency_ms=int(latency_ms),
+        )
+    except Exception:
+        logger.exception("record_api_request_safe failed")
 
 
 def fidelity_review_security_description(fidelity: dict | None) -> str | None:

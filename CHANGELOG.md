@@ -6,6 +6,27 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-02
 
+### Added — API-request observability (ADR-074 Gap 5)
+
+The REST API surface had no observability (CORS was the only middleware). A new
+`@app.middleware("http")` now records every request into a new `api_requests`
+table via `record_api_request_safe` (never-crash, runs in `finally` so it fires
+even on a handler exception).
+
+- **PII-safe by construction**: stores the matched route TEMPLATE
+  (`/tailorings/{tailoring_id}`) — never the raw path or query string; unmatched
+  routes record `"<unmatched>"`. Captures method, status, latency, and the acting
+  `user_id` (`?user_id=`, ADR-062).
+- **New table** `api_requests` (the one schema change in ADR-074; Gaps 1-2 reused
+  existing tables) + `ApiRequestRepository`; purged on the `observability_days`
+  window (independent — no run FK).
+- **Read**: `system_health.api_summary` (total, p50/p95 latency, error rate,
+  by-endpoint), profile-scoped; surfaced as an **API** section on the System
+  Dashboard.
+- **Tests**: `tests/v2/test_api_requests.py` (4) — forcing-function (middleware
+  registered), middleware behavior (route template not raw id — PII-safe), repo
+  scoping, aggregation. Suite 831 -> 835 passing.
+
 ### Added — step_executions node-level timing (ADR-074 Gap 2)
 
 The `step_executions` table (dead — `log_step_*` never called) is now **wired**.

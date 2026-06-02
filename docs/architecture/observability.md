@@ -704,7 +704,17 @@ review_rounds
 human_decisions
 run_metrics
 security_events
+step_executions   (node-level timing; wired ADR-074 Gap 2)
+api_requests      (HTTP-layer requests; wired ADR-074 Gap 5)
 ```
+
+> **ADR-074 wired three previously-unobserved layers:** `human_decisions`
+> (the approve/revise/reject/edit audit, Gap 1), `step_executions` (node-level
+> timing, Gap 2), and `api_requests` (HTTP request method/route-template/status/
+> latency via a FastAPI middleware, Gap 5 — the API surface was entirely
+> unobserved before). All are profile-scoped on the System Dashboard. Still open:
+> out-of-graph `run_metrics` (Gap 3) and the thread-local `last_call_usage` race
+> (Gap 4). See ADR-074.
 
 Optional future table:
 

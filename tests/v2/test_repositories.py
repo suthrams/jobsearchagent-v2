@@ -30,6 +30,7 @@ _EXPECTED_TABLES = {
     "tailored_resumes", "resume_clinic_reviews", "reports",
     "human_decisions", "user_config", "step_executions", "agent_events",
     "llm_calls", "run_metrics", "security_events", "memory_items",
+    "api_requests",
 }
 
 

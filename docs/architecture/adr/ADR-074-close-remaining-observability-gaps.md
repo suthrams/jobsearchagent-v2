@@ -6,7 +6,8 @@ Accepted (2026-06-02). Catalog ADR — ratifies the gaps and the intended fixes;
 implementation is phased (priority order below). Each phase may land under this
 ADR or spin out its own if it grows a real contract.
 
-**Progress:** Gap 1 (`human_decisions`) and Gap 2 (`step_executions`) —
+**Progress:** Gap 1 (`human_decisions`), Gap 2 (`step_executions`), and Gap 5
+(API-request observability — added after the security-events audit) —
 **implemented** 2026-06-02. Gaps 3-4 and the minors remain open.
 
 Follows ADR-073 (which wired the first dead audit table, `security_events`) and
@@ -93,6 +94,31 @@ misattribute cost. That call also logs an `llm_call` but **no `agent_event`**
 an `agent_event` for `custom_url_extractor` so it is attributable like every other
 agent. Audit for any remaining `last_call_usage` callers and deprecate the method
 once none remain.
+
+### Gap 5 (MEDIUM, net-new) — the REST API surface is unobserved [IMPLEMENTED]
+
+Unlike Gaps 1-4 (dead *existing* tables), the HTTP layer has **no** observability
+at all: the only FastAPI middleware is CORS. Nothing records per-endpoint call
+counts, latency, status codes, or error rates. We observe everything *below* the
+request (`llm_calls`, `agent_events`, `step_executions`) but not the request
+itself. (The UI read-path bypasses the API via direct SQLite, so this covers the
+control path - writes/actions - plus the few read endpoints the UI calls, which is
+the right scope for reliability.)
+
+This is net-new infrastructure, so it adds a table (a schema change, unlike Gaps
+1-4) and a middleware.
+
+**Fix:** a `@app.middleware("http")` records, per request: `method`, the matched
+**route template** (`/tailorings/{tailoring_id}`, never the raw path or query
+string - PII-safe + bounded cardinality), `status_code`, `latency_ms`, and the
+acting `user_id` (from the existing `?user_id=` identity seam, default `"0"`,
+ADR-062) into a new `api_requests` table. Unmatched routes (404s) record
+`"<unmatched>"` rather than the raw path. The write goes through a module-level
+`record_api_request_safe(...)` (never-crash, like `emit_security_event_safe`), so
+request handling never breaks on an audit failure. Read via
+`ApiRequestRepository.list_for_user` + `system_health.api_summary` (total, p50/p95
+latency, error rate, by-endpoint), surfaced as an **API** section on the System
+Dashboard, profile-scoped like the rest. Retention: `observability_days` (30).
 
 ### Minor (documented, not scheduled)
 

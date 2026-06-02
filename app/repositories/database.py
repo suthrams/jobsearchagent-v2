@@ -259,6 +259,20 @@ CREATE TABLE IF NOT EXISTS memory_items (
     updated_at TEXT NOT NULL
 );
 
+-- ADR-074 Gap 5: HTTP request observability. One row per API request recorded by
+-- the FastAPI middleware. route_template is the matched route pattern
+-- (e.g. /tailorings/{tailoring_id}) - never the raw path or query string, so no
+-- PII or unbounded cardinality. user_id is the acting profile (?user_id=, ADR-062).
+CREATE TABLE IF NOT EXISTS api_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT,
+    method TEXT,
+    route_template TEXT,
+    status_code INTEGER,
+    latency_ms INTEGER,
+    created_at TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_status     ON workflow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_started_at ON workflow_runs(started_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_company             ON jobs(company);
@@ -275,6 +289,8 @@ CREATE INDEX IF NOT EXISTS idx_llm_calls_created_at     ON llm_calls(created_at)
 CREATE INDEX IF NOT EXISTS idx_memory_type              ON memory_items(memory_type);
 CREATE INDEX IF NOT EXISTS idx_memory_updated_at        ON memory_items(updated_at);
 CREATE INDEX IF NOT EXISTS idx_security_created_at      ON security_events(created_at);
+CREATE INDEX IF NOT EXISTS idx_api_requests_created_at  ON api_requests(created_at);
+CREATE INDEX IF NOT EXISTS idx_api_requests_user        ON api_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_user       ON workflow_runs(user_id);
 CREATE INDEX IF NOT EXISTS idx_resume_clinic_user        ON resume_clinic_reviews(user_id);
 """
@@ -455,6 +471,7 @@ def purge_old_data(db_path: Path = DEFAULT_DB_PATH, config: dict | None = None) 
         ("step_executions", "started_at", observability_days),
         ("agent_events",    "created_at", observability_days),
         ("llm_calls",       "created_at", observability_days),
+        ("api_requests",    "created_at", observability_days),  # ADR-074 Gap 5
         ("security_events", "created_at", security_days),
         ("memory_items",    "updated_at", memory_days),
         ("jobs",            "created_at", jobs_days),

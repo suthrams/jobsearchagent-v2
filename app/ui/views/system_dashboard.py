@@ -101,6 +101,7 @@ def render(ctx: ViewContext) -> None:
     _render_decisions(window_days, view_uid)
     _render_performance(window_days, view_uid)
     _render_reliability(rel)
+    _render_api(window_days, view_uid)
     _render_scalability(window_days, view_uid)
     _render_cost(window_choice, window_days, view_uid, cost_dash)
 
@@ -302,6 +303,35 @@ def _render_reliability(rel: dict) -> None:
             st.dataframe(tbl, hide_index=True, use_container_width=True, height=260)
         else:
             st.caption("No agent failures in this window.")
+
+
+# ── API requests (ADR-074 Gap 5) ─────────────────────────────────────────────
+
+
+def _render_api(window_days: int | None, view_uid: str | None) -> None:
+    api = sh.api_summary(days=window_days, user_id=view_uid)
+    st.markdown("---")
+    st.subheader("API requests")
+    st.caption("HTTP-layer observability (ADR-074): every REST request by route "
+               "template (never the raw path/query - PII-safe). Covers the control "
+               "path; the UI's browse reads bypass the API by design.")
+    if api["total"] == 0:
+        st.caption("No API requests recorded in this window.")
+        return
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Requests", f"{api['total']:,}")
+    c2.metric("Error rate", f"{api['error_rate'] * 100:.1f}%",
+              delta=f"{api['error_count']} errors" if api["error_count"] else None,
+              delta_color="inverse" if api["error_count"] else "normal")
+    c3.metric("Latency p50", f"{api['p50_ms']:.0f} ms")
+    c4.metric("Latency p95", f"{api['p95_ms']:.0f} ms")
+    if api["by_endpoint"]:
+        edf = pd.DataFrame(api["by_endpoint"])
+        edf["p95 (ms)"] = edf["p95_ms"].round(0).astype(int)
+        view = edf[["method", "route_template", "count", "errors", "p95 (ms)"]].rename(
+            columns={"method": "Method", "route_template": "Route",
+                     "count": "Calls", "errors": "Errors"})
+        st.dataframe(view, hide_index=True, use_container_width=True)
 
 
 # ── Scalability (light) ───────────────────────────────────────────────────────
