@@ -239,16 +239,31 @@ def _render_performance(window_days: int | None, view_uid: str | None) -> None:
     c2.metric("LLM p95", f"{perf['llm']['p95_ms'] / 1000:.1f}s")
     c3.metric("Agent p50", f"{perf['agent']['p50_ms'] / 1000:.1f}s")
     c4.metric("Agent p95", f"{perf['agent']['p95_ms'] / 1000:.1f}s")
+    cc1, cc2 = st.columns(2)
     slow = perf["slowest_agents"]
     if slow:
-        sdf = pd.DataFrame(slow)
-        sdf["p95_s"] = (sdf["p95_ms"] / 1000).round(2)
-        fig = px.bar(sdf.sort_values("p95_s"), x="p95_s", y="agent_name", orientation="h",
-                     text="p95_s", labels={"p95_s": "p95 (s)", "agent_name": "Agent"},
-                     color="p95_s", color_continuous_scale="blues")
-        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10),
-                          height=max(180, 40 * len(sdf)), coloraxis_showscale=False)
-        st.plotly_chart(fig, use_container_width=True)
+        with cc1:
+            st.caption("Slowest agents (p95, s)")
+            sdf = pd.DataFrame(slow)
+            sdf["p95_s"] = (sdf["p95_ms"] / 1000).round(2)
+            fig = px.bar(sdf.sort_values("p95_s"), x="p95_s", y="agent_name", orientation="h",
+                         text="p95_s", labels={"p95_s": "p95 (s)", "agent_name": "Agent"},
+                         color="p95_s", color_continuous_scale="blues")
+            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10),
+                              height=max(180, 40 * len(sdf)), coloraxis_showscale=False)
+            st.plotly_chart(fig, use_container_width=True)
+    steps = perf.get("slowest_steps") or []
+    if steps:
+        with cc2:
+            st.caption("Slowest steps (p95, s) - node-level, ADR-074")
+            stdf = pd.DataFrame(steps)
+            stdf["p95_s"] = (stdf["p95_ms"] / 1000).round(2)
+            fig = px.bar(stdf.sort_values("p95_s"), x="p95_s", y="step", orientation="h",
+                         text="p95_s", labels={"p95_s": "p95 (s)", "step": "Step"},
+                         color="p95_s", color_continuous_scale="teal")
+            fig.update_layout(margin=dict(l=10, r=10, t=10, b=10),
+                              height=max(180, 40 * len(stdf)), coloraxis_showscale=False)
+            st.plotly_chart(fig, use_container_width=True)
 
 
 # ── Reliability ───────────────────────────────────────────────────────────────

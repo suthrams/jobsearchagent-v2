@@ -184,7 +184,7 @@ def performance_summary(
     """
     empty = {"llm": {"p50_ms": 0.0, "p95_ms": 0.0, "calls": 0},
              "agent": {"p50_ms": 0.0, "p95_ms": 0.0, "events": 0},
-             "slowest_agents": []}
+             "slowest_agents": [], "slowest_steps": []}
     conn = _connect(db_path)
     if conn is None:
         return empty
@@ -198,6 +198,11 @@ def performance_summary(
         w_ev, p_ev = _run_scoped_clause(days, user_id, "agent_events")
         agent_rows = conn.execute(
             f"SELECT agent_name, duration_ms FROM agent_events {w_ev}", p_ev
+        ).fetchall()
+        # ADR-074 Gap 2: node-level step timing from step_executions.
+        w_st, p_st = _run_scoped_clause(days, user_id, "step_executions")
+        step_rows = conn.execute(
+            f"SELECT step, duration_ms FROM step_executions {w_st}", p_st
         ).fetchall()
     except sqlite3.OperationalError:
         return empty
@@ -216,6 +221,17 @@ def performance_summary(
         key=lambda d: d["p95_ms"], reverse=True,
     )[:slowest_n]
 
+    per_step: dict[str, list[float]] = {}
+    for s, d in step_rows:
+        if d is None:
+            continue
+        per_step.setdefault(s or "?", []).append(float(d))
+    slowest_steps = sorted(
+        ({"step": s, "p95_ms": _percentile(v, 0.95), "executions": len(v)}
+         for s, v in per_step.items()),
+        key=lambda d: d["p95_ms"], reverse=True,
+    )[:slowest_n]
+
     return {
         "llm": {"p50_ms": _percentile([float(x) for x in llm_lat], 0.50),
                 "p95_ms": _percentile([float(x) for x in llm_lat], 0.95),
@@ -224,6 +240,7 @@ def performance_summary(
                   "p95_ms": _percentile([float(x) for x in agent_dur], 0.95),
                   "events": len(agent_dur)},
         "slowest_agents": slowest,
+        "slowest_steps": slowest_steps,
     }
 
 

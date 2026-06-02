@@ -6,6 +6,21 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-02
 
+### Added — step_executions node-level timing (ADR-074 Gap 2)
+
+The `step_executions` table (dead — `log_step_*` never called) is now **wired**.
+Every LangGraph node is wrapped by `workflow_graph._instrument_step`, which logs a
+started row before the node and completed/failed after (never-crash), recording
+node-level timing + transitions (distinct from per-LLM-call `agent_events`).
+
+- `ObservabilityService.log_step_started` relaxed to accept `WorkflowStep | str`
+  (nodes are instrumented by their registered name).
+- `system_health.performance_summary` gains `slowest_steps` (node-level p95);
+  rendered in the System Dashboard Performance section beside slowest agents.
+- Tests: `tests/v2/test_step_executions.py` (5) — forcing-function (builder wraps
+  nodes), behavioral (started+completed / started+failed+reraise / never-crash),
+  read. Suite 826 -> 831 passing.
+
 ### Added — human_decisions audit trail (ADR-074 Gap 1)
 
 The `human_decisions` table (dead since the in-graph HITL was retired in ADR-059)

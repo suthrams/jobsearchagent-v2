@@ -79,4 +79,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-071 | [Per-Profile Active Scoring Tracks](ADR-071-per-profile-active-scoring-tracks.md) | Accepted |
 | ADR-072 | [Resume Live Chat + Export in the Tailoring Flow](ADR-072-resume-live-chat-in-tailoring.md) | Accepted |
 | ADR-073 | [Wire Security-Event Emit Sites and a Unified System Dashboard](ADR-073-wire-security-events-and-system-dashboard.md) | Accepted |
-| ADR-074 | [Close the Remaining Observability Gaps](ADR-074-close-remaining-observability-gaps.md) | Accepted (Gap 1 implemented; 2-4 open) |
+| ADR-074 | [Close the Remaining Observability Gaps](ADR-074-close-remaining-observability-gaps.md) | Accepted (Gaps 1-2 implemented; 3-4 open) |

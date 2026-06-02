@@ -102,6 +102,28 @@ class WorkflowDependencies:
     adzuna_scraper_factory: Callable[[list[str], list[str], bool], Any] | None = None
 
 
+def _instrument_step(step_name: str, fn: Callable[[dict], dict], observability):
+    """Wrap a LangGraph node so step_executions records its timing (ADR-074 Gap 2).
+
+    Logs a started row before the node runs and a completed row after, or a failed
+    row if it raises (then re-raises - the failure path is the node's, not the
+    audit's). All logging routes through ObservabilityService, which swallows its
+    own errors, so a broken audit write never breaks a workflow step.
+    """
+    def wrapped(state: dict) -> dict:
+        workflow_id = state.get("workflow_id", "")
+        step_id = observability.log_step_started(workflow_id, step_name)
+        try:
+            result = fn(state)
+        except Exception:
+            observability.log_step_failed(workflow_id, step_id, notes=step_name)
+            raise
+        observability.log_step_completed(workflow_id, step_id, 0, notes=step_name)
+        return result
+
+    return wrapped
+
+
 def build_graph(deps: WorkflowDependencies):
     """Construct and compile the full workflow StateGraph.
 
@@ -114,36 +136,35 @@ def build_graph(deps: WorkflowDependencies):
     graph = StateGraph(WorkflowGraphState)
 
     # ── Nodes ─────────────────────────────────────────────────────────────────
-    graph.add_node("register_run", make_register_run_node(deps.workflow_repo, deps.observability))
-
-    graph.add_node("discover_jobs", make_discover_jobs_node(
-        deps.discovery_service, deps.job_repo, deps.observability,
-        custom_url_scraper_factory=deps.custom_url_scraper_factory,
-        adzuna_scraper_factory=deps.adzuna_scraper_factory))
-
-    graph.add_node("load_resume", make_load_resume_node(
-        deps.resume_parser, deps.observability, deps.resume_repo))
-
-    graph.add_node("score_jobs", make_score_jobs_node(
-        deps.research_agent, deps.scoring_agent, deps.score_repo, deps.observability))
-
-    graph.add_node("await_job_selection", make_await_job_selection_node())
-
-    # Manual-selection mode (ADR-060): phase-1 terminal that parks discovered
-    # jobs for the user to triage before any scoring spend.
-    graph.add_node("await_scoring_selection", make_await_scoring_selection_node(deps.workflow_repo))
-
-    graph.add_node("deep_review", make_deep_review_node(
-        deps.resume_critic, deps.review_auditor, deps.review_repo, deps.observability))
-
-    graph.add_node("career_advice", make_career_advice_node(
-        deps.career_advisor, deps.advice_repo, deps.observability))
-
-    graph.add_node("interview_prep", make_interview_prep_node(
-        deps.interview_coach, deps.advice_repo, deps.observability))
-
-    graph.add_node("generate_report", make_generate_report_node(
-        deps.report_generator, deps.observability, deps.workflow_repo))
+    # ADR-074 Gap 2: every node is wrapped by _instrument_step so the
+    # step_executions table records node-level timing + transitions (distinct from
+    # agent_events, which is per-LLM-call). Routing functions on conditional edges
+    # are not nodes and stay uninstrumented (they are near-instant).
+    nodes = {
+        "register_run": make_register_run_node(deps.workflow_repo, deps.observability),
+        "discover_jobs": make_discover_jobs_node(
+            deps.discovery_service, deps.job_repo, deps.observability,
+            custom_url_scraper_factory=deps.custom_url_scraper_factory,
+            adzuna_scraper_factory=deps.adzuna_scraper_factory),
+        "load_resume": make_load_resume_node(
+            deps.resume_parser, deps.observability, deps.resume_repo),
+        "score_jobs": make_score_jobs_node(
+            deps.research_agent, deps.scoring_agent, deps.score_repo, deps.observability),
+        "await_job_selection": make_await_job_selection_node(),
+        # Manual-selection mode (ADR-060): phase-1 terminal that parks discovered
+        # jobs for the user to triage before any scoring spend.
+        "await_scoring_selection": make_await_scoring_selection_node(deps.workflow_repo),
+        "deep_review": make_deep_review_node(
+            deps.resume_critic, deps.review_auditor, deps.review_repo, deps.observability),
+        "career_advice": make_career_advice_node(
+            deps.career_advisor, deps.advice_repo, deps.observability),
+        "interview_prep": make_interview_prep_node(
+            deps.interview_coach, deps.advice_repo, deps.observability),
+        "generate_report": make_generate_report_node(
+            deps.report_generator, deps.observability, deps.workflow_repo),
+    }
+    for name, fn in nodes.items():
+        graph.add_node(name, _instrument_step(name, fn, deps.observability))
 
     # ── Entry point ───────────────────────────────────────────────────────────
     # Conditional (ADR-060): a normal kickoff starts at register_run; the phase-2

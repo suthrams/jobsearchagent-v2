@@ -6,8 +6,8 @@ Accepted (2026-06-02). Catalog ADR — ratifies the gaps and the intended fixes;
 implementation is phased (priority order below). Each phase may land under this
 ADR or spin out its own if it grows a real contract.
 
-**Progress:** Gap 1 (`human_decisions`) — **implemented** 2026-06-02. Gaps 2-4 and
-the minors remain open.
+**Progress:** Gap 1 (`human_decisions`) and Gap 2 (`step_executions`) —
+**implemented** 2026-06-02. Gaps 3-4 and the minors remain open.
 
 Follows ADR-073 (which wired the first dead audit table, `security_events`) and
 implements ADR-023 (Make Observability First-Class). Touches ADR-059 / Article 8
@@ -56,7 +56,7 @@ counts, never resume content), and `presented_at`/`decided_at`. Surface it as a
 the rest (ADR-062). Forcing-function test: `log_human_decision` must have >0 call
 sites (same guard ADR-073 added for security events).
 
-### Gap 2 (MEDIUM) — `step_executions` is a dead audit table
+### Gap 2 (MEDIUM) — `step_executions` is a dead audit table [IMPLEMENTED]
 
 `log_step_*` is never called, so workflow node-level timing/transitions are
 unrecorded. `agent_events` already gives per-agent timing (the System Dashboard

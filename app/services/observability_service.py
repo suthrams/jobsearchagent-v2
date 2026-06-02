@@ -214,11 +214,17 @@ class ObservabilityService:
 
     # ── Step transitions ──────────────────────────────────────────────────────
 
-    def log_step_started(self, workflow_id: str, step: WorkflowStep) -> str:
-        """Log step start. Returns step_execution_id for the completion call."""
+    def log_step_started(self, workflow_id: str, step: WorkflowStep | str) -> str:
+        """Log step start. Returns step_execution_id for the completion call.
+
+        Accepts a WorkflowStep enum or a plain step/node-name string (ADR-074
+        Gap 2 instruments LangGraph nodes by their registered name, which is not
+        always a WorkflowStep value). StepRepository stores the string as-is.
+        """
         step_execution_id = str(uuid.uuid4())
+        step_name = step.value if isinstance(step, WorkflowStep) else str(step)
         try:
-            self._steps.create(step_execution_id, workflow_id, step.value)
+            self._steps.create(step_execution_id, workflow_id, step_name)
         except Exception:
             logger.exception("ObservabilityService: log_step_started failed")
         return step_execution_id

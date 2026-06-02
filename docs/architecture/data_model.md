@@ -843,10 +843,15 @@ CREATE TABLE step_executions (
 
 ### Workflow usage
 
-- **Written by**: `StepRepository.start` / `.complete` / `.fail` called by
-  the orchestrator on every node transition.
-- **Read by**: `db_reader.load_step_executions` (Workflow Detail timeline);
-  `constraint_analyzer` for "which step blew the budget" diagnostics.
+- **Written by** (ADR-074 Gap 2): every LangGraph node is wrapped by
+  `workflow_graph._instrument_step`, which calls
+  `ObservabilityService.log_step_started` before the node and
+  `log_step_completed` / `log_step_failed` after (never-crash). `step` stores the
+  node name. Before ADR-074 these methods had zero callers and the table was dead.
+  `duration_ms` is computed by SQLite `julianday()` at completion.
+- **Read by**: `system_health.performance_summary` (the System Dashboard
+  Performance section's "slowest steps", node-level p95);
+  `db_reader.load_step_executions` (Workflow Detail timeline).
 
 ---
 
