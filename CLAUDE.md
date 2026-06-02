@@ -132,6 +132,7 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - `generate_report` updates `workflow_runs` with terminal status and final metrics
 - The langgraph SqliteSaver `checkpoints` table is for resumption only — query `workflow_runs` for UI / history reads
 - Schema changes to `data/v2.db` require updating BOTH the repository layer AND `app/ui/db_reader.py` (the UI read-path bypasses the API for performance — documented in `db_reader.py` header)
+- **Long-term memory is designed but NOT yet wired into the runtime.** The `memory_items` table, `MemoryRepository`, per-user `user_id` scoping (ADR-062), and the retention window all exist, but no agent or workflow node reads or writes memory today. Treat `state_and_memory_model.md`'s memory rules as the design contract for when it is wired, not a description of current behavior. (There is no `MemoryService` / `app/memory/` — that was never built.)
 - **Retention is explicit-trigger-only (ADR-070).** `purge_old_data()` never runs automatically — fire it via `POST /admin/purge`, the `tools/purge_data.py` CLI, or the confirm-gated control on the Streamlit Settings page. It deletes per `config.retention.*` windows, cascades a purged `workflow_runs` row to ALL its child rows (scores/reviews/advice/prep/tailorings/clinic-reviews/decisions/observability), and purges `resumes` on a separate longer window only when inactive AND not referenced by a non-purged run. See `data_model.md` Section 8A. (Design ratified; implementation pending.)
 - **`state["resume_profile"]` is stored REDACTED (ADR-070).** `load_resume` writes `redact_pii_for_llm(profile)` (the ADR-069 shape) into state, so `raw_text` + direct identifiers never enter `workflow_runs.state_json` or the `checkpoints` blob. The un-redacted profile's only at-rest home is the `resumes` row. (Design ratified; implementation pending.)
 
@@ -179,8 +180,7 @@ app/
   providers/        ← LLM provider abstraction (Claude + OpenAI via ModelRegistry)
   state/            ← WorkflowState schema
   schemas/          ← Pydantic output schemas for all agents
-  repositories/     ← SQLite data access
-  memory/           ← MemoryService (long-term learning)
+  repositories/     ← SQLite data access (incl. memory_repository.py)
   prompts/
     shared/         ← guardrails.txt (injected into every agent)
     agents/         ← one prompt file per agent

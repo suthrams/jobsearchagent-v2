@@ -1034,11 +1034,16 @@ CREATE TABLE security_events (
 
 ## 7.1 memory_items
 
+> **Status: designed, not yet wired (as of 2026-06).** The table, indexes,
+> per-user `user_id` scoping (ADR-062), retention window, and `MemoryRepository`
+> exist, but no agent or workflow node reads or writes memory today. The
+> `MemoryService` / `MemoryService.upsert` / `fetch_for_agent` described below are
+> the intended design for when memory is wired, not current behavior.
+
 ### Purpose
 
-Cross-run long-term store for preferences and learned patterns
-(`MemoryService`). Intentionally NOT scoped to a workflow — survives
-purges of workflow data.
+Cross-run long-term store for preferences and learned patterns. Intentionally NOT
+scoped to a workflow — survives purges of workflow data.
 
 ### Schema
 

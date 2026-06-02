@@ -156,8 +156,7 @@ app/
 ├── providers/        Claude + OpenAI providers via ModelRegistry (ADR-053)
 ├── state/            WorkflowState schema
 ├── schemas/          Pydantic output schemas for all agents
-├── repositories/     SQLite data access (raw sqlite3)
-├── memory/           MemoryService (long-term learning)
+├── repositories/     SQLite data access (raw sqlite3; incl. memory_repository.py)
 ├── prompts/
 │   ├── shared/       guardrails.txt — injected into every agent
 │   └── agents/       one prompt file per agent
