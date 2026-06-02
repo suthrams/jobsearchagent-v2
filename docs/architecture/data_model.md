@@ -995,8 +995,9 @@ CREATE TABLE run_metrics (
 
 ### Purpose
 
-Surfaces guardrail-relevant events. Append-only audit trail. Currently
-narrow set of event types, room to grow.
+Surfaces guardrail-relevant events. Append-only audit trail. **Wired since
+ADR-073** (built at ADR-026, dark until then). Visualized system-level on the
+System Dashboard, not just per run.
 
 ### Schema
 
@@ -1016,19 +1017,26 @@ CREATE TABLE security_events (
 | Column            | Type    | Description |
 |-------------------|---------|-------------|
 | `id`              | TEXT PK | UUID. |
-| `workflow_run_id` | TEXT    | FK → `workflow_runs.id`. |
-| `event_type`      | TEXT    | `prompt_injection_detected` \| `pii_redacted` \| `tool_access_blocked` \| `unsupported_claim_detected`. |
-| `severity`        | TEXT    | `"info"` \| `"warning"` \| `"critical"`. |
-| `description`     | TEXT    | Short free-text summary. |
+| `workflow_run_id` | TEXT    | Correlation id → `workflow_runs.id`. The reserved sentinel `"system"` (ADR-073 `SYSTEM_RUN_ID`) is used for run-less events (cost-cap on a config edit, or at kickoff before the run UUID exists); it has no `workflow_runs` row and COALESCEs to user `"0"` on read. |
+| `event_type`      | TEXT    | Wired types (ADR-073): `blocked_url_fetch` \| `pii_redacted` \| `unsupported_claim` \| `cost_cap_violation`. Room to grow (e.g. a future JD prompt-injection detector). |
+| `severity`        | TEXT    | `"info"` (control worked as designed) \| `"warning"` (a guardrail tripped) \| `"high"` (a defense blocked a potentially malicious request). |
+| `description`     | TEXT    | Short, **PII-safe** summary — counts / field names / reason classes / hosts only; never resume content, identifiers, claim text, or fetched page text (ADR-069). |
 | `created_at`      | TEXT    | ISO 8601 UTC. |
 
 ### Workflow usage
 
-- **Written by**: agents and the Fidelity Reviewer through
-  `ObservabilityService.record_security_event`. Index
-  `idx_security_created_at` supports time-range queries.
-- **Read by**: Workflow Detail Diagnostics → "Security events" expander;
-  any future audit endpoint.
+- **Written by** (ADR-073, via `ObservabilityService.log_security_event` /
+  `emit_security_event_safe`, both never-crash): `CustomUrlScraper` (SSRF block),
+  `load_resume` (PII redaction), the tailoring router + `resume_clinic_runner`
+  (Fidelity reject/unsupported), and config/kickoff override validation (cost
+  cap). Index `idx_security_created_at` supports time-range queries.
+- **Read by**: the System Dashboard's Security section (system-level, via
+  `SecurityRepository.list_for_user` + `system_health.security_summary`, scoped by
+  the active profile with sentinel/orphan COALESCEd to `"0"`); `get_by_run` powers
+  the per-run drill-through.
+- **Retention**: `retention.security_events_days` (180); a purged `workflow_runs`
+  row cascades to its events (ADR-070); sentinel/orphan events age out on the
+  standalone window.
 
 ---
 

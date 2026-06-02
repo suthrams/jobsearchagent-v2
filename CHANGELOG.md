@@ -4,6 +4,43 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-02
+
+### Added — Security-event wiring + unified System Dashboard (ADR-073)
+
+The `security_events` table (built since ADR-026 but never written to) is now
+**wired**, and the Cost Dashboard is generalized into a **System Dashboard** that
+shows the PSSR axis (Performance, Scalability, Security, Reliability) plus Cost in
+one profile-scoped pane.
+
+- **Emit sites** (all reuse existing deterministic detection): `blocked_url_fetch`
+  (high) when the SSRF guard rejects a custom URL; `pii_redacted` (info) when
+  `load_resume` strips direct identifiers; `unsupported_claim` (warning) when the
+  Fidelity Reviewer rejects/flags a draft (tailoring router + clinic runner);
+  `cost_cap_violation` (warning) in config-edit + kickoff override validation.
+- **Never-crash + PII-safe**: emits route through
+  `ObservabilityService.log_security_event` / `emit_security_event_safe` (swallow
+  errors); descriptions are counts/field-names/reason-classes/hosts only — never
+  resume content. Run-less events use the `SYSTEM_RUN_ID = "system"` sentinel.
+- **Read layer**: `SecurityRepository.list_for_user` (LEFT JOIN `workflow_runs`,
+  COALESCE sentinel/orphan to `"0"`) + new `app/services/system_health.py`
+  (security / performance / reliability / scalability / `profiles_overview`),
+  mirroring `cost_breakdown.py`.
+- **UI**: `app/ui/views/cost_dashboard.py` -> `system_dashboard.py` (nav +
+  registry renamed to "System Dashboard"); sections for Security / Performance /
+  Reliability / Scalability / Cost sharing one window + profile control; a
+  profile -> run -> job drilldown via a `dashboard_profile_filter` read-time view
+  override (no auth — ADR-062 cooperative isolation).
+- **Tests**: `tests/v2/test_security_events.py` (12) — a forcing-function
+  invariant (emit sites must exist), per-site behavioral checks, PII-safety, and
+  read scoping. Suite: 809 -> 821 passing. UI smoke 15/15.
+- **Docs**: ADR-073 + index; `docs/architecture/security_observability_design.md`
+  (solution architecture + a browser mockup at
+  `docs/architecture/mockups/system_dashboard_mockup.html`); CLAUDE.md,
+  data_model.md, observability.md, security.model.md, ui_architecture.md.
+
+---
+
 ## 2026-06-01
 
 ### Added — Per-profile active scoring tracks (ADR-071)

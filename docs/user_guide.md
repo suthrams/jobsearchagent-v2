@@ -221,7 +221,7 @@ else. There is no login.
 ### Switching profiles
 
 Pick a profile from the sidebar **Profile** dropdown. The whole UI re-scopes:
-Workflow History, the cross-run analytics, the Cost Dashboard, and the Start New
+Workflow History, the cross-run analytics, the System Dashboard, and the Start New
 Run resume picker all now show only that profile's data. The **Primary** profile
 (id 0) owns everything that existed before profiles were introduced.
 
@@ -532,7 +532,7 @@ profile, newest first. Click an expander to see its summary and tap
 
 The clinic is one reviewer call plus (when there are rewrites) one
 Fidelity Reviewer call. It writes a lightweight `resume_clinic`
-`workflow_runs` row so the **Cost Dashboard** attributes clinic spend
+`workflow_runs` row so the **System Dashboard** attributes clinic spend
 to the active profile correctly.
 
 ### Export the final resume
@@ -602,9 +602,11 @@ Horizontal bar chart of the top 20 companies by best overall match score, filter
 
 Shows total workflow runs and cumulative estimated API cost across all runs. The full runs table below includes per-run status, job counts, LLM call counts, and cost.
 
-All of this is **scoped to the active profile** (ADR-062). The **Cost Dashboard**
-likewise defaults to the active profile; tick **All profiles (system-wide)** there
-to see spend across every profile at once.
+All of this is **scoped to the active profile** (ADR-062). The **System Dashboard**
+(formerly Cost Dashboard) likewise defaults to the active profile; tick **All
+profiles (system-wide)** there to see spend, security events, latency, and
+reliability across every profile at once, and click a profile in the by-profile
+breakdown to drill into it (ADR-073).
 
 ---
 

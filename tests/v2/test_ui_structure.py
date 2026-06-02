@@ -28,7 +28,7 @@ def test_refactor_packages_import_clean():
     importlib.import_module("app.ui.views.run_report")
     importlib.import_module("app.ui.views.history")
     importlib.import_module("app.ui.views.workflow_detail")
-    importlib.import_module("app.ui.views.cost_dashboard")
+    importlib.import_module("app.ui.views.system_dashboard")
     importlib.import_module("app.ui.views.profiles")
     importlib.import_module("app.ui.views.settings")
     importlib.import_module("app.ui.views.resume_clinic")

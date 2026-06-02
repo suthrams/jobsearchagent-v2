@@ -40,7 +40,7 @@ NAV_ITEMS: list[str] = [
     "Settings",
     "Profiles",
     SEPARATOR,
-    "Cost Dashboard",
+    "System Dashboard",
     "Top Matches",
     "IC Track",
     "Architect Track",

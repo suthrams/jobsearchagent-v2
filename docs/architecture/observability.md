@@ -680,6 +680,16 @@ fail_workflow(...)
 
 The workflow orchestrator should call this service consistently.
 
+> **`log_security_event` is wired (ADR-073).** Four deterministic emit sites
+> (SSRF block, PII redaction, Fidelity reject/unsupported claim, cost-cap
+> violation) now write `security_events`, and they are visualized system-level on
+> the **System Dashboard** (renamed from Cost Dashboard) alongside Performance,
+> Reliability, Scalability, and Cost. Run-less events use the `SYSTEM_RUN_ID`
+> sentinel; reads scope by profile (ADR-062) via
+> `SecurityRepository.list_for_user` + `app/services/system_health.py`.
+> Descriptions are PII-safe by construction (counts/field-names/reason-classes
+> only). See `security_observability_design.md`.
+
 ---
 
 ## 20. Database Tables

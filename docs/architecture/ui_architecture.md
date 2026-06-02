@@ -155,7 +155,7 @@ There are two ways the active view changes:
 1. **The sidebar radio** — the user clicks a view name. The radio is keyed
    `sidebar_view`; its value *is* the active view for that run.
 2. **Programmatic navigation** — a button inside a view jumps to another screen
-   (e.g. a Workflow History row → Workflow Detail; a Cost Dashboard row → the run's
+   (e.g. a Workflow History row → Workflow Detail; a System Dashboard row → the run's
    Detail; Job Detail's "Back" buttons). This goes through `nav._navigate`.
 
 The subtlety `_navigate` exists to solve: **you cannot write a widget's value to
@@ -231,7 +231,7 @@ service), **C** = control path (`api_client`).
 | Resume Clinic | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews` |
 | Settings | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |
 | Profiles | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
-| Cost Dashboard | `views/cost_dashboard.py` | R | `cost_breakdown`: `compute_dashboard_aggregate`, `daily_spend_trend`, `top_runs_by_cost`, `all_runs_by_cost`, `top_calls_by_cost` |
+| System Dashboard | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (Cost section); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
 | Top Matches | `views/analytics.py::render_top_matches` | R | `load_scored_jobs` + `render_track_table` |
 | IC / Architect / Management Track | `views/analytics.py::render_*_track` | R | `load_scored_jobs` + `render_track_table` |
 | Companies | `views/analytics.py::render_companies` | R | `load_scored_jobs` + plotly |

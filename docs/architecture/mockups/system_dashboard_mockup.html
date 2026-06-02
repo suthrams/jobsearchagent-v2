@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<!--
+  System Dashboard - static screen mockup for ADR-073.
+  Self-contained (no external assets). Open in any browser.
+  Sample data is illustrative only - this is a DESIGN MOCKUP, not live data.
+  Companion to: docs/architecture/security_observability_design.md
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>System Dashboard - mockup (ADR-073)</title>
+<style>
+  :root{
+    --bg:#ffffff; --panel:#f6f8fa; --ink:#1f2430; --muted:#6b7280; --line:#e5e7eb;
+    --accent:#ff4b4b;            /* streamlit red */
+    --sec:#8e44ad; --perf:#2980b9; --rel:#27ae60; --scl:#c0a020; --cost:#e67e22;
+    --high:#c0392b; --warn:#d98c00; --info:#2980b9;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink);}
+  .mock-banner{background:#fff3cd;color:#7a5c00;border-bottom:1px solid #e6d28a;
+    font-size:12px;text-align:center;padding:6px 10px;letter-spacing:.3px;}
+  .app{display:flex;min-height:100vh;}
+  /* sidebar */
+  .sidebar{width:230px;background:var(--panel);border-right:1px solid var(--line);padding:18px 14px;flex:0 0 230px;}
+  .brand{font-weight:700;font-size:15px;margin-bottom:4px;}
+  .brand small{display:block;color:var(--muted);font-weight:400;font-size:11px;margin-top:2px;}
+  .profile{margin:14px 0 18px;font-size:12px;color:var(--muted);}
+  .profile select{width:100%;padding:6px;border:1px solid var(--line);border-radius:6px;background:#fff;margin-top:4px;}
+  .nav a{display:block;padding:7px 10px;border-radius:6px;color:var(--ink);text-decoration:none;font-size:13px;margin-bottom:2px;}
+  .nav a.active{background:#fde8e8;color:var(--accent);font-weight:600;}
+  .nav .sep{height:1px;background:var(--line);margin:8px 4px;}
+  /* main */
+  .main{flex:1;padding:22px 30px 60px;max-width:1180px;}
+  h1{font-size:24px;margin:0 0 2px;}
+  .sub{color:var(--muted);font-size:13px;margin:0 0 16px;}
+  .controls{display:flex;align-items:center;gap:18px;flex-wrap:wrap;background:var(--panel);
+    border:1px solid var(--line);border-radius:10px;padding:12px 16px;margin-bottom:20px;}
+  .pill-group{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;}
+  .pill-group span{padding:6px 12px;font-size:13px;cursor:default;background:#fff;}
+  .pill-group span.on{background:var(--accent);color:#fff;font-weight:600;}
+  .chk{font-size:13px;color:var(--ink);display:flex;align-items:center;gap:7px;}
+  .chk input{width:15px;height:15px;}
+  /* metric cards */
+  .row{display:grid;gap:14px;margin-bottom:8px;}
+  .row.r5{grid-template-columns:repeat(5,1fr);}
+  .row.r4{grid-template-columns:repeat(4,1fr);}
+  .row.r3{grid-template-columns:repeat(3,1fr);}
+  .row.r2{grid-template-columns:repeat(2,1fr);}
+  .metric{background:#fff;border:1px solid var(--line);border-radius:10px;padding:14px 16px;}
+  .metric .k{font-size:12px;color:var(--muted);margin-bottom:6px;}
+  .metric .v{font-size:26px;font-weight:700;line-height:1;}
+  .metric .d{font-size:12px;margin-top:6px;}
+  .up{color:var(--rel);} .down{color:var(--high);}
+  /* sections */
+  .section{margin-top:26px;border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .section > h2{font-size:15px;margin:0;padding:12px 16px;display:flex;align-items:center;gap:9px;
+    border-left:5px solid var(--line);background:var(--panel);}
+  .section.sec  > h2{border-left-color:var(--sec);}
+  .section.perf > h2{border-left-color:var(--perf);}
+  .section.rel  > h2{border-left-color:var(--rel);}
+  .section.scl  > h2{border-left-color:var(--scl);}
+  .section.cost > h2{border-left-color:var(--cost);}
+  .section .body{padding:16px;}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:22px;}
+  .grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:22px;}
+  .cap{font-size:12px;color:var(--muted);margin:0 0 10px;}
+  /* horizontal bars */
+  .bar{display:flex;align-items:center;gap:10px;margin:7px 0;font-size:13px;}
+  .bar .lbl{width:150px;color:var(--ink);}
+  .bar .track{flex:1;background:#eef1f4;border-radius:5px;height:16px;position:relative;}
+  .bar .fill{position:absolute;left:0;top:0;bottom:0;border-radius:5px;}
+  .bar .num{width:54px;text-align:right;color:var(--muted);}
+  /* chips */
+  .chip{display:inline-block;padding:2px 9px;border-radius:20px;font-size:11.5px;font-weight:600;}
+  .chip.high{background:#fbe3e0;color:var(--high);}
+  .chip.warn{background:#fbf0d8;color:var(--warn);}
+  .chip.info{background:#e1edf7;color:var(--info);}
+  /* tables */
+  table{width:100%;border-collapse:collapse;font-size:12.5px;}
+  th,td{text-align:left;padding:7px 9px;border-bottom:1px solid var(--line);}
+  th{color:var(--muted);font-weight:600;}
+  td.mono,th.mono{font-family:ui-monospace,Consolas,monospace;}
+  tr.click td:first-child{color:var(--perf);}
+  .hint{font-size:11px;color:var(--muted);margin-top:8px;}
+  .donut{width:120px;height:120px;border-radius:50%;
+    background:conic-gradient(var(--cost) 0 62%,#f0a86a 62% 84%,#f7d4b0 84% 100%);
+    display:flex;align-items:center;justify-content:center;}
+  .donut .hole{width:74px;height:74px;border-radius:50%;background:#fff;display:flex;
+    align-items:center;justify-content:center;font-size:11px;color:var(--muted);text-align:center;}
+  details summary{cursor:pointer;font-weight:600;font-size:14px;}
+</style>
+</head>
+<body>
+<div class="mock-banner">DESIGN MOCKUP - ADR-073 System Dashboard. Sample data is illustrative, not live. Open in a browser.</div>
+<div class="app">
+
+  <!-- sidebar (mirrors current Streamlit nav) -->
+  <aside class="sidebar">
+    <div class="brand">Job Search Agent v2<small>multi-agent career intelligence</small></div>
+    <div class="profile">Active profile
+      <select><option>Primary (id 0)</option><option>Security Analyst (id 1)</option></select>
+    </div>
+    <nav class="nav">
+      <a href="#">Start New Run</a>
+      <a href="#">Workflow History</a>
+      <a href="#">Workflow Detail</a>
+      <a href="#">Job Detail</a>
+      <div class="sep"></div>
+      <a href="#">Analytics</a>
+      <a href="#" class="active">System Dashboard</a>
+      <a href="#">Resume Clinic</a>
+      <a href="#">Settings</a>
+    </nav>
+  </aside>
+
+  <!-- main -->
+  <main class="main">
+    <h1>System Dashboard</h1>
+    <p class="sub">Spend, security posture, performance, and reliability across all runs.
+      Stored per run (correlation id), viewed system-level - scoped to the active profile.</p>
+
+    <!-- shared controls -->
+    <div class="controls">
+      <div class="pill-group">
+        <span>Last 7 days</span><span class="on">Last 30 days</span><span>All time</span>
+      </div>
+      <label class="chk"><input type="checkbox" checked/> All profiles (system-wide)</label>
+      <span style="margin-left:auto;font-size:12px;color:var(--muted)">Window: last 30 days &middot; viewing: all profiles</span>
+    </div>
+
+    <!-- BY PROFILE breakdown - appears only when "All profiles" is on -->
+    <section class="section" style="border-left:5px solid var(--ink)">
+      <h2 style="border-left-color:var(--ink)">👥 By profile <span style="font-weight:400;color:var(--muted);font-size:12px">(click a row to drill into that profile)</span></h2>
+      <div class="body">
+        <table>
+          <thead><tr><th>Profile</th><th>Runs</th><th>Spend</th><th>Security (high/warn/info)</th><th>Success</th></tr></thead>
+          <tbody>
+            <tr class="click"><td>Primary (id 0)</td><td>18</td><td>$8.83</td><td><span class="chip high">1</span> <span class="chip warn">4</span> <span class="chip info">6</span></td><td>94%</td></tr>
+            <tr class="click"><td>Security Analyst (id 1)</td><td>9</td><td>$3.01</td><td><span class="chip high">1</span> <span class="chip warn">2</span> <span class="chip info">3</span></td><td>89%</td></tr>
+          </tbody>
+        </table>
+        <p class="hint">Profile id 0 (Primary) also absorbs run-less sentinel events (cost-cap from a settings edit / kickoff) and pre-multiuser rows - so its security counts include them. Those events are visible only here and under id 0, never inside another profile's drilldown.</p>
+      </div>
+    </section>
+
+    <!-- drill breadcrumb (shown once a profile is selected from the table above) -->
+    <div style="display:flex;align-items:center;gap:10px;margin:14px 0 2px;font-size:13px;">
+      <span style="background:#fde8e8;color:var(--accent);font-weight:600;padding:4px 12px;border-radius:20px;">Drilled into: Security Analyst (id 1)</span>
+      <a href="#" style="color:var(--muted);text-decoration:none;">&times; clear profile filter</a>
+      <span style="color:var(--muted);font-size:12px;">all sections below are now scoped to id 1 &middot; sentinel/legacy events excluded</span>
+    </div>
+
+    <!-- headline -->
+    <div class="row r5">
+      <div class="metric"><div class="k">Total spend</div><div class="v">$11.84</div><div class="d up">28 runs</div></div>
+      <div class="metric"><div class="k">LLM calls</div><div class="v">1,204</div><div class="d">avg 43 / run</div></div>
+      <div class="metric"><div class="k">Distinct runs</div><div class="v">28</div><div class="d">3 today</div></div>
+      <div class="metric"><div class="k">Security events</div><div class="v">17</div><div class="d down">2 high &middot; 6 warning</div></div>
+      <div class="metric"><div class="k">Run success</div><div class="v">93%</div><div class="d up">26 / 28 ok</div></div>
+    </div>
+
+    <!-- SECURITY -->
+    <section class="section sec">
+      <h2>🛡️ Security events</h2>
+      <div class="body">
+        <div class="grid2">
+          <div>
+            <p class="cap">By event type (last 30 days)</p>
+            <div class="bar"><span class="lbl">pii_redacted</span><span class="track"><span class="fill" style="width:53%;background:var(--info)"></span></span><span class="num">9</span></div>
+            <div class="bar"><span class="lbl">unsupported_claim</span><span class="track"><span class="fill" style="width:30%;background:var(--warn)"></span></span><span class="num">5</span></div>
+            <div class="bar"><span class="lbl">cost_cap_violation</span><span class="track"><span class="fill" style="width:6%;background:var(--warn)"></span></span><span class="num">1</span></div>
+            <div class="bar"><span class="lbl">blocked_url_fetch</span><span class="track"><span class="fill" style="width:12%;background:var(--high)"></span></span><span class="num">2</span></div>
+            <p class="cap" style="margin-top:14px">By severity</p>
+            <div style="display:flex;gap:10px">
+              <span class="chip high">high &middot; 2</span>
+              <span class="chip warn">warning &middot; 6</span>
+              <span class="chip info">info &middot; 9</span>
+            </div>
+          </div>
+          <div>
+            <p class="cap">Recent events (click a row to open the run)</p>
+            <table>
+              <thead><tr><th>When</th><th>Type</th><th>Sev</th><th>Run</th><th>Detail</th></tr></thead>
+              <tbody>
+                <tr class="click"><td>14:02</td><td>blocked_url_fetch</td><td><span class="chip high">high</span></td><td class="mono">a91c3f...</td><td>host=localhost</td></tr>
+                <tr class="click"><td>13:47</td><td>unsupported_claim</td><td><span class="chip warn">warning</span></td><td class="mono">a91c3f...</td><td>3 claims; reject</td></tr>
+                <tr class="click"><td>11:20</td><td>pii_redacted</td><td><span class="chip info">info</span></td><td class="mono">7d2e10...</td><td>4 fields: name,email,...</td></tr>
+                <tr class="click"><td>10:58</td><td>cost_cap_violation</td><td><span class="chip warn">warning</span></td><td class="mono">system</td><td>scoring_agent / opus</td></tr>
+                <tr class="click"><td>09:31</td><td>blocked_url_fetch</td><td><span class="chip high">high</span></td><td class="mono">7d2e10...</td><td>host=169.254.169.254</td></tr>
+              </tbody>
+            </table>
+            <p class="hint">Descriptions are PII-safe by construction: counts, field names, reason classes, hosts - never resume content.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PERFORMANCE -->
+    <section class="section perf">
+      <h2>⚡ Performance</h2>
+      <div class="body">
+        <div class="row r4" style="margin-bottom:16px">
+          <div class="metric"><div class="k">LLM latency p50</div><div class="v">1.9s</div></div>
+          <div class="metric"><div class="k">LLM latency p95</div><div class="v">6.4s</div></div>
+          <div class="metric"><div class="k">Agent p50</div><div class="v">2.7s</div></div>
+          <div class="metric"><div class="k">Agent p95</div><div class="v">9.1s</div></div>
+        </div>
+        <p class="cap">Slowest agents (p95, seconds)</p>
+        <div class="bar"><span class="lbl">tailoring_agent</span><span class="track"><span class="fill" style="width:90%;background:var(--perf)"></span></span><span class="num">9.1</span></div>
+        <div class="bar"><span class="lbl">resume_critic</span><span class="track"><span class="fill" style="width:64%;background:var(--perf)"></span></span><span class="num">6.5</span></div>
+        <div class="bar"><span class="lbl">scoring_agent</span><span class="track"><span class="fill" style="width:38%;background:var(--perf)"></span></span><span class="num">3.9</span></div>
+        <div class="bar"><span class="lbl">research_agent</span><span class="track"><span class="fill" style="width:31%;background:var(--perf)"></span></span><span class="num">3.1</span></div>
+      </div>
+    </section>
+
+    <!-- RELIABILITY -->
+    <section class="section rel">
+      <h2>✅ Reliability</h2>
+      <div class="body">
+        <div class="grid2">
+          <div>
+            <div class="row r2">
+              <div class="metric"><div class="k">Run success rate</div><div class="v">93%</div><div class="d">26 / 28</div></div>
+              <div class="metric"><div class="k">Agent failures</div><div class="v">4</div><div class="d down">0.3% of calls</div></div>
+            </div>
+            <p class="cap" style="margin-top:14px">Failures by agent</p>
+            <div class="bar"><span class="lbl">custom_url_extractor</span><span class="track"><span class="fill" style="width:75%;background:var(--high)"></span></span><span class="num">3</span></div>
+            <div class="bar"><span class="lbl">research_agent</span><span class="track"><span class="fill" style="width:25%;background:var(--high)"></span></span><span class="num">1</span></div>
+          </div>
+          <div>
+            <p class="cap">Recent failures</p>
+            <table>
+              <thead><tr><th>When</th><th>Agent</th><th>Run</th><th>Error</th></tr></thead>
+              <tbody>
+                <tr class="click"><td>12:14</td><td>custom_url_extractor</td><td class="mono">a91c3f...</td><td>llm extraction failed</td></tr>
+                <tr class="click"><td>Yest</td><td>research_agent</td><td class="mono">3b0f9a...</td><td>rate limit, retried</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SCALABILITY -->
+    <section class="section scl">
+      <h2>📈 Scalability <span style="font-weight:400;color:var(--muted);font-size:12px">(throughput - light on single-node SQLite)</span></h2>
+      <div class="body">
+        <div class="row r3">
+          <div class="metric"><div class="k">Avg jobs / run</div><div class="v">8.4</div><div class="d">cap 10</div></div>
+          <div class="metric"><div class="k">Runs / day</div><div class="v">3.1</div><div class="d">peak 7</div></div>
+          <div class="metric"><div class="k">Peak concurrency</div><div class="v">5</div><div class="d">scorer workers</div></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- COST (existing content, refactored into a section) -->
+    <section class="section cost">
+      <h2>💰 Cost</h2>
+      <div class="body">
+        <div class="grid3">
+          <div>
+            <p class="cap">Cost share by model</p>
+            <div class="donut"><div class="hole">sonnet 62%<br/>haiku 22%<br/>gpt-4o 16%</div></div>
+          </div>
+          <div style="grid-column:span 2">
+            <p class="cap">Per-agent cost (last 30 days)</p>
+            <div class="bar"><span class="lbl">tailoring_agent</span><span class="track"><span class="fill" style="width:88%;background:var(--cost)"></span></span><span class="num">$4.10</span></div>
+            <div class="bar"><span class="lbl">scoring_agent</span><span class="track"><span class="fill" style="width:55%;background:var(--cost)"></span></span><span class="num">$2.55</span></div>
+            <div class="bar"><span class="lbl">resume_critic</span><span class="track"><span class="fill" style="width:40%;background:var(--cost)"></span></span><span class="num">$1.86</span></div>
+            <div class="bar"><span class="lbl">research_agent</span><span class="track"><span class="fill" style="width:22%;background:var(--cost)"></span></span><span class="num">$1.03</span></div>
+            <p class="hint">Cache-hit ratio 41% &middot; reads 182k &middot; writes 96k. Reconciles within 12% of the provider console.</p>
+          </div>
+        </div>
+        <details style="margin-top:14px"><summary>Top runs &amp; calls, daily trend, reconcile (existing Cost Dashboard content)</summary>
+          <p class="hint">Unchanged from today's Cost Dashboard - moved verbatim into this section.</p>
+        </details>
+      </div>
+    </section>
+
+  </main>
+</div>
+</body>
+</html>

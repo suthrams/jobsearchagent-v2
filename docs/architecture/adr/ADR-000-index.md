@@ -78,3 +78,5 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-070 | [Data Retention and State De-duplication (At-Rest Phase 1)](ADR-070-data-retention-and-state-deduplication.md) | Accepted |
 | ADR-071 | [Per-Profile Active Scoring Tracks](ADR-071-per-profile-active-scoring-tracks.md) | Accepted |
 | ADR-072 | [Resume Live Chat + Export in the Tailoring Flow](ADR-072-resume-live-chat-in-tailoring.md) | Accepted |
+| ADR-073 | [Wire Security-Event Emit Sites and a Unified System Dashboard](ADR-073-wire-security-events-and-system-dashboard.md) | Accepted |
+| ADR-074 | [Close the Remaining Observability Gaps](ADR-074-close-remaining-observability-gaps.md) | Proposed |

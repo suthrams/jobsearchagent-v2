@@ -19,7 +19,6 @@ from typing import Callable
 from app.ui.nav import ViewContext
 from app.ui.views import (
     analytics,
-    cost_dashboard,
     history,
     job_detail,
     live_monitor,
@@ -28,6 +27,7 @@ from app.ui.views import (
     run_report,
     settings,
     start_run,
+    system_dashboard,
     workflow_detail,
 )
 
@@ -35,7 +35,7 @@ from app.ui.views import (
 REGISTRY: dict[str, Callable[[ViewContext], None]] = {
     "Workflow History": history.render,
     "Workflow Detail": workflow_detail.render,
-    "Cost Dashboard": cost_dashboard.render,
+    "System Dashboard": system_dashboard.render,
     "Profiles": profiles.render,
     "Settings": settings.render,
     "Resume Clinic": resume_clinic.render,

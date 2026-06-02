@@ -393,13 +393,32 @@ ANTHROPIC_API_KEY → environment variable
 
 ### Security Events
 
-```text
-prompt_injection_detected
-pii_redacted
-unsupported_claim_detected
-tool_access_blocked
-schema_validation_failed
-```
+**Wired since ADR-073** (the table existed from ADR-026 but had zero emit
+sites). Four deterministic emit sites, each over detection that already existed:
+
+| event_type | severity | Emit site |
+|---|---|---|
+| `blocked_url_fetch` | high | `CustomUrlScraper` on `UnsafeURLError` (SSRF guard) |
+| `pii_redacted` | info | `load_resume` after `redact_pii_for_llm` |
+| `unsupported_claim` | warning | tailoring router + `resume_clinic_runner` on a Fidelity reject/unsupported claim |
+| `cost_cap_violation` | warning | config-edit + kickoff override validation (uses the `"system"` sentinel run id) |
+
+Severity scale: `info` = a control worked as designed (audit); `warning` = a
+guardrail tripped and blocked/flagged something; `high` = a defense blocked a
+potentially malicious request.
+
+Two hard rules:
+- Emit only through `ObservabilityService.log_security_event` /
+  `emit_security_event_safe` (both swallow errors — a missing audit row must never
+  break a run or user action).
+- **Descriptions are PII-safe by construction** — counts, field names, reason
+  classes, hostnames only; never resume content, identifiers, claim text, or
+  fetched page text (extends the Section 14 "summaries not raw content" rule).
+  Enforced by `tests/v2/test_security_events.py`.
+
+Visualized system-level (profile-scoped, ADR-062) on the **System Dashboard**.
+A future JD prompt-injection detector (ADR-019) can add a 5th emit site without
+changing this contract. See `security_observability_design.md`.
 
 ---
 
