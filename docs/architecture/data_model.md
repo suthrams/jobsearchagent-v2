@@ -990,10 +990,15 @@ CREATE TABLE run_metrics (
 
 ### Workflow usage
 
-- **Written by**: `generate_report` node — the same place that finalizes
-  `workflow_runs.status`.
+- **Written by**: `register_run` (init) + `generate_report` (finalize) — **in-graph
+  runs only**. Out-of-graph runs (clinic/tailoring/deep-review/interview-prep)
+  do NOT get a row.
 - **Read by**: cross-run analytics; Run History page; per-run header in
   Workflow Detail.
+- **Per-run rollup for ANY run (ADR-074 Gap 3)**: `system_health.run_metrics_rollup`
+  returns this row if finalized, else lazily derives calls/tokens/cost from
+  `llm_calls` + wall-clock span from timestamps — so out-of-graph runs have a
+  consistent rollup without populating this table.
 
 ---
 

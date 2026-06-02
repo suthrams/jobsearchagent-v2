@@ -14,6 +14,7 @@ import plotly.express as px
 import streamlit as st
 
 import app.ui.api_client as api
+from app.services import system_health as sh
 from app.services.constraint_analyzer import analyze, summary_metrics
 from app.services.cost_breakdown import compute_breakdown
 from app.ui.components.resume_chat_panel import render_chat_panel
@@ -522,6 +523,17 @@ def render(ctx: ViewContext) -> None:
         else:
             st.caption("No settings snapshot stored for this run (likely a pre-snapshot legacy run).")
 
+    # ADR-074 Gap 3: per-run rollup incl. wall-clock duration, available for any
+    # run (in-graph runs have a run_metrics row; out-of-graph runs are computed
+    # lazily from llm_calls). `computed` marks the derived path.
+    rollup = sh.run_metrics_rollup(wf_id)
+    if rollup["calls"] or rollup["duration_ms"]:
+        src = "computed from llm_calls" if rollup["computed"] else "from run_metrics"
+        st.caption(
+            f"Run rollup ({src}): {rollup['calls']} LLM call(s) · "
+            f"${rollup['cost_usd']:.4f} · {rollup['duration_ms'] / 1000:.1f}s wall-clock"
+        )
+
     if breakdown["rows"]:
         agg = breakdown["aggregate"]
         # Promoted out of a collapsed expander to its own visible subsection.
@@ -566,7 +578,7 @@ def render(ctx: ViewContext) -> None:
     # Limits & Constraints — keep open when something fired so the user notices
     _has_findings = bool(findings)
     with st.expander(
-        f"Limits & Constraints" + (f" — {len(findings)} finding(s)" if _has_findings else ""),
+        "Limits & Constraints" + (f" — {len(findings)} finding(s)" if _has_findings else ""),
         expanded=_has_findings,
     ):
         if not findings:

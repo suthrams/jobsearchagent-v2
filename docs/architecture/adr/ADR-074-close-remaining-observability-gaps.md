@@ -6,9 +6,10 @@ Accepted (2026-06-02). Catalog ADR — ratifies the gaps and the intended fixes;
 implementation is phased (priority order below). Each phase may land under this
 ADR or spin out its own if it grows a real contract.
 
-**Progress:** Gap 1 (`human_decisions`), Gap 2 (`step_executions`), and Gap 5
-(API-request observability — added after the security-events audit) —
-**implemented** 2026-06-02. Gaps 3-4 and the minors remain open.
+**Progress:** Gaps 1-5 all **implemented** 2026-06-02 — Gap 1 (`human_decisions`),
+Gap 2 (`step_executions`), Gap 3 (out-of-graph run rollup), Gap 4 (thread-local
+`last_call_usage` removed from the scraper), and Gap 5 (API-request observability,
+added after the security-events audit). Only the two documented minors remain.
 
 Follows ADR-073 (which wired the first dead audit table, `security_events`) and
 implements ADR-023 (Make Observability First-Class). Touches ADR-059 / Article 8
@@ -69,7 +70,7 @@ took *including* non-agent work), not first-light timing.
 Feed step durations into the Performance section. Lower priority — agent_events
 covers most of the signal.
 
-### Gap 3 (MEDIUM) — out-of-graph runs get no `run_metrics`
+### Gap 3 (MEDIUM) — out-of-graph runs get no `run_metrics` [IMPLEMENTED]
 
 `init_run_metrics` / `finalize_run_metrics` run only in-graph
 (`register_run` -> `generate_report`). The out-of-graph operations (Resume Clinic,
@@ -82,7 +83,18 @@ agent calls (they already write the correlation `workflow_runs` row, ADR-066/055
 or compute run_metrics lazily from `llm_calls` on read. Prefer the lazy read to
 avoid threading metrics through every runner.
 
-### Gap 4 (MEDIUM) — deprecated thread-local `last_call_usage` still live
+*Implemented (lazy read):* `system_health.run_metrics_rollup(workflow_id)` returns
+the finalized `run_metrics` row if present, else derives calls/tokens/cost from
+`llm_calls` and the wall-clock span from `MIN/MAX(created_at)` across
+`llm_calls`+`agent_events` (`computed=True` marks the derived path). So per-run
+metrics — including wall-clock duration — are available for EVERY run, in-graph or
+out-of-graph, with no per-runner plumbing. Surfaced as a "Run rollup" line on
+Workflow Detail. Note: the `run_metrics` *table* was effectively read-only by tests
+(UI/analytics read `state.run_metrics`, the cost dashboard reads `llm_calls`); the
+lazy reader makes a consistent rollup available without populating the table for
+out-of-graph runs.
+
+### Gap 4 (MEDIUM) — deprecated thread-local `last_call_usage` still live [IMPLEMENTED]
 
 `custom_url_scraper.py` records its LLM-fallback cost via the thread-local
 `last_call_usage()` side-channel — the exact race typed `complete_with_usage()`
@@ -94,6 +106,16 @@ misattribute cost. That call also logs an `llm_call` but **no `agent_event`**
 an `agent_event` for `custom_url_extractor` so it is attributable like every other
 agent. Audit for any remaining `last_call_usage` callers and deprecate the method
 once none remain.
+
+*Implemented:* `CustomUrlScraper._call_llm_with_usage` now prefers the typed
+`complete_with_usage()` (bundling result + usage on one thread closes the
+two-step race), with the legacy `complete()`+`last_call_usage()` only as a
+fallback for providers/test doubles that don't return a tuple — exactly
+`BaseAgent._run`'s pattern. The extractor now emits a `custom_url_extractor`
+`agent_event` (started/completed/failed), so it shows in the dashboard's
+Performance + Reliability sections. `last_call_usage` is **retained** (not
+deleted): it is still the sanctioned fallback inside `complete_with_usage` /
+`BaseAgent` for test doubles, so it has legitimate callers and is not deprecated.
 
 ### Gap 5 (MEDIUM, net-new) — the REST API surface is unobserved [IMPLEMENTED]
 

@@ -403,6 +403,92 @@ def scalability_summary(
     }
 
 
+# ── Per-run rollup (ADR-074 Gap 3) ───────────────────────────────────────────
+
+
+def run_metrics_rollup(
+    workflow_id: str, db_path: Path = DEFAULT_DB_PATH,
+) -> dict:
+    """Per-run rollup (calls / tokens / cost / wall-clock duration) for ANY run.
+
+    ADR-074 Gap 3: in-graph runs get a run_metrics row (init at register_run,
+    finalize at generate_report); out-of-graph runs (clinic, tailoring,
+    deep-review, interview-prep) write a workflow_runs row but no run_metrics. So
+    this is a LAZY read (the ADR's preferred fix, avoiding init/finalize plumbing
+    in every runner): return the run_metrics row if present, else derive totals
+    from llm_calls and the wall-clock span from MIN/MAX(created_at) across
+    llm_calls + agent_events. `computed` marks which path produced the result.
+
+    Returns {"calls", "tokens_input", "tokens_output", "cost_usd",
+             "duration_ms", "started_at", "completed_at", "computed"}.
+    """
+    empty = {"calls": 0, "tokens_input": 0, "tokens_output": 0, "cost_usd": 0.0,
+             "duration_ms": 0, "started_at": None, "completed_at": None,
+             "computed": True}
+    conn = _connect(db_path)
+    if conn is None:
+        return empty
+    try:
+        row = conn.execute(
+            """SELECT total_llm_calls, total_tokens_input, total_tokens_output,
+                      total_cost, total_duration_ms, started_at, completed_at
+               FROM run_metrics WHERE workflow_run_id = ?""",
+            (workflow_id,),
+        ).fetchone()
+        # A finalized row has a non-null completed_at; an init-only row (calls=0,
+        # no completed_at) is treated as absent so we compute from llm_calls.
+        if row is not None and row[6] is not None:
+            return {
+                "calls": int(row[0] or 0),
+                "tokens_input": int(row[1] or 0),
+                "tokens_output": int(row[2] or 0),
+                "cost_usd": float(row[3] or 0.0),
+                "duration_ms": int(row[4] or 0),
+                "started_at": row[5],
+                "completed_at": row[6],
+                "computed": False,
+            }
+        totals = conn.execute(
+            """SELECT COUNT(*), COALESCE(SUM(tokens_input),0),
+                      COALESCE(SUM(tokens_output),0), COALESCE(SUM(estimated_cost),0)
+               FROM llm_calls WHERE workflow_run_id = ?""",
+            (workflow_id,),
+        ).fetchone()
+        span = conn.execute(
+            """SELECT MIN(ts), MAX(ts) FROM (
+                   SELECT created_at ts FROM llm_calls    WHERE workflow_run_id = ?
+                   UNION ALL
+                   SELECT created_at ts FROM agent_events WHERE workflow_run_id = ?
+               )""",
+            (workflow_id, workflow_id),
+        ).fetchone()
+        started, completed = (span[0], span[1]) if span else (None, None)
+        duration_ms = 0
+        if started and completed:
+            # julianday() ms gap - same arithmetic StepRepository uses, so the
+            # value is consistent with stored step/agent durations.
+            drow = conn.execute(
+                "SELECT CAST((julianday(?) - julianday(?)) * 86400000 AS INTEGER)",
+                (completed, started),
+            ).fetchone()
+            duration_ms = int(drow[0] or 0) if drow else 0
+    except sqlite3.OperationalError:
+        return empty
+    finally:
+        conn.close()
+
+    return {
+        "calls": int(totals[0] or 0),
+        "tokens_input": int(totals[1] or 0),
+        "tokens_output": int(totals[2] or 0),
+        "cost_usd": float(totals[3] or 0.0),
+        "duration_ms": duration_ms,
+        "started_at": started,
+        "completed_at": completed,
+        "computed": True,
+    }
+
+
 # ── By-profile breakdown (the drilldown navigator) ───────────────────────────
 
 

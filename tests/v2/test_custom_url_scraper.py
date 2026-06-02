@@ -1,11 +1,9 @@
 """Tests for CustomUrlScraper — fetch + heuristic + LLM fallback flow."""
 from __future__ import annotations
 
-import json
 from unittest.mock import MagicMock, patch
 
 import httpx
-import pytest
 
 from app.providers.llm_client import LLMProviderError
 from app.services.custom_url_scraper import CustomUrlScraper
@@ -215,3 +213,41 @@ def test_llm_fallback_swallows_observability_failures():
     with patch.object(scraper, "_fetch", return_value=_THIN_HTML):
         jobs = scraper.scrape()
     assert len(jobs) == 1
+
+
+def test_llm_fallback_uses_complete_with_usage_and_emits_agent_event():
+    """ADR-074 Gap 4: prefer the typed, race-free complete_with_usage (no
+    thread-local last_call_usage two-step) and emit a custom_url_extractor
+    agent_event so the extractor call is attributable like any other agent."""
+    from app.providers.llm_client import LLMUsage
+
+    llm = MagicMock()
+    llm.complete_with_usage.return_value = (
+        _good_llm_payload(),
+        LLMUsage(tokens_input=900, tokens_output=150, cost_usd=0.0055,
+                 cache_creation_tokens=10, cache_read_tokens=20),
+    )
+    llm.provider_name = "claude"
+    llm.model_name = "claude-sonnet-4-6"
+
+    obs = MagicMock()
+    scraper = CustomUrlScraper(
+        ["https://example.com/job/cwu"], llm_client=llm,
+        observability=obs, workflow_id="wf-cwu",
+    )
+    with patch.object(scraper, "_fetch", return_value=_THIN_HTML):
+        jobs = scraper.scrape()
+
+    assert len(jobs) == 1
+    # used the typed call; the thread-local two-step was NOT taken
+    llm.complete_with_usage.assert_called_once()
+    llm.last_call_usage.assert_not_called()
+    # llm_call logged from the returned LLMUsage
+    k = obs.log_llm_call.call_args.kwargs
+    assert k["tokens_input"] == 900 and k["tokens_output"] == 150
+    assert k["cost_usd"] == 0.0055
+    assert k["cache_creation_tokens"] == 10 and k["cache_read_tokens"] == 20
+    # agent_event emitted for the extractor
+    obs.log_agent_started.assert_called_once()
+    assert obs.log_agent_started.call_args.args[1] == "custom_url_extractor"
+    obs.log_agent_completed.assert_called_once()

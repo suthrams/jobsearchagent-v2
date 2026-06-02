@@ -26,7 +26,7 @@ import httpx
 from bs4 import BeautifulSoup
 from pydantic import BaseModel
 
-from app.providers.llm_client import LLMClient, LLMProviderError
+from app.providers.llm_client import LLMClient, LLMProviderError, LLMUsage
 from app.services.url_safety import UnsafeURLError, validate_url_for_fetch
 
 if TYPE_CHECKING:
@@ -44,6 +44,7 @@ _MAX_URLS = 25
 _MAX_HTML_CHARS = 80_000  # cap LLM input at ~20k tokens worst case
 _MIN_DESCRIPTION_CHARS = 200  # below this, treat heuristics as insufficient
 _MAX_REDIRECTS = 5  # SSRF defense: cap redirect chain, each hop re-validated
+_EXTRACTOR_AGENT = "custom_url_extractor"  # ADR-074 Gap 4: agent name for events/llm_calls
 
 
 # ── LLM extraction schema ──────────────────────────────────────────────────────
@@ -286,14 +287,33 @@ class CustomUrlScraper:
         # Truncate to keep token cost bounded
         text = text[:_MAX_HTML_CHARS]
 
+        # ADR-074 Gap 4: emit an agent_event for the extractor so this LLM call is
+        # attributable like every other agent (it feeds the dashboard's Performance
+        # + Reliability sections), and use complete_with_usage so result + usage
+        # arrive together - closing the thread-local last_call_usage race.
+        host = urlparse(url).hostname or url[:80]
+        event_id = None
+        if self._observability is not None and self._workflow_id:
+            event_id = self._observability.log_agent_started(
+                self._workflow_id, _EXTRACTOR_AGENT, f"host={host}")
+
         t0 = time.monotonic()
-        result = self._llm.complete(
-            agent_name="custom_url_extractor",
-            context={"url": url, "page_text": text, "prior_heuristics": prior},
-            schema=_CustomJobExtraction,
-        )
+        try:
+            usage = self._call_llm_with_usage(url, text, prior)
+        except Exception as exc:
+            if event_id is not None:
+                self._observability.log_agent_failed(
+                    self._workflow_id, _EXTRACTOR_AGENT, event_id, str(exc),
+                    int((time.monotonic() - t0) * 1000))
+            raise
+        result, usage_obj = usage
         latency_ms = int((time.monotonic() - t0) * 1000)
-        self._record_llm_call(latency_ms)
+        self._record_llm_call(latency_ms, usage_obj)
+        if event_id is not None:
+            self._observability.log_agent_completed(
+                self._workflow_id, _EXTRACTOR_AGENT, event_id,
+                f"fields={sum(1 for v in result.values() if v not in (None, '', []))}",
+                latency_ms)
 
         # Merge: LLM wins where it produced a value, prior fills gaps
         merged = dict(prior)
@@ -302,15 +322,21 @@ class CustomUrlScraper:
                 merged[key] = value
         return merged
 
-    def _record_llm_call(self, latency_ms: int) -> None:
-        """Persist an llm_calls audit row for the LLM-fallback extraction.
+    def _call_llm_with_usage(self, url: str, text: str, prior: dict):
+        """Run the extractor LLM call, returning (result_dict, LLMUsage).
 
-        No-op unless both observability and workflow_id were supplied at
-        construction. Failures are swallowed — observability must never crash
-        the scraper.
+        Prefers the typed, race-free complete_with_usage(); falls back to the
+        legacy complete() + last_call_usage() two-step only for providers/test
+        doubles that don't return a (dict, usage) tuple (mirrors BaseAgent._run).
         """
-        if self._observability is None or not self._workflow_id:
-            return
+        ctx = {"url": url, "page_text": text, "prior_heuristics": prior}
+        try:
+            result, usage = self._llm.complete_with_usage(
+                agent_name=_EXTRACTOR_AGENT, context=ctx, schema=_CustomJobExtraction)
+            return result, usage
+        except (AttributeError, TypeError, ValueError):
+            result = self._llm.complete(
+                agent_name=_EXTRACTOR_AGENT, context=ctx, schema=_CustomJobExtraction)
         try:
             ti, to, cost = self._llm.last_call_usage()
         except (AttributeError, TypeError, ValueError):
@@ -320,18 +346,31 @@ class CustomUrlScraper:
             cc, cr = self._llm.last_call_cache_split()
         except (AttributeError, TypeError, ValueError):
             pass
+        return result, LLMUsage(
+            tokens_input=int(ti), tokens_output=int(to), cost_usd=float(cost),
+            cache_creation_tokens=int(cc or 0), cache_read_tokens=int(cr or 0))
+
+    def _record_llm_call(self, latency_ms: int, usage: "LLMUsage") -> None:
+        """Persist an llm_calls audit row for the LLM-fallback extraction.
+
+        No-op unless both observability and workflow_id were supplied at
+        construction. Failures are swallowed — observability must never crash
+        the scraper.
+        """
+        if self._observability is None or not self._workflow_id:
+            return
         try:
             self._observability.log_llm_call(
                 workflow_id=self._workflow_id,
-                agent_name="custom_url_extractor",
+                agent_name=_EXTRACTOR_AGENT,
                 provider=getattr(self._llm, "provider_name", "unknown"),
                 model=getattr(self._llm, "model_name", "unknown"),
-                tokens_input=int(ti),
-                tokens_output=int(to),
-                cost_usd=float(cost),
+                tokens_input=int(usage.tokens_input),
+                tokens_output=int(usage.tokens_output),
+                cost_usd=float(usage.cost_usd),
                 latency_ms=latency_ms,
-                cache_creation_tokens=int(cc or 0),
-                cache_read_tokens=int(cr or 0),
+                cache_creation_tokens=int(usage.cache_creation_tokens),
+                cache_read_tokens=int(usage.cache_read_tokens),
             )
         except Exception:
             logger.exception("CustomUrlScraper: log_llm_call failed")

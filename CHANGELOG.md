@@ -6,6 +6,27 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-02
 
+### Changed — out-of-graph run rollup + scraper cost race (ADR-074 Gaps 3-4)
+
+Closes the last two functional gaps in ADR-074 (only the documented minors
+remain).
+
+- **Gap 3** — `system_health.run_metrics_rollup(workflow_id)`: per-run rollup
+  (calls/tokens/cost/wall-clock duration) for ANY run. Returns the finalized
+  `run_metrics` row if present, else lazily derives totals from `llm_calls` and
+  the span from `MIN/MAX(created_at)` (the ADR's preferred lazy read — no
+  init/finalize plumbing in the out-of-graph runners). Surfaced as a "Run rollup"
+  line on Workflow Detail. Tests: `tests/v2/test_run_metrics_rollup.py` (3).
+- **Gap 4** — `CustomUrlScraper` now uses the typed `complete_with_usage()`
+  (bundles result + usage on one thread, closing the `last_call_usage`
+  thread-local race) and emits a `custom_url_extractor` `agent_event` so the
+  extractor shows in the dashboard's Performance + Reliability sections. The
+  legacy two-step survives only as a fallback for test doubles (mirrors
+  `BaseAgent._run`); `last_call_usage` is retained, not deprecated. Test added to
+  `tests/v2/test_custom_url_scraper.py`.
+
+Suite 835 -> 839 passing.
+
 ### Added — API-request observability (ADR-074 Gap 5)
 
 The REST API surface had no observability (CORS was the only middleware). A new
