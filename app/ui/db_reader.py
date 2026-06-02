@@ -69,7 +69,10 @@ def load_user_resumes(user_id: str) -> pd.DataFrame:
 def load_user_clinic_reviews(user_id: str) -> pd.DataFrame:
     """A profile's resume_clinic_reviews, newest first — backs the Resume Clinic
     past-runs panel (ADR-066). One row per clinic run; JSON blobs are returned as
-    strings for compact display, parsed on demand by the view."""
+    strings for compact display, parsed on demand by the view.
+
+    ADR-072: excludes tailoring-chat sessions (job_id NOT NULL) — those belong
+    under their scored job, not the job-agnostic clinic panel."""
     if not DB_PATH.exists():
         return pd.DataFrame()
     conn = _connect()
@@ -85,11 +88,42 @@ def load_user_clinic_reviews(user_id: str) -> pd.DataFrame:
                    decided_at,
                    created_at
             FROM resume_clinic_reviews
-            WHERE user_id = ?
+            WHERE user_id = ? AND job_id IS NULL
             ORDER BY created_at DESC
             """,
             conn,
             params=(str(user_id),),
+        )
+    except Exception:
+        df = pd.DataFrame()
+    finally:
+        conn.close()
+    return df
+
+
+@st.cache_data(ttl=30)
+def load_job_chat_sessions(source_workflow_run_id: str, job_id: str) -> pd.DataFrame:
+    """ADR-072: tailoring-chat sessions for a scored job in a run, newest first.
+
+    Backs the tailoring card's "Open live chat" panel — it lists/reopens the chat
+    sessions anchored to (source_workflow_run_id, job_id)."""
+    if not DB_PATH.exists():
+        return pd.DataFrame()
+    conn = _connect()
+    try:
+        df = pd.read_sql_query(
+            """
+            SELECT id AS clinic_id,
+                   resume_id,
+                   decision,
+                   decided_at,
+                   created_at
+            FROM resume_clinic_reviews
+            WHERE source_workflow_run_id = ? AND job_id = ?
+            ORDER BY created_at DESC
+            """,
+            conn,
+            params=(str(source_workflow_run_id), str(job_id)),
         )
     except Exception:
         df = pd.DataFrame()

@@ -62,10 +62,12 @@ clinic `RewriteSuggestion`s so the chat *starts from the tailored state*:
 - map `claim_type` (`reword→restate`, `emphasize→reframe`, ...) — the inverse of
   the existing `_CLAIM_TYPE_MAP` in `resume_clinic_runner.py`;
 - carry `original_text`, `suggested_text`, `supporting_evidence`, `section_label`;
-- seed **all** `reword`/`emphasize` bullets and **apply** `remove` (line dropped);
-  **drop** `gap` bullets (gaps are not rewrites; they stay unaddressed, never
-  fabricated). High-`fidelity_risk` bullets are seeded as-is — every chat turn
-  re-runs the Fidelity Reviewer, so a risky line is policed on the next turn (Q2).
+- seed **all** `reword`/`emphasize` bullets as rewrites; **drop** both `gap` and
+  `remove` (gaps are never fabricated; per-bullet `remove` cannot be honored by the
+  reused renderer — see Limitation — and matches current clinic behavior).
+  High-`fidelity_risk` bullets are seeded as-is — every chat turn re-runs the
+  Fidelity Reviewer, so a risky line is policed on the next turn (Q2, revised at
+  the T1 implementation gate).
 This is the mirror of the existing `build_fidelity_context_for_overhaul()` glue and
 keeps evidence-binding intact (every seeded rewrite already carries evidence).
 
@@ -168,8 +170,10 @@ run/job link. Full suite must stay green (currently 784).
 
 1. **Seed source:** the specific draft the button is on — its `edited_json` if
    human-edited, else `tailored_json`. Each draft has its own "Open live chat".
-2. **Seed breadth:** all `reword`/`emphasize` seeded, `remove` applied, `gap`
-   dropped; high-`fidelity_risk` bullets seeded as-is (per-turn Fidelity polices).
+2. **Seed breadth:** all `reword`/`emphasize` seeded as rewrites; both `gap` and
+   `remove` dropped (per-bullet removal isn't supported by the reused renderer —
+   inherited clinic limitation; Q2 revised at the T1 implementation gate);
+   high-`fidelity_risk` bullets seeded as-is (per-turn Fidelity polices).
 3. **UI:** extract a shared `app/ui/components/resume_chat_panel.py`, reused by the
    Resume Clinic view and the tailoring card.
 4. **Session identity:** extend `resume_clinic_reviews` with nullable
@@ -191,5 +195,10 @@ run/job link. Full suite must stay green (currently 784).
   schema reconciliation, fidelity/cost guardrails inherited.
 - **Tradeoff:** the chat is a job-agnostic polish of a job-seeded draft; it does not
   reason about the JD turn-by-turn (Option B). Acceptable for v1.
+- **Inherited limitation (renderer):** `resume_text_renderer` skips empty-suggested
+  rewrites and only cuts whole sections, so **per-bullet removal is not applied on
+  export** (already true for the clinic today). Tailored `remove` suggestions are
+  therefore not seeded; a per-bullet-removal renderer capability is a possible
+  future enhancement (would amend ADR-066).
 - **Neutral:** small schema growth on `resume_clinic_reviews`; docs to update
   (data_model, hitl, api_reference, CLAUDE.md agent/HITL notes).

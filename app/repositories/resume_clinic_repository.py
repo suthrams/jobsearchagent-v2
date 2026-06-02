@@ -27,17 +27,24 @@ class ResumeClinicRepository:
                review: dict,
                alignment: dict | None,
                overhaul: dict,
-               fidelity_review: dict | None) -> None:
+               fidelity_review: dict | None,
+               source_workflow_run_id: str | None = None,
+               job_id: str | None = None) -> None:
+        """Create a clinic-review row. ADR-072: a tailoring-chat session passes
+        source_workflow_run_id + job_id to anchor it to a scored job in a run;
+        a plain clinic leaves both null (the default)."""
         now = utcnow_iso()
         with get_connection(self.db_path) as conn:
             conn.execute(
                 """INSERT INTO resume_clinic_reviews
                    (id, user_id, resume_id, workflow_run_id,
+                    source_workflow_run_id, job_id,
                     target_role, target_track, seniority_aware,
                     review_json, alignment_json, overhaul_json,
                     fidelity_review_json, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (clinic_id, user_id, resume_id, workflow_run_id,
+                 source_workflow_run_id, job_id,
                  target_role, target_track, 1 if seniority_aware else 0,
                  json.dumps(review),
                  json.dumps(alignment) if alignment is not None else None,
@@ -61,6 +68,21 @@ class ResumeClinicRepository:
                    WHERE user_id = ?
                    ORDER BY created_at DESC""",
                 (user_id,),
+            ).fetchall()
+        return [self._row_to_dict(r) for r in rows if r is not None]
+
+    def list_by_job(self, source_workflow_run_id: str, job_id: str) -> list[dict]:
+        """ADR-072: tailoring-chat sessions for a scored job in a run, newest first.
+
+        Distinct from list_by_user (which backs the plain-clinic past-runs panel);
+        these rows carry source_workflow_run_id + job_id and belong under the job.
+        """
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                """SELECT * FROM resume_clinic_reviews
+                   WHERE source_workflow_run_id = ? AND job_id = ?
+                   ORDER BY created_at DESC""",
+                (source_workflow_run_id, job_id),
             ).fetchall()
         return [self._row_to_dict(r) for r in rows if r is not None]
 

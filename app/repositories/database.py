@@ -145,6 +145,8 @@ CREATE TABLE IF NOT EXISTS resume_clinic_reviews (
     user_id TEXT NOT NULL,                 -- owning profile (decimal-string users.id)
     resume_id TEXT NOT NULL,               -- resume the review ran against
     workflow_run_id TEXT,                  -- lightweight workflow_runs row for cost attribution
+    source_workflow_run_id TEXT,           -- ADR-072: originating job-search run (tailoring chat); null = plain clinic
+    job_id TEXT,                           -- ADR-072: scored job this chat refines; null = plain clinic
     target_role TEXT,                      -- optional free text; absent -> quality-only mode
     target_track TEXT,                     -- optional: ic | architect | management
     seniority_aware INTEGER NOT NULL DEFAULT 0,
@@ -329,6 +331,16 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
         for col_ddl in (
             "ALTER TABLE llm_calls ADD COLUMN cache_creation_tokens INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE llm_calls ADD COLUMN cache_read_tokens INTEGER NOT NULL DEFAULT 0",
+        ):
+            try:
+                conn.execute(col_ddl)
+            except Exception:
+                pass  # column already exists
+        # Migration (ADR-072): link a clinic chat session to its originating
+        # job-search run + scored job (a "tailoring chat"). Null for plain clinics.
+        for col_ddl in (
+            "ALTER TABLE resume_clinic_reviews ADD COLUMN source_workflow_run_id TEXT",
+            "ALTER TABLE resume_clinic_reviews ADD COLUMN job_id TEXT",
         ):
             try:
                 conn.execute(col_ddl)

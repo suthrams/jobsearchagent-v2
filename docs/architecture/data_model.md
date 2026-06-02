@@ -606,6 +606,8 @@ CREATE TABLE resume_clinic_reviews (
     user_id              TEXT NOT NULL,
     resume_id            TEXT NOT NULL,
     workflow_run_id      TEXT,
+    source_workflow_run_id TEXT,           -- ADR-072
+    job_id               TEXT,             -- ADR-072
     target_role          TEXT,
     target_track         TEXT,
     seniority_aware      INTEGER NOT NULL DEFAULT 0,
@@ -629,6 +631,8 @@ CREATE INDEX idx_resume_clinic_user ON resume_clinic_reviews(user_id);
 | `user_id`              | TEXT        | Owning profile (decimal-string `users.id`); the clinic is profile-scoped. |
 | `resume_id`            | TEXT        | FK -> `resumes.id`. Ownership enforced cooperatively by the runner. |
 | `workflow_run_id`      | TEXT        | FK -> `workflow_runs.id` of the lightweight `workflow_type="resume_clinic"` row written for cost attribution; NULL only for legacy rows. |
+| `source_workflow_run_id` | TEXT      | ADR-072. FK -> `workflow_runs.id` of the originating job-search run when this is a **tailoring chat** launched from a scored job; NULL for a plain (job-agnostic) clinic. |
+| `job_id`               | TEXT        | ADR-072. The scored job this chat refines; NULL for a plain clinic. A row with `job_id` set is listed under its job (db_reader `load_job_chat_sessions`) and excluded from the clinic past-runs panel. |
 | `target_role`          | TEXT        | Optional free-text target; absent -> quality-only mode. |
 | `target_track`         | TEXT        | Optional one of `ic` / `architect` / `management`. |
 | `seniority_aware`      | INT         | `0` or `1` (cast to bool on read); whether the reviewer calibrated to the candidate's stage. |

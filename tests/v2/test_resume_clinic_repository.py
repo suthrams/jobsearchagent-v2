@@ -339,6 +339,55 @@ def test_discard_edits_clears_edited_decision_and_decided_at(repo):
     assert post["overhaul"]["rewrites"][0]["claim_type"] == "quantify"
 
 
+# ── ADR-072: tailoring-chat session link (source_workflow_run_id + job_id) ───
+
+def test_job_link_defaults_to_null_for_plain_clinic(repo):
+    repo.create(
+        clinic_id="cl-plain", user_id="0", resume_id="r-1",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    row = repo.get_by_id("cl-plain")
+    assert row["source_workflow_run_id"] is None
+    assert row["job_id"] is None
+
+
+def test_create_with_job_link_round_trips(repo):
+    repo.create(
+        clinic_id="cl-job", user_id="0", resume_id="r-1",
+        workflow_run_id="clinic-run-1", target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+        source_workflow_run_id="search-run-9", job_id="job-42",
+    )
+    row = repo.get_by_id("cl-job")
+    assert row["source_workflow_run_id"] == "search-run-9"
+    assert row["job_id"] == "job-42"
+
+
+def test_list_by_job_returns_only_matching_newest_first(repo):
+    common = dict(
+        user_id="0", resume_id="r-1", workflow_run_id=None,
+        target_role=None, target_track=None, seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    repo.create(clinic_id="cl-j-old", source_workflow_run_id="run-1", job_id="job-1", **common)
+    time.sleep(0.01)
+    repo.create(clinic_id="cl-j-new", source_workflow_run_id="run-1", job_id="job-1", **common)
+    repo.create(clinic_id="cl-j-other", source_workflow_run_id="run-1", job_id="job-2", **common)
+    repo.create(clinic_id="cl-j-plain", **common)  # no job link
+
+    rows = repo.list_by_job("run-1", "job-1")
+    assert [r["id"] for r in rows] == ["cl-j-new", "cl-j-old"]
+    assert repo.list_by_job("run-1", "job-2") and \
+        repo.list_by_job("run-1", "job-2")[0]["id"] == "cl-j-other"
+    assert repo.list_by_job("run-1", "nope") == []
+
+
 def test_delete_by_resume_no_match_returns_zero(repo):
     repo.create(
         clinic_id="cl-d4", user_id="0", resume_id="r-A",
