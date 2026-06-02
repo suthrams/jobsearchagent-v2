@@ -24,6 +24,7 @@ from app.api.dependencies import build_and_cache_graph, cleanup_graph, get_graph
 from app.api.routers.admin import router as admin_router
 from app.api.routers.config import router as config_router
 from app.api.routers.dashboard import router as dashboard_router
+from app.api.routers.reads import router as reads_router
 from app.api.routers.jobs import exclusion_router as jobs_exclusion_router
 from app.api.routers.jobs import router as jobs_router
 from app.api.routers.reports import router as reports_router
@@ -104,6 +105,7 @@ async def _observe_requests(request: Request, call_next):
             latency_ms=latency_ms,
         )
 
+app.include_router(reads_router)  # ADR-075: before workflows so /workflows/recent matches first
 app.include_router(workflows_router)
 app.include_router(jobs_router)
 app.include_router(jobs_exclusion_router)  # ADR-057: per-job exclusion endpoints

@@ -9,11 +9,11 @@ import pandas as pd
 import streamlit as st
 
 import app.ui.api_client as api
-from app.ui.db_reader import (
-    load_agent_events,
-    load_llm_calls,
-    load_recent_workflows,
-    load_step_executions,
+from app.ui.data import (
+    _cached_agent_events,
+    _cached_llm_calls,
+    _cached_recent_workflows,
+    _cached_step_executions,
 )
 from app.ui.nav import ViewContext
 from app.workflows.limits import MAX_LLM_CALLS_PER_RUN
@@ -25,7 +25,7 @@ def render(ctx: ViewContext) -> None:
     wf_id = st.session_state.workflow_id
     if not wf_id:
         st.warning("No active workflow in this session.")
-        recent = load_recent_workflows()
+        recent = _cached_recent_workflows()
         if not recent.empty:
             st.markdown("**Reconnect to a recent workflow:**")
             for _, row in recent.iterrows():
@@ -82,7 +82,7 @@ def render(ctx: ViewContext) -> None:
     st.subheader("Run Activity")
     _STEP_ICON = {"completed": "✅", "failed": "❌", "started": "🔄"}
 
-    steps_df = load_step_executions(wf_id)
+    steps_df = _cached_step_executions(wf_id)
     if steps_df.empty:
         st.caption("No steps recorded yet — workflow may still be initialising.")
     else:
@@ -96,7 +96,7 @@ def render(ctx: ViewContext) -> None:
             notes = f"  — {row['notes']}" if row.get("notes") else ""
             st.markdown(f"{ic} **{row['step']}**{dur}{notes}")
 
-    events_df = load_agent_events(wf_id)
+    events_df = _cached_agent_events(wf_id)
     if not events_df.empty:
         with st.expander(f"Agent Events ({len(events_df)})", expanded=(status == "running")):
             display = events_df.copy()
@@ -116,7 +116,7 @@ def render(ctx: ViewContext) -> None:
                 hide_index=True, use_container_width=True,
             )
 
-    llm_df = load_llm_calls(wf_id)
+    llm_df = _cached_llm_calls(wf_id)
     if not llm_df.empty:
         total_cost = llm_df["estimated_cost"].sum()
         total_tokens = int(llm_df["tokens_input"].sum() + llm_df["tokens_output"].sum())

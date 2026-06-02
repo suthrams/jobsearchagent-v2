@@ -19,8 +19,6 @@ VIEWS_DIR = Path(__file__).resolve().parents[2] / "app" / "ui" / "views"
 # phase lands; empty at Phase 9. Phase 1 migrated `history`, so it is NOT here.
 _ALLOWLIST = {
     "workflow_detail",   # Phase 6
-    "job_detail",        # Phase 4
-    "live_monitor",      # Phase 5
 }
 
 _DIRECT_DB = re.compile(r"\b(import\s+sqlite3|from\s+app\.ui\.db_reader|import\s+app\.ui\.db_reader|from\s+app\.ui\s+import\s+db_reader)\b")

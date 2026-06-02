@@ -8,7 +8,11 @@ from __future__ import annotations
 import streamlit as st
 
 from app.ui.components.bullets import _bullets, _para
-from app.ui.db_reader import load_job_pipeline, load_recent_workflows, load_workflow_jobs
+from app.ui.data import (
+    _cached_job_pipeline,
+    _cached_recent_workflows,
+    _cached_workflow_jobs,
+)
 from app.ui.formatting import _fmt_ts
 from app.ui.nav import ViewContext, _navigate
 
@@ -22,7 +26,7 @@ def render(ctx: ViewContext) -> None:
     # ── Inline picker when navigated here directly ────────────────────────────
     if not wf_id or not job_id:
         st.caption("Pick a workflow run and job to drill into.")
-        _all_runs = load_recent_workflows()
+        _all_runs = _cached_recent_workflows()
         if _all_runs.empty:
             st.info("No workflow runs found. Start one from **Start New Run**.")
             st.stop()
@@ -34,7 +38,7 @@ def render(ctx: ViewContext) -> None:
         _run_label = st.selectbox("Workflow run", list(_run_options.keys()), key="jd_wf_pick")
         _picked_wf = _run_options[_run_label]
 
-        _jobs_pick = load_workflow_jobs(_picked_wf)
+        _jobs_pick = _cached_workflow_jobs(_picked_wf)
         if _jobs_pick.empty:
             st.info("No scored jobs in this run yet.")
             st.stop()
@@ -57,7 +61,7 @@ def render(ctx: ViewContext) -> None:
     if nav2.button("Back to Workflow History"):
         _navigate("Workflow History")
 
-    pipeline = load_job_pipeline(wf_id, job_id)
+    pipeline = _cached_job_pipeline(wf_id, job_id)
     job = pipeline["job"] or {}
 
     # ── Job header ────────────────────────────────────────────────────────────

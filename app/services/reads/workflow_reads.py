@@ -87,6 +87,226 @@ _LEGACY_SQL = """
 """
 
 
+def _rows(db_path: Path, sql: str, params: tuple) -> list[dict]:
+    """Run a read query and return list[dict], or [] on any error / missing DB."""
+    if not Path(db_path).exists():
+        return []
+    try:
+        with get_connection(db_path) as conn:
+            return [dict(r) for r in conn.execute(sql, params).fetchall()]
+    except Exception:
+        return []
+
+
+def list_workflow_jobs(workflow_id: str, include_excluded: bool = True,
+                       db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """All scored jobs for a run, with per-track scores + pipeline pointers
+    (ADR-075 Phase 4; moved from db_reader.load_workflow_jobs). Unpaged (bounded by
+    MAX_JOBS_PER_RUN); §B.1 envelope."""
+    where = "" if include_excluded else "AND (j.excluded = 0 OR j.excluded IS NULL)"
+    items = _rows(db_path, f"""
+        SELECT j.id AS job_id, j.title, j.company, j.location, j.url, j.source,
+               j.created_at AS found_at, COALESCE(j.excluded, 0) AS excluded,
+               j.excluded_reason, j.excluded_at, js.overall_score,
+               json_extract(js.score_json, '$.technical_score')     AS technical_score,
+               json_extract(js.score_json, '$.architecture_score')  AS architecture_score,
+               json_extract(js.score_json, '$.leadership_score')    AS leadership_score,
+               json_extract(js.score_json, '$.domain_score')        AS domain_score,
+               json_extract(js.score_json, '$.match_summary')       AS match_summary,
+               json_extract(js.score_json, '$.recommended_next_action') AS recommended_next_action,
+               js.created_at AS scored_at, rr.created_at AS reviewed_at,
+               ca.created_at AS advised_at, ip.created_at AS prep_at
+        FROM jobs j
+        JOIN job_scores js ON j.id = js.job_id AND js.workflow_run_id = ?
+        LEFT JOIN resume_reviews rr ON j.id = rr.job_id AND rr.workflow_run_id = js.workflow_run_id
+        LEFT JOIN career_advice  ca ON j.id = ca.job_id AND ca.workflow_run_id = js.workflow_run_id
+        LEFT JOIN interview_prep ip ON j.id = ip.job_id AND ip.workflow_run_id = js.workflow_run_id
+        WHERE 1=1 {where}
+        ORDER BY js.overall_score DESC
+    """, (workflow_id,))
+    return page(items, len(items), len(items), 0)
+
+
+def list_deep_review_results(workflow_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """Resume reviews + career advice for a run (ADR-075 Phase 6; from
+    db_reader.load_deep_review_results)."""
+    items = _rows(db_path, """
+        SELECT rr.job_id,
+               json_extract(rr.review_json, '$.overall_fit_summary')    AS overall_fit_summary,
+               json_extract(rr.review_json, '$.critical_gaps')          AS critical_gaps_json,
+               json_extract(rr.review_json, '$.resume_only_gaps')       AS resume_only_gaps_json,
+               json_extract(rr.review_json, '$.career_gaps_observed')   AS career_gaps_observed_json,
+               json_extract(rr.review_json, '$.suggested_improvements') AS suggested_improvements_json,
+               json_extract(rr.review_json, '$.confidence')             AS review_confidence,
+               json_extract(ca.advice_json, '$.positioning_summary')    AS positioning_summary,
+               json_extract(ca.advice_json, '$.resume_gaps')            AS resume_gaps_json,
+               json_extract(ca.advice_json, '$.career_gaps')            AS career_gaps_json,
+               json_extract(ca.advice_json, '$.recommended_next_action') AS recommended_next_action,
+               json_extract(ca.advice_json, '$.confidence')             AS advice_confidence
+        FROM resume_reviews rr
+        LEFT JOIN career_advice ca ON rr.job_id = ca.job_id AND rr.workflow_run_id = ca.workflow_run_id
+        WHERE rr.workflow_run_id = ?
+    """, (workflow_id,))
+    return page(items, len(items), len(items), 0)
+
+
+def list_interview_prep(workflow_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """Interview prep rows for a run (ADR-075 Phase 6; from db_reader.load_interview_prep)."""
+    items = _rows(db_path, """
+        SELECT job_id,
+               json_extract(prep_json, '$.likely_interview_topics')      AS likely_topics_json,
+               json_extract(prep_json, '$.technical_topics_to_review')   AS technical_topics_json,
+               json_extract(prep_json, '$.leadership_stories_to_prepare') AS leadership_stories_json,
+               json_extract(prep_json, '$.weak_areas_to_defend')         AS weak_areas_json,
+               json_extract(prep_json, '$.questions_to_ask_interviewer') AS questions_to_ask_json,
+               json_extract(prep_json, '$.seven_day_prep_plan')          AS seven_day_plan_json,
+               json_extract(prep_json, '$.confidence')                   AS confidence
+        FROM interview_prep WHERE workflow_run_id = ?
+    """, (workflow_id,))
+    return page(items, len(items), len(items), 0)
+
+
+def list_step_executions(workflow_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """Step timeline for a run (ADR-075 Phase 5; from db_reader.load_step_executions)."""
+    items = _rows(db_path, """
+        SELECT step, status, duration_ms, notes, started_at, completed_at
+        FROM step_executions WHERE workflow_run_id = ? ORDER BY started_at ASC
+    """, (workflow_id,))
+    return page(items, len(items), len(items), 0)
+
+
+def list_agent_events(workflow_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """Per-agent-call events for a run (ADR-075 Phase 5; from db_reader.load_agent_events)."""
+    items = _rows(db_path, """
+        SELECT agent_name, event_type, status, duration_ms,
+               input_summary, output_summary, created_at
+        FROM agent_events WHERE workflow_run_id = ? ORDER BY created_at ASC
+    """, (workflow_id,))
+    return page(items, len(items), len(items), 0)
+
+
+def list_llm_calls(workflow_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """Per-LLM-call detail for a run (ADR-075 Phase 5; from db_reader.load_llm_calls)."""
+    items = _rows(db_path, """
+        SELECT agent_name, model, tokens_input, tokens_output,
+               COALESCE(cache_creation_tokens, 0) AS cache_creation_tokens,
+               COALESCE(cache_read_tokens, 0)     AS cache_read_tokens,
+               estimated_cost, latency_ms, created_at
+        FROM llm_calls WHERE workflow_run_id = ? ORDER BY created_at ASC
+    """, (workflow_id,))
+    return page(items, len(items), len(items), 0)
+
+
+def list_recent_workflows(db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """Recent runs from LangGraph checkpoints (ADR-075 Phase 5; from
+    db_reader.load_recent_workflows) — the monitor reconnect list."""
+    if not Path(db_path).exists():
+        return page([], 0, 0, 0)
+    try:
+        with get_connection(db_path) as conn:
+            cps = conn.execute("""
+                SELECT thread_id AS workflow_id, MAX(rowid) AS last_rowid
+                FROM checkpoints GROUP BY thread_id ORDER BY last_rowid DESC LIMIT 10
+            """).fetchall()
+            scores = {
+                r["workflow_run_id"]: r for r in conn.execute("""
+                    SELECT workflow_run_id, COUNT(*) AS jobs_scored,
+                           MAX(overall_score) AS best_score, MIN(created_at) AS started_at
+                    FROM job_scores GROUP BY workflow_run_id
+                """).fetchall()
+            }
+    except Exception:
+        return page([], 0, 0, 0)
+    items = []
+    for cp in cps:
+        wid = cp["workflow_id"]
+        sc = scores.get(wid)
+        items.append({
+            "workflow_id": wid,
+            "jobs_scored": int(sc["jobs_scored"]) if sc else 0,
+            "best_score": sc["best_score"] if sc else None,
+            "started_at": sc["started_at"] if sc else None,
+        })
+    return page(items, len(items), len(items), 0)
+
+
+def get_job_pipeline(workflow_id: str, job_id: str,
+                     db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """All persisted outputs for one (run, job) pair (ADR-075 Phase 4; from
+    db_reader.load_job_pipeline). Returns the nested dict the Job Detail view
+    renders (job/score/review_rounds/final_review/advice/prep)."""
+    import json as _json
+    out: dict = {"job": None, "score": None, "review_rounds": [],
+                 "final_review": None, "advice": None, "prep": None}
+    if not Path(db_path).exists():
+        return out
+
+    def _blob(row_json: str | None) -> dict:
+        try:
+            return _json.loads(row_json or "{}")
+        except Exception:
+            return {}
+
+    try:
+        with get_connection(db_path) as conn:
+            r = conn.execute("SELECT id, title, company, location, url, source, created_at "
+                             "FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if r:
+                out["job"] = {"id": r["id"], "title": r["title"], "company": r["company"],
+                              "location": r["location"], "url": r["url"], "source": r["source"],
+                              "found_at": r["created_at"]}
+            r = conn.execute("SELECT score_json, overall_score, created_at FROM job_scores "
+                             "WHERE workflow_run_id = ? AND job_id = ?", (workflow_id, job_id)).fetchone()
+            if r:
+                payload = _blob(r["score_json"])
+                payload["overall_score"] = r["overall_score"]
+                out["score"] = {"data": payload, "created_at": r["created_at"]}
+            for rr in conn.execute(
+                "SELECT round_number, critic_output_json, audit_output_json, audit_score, "
+                "stop_reason, created_at FROM review_rounds WHERE workflow_run_id = ? AND job_id = ? "
+                "ORDER BY round_number ASC", (workflow_id, job_id)).fetchall():
+                out["review_rounds"].append({
+                    "round_number": rr["round_number"], "critic": _blob(rr["critic_output_json"]),
+                    "audit": _blob(rr["audit_output_json"]), "audit_score": rr["audit_score"],
+                    "stop_reason": rr["stop_reason"], "created_at": rr["created_at"]})
+            r = conn.execute("SELECT review_json, created_at FROM resume_reviews "
+                             "WHERE workflow_run_id = ? AND job_id = ?", (workflow_id, job_id)).fetchone()
+            if r:
+                out["final_review"] = {"data": _blob(r["review_json"]), "created_at": r["created_at"]}
+            r = conn.execute("SELECT advice_json, created_at FROM career_advice "
+                             "WHERE workflow_run_id = ? AND job_id = ?", (workflow_id, job_id)).fetchone()
+            if r:
+                out["advice"] = {"data": _blob(r["advice_json"]), "created_at": r["created_at"]}
+            r = conn.execute("SELECT prep_json, created_at FROM interview_prep "
+                             "WHERE workflow_run_id = ? AND job_id = ?", (workflow_id, job_id)).fetchone()
+            if r:
+                out["prep"] = {"data": _blob(r["prep_json"]), "created_at": r["created_at"]}
+    except Exception:
+        pass
+    return out
+
+
+def get_workflow_run_detail(workflow_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict | None:
+    """The persisted workflow_runs row with state_json parsed (ADR-075 Phase 6;
+    from db_reader.load_workflow_run). None if absent."""
+    import json as _json
+    if not Path(db_path).exists():
+        return None
+    try:
+        with get_connection(db_path) as conn:
+            row = conn.execute("SELECT * FROM workflow_runs WHERE id = ?", (workflow_id,)).fetchone()
+    except Exception:
+        return None
+    if row is None:
+        return None
+    rec = dict(row)
+    try:
+        rec["state"] = _json.loads(rec.pop("state_json") or "{}")
+    except Exception:
+        rec["state"] = {}
+    return rec
+
+
 def list_workflow_runs(
     *,
     user_id: str | None,

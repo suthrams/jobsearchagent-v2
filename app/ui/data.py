@@ -11,10 +11,21 @@ These are the only refactor modules that legitimately import streamlit (they nee
 """
 from __future__ import annotations
 
+import pandas as pd
 import streamlit as st
 import yaml
 
 import app.ui.api_client as api
+
+
+def _df(call, *args, **kwargs) -> pd.DataFrame:
+    """Run an api_client list call and return its items as a DataFrame, or an empty
+    DataFrame if the backend is unavailable (ADR-075). Drop-in for the old
+    db_reader.load_* functions, which also returned DataFrames."""
+    try:
+        return pd.DataFrame(call(*args, **kwargs).get("items") or [])
+    except Exception:
+        return pd.DataFrame()
 
 
 @st.cache_data
@@ -77,6 +88,60 @@ def _cached_scored_jobs(user_id: str | None, include_excluded: bool = False) -> 
         return api.list_scored_jobs(include_excluded=include_excluded)
     except Exception:
         return {"items": [], "total": 0, "limit": 0, "offset": 0}
+
+
+# ── Run-scoped reads (ADR-075 Phases 4-6) — return DataFrames, drop-in for db_reader ──
+
+@st.cache_data(ttl=10)
+def _cached_recent_workflows() -> pd.DataFrame:
+    return _df(api.list_recent_workflows)
+
+
+@st.cache_data(ttl=10)
+def _cached_workflow_jobs(workflow_id: str, include_excluded: bool = True) -> pd.DataFrame:
+    return _df(api.list_workflow_jobs, workflow_id, include_excluded)
+
+
+@st.cache_data(ttl=30)
+def _cached_deep_review_results(workflow_id: str) -> pd.DataFrame:
+    return _df(api.list_deep_review_results, workflow_id)
+
+
+@st.cache_data(ttl=30)
+def _cached_interview_prep(workflow_id: str) -> pd.DataFrame:
+    return _df(api.list_interview_prep, workflow_id)
+
+
+@st.cache_data(ttl=5)
+def _cached_step_executions(workflow_id: str) -> pd.DataFrame:
+    return _df(api.list_step_executions, workflow_id)
+
+
+@st.cache_data(ttl=5)
+def _cached_agent_events(workflow_id: str) -> pd.DataFrame:
+    return _df(api.list_agent_events, workflow_id)
+
+
+@st.cache_data(ttl=5)
+def _cached_llm_calls(workflow_id: str) -> pd.DataFrame:
+    return _df(api.list_llm_calls, workflow_id)
+
+
+@st.cache_data(ttl=30)
+def _cached_job_pipeline(workflow_id: str, job_id: str) -> dict:
+    try:
+        return api.get_job_pipeline(workflow_id, job_id)
+    except Exception:
+        return {"job": None, "score": None, "review_rounds": [],
+                "final_review": None, "advice": None, "prep": None}
+
+
+@st.cache_data(ttl=10)
+def _cached_workflow_detail(workflow_id: str) -> dict | None:
+    try:
+        return api.get_workflow_detail(workflow_id)
+    except Exception:
+        return None
 
 
 def _get_config_cached() -> dict:

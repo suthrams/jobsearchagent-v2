@@ -227,6 +227,55 @@ def list_scored_jobs(include_excluded: bool = False) -> dict:
     return r.json()
 
 
+def _get_json(path: str) -> dict:
+    r = httpx.get(f"{BASE_URL}{path}", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
+# ── Run-scoped reads (ADR-075 Phases 4-6) ────────────────────────────────────
+
+def list_recent_workflows() -> dict:
+    return _get_json("/workflows/recent")
+
+
+def list_workflow_jobs(workflow_id: str, include_excluded: bool = True) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/scored-jobs?include_excluded={str(include_excluded).lower()}")
+
+
+def get_job_pipeline(workflow_id: str, job_id: str) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/jobs/{job_id}/pipeline")
+
+
+def list_deep_review_results(workflow_id: str) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/reviews")
+
+
+def list_interview_prep(workflow_id: str) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/interview-prep")
+
+
+def list_step_executions(workflow_id: str) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/steps")
+
+
+def list_agent_events(workflow_id: str) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/agent-events")
+
+
+def list_llm_calls(workflow_id: str) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/llm-calls")
+
+
+def get_workflow_detail(workflow_id: str) -> dict | None:
+    try:
+        return _get_json(f"/workflows/{workflow_id}/detail")
+    except httpx.HTTPStatusError as exc:
+        if exc.response.status_code == 404:
+            return None
+        raise
+
+
 # ── On-demand resume tailoring ───────────────────────────────────────────────
 
 # Sized for the v5 tailoring prompts (ADR-056). Observed median latency for
