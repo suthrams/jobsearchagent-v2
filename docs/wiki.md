@@ -285,7 +285,7 @@ Each phase has a dedicated deep-dive document:
 | [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — tailoring page-budget + headline + strategy summary + impact estimate (ADR-056), on-demand tailoring (ADR-055), deep-review-for-all (ADR-054), multi-provider (ADR-053), Phase 9 cost optimization, Phase 7/8 live agents and performance, v1 dashboard fixes, Python 3.12 compatibility |
 | [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic, langchain-openai) + v1 shared (anthropic, pydantic, httpx, pdfplumber) |
 | [disclaimer.md](disclaimer.md) | Apache 2.0 terms, no-warranty statement, user responsibility for API costs, scraper compliance notes (Adzuna official, LinkedIn/Ladders grey-area), resume data privacy |
-| [../skills/README.md](../skills/README.md) | Index for the `skills/` agent-skills pack — maps each of the 21 skills to the jobsearchagent-v2 workflow stage where it applies |
+| [../.claude/skills/README.md](../.claude/skills/README.md) | Index for the `.claude/skills/` agent-skills pack — maps each of the 21 skills to the jobsearchagent-v2 workflow stage where it applies (Claude Code discovers skills only under `.claude/skills/`) |
 | [../bugs/README.md](../bugs/README.md) | Root-cause analyses for critical *runtime* bugs (distinct from operational postmortems). Convention + four-section template (`_TEMPLATE.md`), an index table, and one RCA per bug (e.g. `BUG-001` — a dropped `httpx` import in two Streamlit views). Each RCA pairs with a forcing-function test so the same class cannot return silently. |
 
 ---
@@ -307,8 +307,8 @@ Each phase has a dedicated deep-dive document:
 | docs/storage/ | 1 |
 | docs/prompts/ | 1 |
 | prompts/ (project root) | 3 |
-| skills/ (agent-skills pack: 21 SKILL.md + supporting + README) | 26 |
+| .claude/skills/ (agent-skills pack: 21 SKILL.md + supporting + README, plus project-own smoke-test-ui) | 26 |
 
 ---
 
-*Every `.md` file in the project (excluding `.venv/`, `.pytest_cache/`, `.git/`) is listed in this index. The skills/ pack ships from [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) — see `skills/README.md` for which skill applies to which jobsearchagent-v2 workflow stage.*
+*Every `.md` file in the project (excluding `.venv/`, `.pytest_cache/`, `.git/`) is listed in this index. The pack ships from [`addyosmani/agent-skills`](https://github.com/addyosmani/agent-skills) and lives under `.claude/skills/` (where Claude Code discovers it) — see `.claude/skills/README.md` for which skill applies to which jobsearchagent-v2 workflow stage.*

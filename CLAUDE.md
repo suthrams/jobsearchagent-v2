@@ -203,9 +203,12 @@ docs/architecture/
   patterns.md · principles.md · architecture_overview.md
   api_reference.md  ← REST endpoint contracts
 
-skills/             ← addyosmani/agent-skills pack — 21 curated skills
-                     (see skills/README.md for which skill applies when)
-                     Pinned via skills-lock.json at the repo root
+.claude/skills/     ← agent-skills loaded by Claude Code. Project-own skill
+                     (smoke-test-ui) + the addyosmani/agent-skills pack (21
+                     curated skills, moved here so Claude Code discovers them;
+                     it only scans .claude/skills/, not a top-level skills/).
+                     See .claude/skills/README.md for which skill applies when.
+                     The pack is pinned via skills-lock.json at the repo root
 
 config/
   config.example.yaml

@@ -114,8 +114,10 @@ env/
 # secret-audit rule travels to every clone. Personal overrides remain in
 # .claude/settings.local.json (still ignored above).
 !.claude/settings.json
-# Project-own Claude skills travel with the repo so every clone gets them (the
-# addyosmani pack lives in top-level skills/; these are this project's own).
+# Claude Code skills travel with the repo so every clone gets them. This holds
+# both the project-own skill (smoke-test-ui) and the addyosmani/agent-skills
+# pack (Claude Code only discovers skills under .claude/skills/, so the pack
+# lives here; pinned via skills-lock.json at the repo root).
 !.claude/skills
 !.claude/skills/**
 
@@ -164,8 +166,9 @@ env/
 .zencoder/
 
 # ─── Agent skills pack ───────────────────────────────────────────────────────
-# skills/ and skills-lock.json are project assets — committed so the team
-# gets the same curated pack on clone. See skills/README.md for the index.
+# The pack lives in .claude/skills/ (so Claude Code discovers it) and
+# skills-lock.json (repo root) pins it — both committed so every clone gets the
+# same curated pack. See .claude/skills/README.md for the index.
 
 # ─── Local content (architecture diagrams, publish package, blog drafts) ──────
 /architecture/

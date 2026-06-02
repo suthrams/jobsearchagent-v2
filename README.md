@@ -174,9 +174,10 @@ docs/architecture/
 ├── implementation_plan.md
 └── *.md              Agent, workflow, state, data, and security models
 
-skills/               addyosmani/agent-skills pack — 21 curated skills
-└── README.md         Index mapping each skill to a workflow stage
-                      Pinned via skills-lock.json at the repo root
+.claude/skills/       Claude Code agent-skills (discovered here only):
+                      smoke-test-ui (project-own) + the addyosmani/agent-skills
+                      pack — 21 curated skills. Pinned via skills-lock.json
+                      (repo root). See .claude/skills/README.md for the index.
 
 tests/                pytest suite (448 passed, 1 skipped — mock mode)
 notebooks/            Phase validation notebooks

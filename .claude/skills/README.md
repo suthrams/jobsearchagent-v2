@@ -66,8 +66,8 @@ Type `/<skill-name>` in Claude Code, or ask Claude to use it (`"use the code-rev
 
 - Follow `CLAUDE.md` invariants (execution limits, evidence-bound generation, fidelity reviewer pairing).
 - Update ADRs and impacted docs **before** implementing architectural changes (per the project feedback rule).
-- Run `python -m pytest tests/` before committing — 448 tests pass on `main`.
-- Use **HEREDOC** for commit messages with the `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>` trailer.
+- Run `python -m pytest tests/` before committing.
+- Use **HEREDOC** for commit messages with the `Co-Authored-By: Claude <noreply@anthropic.com>` trailer.
 
 ### Strong skill+task pairings for this project
 
@@ -91,12 +91,12 @@ Claude Code also loads skills from two other locations — these are **personal*
 - **`~/.claude/skills/`** — your user-level skills (currently `find-skills` only).
 - **`~/.claude/plugins/marketplaces/.../skills/`** — skills from installed plugins (e.g. `init`, `review`, `security-review`, `update-config`, `keybindings-help`, `simplify`, `fewer-permission-prompts`, `loop`, `schedule`, `claude-api`).
 
-Project skills (this folder) take precedence over user-level skills with the same name.
+Project skills (`.claude/skills/`, this folder) take precedence over user-level skills with the same name. Claude Code does NOT scan a top-level `skills/` folder — that is why this pack lives under `.claude/skills/`.
 
 ---
 
 ## Updating the pack
 
-`skills-lock.json` records the source repo, the skill path, and a SHA-256 hash of every SKILL.md. To pull updates from `addyosmani/agent-skills`, re-run whichever skill manager produced the lockfile, then commit both `skills/` and `skills-lock.json` together.
+`skills-lock.json` (at the repo root) records the source repo, the skill path (now `.claude/skills/<name>/SKILL.md`), and a SHA-256 hash of every SKILL.md. To pull updates from `addyosmani/agent-skills`, re-run whichever skill manager produced the lockfile, then commit both `.claude/skills/` and `skills-lock.json` together.
 
-To **add** a project-specific skill, drop a `skills/<name>/SKILL.md` with frontmatter (`name`, `description`) — the description is what triggers Claude to surface the skill, so be specific about when to use it.
+To **add** a project-specific skill, drop a `.claude/skills/<name>/SKILL.md` with frontmatter (`name`, `description`) — the description is what triggers Claude to surface the skill, so be specific about when to use it.
