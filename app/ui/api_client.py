@@ -254,6 +254,18 @@ def trigger_interview_prep(workflow_id: str, job_id: str) -> dict:
     return r.json()
 
 
+def open_tailoring_chat_session(tailoring_id: str) -> dict:
+    """ADR-072: open (create-or-reuse) a live-chat session seeded from a tailored
+    draft. Returns the clinic-session row (clinic_id, overhaul, ...). The chat +
+    export then run through the existing resume-clinic endpoints on that session."""
+    r = httpx.post(
+        f"{BASE_URL}/tailorings/{tailoring_id}/chat-session",
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def list_tailorings(workflow_id: str) -> dict:
     r = httpx.get(f"{BASE_URL}/workflows/{workflow_id}/tailorings", timeout=_TIMEOUT_GET)
     r.raise_for_status()

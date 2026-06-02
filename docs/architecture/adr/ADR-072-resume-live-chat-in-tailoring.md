@@ -2,10 +2,12 @@
 
 ## Status
 
-**Accepted** (2026-06-01). Approved via spec-driven-development Phase 1.
-Implementation pending — Plan -> Tasks -> Implement next; this doc is the spec and
-the decision record. The one item flagged under "Remaining open question" is
-resolved at the Plan gate.
+**Accepted** (2026-06-01). Approved via spec-driven-development Phase 1; implemented
+the same day (T1-T6). This doc is the spec and the decision record. The "Remaining
+open question" (hand-off) was resolved at the Plan gate: **export is the end state**
+for v1 (the refined resume is its own artifact; it does not write back into the
+job's `tailored_resumes` decision). A "save back as an edit" is a possible
+fast-follow.
 
 Extends ADR-068 (chat-revise loop for the Resume Clinic), ADR-055 (on-demand
 tailoring), ADR-059 (human edit decision), and ADR-066 (deterministic resume

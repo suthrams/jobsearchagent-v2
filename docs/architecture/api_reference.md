@@ -509,6 +509,28 @@ accountable human. The agent's original draft is retained in `tailored_json`.
 
 **Response — 404** `tailoring_not_found`.
 
+### POST /tailorings/{tailoring_id}/chat-session
+
+ADR-072. Open (create-or-reuse) a **live-chat session** seeded from a job's
+tailored draft, so the user can refine the resume inline and export it using the
+Resume Clinic chat + export stack. Create-or-reuse: a second call for the same
+(originating run, job) returns the existing session, so reopening preserves chat
+edits. The seed is the clicked draft's human edit (`edited_json`) if present, else
+the agent draft (`tailored_json`), converted to a clinic overhaul by the
+deterministic `tailored_draft_to_overhaul` (reword/emphasize seeded; gap and
+remove dropped — per-bullet removal is not honored by the renderer). No LLM call.
+
+The session is a `resume_clinic_reviews` row tagged with `source_workflow_run_id`
+(the job-search run) + `job_id`, so it lists under the job and is excluded from the
+clinic past-runs panel. Chat turns and export then use the existing
+`POST /resume-clinic/{id}/chat` and `GET /resume-clinic/{id}/export` on the
+returned `clinic_id` (fidelity runs every turn; the 25-turn cost cap applies).
+
+**Response — 200 OK** — the clinic-session row (`ResumeClinicResponse`: `clinic_id`,
+`resume_id`, `overhaul`, ...).
+
+**Response — 404** `tailoring_not_found` / `resume_not_found`.
+
 **Response — 422** Pydantic validation — `approval` must be one of the four literals; `edited` is required when `approval == "edit"`.
 
 ---

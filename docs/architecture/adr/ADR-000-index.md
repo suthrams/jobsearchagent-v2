@@ -77,4 +77,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-069 | [Redact Direct Identifiers at the LLM Context Seam](ADR-069-redact-direct-identifiers-at-the-llm-seam.md) | Accepted |
 | ADR-070 | [Data Retention and State De-duplication (At-Rest Phase 1)](ADR-070-data-retention-and-state-deduplication.md) | Accepted |
 | ADR-071 | [Per-Profile Active Scoring Tracks](ADR-071-per-profile-active-scoring-tracks.md) | Accepted |
-| ADR-072 | [Resume Live Chat + Export in the Tailoring Flow](ADR-072-resume-live-chat-in-tailoring.md) | Accepted (impl pending) |
+| ADR-072 | [Resume Live Chat + Export in the Tailoring Flow](ADR-072-resume-live-chat-in-tailoring.md) | Accepted |

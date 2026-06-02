@@ -16,6 +16,7 @@ import streamlit as st
 import app.ui.api_client as api
 from app.services.constraint_analyzer import analyze, summary_metrics
 from app.services.cost_breakdown import compute_breakdown
+from app.ui.components.resume_chat_panel import render_chat_panel
 from app.ui.components.tailoring import _render_tailoring_card
 from app.ui.data import _cached_list_tailorings
 from app.ui.db_reader import (
@@ -454,6 +455,43 @@ def render(ctx: ViewContext) -> None:
                     for t in existing:
                         st.markdown("---")
                         _render_tailoring_card(t, _decide, resume_profile=rp_for_render)
+                        # ADR-072: open the shared live-chat + export panel seeded
+                        # from this draft. The button lives here (in the per-job
+                        # expander); the panel itself renders BELOW the expanders
+                        # (Streamlit forbids nested expanders, and the panel uses
+                        # its own).
+                        _ctid = t.get("tailoring_id") or t.get("id") or ""
+                        if _ctid and st.button(
+                            "💬 Open live chat", key=f"tail_chat_open_{_ctid}",
+                            help="Refine this draft in live chat, then export it (ADR-072).",
+                        ):
+                            try:
+                                with st.spinner("Opening chat session…"):
+                                    _sess = api.open_tailoring_chat_session(_ctid)
+                                st.session_state["tail_chat_active_tid"] = _ctid
+                                st.session_state[f"tail_chat_review_{_ctid}"] = _sess
+                                st.rerun()
+                            except Exception as exc:
+                                st.error(f"Could not open live chat: {exc}")
+
+        # ADR-072: render the active live-chat panel OUTSIDE the per-job expanders.
+        _active_tid = st.session_state.get("tail_chat_active_tid")
+        _active_key = f"tail_chat_review_{_active_tid}" if _active_tid else None
+        if _active_tid and _active_key and st.session_state.get(_active_key):
+            st.markdown("---")
+            st.subheader("💬 Live chat — refine & export the tailored resume")
+            st.caption(
+                f"Refining draft `{_active_tid[:8]}…`. Chat to enhance the resume "
+                "inline, then export. Click Close to return to the drafts."
+            )
+            if st.button("Close live chat", key="tail_chat_close"):
+                st.session_state["tail_chat_active_tid"] = None
+                st.rerun()
+            render_chat_panel(
+                st.session_state[_active_key],
+                user_id=st.session_state.current_user_id,
+                state_key=_active_key,
+            )
 
     # ── Diagnostics — collapsed by default to keep the action surfaces above ──
     st.markdown("---")

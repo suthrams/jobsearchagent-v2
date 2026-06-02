@@ -18,6 +18,7 @@ import logging
 
 import json
 import os
+import uuid
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Response
@@ -44,8 +45,18 @@ from app.services.resume_text_renderer import (
     render as render_export,
 )
 from app.services.role_data import NullRoleDataProvider
+from app.services.tailoring_chat_seed import tailored_draft_to_overhaul
 from app.workflows.limits import MAX_CHAT_TURNS_PER_CLINIC
 from app.workflows.workflow_graph import WorkflowDependencies
+
+# ADR-072: placeholder quality scorecard for a tailoring-chat session. A session
+# seeded from a job's tailored draft has no clinic quality review; the chat panel
+# (refine + export) does not render the scorecard, so this is never shown. The
+# review_json column is NOT NULL, so a minimal valid ResumeQuality is required.
+_TAILORING_CHAT_QUALITY = {
+    "dimensions": [],
+    "overall_summary": "Seeded from the job's tailored resume. Refine via chat and export.",
+}
 
 
 def _resolved_max_chat_turns() -> int:
@@ -225,6 +236,82 @@ def run_resume_clinic(
         ) from exc
 
     return _serialize_row(row)
+
+
+@router.post("/tailorings/{tailoring_id}/chat-session", status_code=200,
+             response_model=ResumeClinicResponse)
+def open_tailoring_chat_session(
+    tailoring_id: str,
+    deps: WorkflowDependencies = Depends(get_deps),
+) -> ResumeClinicResponse:
+    """ADR-072: open a live-chat session seeded from a job's tailored draft.
+
+    Reuses the clinic chat + export stack. The session is a resume_clinic_reviews
+    row tagged with the originating job-search run (source_workflow_run_id) + job_id
+    so it lists under the job, not the clinic. Create-or-reuse: a second call for
+    the same (run, job) returns the existing session so reopening preserves chat
+    edits. The seed is the clicked draft's human edit (edited_json) if present, else
+    the agent draft (tailored_json), converted to a clinic overhaul by
+    tailored_draft_to_overhaul (deterministic, no LLM).
+    """
+    t = deps.tailoring_repo.get_by_id(tailoring_id)
+    if t is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "tailoring_not_found",
+                "message": f"Tailoring {tailoring_id!r} not found.",
+                "tailoring_id": tailoring_id,
+            },
+        )
+    job_id = t.get("job_id")
+    resume_id = t.get("resume_id")
+    source_run = t.get("workflow_run_id")
+
+    # Reuse an existing session for this (run, job) so reopening keeps chat edits.
+    existing = deps.resume_clinic_repo.list_by_job(source_run, job_id)
+    if existing:
+        return _serialize_row(existing[0])
+
+    resume = deps.resume_repo.get_by_id(resume_id)
+    if resume is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "resume_not_found",
+                "message": f"Resume {resume_id!r} for tailoring {tailoring_id!r} not found.",
+                "tailoring_id": tailoring_id,
+            },
+        )
+    user_id = str(resume.get("user_id") or "0")
+
+    # Seed from the clicked draft (Q1: edited_json if human-edited, else agent draft).
+    draft = t.get("edited") or t.get("tailored") or {}
+    overhaul = tailored_draft_to_overhaul(draft).model_dump()
+
+    clinic_id = str(uuid.uuid4())
+    cost_run_id = str(uuid.uuid4())
+    # Cost-correlation run row (mirrors run_clinic): correlates chat + fidelity
+    # llm_calls for the session-cost meter and the per-profile Cost Dashboard.
+    deps.workflow_repo.create(cost_run_id, "resume_clinic", {
+        "status": "completed",
+        "current_step": "tailoring_chat",
+        "user_id": user_id,
+        "resume_id": resume_id,
+    })
+    deps.resume_clinic_repo.create(
+        clinic_id, user_id, resume_id,
+        workflow_run_id=cost_run_id,
+        target_role=None, target_track=None, seniority_aware=False,
+        review=dict(_TAILORING_CHAT_QUALITY),
+        alignment=None,
+        overhaul=overhaul,
+        fidelity_review=None,
+        source_workflow_run_id=source_run,
+        job_id=job_id,
+    )
+    row = deps.resume_clinic_repo.get_by_id(clinic_id)
+    return _serialize_row(row or {})
 
 
 @router.get("/users/{user_id}/resume-clinic", response_model=ResumeClinicListResponse)
