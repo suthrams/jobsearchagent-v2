@@ -195,7 +195,7 @@ app/
                        in views/__init__.py, add its name to nav.NAV_ITEMS.
 
 docs/architecture/
-  adr/              ← 71 Architecture Decision Records (start at ADR-000-index.md)
+  adr/              ← 72 Architecture Decision Records (start at ADR-000-index.md)
   implementation_plan.md
   agent_model.md · workflow_model.md · state_and_memory_model.md
   data_model.md · observability.md · security.model.md
@@ -233,7 +233,7 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 - `api_reference.md` — REST contracts (URLs, status codes, error envelope)
 - `api_surface_overview.md` — one-page visual map (PNG + Mermaid) of every REST endpoint grouped by domain
 - `ui_architecture.md` — how the Streamlit UI is built: the thin entrypoint + views package, navigation, the read-path (`db_reader`) vs control-path (`api_client`) split, and Mermaid sequence diagrams for the key UI-to-backend flows. Companion: `ui_refactor_plan.md` (how it got that shape)
-- `adr/` — 71 Architecture Decision Records
+- `adr/` — 72 Architecture Decision Records
 
 ---
 

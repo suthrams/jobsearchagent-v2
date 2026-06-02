@@ -298,7 +298,7 @@ Each phase has a dedicated deep-dive document:
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
 | docs/ top-level | 9 |
 | docs/architecture/ | 17 |
-| docs/architecture/adr/ | 72 (index + 71 ADRs) |
+| docs/architecture/adr/ | 73 (index + 72 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/agents/ | 3 |
 | docs/claude/ | 3 |
