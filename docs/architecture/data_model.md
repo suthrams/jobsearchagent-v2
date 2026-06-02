@@ -124,7 +124,7 @@ CREATE TABLE workflow_runs (
 | Column            | Type    | Description |
 |-------------------|---------|-------------|
 | `id`              | TEXT PK | UUID; the workflow_id used everywhere as `workflow_run_id`. |
-| `workflow_type`   | TEXT    | e.g. `"full_career_review"`. Reserved for future workflow types. |
+| `workflow_type`   | TEXT    | The graph run type (e.g. `"full_career_review"`), plus lightweight cost-attribution correlation rows for out-of-graph work: `"resume_clinic"` (ADR-066) and `"resume_upload"` (ADR-074 minor — attributes the upload-time parse LLM call to the profile). |
 | `status`          | TEXT    | `running` \| `waiting_for_user` \| `completed` \| `completed_with_errors` \| `failed`. |
 | `current_step`    | TEXT    | Name of the most recently entered LangGraph node. Drives the History "Stage" column. |
 | `state_json`      | TEXT    | Serialized `WorkflowState` — the entire run snapshot, restorable. |

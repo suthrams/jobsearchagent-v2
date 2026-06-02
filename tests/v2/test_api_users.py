@@ -7,6 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import get_deps, get_user_repo
+from app.repositories.workflow_repository import WorkflowRepository
 from app.api.main import app
 from app.repositories.database import init_db
 from app.repositories.user_repository import UserRepository
@@ -103,7 +104,7 @@ class _FakeParser:
 
     def parse_pdf(self, file_path, file_name, workflow_id=None, user_id="0"):
         self.calls.append({"file_path": file_path, "file_name": file_name,
-                            "user_id": user_id})
+                            "user_id": user_id, "workflow_id": workflow_id})
         return SimpleNamespace(resume_id="resume-xyz", file_name=file_name,
                                name="Jane Candidate")
 
@@ -114,7 +115,8 @@ def client_with_parser(tmp_path):
     init_db(db_path)
     parser = _FakeParser()
     app.dependency_overrides[get_user_repo] = lambda: UserRepository(db_path)
-    app.dependency_overrides[get_deps] = lambda: SimpleNamespace(resume_parser=parser)
+    app.dependency_overrides[get_deps] = lambda: SimpleNamespace(
+        resume_parser=parser, workflow_repo=WorkflowRepository(db_path))
     with TestClient(app) as c:
         yield c, parser
     app.dependency_overrides.clear()
@@ -134,6 +136,11 @@ def test_upload_resume_parses_scoped_to_user(client_with_parser):
     # The parser was told the resume belongs to profile "1".
     assert parser.calls[0]["user_id"] == "1"
     assert parser.calls[0]["file_name"] == "cv.pdf"
+    # ADR-074 minor: the parse is attributed to a resume_upload correlation run
+    # (a workflow_id is passed) so its LLM cost is visible + profile-scoped rather
+    # than an orphan COALESCEd to "0".
+    assert parser.calls[0]["workflow_id"], "parse_pdf must receive a correlation workflow_id"
+
 
 
 def test_upload_resume_unknown_user_404(client_with_parser):
@@ -155,7 +162,8 @@ def test_upload_resume_parse_failure_422(tmp_path):
             raise ValueError("bad pdf")
 
     app.dependency_overrides[get_user_repo] = lambda: UserRepository(db_path)
-    app.dependency_overrides[get_deps] = lambda: SimpleNamespace(resume_parser=_Boom())
+    app.dependency_overrides[get_deps] = lambda: SimpleNamespace(
+        resume_parser=_Boom(), workflow_repo=WorkflowRepository(db_path))
     try:
         with TestClient(app) as c:
             resp = c.post(

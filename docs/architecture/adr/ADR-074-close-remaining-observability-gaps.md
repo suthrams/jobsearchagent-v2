@@ -9,7 +9,9 @@ ADR or spin out its own if it grows a real contract.
 **Progress:** Gaps 1-5 all **implemented** 2026-06-02 — Gap 1 (`human_decisions`),
 Gap 2 (`step_executions`), Gap 3 (out-of-graph run rollup), Gap 4 (thread-local
 `last_call_usage` removed from the scraper), and Gap 5 (API-request observability,
-added after the security-events audit). Only the two documented minors remain.
+added after the security-events audit). Both documented minors (resume-upload
+cost attribution; observability.md surface drift) are also resolved — **ADR-074 is
+fully closed**.
 
 Follows ADR-073 (which wired the first dead audit table, `security_events`) and
 implements ADR-023 (Make Observability First-Class). Touches ADR-059 / Article 8
@@ -142,16 +144,21 @@ request handling never breaks on an audit failure. Read via
 latency, error rate, by-endpoint), surfaced as an **API** section on the System
 Dashboard, profile-scoped like the rest. Retention: `observability_days` (30).
 
-### Minor (documented, not scheduled)
+### Minor [BOTH IMPLEMENTED]
 
 - **Ad-hoc resume-upload parse cost is unattributed** — `ResumeParser.parse_pdf`
-  with `workflow_id=None` (upload path) logs no run-linked `llm_call`. Attribute it
-  to a lightweight correlation run (like the clinic) if upload cost needs to be
-  visible.
-- **`observability.md` documents 7 methods that do not exist**
+  with `workflow_id=None` (upload path) logged no run-linked `llm_call`. *Fixed:*
+  `POST /users/{id}/resume` now creates a lightweight `workflow_type="resume_upload"`
+  correlation `workflow_runs` row (same pattern as the Resume Clinic, ADR-066) and
+  passes its id to `parse_pdf`, so the parse LLM call is attributed to that run +
+  profile instead of COALESCEing to user `"0"`. (A cache hit writes no `llm_call`,
+  so the row is simply unused then.)
+- **`observability.md` documented 7 methods that do not exist**
   (`log_state_transition`, `log_tool_event`, `log_error`, `log_review_round`,
-  `update_workflow_status`, `complete_workflow`, `fail_workflow`) — doc/impl drift;
-  correct the doc to the real surface.
+  `update_workflow_status`, `complete_workflow`, `fail_workflow`). *Fixed:* the
+  Section 19 "Observability Service" surface was rewritten to the real API
+  (agent/step/llm/decision/security methods + the module-level never-crash helpers)
+  with an explicit note that those 7 were proposed but never built.
 
 ## Options considered
 

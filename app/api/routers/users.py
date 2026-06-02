@@ -13,6 +13,7 @@ from __future__ import annotations
 import logging
 import os
 import tempfile
+import uuid
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
@@ -121,12 +122,24 @@ def upload_resume(
     filename = file.filename or "resume.pdf"
     suffix = Path(filename).suffix or ".pdf"
     tmp_path: str | None = None
+    # ADR-074 minor: attribute the parse LLM call to a lightweight correlation
+    # run (same pattern as the Resume Clinic, ADR-066) so its cost is visible in
+    # the System Dashboard scoped to this profile, instead of an orphaned call
+    # that COALESCEs to user "0". A cache hit writes no llm_call, so the row is
+    # simply unused then.
+    correlation_run_id = str(uuid.uuid4())
+    deps.workflow_repo.create(
+        correlation_run_id, "resume_upload",
+        {"status": "completed", "current_step": "resume_upload",
+         "user_id": str(user_id)},
+    )
     try:
         with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as tmp:
             tmp.write(file.file.read())
             tmp_path = tmp.name
         profile = deps.resume_parser.parse_pdf(
             tmp_path, file_name=filename, user_id=str(user_id),
+            workflow_id=correlation_run_id,
         )
     except Exception as exc:
         logger.exception("upload_resume failed for user_id=%s", user_id)

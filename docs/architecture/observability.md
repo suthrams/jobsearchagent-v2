@@ -661,24 +661,47 @@ Create a service:
 app/services/observability_service.py
 ```
 
-Recommended methods:
+Actual surface (as implemented — this section previously listed an aspirational
+set; corrected here to the real API, ADR-074 minor):
 
 ```python
-start_workflow(...)
-update_workflow_status(...)
-log_state_transition(...)
-log_agent_event(...)
-log_tool_event(...)
+# Agent lifecycle (one started -> completed|failed per agent call)
+log_agent_started(...) -> event_id
+log_agent_completed(...)
+log_agent_failed(...)
+# LLM calls
 log_llm_call(...)
-log_review_round(...)
+# Step transitions (node-level; wired ADR-074 Gap 2)
+log_step_started(...) -> step_execution_id
+log_step_completed(...)
+log_step_failed(...)
+# Human decisions (wired ADR-074 Gap 1)
 log_human_decision(...)
+# Security events (wired ADR-073)
 log_security_event(...)
-log_error(...)
-complete_workflow(...)
-fail_workflow(...)
+# Run metrics
+init_run_metrics(...)
+finalize_run_metrics(...)
+get_llm_calls_by_run(...)
+compute_run_totals_from_llm_calls(...)
 ```
 
-The workflow orchestrator should call this service consistently.
+Module-level helpers in the same file, for call sites that have no injected
+service instance (all never-crash):
+
+```python
+emit_security_event_safe(...)        # ADR-073 (config/kickoff cost-cap)
+record_api_request_safe(...)         # ADR-074 Gap 5 (HTTP middleware)
+log_artifact_decision(...)           # ADR-074 Gap 1 (decision endpoints)
+fidelity_review_security_description(...)  # PII-safe description builder
+```
+
+There is no `start_workflow` / `update_workflow_status` / `log_state_transition`
+/ `log_tool_event` / `log_review_round` / `log_error` / `complete_workflow` /
+`fail_workflow` method — those were proposed in the original design but never
+built. Workflow lifecycle is handled by the `register_run` / `generate_report`
+nodes writing `workflow_runs` directly; review rounds persist via
+`ReviewRepository`. The workflow orchestrator calls this service consistently.
 
 > **`log_security_event` is wired (ADR-073).** Four deterministic emit sites
 > (SSRF block, PII redaction, Fidelity reject/unsupported claim, cost-cap

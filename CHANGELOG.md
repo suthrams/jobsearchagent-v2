@@ -6,6 +6,20 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-02
 
+### Changed — ADR-074 minors: resume-upload cost attribution + doc surface
+
+Closes the last two items in ADR-074 (now fully closed).
+
+- **Resume-upload parse cost** is no longer unattributed: `POST /users/{id}/resume`
+  creates a lightweight `workflow_type="resume_upload"` correlation `workflow_runs`
+  row and passes its id to `parse_pdf`, so the parse LLM call is attributed to the
+  acting profile (not COALESCEd to user `"0"`) — same correlation-row pattern as
+  the Resume Clinic. A cache hit writes no `llm_call`, leaving the row unused.
+- **`observability.md` Section 19** rewritten to the real `ObservabilityService`
+  surface (agent/step/llm/decision/security methods + the module-level never-crash
+  helpers), replacing 7 proposed-but-never-built method names.
+- Also: fixed `test_api_users.py` stubs to supply `workflow_repo`.
+
 ### Changed — out-of-graph run rollup + scraper cost race (ADR-074 Gaps 3-4)
 
 Closes the last two functional gaps in ADR-074 (only the documented minors
