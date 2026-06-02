@@ -16,12 +16,21 @@ from pathlib import Path
 VIEWS_DIR = Path(__file__).resolve().parents[2] / "app" / "ui" / "views"
 
 # Views NOT yet migrated to the API read path (ADR-075). Each is removed as its
-# phase lands; empty at Phase 9. Phase 1 migrated `history`, so it is NOT here.
+# phase lands; empty at Phase 9. Only system_dashboard remains — it still imports
+# the DB-reading aggregators (system_health / cost_breakdown) until Phase 7.
 _ALLOWLIST = {
-    "workflow_detail",   # Phase 6
+    "system_dashboard",  # Phase 7
 }
 
-_DIRECT_DB = re.compile(r"\b(import\s+sqlite3|from\s+app\.ui\.db_reader|import\s+app\.ui\.db_reader|from\s+app\.ui\s+import\s+db_reader)\b")
+# A migrated view must not open the DB directly: not via db_reader/sqlite3, and not
+# via the DB-reading aggregator services (cost_breakdown / system_health). Pure
+# helpers that operate on already-fetched data (e.g. constraint_analyzer on the
+# state dict) are fine and not matched here.
+_DIRECT_DB = re.compile(
+    r"\b(import\s+sqlite3"
+    r"|from\s+app\.ui\.db_reader|import\s+app\.ui\.db_reader|from\s+app\.ui\s+import\s+db_reader"
+    r"|from\s+app\.services\.cost_breakdown|from\s+app\.services\.system_health"
+    r"|from\s+app\.services\s+import\s+system_health)\b")
 
 
 def _direct_db_imports(path: Path) -> list[str]:

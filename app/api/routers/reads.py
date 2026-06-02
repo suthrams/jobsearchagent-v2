@@ -14,6 +14,8 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 
 from app.api.schemas.responses import DictList
+from app.services import system_health as _sh
+from app.services.cost_breakdown import compute_breakdown as _compute_breakdown
 from app.services.reads import workflow_reads as wr
 
 router = APIRouter(prefix="/workflows", tags=["reads"])
@@ -61,6 +63,18 @@ def llm_calls(workflow_id: str) -> DictList:
 def job_pipeline(workflow_id: str, job_id: str) -> dict:
     """All persisted outputs for one (run, job) pair — the Job Detail drill-down."""
     return wr.get_job_pipeline(workflow_id, job_id)
+
+
+@router.get("/{workflow_id}/cost-breakdown")
+def cost_breakdown(workflow_id: str) -> dict:
+    """Per-agent cost rollup for a run (Workflow Detail). {rows, aggregate}."""
+    return _compute_breakdown(workflow_id)
+
+
+@router.get("/{workflow_id}/run-metrics")
+def run_metrics(workflow_id: str) -> dict:
+    """Per-run rollup incl. wall-clock duration (ADR-074 Gap 3)."""
+    return _sh.run_metrics_rollup(workflow_id)
 
 
 @router.get("/{workflow_id}/detail")

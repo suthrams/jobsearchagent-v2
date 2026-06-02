@@ -144,6 +144,23 @@ def _cached_workflow_detail(workflow_id: str) -> dict | None:
         return None
 
 
+@st.cache_data(ttl=10)
+def _cached_cost_breakdown(workflow_id: str) -> dict:
+    try:
+        return api.get_cost_breakdown(workflow_id)
+    except Exception:
+        return {"rows": [], "aggregate": {}}
+
+
+@st.cache_data(ttl=10)
+def _cached_run_metrics(workflow_id: str) -> dict:
+    try:
+        return api.get_run_metrics(workflow_id)
+    except Exception:
+        return {"calls": 0, "tokens_input": 0, "tokens_output": 0, "cost_usd": 0.0,
+                "duration_ms": 0, "started_at": None, "completed_at": None, "computed": True}
+
+
 def _get_config_cached() -> dict:
     """Pull config once per render and stash on session_state to avoid extra HTTP calls."""
     if st.session_state.config_cache is None:

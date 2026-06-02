@@ -276,6 +276,14 @@ def get_workflow_detail(workflow_id: str) -> dict | None:
         raise
 
 
+def get_cost_breakdown(workflow_id: str) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/cost-breakdown")
+
+
+def get_run_metrics(workflow_id: str) -> dict:
+    return _get_json(f"/workflows/{workflow_id}/run-metrics")
+
+
 # ── On-demand resume tailoring ───────────────────────────────────────────────
 
 # Sized for the v5 tailoring prompts (ADR-056). Observed median latency for

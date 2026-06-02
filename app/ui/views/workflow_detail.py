@@ -14,17 +14,17 @@ import plotly.express as px
 import streamlit as st
 
 import app.ui.api_client as api
-from app.services import system_health as sh
 from app.services.constraint_analyzer import analyze, summary_metrics
-from app.services.cost_breakdown import compute_breakdown
 from app.ui.components.resume_chat_panel import render_chat_panel
 from app.ui.components.tailoring import _render_tailoring_card
-from app.ui.data import _cached_list_tailorings
-from app.ui.db_reader import (
-    load_deep_review_results,
-    load_interview_prep,
-    load_workflow_jobs,
-    load_workflow_run,
+from app.ui.data import (
+    _cached_cost_breakdown,
+    _cached_deep_review_results,
+    _cached_interview_prep,
+    _cached_list_tailorings,
+    _cached_run_metrics,
+    _cached_workflow_detail,
+    _cached_workflow_jobs,
 )
 from app.ui.formatting import _checked, _fmt_ts
 from app.ui.nav import ViewContext, _navigate
@@ -51,7 +51,7 @@ def render(ctx: ViewContext) -> None:
         st.stop()
     st.session_state.detail_workflow_id = wf_id
 
-    record = load_workflow_run(wf_id)
+    record = _cached_workflow_detail(wf_id)
     state = (record or {}).get("state") or {}
     status = (record or {}).get("status", "unknown")
 
@@ -126,7 +126,7 @@ def render(ctx: ViewContext) -> None:
     st.caption("What came back from the search and how each job scored across the three career tracks. "
                "Jobs whose best track score meets your threshold automatically advance to deep review.")
 
-    jobs_df = load_workflow_jobs(wf_id)
+    jobs_df = _cached_workflow_jobs(wf_id)
     if jobs_df.empty:
         st.info("No scored jobs yet for this run.")
     else:
@@ -237,7 +237,7 @@ def render(ctx: ViewContext) -> None:
                       detail_job_id=_options[_label])
 
     # ── Review — deep critic + career advice (per job) ────────────────────────
-    rev_df = load_deep_review_results(wf_id)
+    rev_df = _cached_deep_review_results(wf_id)
     if not rev_df.empty:
         st.markdown("---")
         st.subheader("📋 Review — deep analysis & career guidance")
@@ -297,7 +297,7 @@ def render(ctx: ViewContext) -> None:
                     st.markdown(f"**Recommended:** {row['recommended_next_action']}")
 
     # ── Prep — interview readiness ────────────────────────────────────────────
-    prep_df = load_interview_prep(wf_id)
+    prep_df = _cached_interview_prep(wf_id)
     if not prep_df.empty:
         st.markdown("---")
         st.subheader("✨ Prep — interview readiness")
@@ -503,7 +503,7 @@ def render(ctx: ViewContext) -> None:
     cfg_used = state.get("effective_config") or {}
     sc = state.get("search_criteria") or {}
     cc = state.get("custom_urls") or []
-    breakdown = compute_breakdown(wf_id)
+    breakdown = _cached_cost_breakdown(wf_id)
     findings = analyze(state)
     errors = state.get("errors") or []
 
@@ -526,7 +526,7 @@ def render(ctx: ViewContext) -> None:
     # ADR-074 Gap 3: per-run rollup incl. wall-clock duration, available for any
     # run (in-graph runs have a run_metrics row; out-of-graph runs are computed
     # lazily from llm_calls). `computed` marks the derived path.
-    rollup = sh.run_metrics_rollup(wf_id)
+    rollup = _cached_run_metrics(wf_id)
     if rollup["calls"] or rollup["duration_ms"]:
         src = "computed from llm_calls" if rollup["computed"] else "from run_metrics"
         st.caption(
