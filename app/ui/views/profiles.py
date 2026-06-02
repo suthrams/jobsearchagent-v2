@@ -9,8 +9,7 @@ import pandas as pd
 import streamlit as st
 
 import app.ui.api_client as api
-from app.ui.data import _cached_list_users
-from app.ui.db_reader import load_user_resumes
+from app.ui.data import _cached_list_users, _cached_user_resumes
 from app.ui.formatting import _fmt_ts
 from app.ui.nav import ViewContext
 
@@ -93,7 +92,7 @@ def render(ctx: ViewContext) -> None:
                 "Profile", list(_opts.keys()),
                 format_func=lambda i: _opts.get(i, i), key="del_resume_profile",
             )
-            _dprof_resumes = load_user_resumes(_dprof)
+            _dprof_resumes = pd.DataFrame(_cached_user_resumes(_dprof).get("items") or [])
             if _dprof_resumes.empty:
                 st.info("This profile has no resumes to delete.")
             else:
@@ -219,7 +218,7 @@ def render(ctx: ViewContext) -> None:
                 try:
                     api.set_user_id(str(new_uid))
                     role_list = [r.strip() for r in roles.split(",") if r.strip()]
-                    loc_list = [l.strip() for l in locations.splitlines() if l.strip()]
+                    loc_list = [ln.strip() for ln in locations.splitlines() if ln.strip()]
                     if role_list:
                         api.put_config("search.titles", role_list)
                     if loc_list:

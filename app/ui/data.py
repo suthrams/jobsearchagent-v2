@@ -59,6 +59,16 @@ def _cached_workflow_runs(user_id: str | None, limit: int = 50) -> dict:
         return {"items": [], "total": 0, "limit": limit, "offset": 0}
 
 
+@st.cache_data(ttl=10)
+def _cached_user_resumes(user_id: str | None) -> dict:
+    """A profile's resumes via the API (ADR-075 Phase 2). Degrades to an empty
+    page when the backend is unavailable so the picker views never crash."""
+    try:
+        return api.list_user_resumes(user_id)
+    except Exception:
+        return {"items": [], "total": 0, "limit": 0, "offset": 0}
+
+
 def _get_config_cached() -> dict:
     """Pull config once per render and stash on session_state to avoid extra HTTP calls."""
     if st.session_state.config_cache is None:

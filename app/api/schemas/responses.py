@@ -45,6 +45,23 @@ class WorkflowRunList(BaseModel):
     offset: int
 
 
+class ResumeRow(BaseModel):
+    """One resume for the profile picker (ADR-075 Phase 2)."""
+    resume_id: str
+    file_name: str | None = None
+    is_active: int | None = 0
+    version: int | None = None
+    created_at: str | None = None
+
+
+class ResumeList(BaseModel):
+    """A profile's resumes (unpaged; the §B.1 envelope for shape consistency)."""
+    items: list[ResumeRow]
+    total: int
+    limit: int
+    offset: int
+
+
 class WorkflowStatusResponse(BaseModel):
     workflow_id: str
     status: str  # running | completed | failed

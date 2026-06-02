@@ -208,6 +208,14 @@ def list_workflow_runs(limit: int = 50, offset: int = 0,
     return r.json()
 
 
+def list_user_resumes(user_id: int | str) -> dict:
+    """A profile's resumes (ADR-075 Phase 2). Path-scoped; returns the
+    {items, total, limit, offset} envelope."""
+    r = httpx.get(f"{BASE_URL}/users/{user_id}/resumes", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json()
+
+
 # ── On-demand resume tailoring ───────────────────────────────────────────────
 
 # Sized for the v5 tailoring prompts (ADR-056). Observed median latency for

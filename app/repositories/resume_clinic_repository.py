@@ -62,10 +62,18 @@ class ResumeClinicRepository:
         return self._row_to_dict(row)
 
     def list_by_user(self, user_id: str) -> list[dict]:
+        """Plain-clinic past runs for a profile, newest first.
+
+        Excludes tailoring-chat sessions (job_id NOT NULL, ADR-072) — those belong
+        under their scored job (list_by_job), not the job-agnostic clinic panel.
+        This matches the UI read it backs; ADR-075 Phase 2 reuses this endpoint for
+        the clinic past-runs list, replacing db_reader.load_user_clinic_reviews
+        (which already applied this filter).
+        """
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
                 """SELECT * FROM resume_clinic_reviews
-                   WHERE user_id = ?
+                   WHERE user_id = ? AND job_id IS NULL
                    ORDER BY created_at DESC""",
                 (user_id,),
             ).fetchall()

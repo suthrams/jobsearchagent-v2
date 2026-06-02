@@ -21,9 +21,6 @@ _ALLOWLIST = {
     "workflow_detail",   # Phase 6
     "job_detail",        # Phase 4
     "analytics",         # Phase 3
-    "profiles",          # Phase 2 (load_user_resumes)
-    "resume_clinic",     # Phase 2 (load_user_resumes / load_user_clinic_reviews)
-    "start_run",         # Phase 2 (load_user_resumes)
     "live_monitor",      # Phase 5
 }
 

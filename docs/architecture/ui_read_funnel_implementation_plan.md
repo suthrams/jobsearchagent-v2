@@ -1,10 +1,14 @@
 # UI Read Funnel — Implementation Plan
 
-> **Progress:** Phase 0 (foundation) + Phase 1 (Workflow History) shipped
-> 2026-06-02. The Phase-1 latency gate **passed**: `GET /workflows` measured
-> ~24-29 ms (p95 ~26 ms) locally on real data, far under the ~400 ms bar, and the
-> read now appears in `api_requests` (the blind spot it was bypassing). Funnel
-> confirmed viable — Phases 2-9 cleared to proceed.
+> **Progress:** Phases 0-2 shipped 2026-06-02.
+> - **Phase 0** (foundation) + **Phase 1** (Workflow History) — the latency gate
+>   passed: `GET /workflows` ~26 ms p95 locally, far under the ~400 ms bar, and the
+>   read now appears in `api_requests` (the blind spot it was bypassing). Funnel
+>   confirmed viable.
+> - **Phase 2** (user reads) — `GET /users/{id}/resumes` (~10 ms) replaces
+>   `load_user_resumes` across Profiles / Start New Run / Resume Clinic; the clinic
+>   past-runs panel reuses `GET /users/{id}/resume-clinic` (its repo read aligned
+>   to exclude tailoring-chat sessions, ADR-072). Guard allowlist down to 4 views.
 >
 > Companion to [ADR-075](adr/ADR-075-funnel-ui-reads-through-api.md). The ADR
 > records the decision + conventions (placement, paging/filtering/sorting, shapes,

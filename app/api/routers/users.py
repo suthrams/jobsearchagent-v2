@@ -20,7 +20,9 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_deps, get_user_repo
+from app.api.schemas.responses import ResumeList
 from app.repositories.user_repository import UserRepository
+from app.services.reads.user_reads import list_user_resumes
 from app.workflows.workflow_graph import WorkflowDependencies
 
 logger = logging.getLogger(__name__)
@@ -45,6 +47,14 @@ class UpdateUserRequest(BaseModel):
 def list_users(repo: UserRepository = Depends(get_user_repo)) -> dict:
     """All profiles, default user (id 0) first. Backs the UI profile selector."""
     return {"users": repo.list_all()}
+
+
+@router.get("/{user_id}/resumes", response_model=ResumeList)
+def list_user_resumes_endpoint(user_id: int) -> ResumeList:
+    """A profile's resumes, active first then newest (ADR-075 Phase 2). Path-scoped
+    to the profile, matching the users-router convention. Returns the §B.1
+    envelope (unpaged — a profile has few resumes)."""
+    return ResumeList(**list_user_resumes(str(user_id)))
 
 
 @router.post("", status_code=201)

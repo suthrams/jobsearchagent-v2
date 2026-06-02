@@ -6,6 +6,24 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-02
 
+### Added — UI read funnel Phase 2: user reads (ADR-075)
+
+Routes the profile resume/clinic reads through the API.
+
+- `services/reads/user_reads.list_user_resumes` -> `GET /users/{id}/resumes`
+  (typed `ResumeList` envelope, path-scoped, ~10 ms live) +
+  `api_client.list_user_resumes` + `data._cached_user_resumes` (resilient).
+- Swapped `load_user_resumes` off `db_reader` in Profiles, Start New Run, and
+  Resume Clinic (Start New Run / Resume Clinic now use plain list-of-dicts, no
+  pandas dependency for the picker).
+- Clinic past-runs panel now reuses the existing `GET /users/{id}/resume-clinic`;
+  its repo read (`list_by_user`) is aligned to exclude tailoring-chat sessions
+  (`job_id IS NULL`, ADR-072) so it matches the panel semantics
+  `load_user_clinic_reviews` had — which is now retired from the view.
+- Guard allowlist (`test_ui_no_direct_db`) shrinks from 7 to 4 views.
+- Tests: `test_reads_users.py` (4: service ordering/scoping + endpoint contract +
+  clinic-panel job-anchored exclusion). Suite 848 -> 852; ruff clean; UI smoke 15/15.
+
 ### Added — UI read funnel Phase 0 + 1 (ADR-075)
 
 First slice of routing UI reads through the API instead of opening SQLite

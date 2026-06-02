@@ -10,8 +10,7 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.ui.components.resume_chat_panel import render_chat_panel
-from app.ui.data import _get_config_cached
-from app.ui.db_reader import load_user_clinic_reviews, load_user_resumes
+from app.ui.data import _cached_user_resumes, _get_config_cached
 from app.ui.formatting import _fmt_ts
 from app.ui.nav import ViewContext
 
@@ -26,24 +25,24 @@ def render(ctx: ViewContext) -> None:
     user_id = st.session_state.current_user_id
 
     # ── Resume picker (active resume preselected) ────────────────────────────
-    resumes_df = load_user_resumes(user_id)
-    if resumes_df.empty:
+    # ADR-075 Phase 2: resumes via the API (GET /users/{id}/resumes) as a list of
+    # dicts (active first), instead of db_reader.load_user_resumes.
+    resumes = _cached_user_resumes(user_id).get("items") or []
+    if not resumes:
         st.warning(
             "No resumes found for this profile. Upload one in Profiles, then return here."
         )
         st.stop()
 
     resume_label_by_id: dict[str, str] = {}
-    for _, _row in resumes_df.iterrows():
+    for _row in resumes:
         _flag = " (active)" if int(_row.get("is_active") or 0) else ""
         resume_label_by_id[str(_row["resume_id"])] = (
             f"{_row.get('file_name') or _row['resume_id']}  ·  v{_row.get('version') or '?'}{_flag}"
         )
 
-    active_row = resumes_df[resumes_df["is_active"] == 1].head(1)
-    default_resume_id = str(active_row.iloc[0]["resume_id"]) if not active_row.empty else str(
-        resumes_df.iloc[0]["resume_id"]
-    )
+    _active = next((r for r in resumes if int(r.get("is_active") or 0)), None)
+    default_resume_id = str((_active or resumes[0])["resume_id"])
 
     rc_form_col, rc_results_col = st.columns([1, 2])
     with rc_form_col:
@@ -275,14 +274,16 @@ def render(ctx: ViewContext) -> None:
     # ── Past runs ────────────────────────────────────────────────────────────
     st.markdown("---")
     st.subheader("Past clinic runs")
+    # ADR-075 Phase 2: reuse GET /users/{id}/resume-clinic (list_by_user, now
+    # filtered to job_id IS NULL per ADR-072) instead of db_reader.
     try:
-        past = load_user_clinic_reviews(user_id)
+        past = api.list_resume_clinic_runs(user_id).get("reviews") or []
     except Exception:
-        past = None
-    if past is None or past.empty:
+        past = []
+    if not past:
         st.caption("No past clinic runs for this profile yet.")
     else:
-        for _, _row in past.iterrows():
+        for _row in past:
             _label_bits = [
                 _fmt_ts(_row.get("created_at")),
                 _row.get("target_role") or "no target",

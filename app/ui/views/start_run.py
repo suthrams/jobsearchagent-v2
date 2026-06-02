@@ -9,8 +9,7 @@ from __future__ import annotations
 import streamlit as st
 
 import app.ui.api_client as api
-from app.ui.data import _get_config_cached
-from app.ui.db_reader import load_user_resumes
+from app.ui.data import _cached_user_resumes, _get_config_cached
 from app.ui.nav import ViewContext
 
 
@@ -39,13 +38,13 @@ def render(ctx: ViewContext) -> None:
             # ADR-062: pick from this profile's stored resumes instead of typing a
             # raw id. Falls back to a text box if the profile has no resumes yet
             # (e.g. before onboarding step 2) so a run is still possible.
-            _resumes = load_user_resumes(st.session_state.current_user_id)
-            if not _resumes.empty:
-                _rid_options = list(_resumes["resume_id"])
+            _resumes = _cached_user_resumes(st.session_state.current_user_id).get("items") or []
+            if _resumes:
+                _rid_options = [r["resume_id"] for r in _resumes]
                 _rid_labels = {
                     r["resume_id"]: (f"{r['file_name'] or r['resume_id']}"
                                      + ("  ·  active" if r["is_active"] else ""))
-                    for _, r in _resumes.iterrows()
+                    for r in _resumes
                 }
                 resume_id = st.selectbox(
                     "Resume",
@@ -145,7 +144,7 @@ def render(ctx: ViewContext) -> None:
 
         search_criteria = {
             "roles": [r.strip() for r in roles.split(",") if r.strip()],
-            "locations": [l.strip() for l in locations.splitlines() if l.strip()],
+            "locations": [ln.strip() for ln in locations.splitlines() if ln.strip()],
         }
         # ADR-071: the run inherits the profile's active scoring tracks. Validate
         # against the three known names; an empty/invalid set is omitted so the
