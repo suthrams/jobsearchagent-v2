@@ -216,6 +216,17 @@ def list_user_resumes(user_id: int | str) -> dict:
     return r.json()
 
 
+def list_scored_jobs(include_excluded: bool = False) -> dict:
+    """Scored-jobs analytics across the profile's runs (ADR-075 Phase 3)."""
+    r = httpx.get(
+        f"{BASE_URL}/dashboard/scored-jobs",
+        params=_user_params({"include_excluded": include_excluded}),
+        timeout=_TIMEOUT_GET,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # ── On-demand resume tailoring ───────────────────────────────────────────────
 
 # Sized for the v5 tailoring prompts (ADR-056). Observed median latency for

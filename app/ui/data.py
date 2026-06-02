@@ -69,6 +69,16 @@ def _cached_user_resumes(user_id: str | None) -> dict:
         return {"items": [], "total": 0, "limit": 0, "offset": 0}
 
 
+@st.cache_data(ttl=15)
+def _cached_scored_jobs(user_id: str | None, include_excluded: bool = False) -> dict:
+    """Scored-jobs analytics via the API (ADR-075 Phase 3). `user_id` is a cache
+    key. Degrades to an empty page when the backend is unavailable."""
+    try:
+        return api.list_scored_jobs(include_excluded=include_excluded)
+    except Exception:
+        return {"items": [], "total": 0, "limit": 0, "offset": 0}
+
+
 def _get_config_cached() -> dict:
     """Pull config once per render and stash on session_state to avoid extra HTTP calls."""
     if st.session_state.config_cache is None:

@@ -8,15 +8,21 @@ module. Each is a render(ctx) using the sidebar filters carried on ctx
 """
 from __future__ import annotations
 
+import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 from app.ui.components.tracks import render_track_table
-from app.ui.data import _get_config_cached
-from app.ui.db_reader import load_scored_jobs
+from app.ui.data import _cached_scored_jobs, _get_config_cached
 from app.ui.nav import ViewContext
 
 _VALID_TRACKS = ["ic", "architect", "management"]
+
+
+def _scored(ctx: ViewContext) -> pd.DataFrame:
+    """Scored jobs for the active profile via the API (ADR-075 Phase 3)."""
+    page = _cached_scored_jobs(st.session_state.current_user_id, ctx.include_excluded)
+    return pd.DataFrame(page.get("items") or [])
 
 
 def _active_tracks() -> list[str]:
@@ -43,7 +49,7 @@ def _inactive_track_notice(track: str, label: str) -> bool:
 
 def render_top_matches(ctx: ViewContext) -> None:
     st.header("Top Matches (across all runs)")
-    df = load_scored_jobs(include_excluded=ctx.include_excluded, user_id=st.session_state.current_user_id)
+    df = _scored(ctx)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "results will populate this view automatically.")
@@ -66,7 +72,7 @@ def render_ic_track(ctx: ViewContext) -> None:
     st.header("IC Engineering Track")
     if _inactive_track_notice("ic", "IC"):
         return
-    df = load_scored_jobs(include_excluded=ctx.include_excluded, user_id=st.session_state.current_user_id)
+    df = _scored(ctx)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the IC track will appear here.")
@@ -78,7 +84,7 @@ def render_architect_track(ctx: ViewContext) -> None:
     st.header("Architect Track")
     if _inactive_track_notice("architect", "Architect"):
         return
-    df = load_scored_jobs(include_excluded=ctx.include_excluded, user_id=st.session_state.current_user_id)
+    df = _scored(ctx)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the Architect track will appear here.")
@@ -90,7 +96,7 @@ def render_management_track(ctx: ViewContext) -> None:
     st.header("Management Track")
     if _inactive_track_notice("management", "Management"):
         return
-    df = load_scored_jobs(include_excluded=ctx.include_excluded, user_id=st.session_state.current_user_id)
+    df = _scored(ctx)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "jobs scored on the Management track will appear here.")
@@ -100,7 +106,7 @@ def render_management_track(ctx: ViewContext) -> None:
 
 def render_companies(ctx: ViewContext) -> None:
     st.header("Top Target Companies")
-    df = load_scored_jobs(include_excluded=ctx.include_excluded, user_id=st.session_state.current_user_id)
+    df = _scored(ctx)
     if df.empty:
         st.info("No scored jobs yet. Kick off a run from **Start New Run** in the sidebar — "
                 "this view aggregates the best score per company across all runs.")

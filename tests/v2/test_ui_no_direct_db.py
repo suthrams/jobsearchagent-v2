@@ -20,7 +20,6 @@ VIEWS_DIR = Path(__file__).resolve().parents[2] / "app" / "ui" / "views"
 _ALLOWLIST = {
     "workflow_detail",   # Phase 6
     "job_detail",        # Phase 4
-    "analytics",         # Phase 3
     "live_monitor",      # Phase 5
 }
 

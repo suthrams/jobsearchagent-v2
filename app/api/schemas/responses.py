@@ -45,6 +45,17 @@ class WorkflowRunList(BaseModel):
     offset: int
 
 
+class DictList(BaseModel):
+    """Generic list envelope (ADR-075 §B.1) for wide, UI-shaped read rows where a
+    full per-field model adds little (the read-service + its tests are the shape
+    authority). The envelope fields stay typed; `items` are passed through as-is.
+    Used by the analytics + workflow sub-resource + dashboard reads."""
+    items: list[dict]
+    total: int
+    limit: int
+    offset: int
+
+
 class ResumeRow(BaseModel):
     """One resume for the profile picker (ADR-075 Phase 2)."""
     resume_id: str
