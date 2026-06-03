@@ -96,6 +96,12 @@ class BaseAgent(ABC):
                 # on a bare-bones test double provider.
                 pass
 
+            # ADR-078: if the structured output needed a schema-repair pass, record
+            # it as a drift-proxy signal (a rising repair rate flags output-shape
+            # drift). Best-effort; never blocks the result.
+            if getattr(usage, "schema_repairs", 0):
+                self._observability.log_schema_repair(workflow_id, self.AGENT_NAME)
+
             duration_ms = int((time.monotonic() - t0) * 1000)
             self._observability.log_agent_completed(
                 workflow_id, self.AGENT_NAME, event_id,
@@ -131,6 +137,10 @@ class BaseAgent(ABC):
                     )
                 except Exception:
                     pass
+            # ADR-078: a repair-exhausted failure still needed a repair pass — record
+            # the drift signal (the failure is a strong drift indicator).
+            if failed_usage is not None and getattr(failed_usage, "schema_repairs", 0):
+                self._observability.log_schema_repair(workflow_id, self.AGENT_NAME)
             # Convert interpreter-shutdown RuntimeErrors to LLMProviderError so
             # callers that catch LLMProviderError handle this gracefully instead of
             # crashing the whole workflow. This happens when the server is killed

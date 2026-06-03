@@ -748,6 +748,15 @@ api_requests      (HTTP-layer requests; wired ADR-074 Gap 5)
 > call sums both billed attempts. A completeness invariant test
 > (`test_cost_logging_completeness.py`) guards that every LLM-call site logs cost.
 
+> **ADR-078 added the first behavioral-drift proxy:** a structured-output
+> schema-repair pass now emits a `schema_repaired` `agent_events` row (status
+> `repaired`, null duration so it pollutes no latency/failure aggregate), making the
+> per-agent repair rate queryable. A rising rate flags output-shape drift or a
+> provider-side change. Surfaced as "Schema repairs (drift proxy)" in
+> `reliability_summary` + the System Dashboard. This is a Tier-1 proxy (something
+> changed), not semantic-drift detection (meaning changed for a fixed input) — the
+> latter needs a baseline registry and is Article 12's subject.
+
 Optional future table:
 
 ```text

@@ -141,11 +141,16 @@ class ClaudeProvider(LLMClient):
         # ADR-077: the first (parse-failed) attempt was ALSO billed, so carry its
         # usage forward and sum it into the logged total rather than dropping it.
         prior_usage = (0, 0, 0, 0)
+        schema_repairs = 0
         if raw_result.get("parsing_error"):
             prior_usage = self._extract_usage(raw_result)
+            schema_repairs = 1  # ADR-078: a repair pass fired (drift proxy)
             raw_result = self._attempt_schema_repair(
                 chain, messages, raw_result["parsing_error"]
             )
+        # Record per-call so BaseAgent can emit the drift-proxy signal. Set BEFORE
+        # the raise below so an exhausted repair still reports the repair count.
+        self._tlocal.last_schema_repairs = schema_repairs
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
         self._log_call(agent_name, raw_result, elapsed_ms, prior_usage=prior_usage)
@@ -155,7 +160,8 @@ class ClaudeProvider(LLMClient):
             # ADR-077: schema repair exhausted, but this response WAS billed
             # (usage_metadata is present even on parse failure). Attach the usage
             # (final attempt + the first billed attempt) so BaseAgent can log the
-            # otherwise-lost spend on its failure path.
+            # otherwise-lost spend on its failure path. ADR-078: carry the repair
+            # count too, so the drift signal survives the failure path.
             ti, cc, cr, to = self._extract_usage(raw_result)
             ti += prior_usage[0]
             cc += prior_usage[1]
@@ -168,6 +174,7 @@ class ClaudeProvider(LLMClient):
                     cost_usd=self._estimate_cost_with_cache(ti, cc, cr, to),
                     cache_creation_tokens=cc,
                     cache_read_tokens=cr,
+                    schema_repairs=schema_repairs,
                 )
             raise
 
@@ -350,6 +357,12 @@ class ClaudeProvider(LLMClient):
         call in this thread. (0, 0) if no call yet or the call had no cache activity.
         """
         return getattr(self._tlocal, "last_cache_split", (0, 0))
+
+    def last_call_schema_repairs(self) -> int:
+        """Return the number of schema-repair passes the most recent call in this
+        thread needed (ADR-078). 0 if no call yet or the first parse succeeded.
+        """
+        return getattr(self._tlocal, "last_schema_repairs", 0)
 
     def _log_call(
         self, agent_name: str, raw_result: dict, elapsed_ms: int,

@@ -885,7 +885,7 @@ CREATE TABLE agent_events (
 | `id`              | TEXT PK | UUID. |
 | `workflow_run_id` | TEXT    | FK → `workflow_runs.id`. |
 | `agent_name`      | TEXT    | e.g. `"scoring_agent"`, `"resume_critic"`, `"tailoring_agent"`. |
-| `event_type`      | TEXT    | e.g. `"started"`, `"completed"`, `"failed"`, `"unsupported_claim_detected"`. |
+| `event_type`      | TEXT    | e.g. `"started"`, `"completed"`, `"failed"`, `"unsupported_claim_detected"`, `"schema_repaired"` (ADR-078, a structured-output repair pass fired — `status="repaired"`, `duration_ms` NULL so it stays out of latency/failure rollups). |
 | `input_summary`   | TEXT    | Truncated input description (no raw inputs). |
 | `output_summary`  | TEXT    | Truncated output description (no raw chain-of-thought). |
 | `status`          | TEXT    | `"ok"` \| `"error"`. |

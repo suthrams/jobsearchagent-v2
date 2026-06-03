@@ -339,6 +339,47 @@ def test_successful_repair_sums_both_billed_attempts(tmp_path):
     assert tokens_in == 200   # 100 (failed attempt) + 100 (repair)
     assert tokens_out == 40   # 20 + 20
 
+
+def test_clean_call_reports_zero_schema_repairs(tmp_path):
+    """ADR-078: a first-parse-success call reports 0 schema repairs."""
+    mock_model = _make_mock_model(_Score(result="ok", score=1))
+    provider = _make_provider(tmp_path, model=mock_model)
+    _data, usage = provider.complete_with_usage("test_agent", {}, _Score)
+    assert usage.schema_repairs == 0
+    assert provider.last_call_schema_repairs() == 0
+
+
+def test_repaired_call_reports_one_schema_repair(tmp_path):
+    """ADR-078: a call that needed a schema repair reports schema_repairs=1 in the
+    returned usage (the drift-proxy signal)."""
+    ai = AIMessage(content="", usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
+    bad  = {"raw": ai, "parsed": None, "parsing_error": "missing field 'score'"}
+    good = {"raw": ai, "parsed": _Score(result="ok", score=1), "parsing_error": None}
+    chain = MagicMock()
+    chain.invoke.side_effect = [bad, good]
+    mock_model = MagicMock()
+    mock_model.with_structured_output.return_value = chain
+
+    provider = _make_provider(tmp_path, model=mock_model)
+    _data, usage = provider.complete_with_usage("test_agent", {}, _Score)
+    assert usage.schema_repairs == 1
+
+
+def test_repair_exhausted_error_carries_schema_repairs(tmp_path):
+    """ADR-078: the repair count survives the failure path on LLMProviderError.usage."""
+    ai = AIMessage(content="", usage_metadata={"input_tokens": 10, "output_tokens": 5, "total_tokens": 15})
+    bad = {"raw": ai, "parsed": None, "parsing_error": "invalid"}
+    chain = MagicMock()
+    chain.invoke.return_value = bad
+    mock_model = MagicMock()
+    mock_model.with_structured_output.return_value = chain
+
+    provider = _make_provider(tmp_path, model=mock_model)
+    with pytest.raises(LLMProviderError) as ei:
+        provider.complete("test_agent", {}, _Score)
+    assert ei.value.usage is not None
+    assert ei.value.usage.schema_repairs == 1
+
     # Second invoke must receive more messages than the first (the repair hint)
     first_call_msgs  = chain.invoke.call_args_list[0][0][0]
     second_call_msgs = chain.invoke.call_args_list[1][0][0]

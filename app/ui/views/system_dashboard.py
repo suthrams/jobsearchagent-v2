@@ -281,6 +281,15 @@ def _render_reliability(rel: dict) -> None:
                   delta_color="inverse" if cap else "normal",
                   help="Runs that hit MAX_LLM_CALLS_PER_RUN and dropped jobs "
                        "(security_events: budget_cap_reached).")
+        # ADR-078: structured-output repair rate is a cheap behavioral-drift proxy.
+        repairs = rel.get("schema_repairs", 0)
+        m4, _m5, _m6 = st.columns(3)
+        m4.metric("Schema repairs", repairs,
+                  delta="drift proxy" if repairs else None,
+                  delta_color="inverse" if repairs else "normal",
+                  help="Structured-output schema-repair passes (agent_events: "
+                       "schema_repaired). A rising rate flags output-shape drift "
+                       "or a provider-side change (ADR-078).")
         if rel["failures_by_agent"]:
             fdf = pd.DataFrame(rel["failures_by_agent"])
             fig = px.bar(fdf.sort_values("count"), x="count", y="agent_name",

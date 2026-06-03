@@ -228,6 +228,29 @@ class ObservabilityService:
         except Exception:
             logger.exception("ObservabilityService: log_agent_failed failed")
 
+    def log_schema_repair(self, workflow_id: str, agent_name: str) -> None:
+        """Record that a structured-output schema-repair pass fired (ADR-078).
+
+        Writes an `agent_events` row with event_type="schema_repaired",
+        status="repaired", and duration_ms=None. The null duration keeps it out of
+        the latency percentiles and the distinct status keeps it out of the failure
+        rollups, so this lifecycle-quality event pollutes no existing aggregate. The
+        per-agent count of these is the structured-output repair rate — a cheap
+        behavioral-drift proxy (a rising rate flags output-shape drift or a
+        provider-side change). Never-crash, like every other observability write.
+        """
+        try:
+            self._obs.create_agent_event(
+                event_id=str(uuid.uuid4()),
+                workflow_run_id=workflow_id,
+                agent_name=agent_name,
+                event_type="schema_repaired",
+                status="repaired",
+                output_summary="structured-output schema repair fired",
+            )
+        except Exception:
+            logger.exception("ObservabilityService: log_schema_repair failed")
+
     # ── LLM calls ────────────────────────────────────────────────────────────
 
     def log_llm_call(

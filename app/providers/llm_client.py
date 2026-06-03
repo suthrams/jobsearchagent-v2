@@ -42,6 +42,9 @@ class LLMUsage:
     cost_usd: float = 0.0
     cache_creation_tokens: int = 0
     cache_read_tokens: int = 0
+    # ADR-078: how many schema-repair passes this call needed (0 = clean first
+    # parse). Carried up so the agent can emit the drift-proxy signal.
+    schema_repairs: int = 0
 
     def as_tuple(self) -> tuple[int, int, float]:
         """Backward-compat shim for callers still using the legacy tuple shape."""
@@ -102,13 +105,27 @@ class LLMClient(ABC):
             cc, cr = self.last_call_cache_split()
         except (AttributeError, TypeError, ValueError):
             pass
+        sr = 0
+        try:
+            sr = self.last_call_schema_repairs()
+        except (AttributeError, TypeError, ValueError):
+            pass
         return data, LLMUsage(
             tokens_input=int(ti),
             tokens_output=int(to),
             cost_usd=float(cost),
             cache_creation_tokens=int(cc or 0),
             cache_read_tokens=int(cr or 0),
+            schema_repairs=int(sr or 0),
         )
+
+    def last_call_schema_repairs(self) -> int:
+        """Return the number of schema-repair passes the most recent call needed
+        in this thread (ADR-078). Defaults to 0 — providers without a repair pass
+        (or that have not implemented the hook) keep the default; ClaudeProvider
+        overrides. Thread-safe, same contract as last_call_usage().
+        """
+        return 0
 
     def last_call_cache_split(self) -> tuple[int, int]:
         """Return (cache_creation_tokens, cache_read_tokens) for the most recent

@@ -261,11 +261,13 @@ def reliability_summary(
       {"runs_total", "runs_completed", "runs_failed", "success_rate",
        "agent_failures", "failures_by_agent": [{"agent_name","count"}...],
        "recent_failures": [{agent_name, workflow_run_id, output_summary, created_at}...],
-       "runs_hit_cap"}   # ADR-076: distinct runs that tripped a budget cap
+       "runs_hit_cap",      # ADR-076: distinct runs that tripped a budget cap
+       "schema_repairs"}    # ADR-078: structured-output repair count (drift proxy)
     """
     empty = {"runs_total": 0, "runs_completed": 0, "runs_failed": 0,
              "success_rate": 0.0, "agent_failures": 0,
-             "failures_by_agent": [], "recent_failures": [], "runs_hit_cap": 0}
+             "failures_by_agent": [], "recent_failures": [], "runs_hit_cap": 0,
+             "schema_repairs": 0}
     conn = _connect(db_path)
     if conn is None:
         return empty
@@ -286,6 +288,14 @@ def reliability_summary(
             f"FROM agent_events {fail_where} ORDER BY created_at DESC LIMIT ?",
             (*p_ev, int(recent_n)),
         ).fetchall()
+        # ADR-078: structured-output repair count (drift proxy). Reuses the same
+        # agent_events scoping; schema_repaired rows carry status='repaired' so they
+        # never appear in the failure counts above.
+        repaired_where = (w_ev + " AND " if w_ev else "WHERE ") + \
+            "agent_events.event_type = 'schema_repaired'"
+        schema_repairs = conn.execute(
+            f"SELECT COUNT(*) FROM agent_events {repaired_where}", p_ev,
+        ).fetchone()[0]
     except sqlite3.OperationalError:
         return empty
     finally:
@@ -314,6 +324,7 @@ def reliability_summary(
         "success_rate": (completed / total) if total else 0.0,
         "agent_failures": agent_failures,
         "runs_hit_cap": runs_hit_cap,
+        "schema_repairs": int(schema_repairs or 0),
         "failures_by_agent": [
             {"agent_name": a or "?", "count": int(c or 0)} for a, c in by_agent
         ],

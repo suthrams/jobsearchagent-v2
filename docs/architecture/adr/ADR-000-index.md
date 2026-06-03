@@ -83,3 +83,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-075 | [Funnel UI Reads Through the API (Retire the Direct-SQLite Read Path)](ADR-075-funnel-ui-reads-through-api.md) | Accepted (fully implemented; db_reader deleted) |
 | ADR-076 | [Observe Runtime Budget-Cap Trips](ADR-076-observe-runtime-budget-cap-trips.md) | Accepted (implemented) |
 | ADR-077 | [Attribute Failed LLM-Call Spend + Cost-Logging Completeness Invariant](ADR-077-attribute-failed-llm-call-spend.md) | Accepted (implemented) |
+| ADR-078 | [Observe the Structured-Output Repair Rate (Tier-1 Drift Proxy)](ADR-078-observe-structured-output-repair-rate.md) | Accepted (implemented) |
