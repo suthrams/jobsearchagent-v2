@@ -44,9 +44,9 @@
 | 7 | Live agents — real Claude, SqliteSaver | ✓ complete |
 | 8 | Performance — concurrent scoring + scraping | ✓ complete |
 | 9 | Cost optimization — model tiering, volume caps | ✓ complete |
-| post-9 | Usability refactor (auto-select, custom URLs, settings UI), multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + section grouping + headline + strategy summary + impact estimate (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062) | ✓ complete |
+| post-9 | Usability refactor, multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + impact (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062), shared v1 libs (ADR-063), per-run search criteria + experience targeting (ADR-064/065), Resume Clinic (ADR-066), resume schema v2 (ADR-067), chat cost caps (ADR-068), PII redaction at the LLM seam (ADR-069), retention + redacted state (ADR-070), per-profile active scoring tracks (ADR-071), tailoring live chat (ADR-072), wired security events + System Dashboard (ADR-073), closed observability gaps + `api_requests` (ADR-074), UI read funnel through the API (ADR-075), runtime budget-cap + failed-call cost + drift proxy (ADR-076/077/078) | ✓ complete |
 
-**Test count:** 836 passing (mock mode, no real API calls in CI)
+**Test count:** 871 passing (mock mode, no real API calls in CI)
 
 ---
 
@@ -81,8 +81,8 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | Document | What it covers |
 |---|---|
 | [architecture/architecture_overview.md](architecture/architecture_overview.md) | System boundary, 7 system layers, 10 core design principles, input model, core workflows, agentic pattern strategy |
-| [architecture/data_model.md](architecture/data_model.md) | All 19 SQLite tables — core (workflow_runs, jobs, job_scores, reviews, advice, tailoring, reports, decisions, user_config), observability (step_executions, agent_events, llm_calls, run_metrics), security (security_events), memory (memory_items), identity (users, ADR-062); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
-| [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState schema (22 fields, 9 sections), 6 workflow status values, 15+ step values, state ownership rules, memory service (memory_items table), memory write/retrieve patterns, anti-patterns |
+| [architecture/data_model.md](architecture/data_model.md) | All 21 SQLite tables — core, observability (step_executions, agent_events, llm_calls, run_metrics, api_requests), security (security_events), human-decision audit (human_decisions), Resume Clinic (resume_clinic_reviews), memory (memory_items), identity (users, ADR-062); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
+| [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState schema (22 fields, 9 sections), 6 workflow status values, 15+ step values, state ownership rules, and the long-term-memory DESIGN (the `memory_items` table + write/retrieve patterns are designed but NOT yet wired into the runtime — there is no `MemoryService`) |
 
 ---
 
@@ -106,22 +106,28 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | Tailoring Agent | Sonnet | Evidence-bound generation | User request |
 | Fidelity Reviewer | Haiku | Validation / Guardrail | After every tailoring call |
 
+**Note:** the Resume Clinic adds a 9th agent, the Resume Reviewer (out-of-graph,
+job-agnostic, ADR-066). Per-agent model assignments are pinned in
+`tests/model_pins.json` (the authoritative source, ADR-058); the table above is the
+Phase-9 baseline and may drift from the live pins.
+
 ---
 
 ## 5. v2 Architecture — Data, State & Memory
 
 | Document | What it covers |
 |---|---|
-| [architecture/data_model.md](architecture/data_model.md) | 20-table SQLite schema with core, observability, security, memory, identity (`users`, ADR-062), and Resume Clinic (`resume_clinic_reviews`, ADR-066) tables. `ResumeProfile` (stored as JSON in `resumes.parsed_profile_json`) was extended in ADR-067 with `gpa`, `honors[]`, and `skill_groups[]`. |
-| [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState ownership, memory service, state update rules, HITL state flow |
+| [architecture/data_model.md](architecture/data_model.md) | 21-table SQLite schema with core, observability (incl. `api_requests`, ADR-074), security, memory, identity (`users`, ADR-062), and Resume Clinic (`resume_clinic_reviews`, ADR-066) tables. `ResumeProfile` (stored as JSON in `resumes.parsed_profile_json`) was extended in ADR-067 with `gpa`, `honors[]`, and `skill_groups[]`. |
+| [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState ownership, the long-term-memory design (not yet wired), state update rules, HITL state flow |
 
-**19 SQLite tables at a glance:**
+**21 SQLite tables at a glance:**
 
 | Category | Tables |
 |---|---|
 | Core | workflow_runs · jobs · resumes · job_scores · review_rounds · resume_reviews · career_advice · interview_prep · tailored_resumes · reports · human_decisions · user_config |
-| Observability | step_executions · agent_events · llm_calls · run_metrics |
-| Security | security_events |
+| Observability | step_executions · agent_events · llm_calls · run_metrics · api_requests (ADR-074) |
+| Security | security_events (wired, ADR-073) |
+| Resume Clinic (ADR-066) | resume_clinic_reviews |
 | Memory | memory_items |
 | Identity (ADR-062) | users |
 
@@ -157,21 +163,20 @@ merges a profile's `user_config` rows over the shared YAML defaults. The legacy
 
 | Document | What it covers |
 |---|---|
-| [architecture/observability.md](architecture/observability.md) | 6-layer observability stack (workflow, agent, LLM call, tool, HITL, security); correlation by workflow_run_id; per-call cost tracking; ObservabilityService methods; 8 database tables; anti-patterns |
-| [architecture/security.model.md](architecture/security.model.md) | PII minimization (parsed profile only, never raw resume text); untrusted input handling (job descriptions); ethics guardrails (gap labeling, evidence requirement, no fabrication); security events table |
-| [architecture/hitl.md](architecture/hitl.md) | 7 HITL checkpoints; decision types; state flow (running → waiting_for_user → running); backend responsibilities; frontend constraints; decision validation rules; anti-patterns; end-to-end example |
+| [architecture/observability.md](architecture/observability.md) | The observability layer: `ObservabilityService` (one never-crash writer), correlation by `workflow_run_id` (including out-of-graph ops via a lightweight run row), per-call cost/token/latency tracking, the `agent_events` vs `llm_calls` split. WIRED since ADR-073/074: `security_events` (5 emit sites), `human_decisions`, `step_executions`, `api_requests`. Failed-call cost attribution (ADR-077) and the schema-repair drift proxy (ADR-078). All surfaced on the System Dashboard |
+| [architecture/security_observability_design.md](architecture/security_observability_design.md) | The System Dashboard design (ADR-073): security events + PSSR + cost in one pane, stored per-run, viewed system-level and profile-scoped; the 5 deterministic security-event emit sites and their PII-safe descriptions |
+| [architecture/security.model.md](architecture/security.model.md) | PII minimization — direct identifiers are redacted before any LLM call (ADR-069 seam); untrusted input handling (job descriptions); ethics guardrails (gap labeling, evidence requirement, no fabrication); the wired `security_events` table |
+| [architecture/pii_data_flow.md](architecture/pii_data_flow.md) | Where PII flows and where it is stopped (ADR-069): the send-side redaction seam, the at-rest surfaces, and the sanctioned `raw_text` paths |
+| [architecture/spike_data_at_rest_security.md](architecture/spike_data_at_rest_security.md) | Data-at-rest security spike (ADR-070): encryption options, the retention/purge cascade, and storing the redacted profile in workflow state |
+| [architecture/hitl.md](architecture/hitl.md) | The single HITL pattern (ADR-055/059): the workflow runs end-to-end with NO `interrupt()`; the one human decision is out-of-graph — approve / revise / reject / edit on a tailoring or clinic draft. Backend always validates; the UI never auto-approves |
 
-**7 HITL checkpoints:**
+**One HITL path (ADR-059 retired the in-graph interrupts):**
 
-| # | Checkpoint | After |
-|---|---|---|
-| 1 | Job Selection | Scoring pass |
-| 2 | Deep Review Approval | Reflection loop |
-| 3 | Interview Prep Decision | Deep review |
-| 4 | Tailoring Approval | Tailoring Agent |
-| 5 | Fidelity Review Resolution | Fidelity Reviewer |
-| 6 | Report Export Approval | Report generation |
-| 7 | Application Status Update | User decision |
+The workflow no longer pauses mid-graph. Job selection auto-selects qualifying jobs;
+the one human decision is tailoring (approve / revise / reject / edit), made
+out-of-graph on demand, and a human `edit` is trusted as authored (not re-reviewed).
+There is no application / status tracking — that decision point stays human-owned and
+intentionally out of scope.
 
 ---
 
@@ -179,11 +184,18 @@ merges a profile's `user_config` rows over the shared YAML defaults. The legacy
 
 | Document | What it covers |
 |---|---|
-| [architecture/ui_model.md](architecture/ui_model.md) | Streamlit as thin control surface (not orchestrator); dual data-access pattern (writes via FastAPI, reads direct from SQLite); 12 screens including Active Run sections, settings, job ranking, deep review, HITL controls, report viewing |
+| [architecture/ui_architecture.md](architecture/ui_architecture.md) | How the Streamlit UI is built (ADR-075): thin entrypoint + views package, navigation, and the SINGLE data path — every read and write goes through `api_client` -> FastAPI; the direct-SQLite read path and `db_reader.py` were deleted. Reads are cached in `data.py` over `services/reads/`. Companions: `ui_refactor_plan.md`, `ui_read_funnel_implementation_plan.md` |
+| [architecture/ui_model.md](architecture/ui_model.md) | Streamlit as a thin control surface (not orchestrator); the screens and control responsibilities. NOTE: the "reads direct from SQLite" data-access pattern it describes was superseded by ADR-075 — all reads now go through the API |
 | [architecture/api_reference.md](architecture/api_reference.md) | Full HTTP REST API reference — endpoints for starting runs, polling status, submitting HITL decisions, fetching jobs and reports; request/response schemas; error codes; decision types; HITL decision flow |
 | [architecture/api_surface_overview.md](architecture/api_surface_overview.md) | One-page visual diagram (PNG + Mermaid) of every REST endpoint grouped by domain, plus a grouped reference table and the two typical user journeys (job-search run + Resume Clinic chat-edit loop) |
 | [architecture/agent_graph_overview.md](architecture/agent_graph_overview.md) | One-page visual diagram (PNG + Mermaid) of every LLM-using component grouped by responsibility, plus the in-graph workflow flow, the two out-of-graph operations (tailoring + Resume Clinic), and the cross-cutting invariants every agent observes |
 | [architecture/reporting_model.md](architecture/reporting_model.md) | Report structure mapped to agent outputs; answers "is this job right for me, what am I missing, what should I do next"; storage schema; export formats (Markdown, DOCX, PDF) |
+| [architecture/ui_refactor_plan.md](architecture/ui_refactor_plan.md) | How the 3.6K-line Streamlit entrypoint was split into a thin entrypoint + views package (the refactor that preceded the read funnel) |
+| [architecture/ui_read_funnel_implementation_plan.md](architecture/ui_read_funnel_implementation_plan.md) | The phased plan that routed every UI read through the API and retired `db_reader.py` (ADR-075) |
+| [architecture/resume_clinic_strategy.md](architecture/resume_clinic_strategy.md) | Resume Clinic (ADR-066) strategy: job-agnostic resume improvement, the out-of-graph runner, the pluggable role-data provider seam |
+| [architecture/resume_clinic_implementation_walkthrough.md](architecture/resume_clinic_implementation_walkthrough.md) | End-to-end implementation walkthrough of the Resume Clinic feature |
+| [architecture/resume_clinic_chat_implementation_walkthrough.md](architecture/resume_clinic_chat_implementation_walkthrough.md) | The live-chat + export stack built on top of the clinic (ADR-068/072) |
+| [architecture/resume_clinic_chat_visualization.md](architecture/resume_clinic_chat_visualization.md) | Visual map of the Resume Clinic chat-edit flow |
 
 **Key API endpoints:**
 
@@ -206,7 +218,7 @@ Identity (ADR-062): every endpoint resolves the acting profile from an optional
 
 | Document | What it covers |
 |---|---|
-| [architecture/performance_scalability.md](architecture/performance_scalability.md) | "Score many cheaply, deeply analyze few" strategy; bounded execution controls (MAX_JOBS=10, MAX_LLM_CALLS=100); per-phase performance goals; token/cost controls; scalability anti-patterns |
+| [architecture/performance_scalability.md](architecture/performance_scalability.md) | "Score many cheaply, deeply analyze few" strategy; bounded execution controls (MAX_JOBS_PER_RUN=10, MAX_LLM_CALLS_PER_RUN=200); per-phase performance goals; token/cost controls; scalability anti-patterns. Per-step and per-API latency are now observable on the System Dashboard |
 | [architecture/patterns.md](architecture/patterns.md) | 19 agentic AI patterns with full v1→v2 evolution story; v1 foundation (what v1 had and what it couldn't do); per-pattern before/after; pattern strategy (what was proved, changed, and avoided) |
 | [architecture/principles.md](architecture/principles.md) | 15 core architecture principles: Backend Owns Intelligence · Controlled Autonomy · Deterministic Where Possible · Bounded Intelligence · State is Source of Truth · Humans Remain in Control · Truthfulness Over Optimization · Separation of Concerns · Observability is Mandatory · Security by Design · Optimize for Iteration · Minimize User Friction · Cost is First-Class Constraint · Prefer Explicit Over Implicit · Build for Evolution |
 
@@ -238,7 +250,12 @@ Each phase has a dedicated deep-dive document:
 | 6 — API & UI | ✓ complete | [phases/phase-6-api-ui.md](architecture/phases/phase-6-api-ui.md) |
 | 7 — Live Agents | ✓ complete | [phases/phase-7-live-agents.md](architecture/phases/phase-7-live-agents.md) |
 | 8 — Performance | ✓ complete | [architecture/implementation_plan.md#phase-8](architecture/implementation_plan.md) |
-| 9 — Cost & Hardening | ⚡ in progress | [architecture/implementation_plan.md#phase-9](architecture/implementation_plan.md) |
+| 9 — Cost & Hardening | ✓ complete | [architecture/implementation_plan.md#phase-9](architecture/implementation_plan.md) |
+
+Phases 1-8 plus the post-8 work (ADR-053 through ADR-078: multi-provider, on-demand
+tailoring, multi-user profiles, Resume Clinic, PII redaction, the System Dashboard,
+the UI read funnel, and the observability gap-closing) are all complete. See Section
+1's post-9 row for the full list.
 
 **Phase 1 — Foundation:** Defines WorkflowState, 8 agent output schemas, 17-table SQLite schema, ConfigService. The ER diagram shows all table relationships with cardinality.
 
@@ -282,7 +299,7 @@ Each phase has a dedicated deep-dive document:
 
 | Document | What it covers |
 |---|---|
-| [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — tailoring page-budget + headline + strategy summary + impact estimate (ADR-056), on-demand tailoring (ADR-055), deep-review-for-all (ADR-054), multi-provider (ADR-053), Phase 9 cost optimization, Phase 7/8 live agents and performance, v1 dashboard fixes, Python 3.12 compatibility |
+| [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — the observability arc (security events + System Dashboard ADR-073, gap-closing + `api_requests` ADR-074, UI read funnel ADR-075, budget-cap/failed-call/drift ADR-076/077/078), Resume Clinic (ADR-066), PII redaction (ADR-069), multi-user profiles (ADR-062), multi-provider (ADR-053), back through Phase 7/8 live agents and performance |
 | [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic, langchain-openai) + v1 shared (anthropic, pydantic, httpx, pdfplumber) |
 | [disclaimer.md](disclaimer.md) | Apache 2.0 terms, no-warranty statement, user responsibility for API costs, scraper compliance notes (Adzuna official, LinkedIn/Ladders grey-area), resume data privacy |
 | [../.claude/skills/README.md](../.claude/skills/README.md) | Index for the `.claude/skills/` agent-skills pack — maps each of the 21 skills to the jobsearchagent-v2 workflow stage where it applies (Claude Code discovers skills only under `.claude/skills/`) |
@@ -297,8 +314,8 @@ Each phase has a dedicated deep-dive document:
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
 | docs/ top-level | 9 |
-| docs/architecture/ | 17 |
-| docs/architecture/adr/ | 73 (index + 72 ADRs) |
+| docs/architecture/ | 29 |
+| docs/architecture/adr/ | 79 (index + 78 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/agents/ | 3 |
 | docs/claude/ | 3 |
