@@ -10,7 +10,18 @@ from dataclasses import dataclass
 
 
 class LLMProviderError(Exception):
-    """Raised when the provider cannot return a valid response after all retries."""
+    """Raised when the provider cannot return a valid response after all retries.
+
+    Carries an optional ``usage`` (ADR-077): when the failure is a billed-but-
+    unparseable response (schema repair exhausted), the provider attaches the
+    token usage so callers can attribute the otherwise-lost spend. Transient
+    failures (rate-limit / connection / 500) leave it ``None`` — nothing was
+    billed, so nothing should be logged.
+    """
+
+    def __init__(self, *args: object, usage: "LLMUsage | None" = None) -> None:
+        super().__init__(*args)
+        self.usage = usage
 
 
 @dataclass(frozen=True)

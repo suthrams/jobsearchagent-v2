@@ -740,6 +740,14 @@ api_requests      (HTTP-layer requests; wired ADR-074 Gap 5)
 > out-of-graph `run_metrics` (Gap 3) and the thread-local `last_call_usage` race
 > (Gap 4). See ADR-074.
 
+> **ADR-077 closed the failure-path cost hole:** `log_llm_call` previously ran on
+> the success path only, so a billed-but-unparseable response (schema repair
+> exhausted) wrote no `llm_calls` row and every cost rollup undercounted it. The
+> provider now attaches the billed `LLMUsage` to `LLMProviderError`, `BaseAgent`'s
+> failure path logs it (the failure stays marked in `agent_events`), and a repaired
+> call sums both billed attempts. A completeness invariant test
+> (`test_cost_logging_completeness.py`) guards that every LLM-call site logs cost.
+
 Optional future table:
 
 ```text

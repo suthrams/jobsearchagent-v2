@@ -107,6 +107,30 @@ class BaseAgent(ABC):
             self._observability.log_agent_failed(
                 workflow_id, self.AGENT_NAME, event_id, str(exc), duration_ms,
             )
+            # ADR-077: a billed-but-unparseable response (schema repair exhausted)
+            # carries its usage on the exception. Log the spend so it is attributable
+            # in llm_calls instead of vanishing — the matching agent_events row above
+            # already marks the failure. Transient failures attach no usage, so they
+            # correctly log no cost row. Never-crash, like the success path.
+            failed_usage = getattr(exc, "usage", None)
+            if failed_usage is not None and (
+                failed_usage.tokens_input or failed_usage.tokens_output
+            ):
+                try:
+                    self._observability.log_llm_call(
+                        workflow_id=workflow_id,
+                        agent_name=self.AGENT_NAME,
+                        provider=self._provider.provider_name,
+                        model=self._provider.model_name,
+                        tokens_input=failed_usage.tokens_input,
+                        tokens_output=failed_usage.tokens_output,
+                        cost_usd=failed_usage.cost_usd,
+                        latency_ms=duration_ms,
+                        cache_creation_tokens=failed_usage.cache_creation_tokens,
+                        cache_read_tokens=failed_usage.cache_read_tokens,
+                    )
+                except Exception:
+                    pass
             # Convert interpreter-shutdown RuntimeErrors to LLMProviderError so
             # callers that catch LLMProviderError handle this gracefully instead of
             # crashing the whole workflow. This happens when the server is killed

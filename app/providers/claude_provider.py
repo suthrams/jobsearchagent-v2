@@ -22,7 +22,7 @@ import anthropic
 import tenacity
 from pydantic import BaseModel
 
-from app.providers.llm_client import LLMClient, LLMProviderError
+from app.providers.llm_client import LLMClient, LLMProviderError, LLMUsage
 from app.providers.prompt_loader import PromptLoader
 from app.schemas.resume_profile import (
     CertificationEntry,
@@ -138,14 +138,38 @@ class ClaudeProvider(LLMClient):
 
         # If the model returned well-formed JSON but wrong structure,
         # try once more with the validation error appended to the conversation.
+        # ADR-077: the first (parse-failed) attempt was ALSO billed, so carry its
+        # usage forward and sum it into the logged total rather than dropping it.
+        prior_usage = (0, 0, 0, 0)
         if raw_result.get("parsing_error"):
+            prior_usage = self._extract_usage(raw_result)
             raw_result = self._attempt_schema_repair(
                 chain, messages, raw_result["parsing_error"]
             )
 
         elapsed_ms = int((time.monotonic() - start) * 1000)
-        self._log_call(agent_name, raw_result, elapsed_ms)
-        return self._extract_dict(raw_result)
+        self._log_call(agent_name, raw_result, elapsed_ms, prior_usage=prior_usage)
+        try:
+            return self._extract_dict(raw_result)
+        except LLMProviderError as exc:
+            # ADR-077: schema repair exhausted, but this response WAS billed
+            # (usage_metadata is present even on parse failure). Attach the usage
+            # (final attempt + the first billed attempt) so BaseAgent can log the
+            # otherwise-lost spend on its failure path.
+            ti, cc, cr, to = self._extract_usage(raw_result)
+            ti += prior_usage[0]
+            cc += prior_usage[1]
+            cr += prior_usage[2]
+            to += prior_usage[3]
+            if ti or cc or cr or to:
+                exc.usage = LLMUsage(
+                    tokens_input=ti + cc + cr,
+                    tokens_output=to,
+                    cost_usd=self._estimate_cost_with_cache(ti, cc, cr, to),
+                    cache_creation_tokens=cc,
+                    cache_read_tokens=cr,
+                )
+            raise
 
     def count_tokens(self, text: str) -> int:
         """Approximate token count: ~4 characters per token for Claude."""
@@ -327,7 +351,10 @@ class ClaudeProvider(LLMClient):
         """
         return getattr(self._tlocal, "last_cache_split", (0, 0))
 
-    def _log_call(self, agent_name: str, raw_result: dict, elapsed_ms: int) -> None:
+    def _log_call(
+        self, agent_name: str, raw_result: dict, elapsed_ms: int,
+        prior_usage: tuple[int, int, int, int] = (0, 0, 0, 0),
+    ) -> None:
         """Log token usage and prompt version to the Python logger, and save to thread-local.
 
         last_usage stores total_input = regular + cache_creation + cache_read so the
@@ -335,8 +362,17 @@ class ClaudeProvider(LLMClient):
         non-cached slice. Cost is computed against each input category at its own rate.
         last_cache_split preserves the breakdown so callers can compute the cache-hit
         ratio without re-deriving it.
+
+        ``prior_usage`` (ADR-077) is the (input, cache_creation, cache_read, output)
+        of an earlier billed attempt on the same logical call (the parse-failed
+        attempt before a schema repair). It is added to the final attempt's usage so
+        the row reflects what the whole call actually cost, not just the last leg.
         """
         tokens_in, cache_creation, cache_read, tokens_out = self._extract_usage(raw_result)
+        tokens_in += prior_usage[0]
+        cache_creation += prior_usage[1]
+        cache_read += prior_usage[2]
+        tokens_out += prior_usage[3]
         cost = self._estimate_cost_with_cache(tokens_in, cache_creation, cache_read, tokens_out)
         total_input = tokens_in + cache_creation + cache_read
         self._tlocal.last_usage = (total_input, tokens_out, cost)

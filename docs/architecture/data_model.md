@@ -905,7 +905,12 @@ CREATE TABLE agent_events (
 
 ### Purpose
 
-One row per LLM API call. The cost-truth table.
+One row per LLM API call. The cost-truth table. Since ADR-077 this includes
+**billed-but-failed** calls: a response that was billed but could not be parsed
+(schema repair exhausted) is logged here so its spend is attributable, with the
+failure itself recorded in the matching `agent_events` row (`status="failed"`).
+A schema-repaired call sums both billed attempts. Transient failures (rate-limit /
+connection / 500) bill nothing and write no row.
 
 ### Schema
 

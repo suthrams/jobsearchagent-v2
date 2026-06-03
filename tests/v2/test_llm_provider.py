@@ -298,6 +298,47 @@ def test_schema_repair_appends_human_message(tmp_path):
     provider = _make_provider(tmp_path, model=mock_model)
     provider.complete("test_agent", {}, _Score)
 
+
+def test_repair_exhausted_attaches_usage_to_error(tmp_path):
+    """ADR-077: a billed-but-unparseable response (repair exhausted) attaches its
+    usage to LLMProviderError so callers can attribute the otherwise-lost spend."""
+    ai_message = AIMessage(content="", usage_metadata={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120})
+    bad = {"raw": ai_message, "parsed": None, "parsing_error": "invalid"}
+
+    chain = MagicMock()
+    chain.invoke.return_value = bad  # both the initial call and the repair fail
+    mock_model = MagicMock()
+    mock_model.with_structured_output.return_value = chain
+
+    provider = _make_provider(tmp_path, model=mock_model)
+    with pytest.raises(LLMProviderError) as ei:
+        provider.complete("test_agent", {}, _Score)
+    usage = ei.value.usage
+    assert usage is not None
+    # both billed attempts (initial parse-fail + repair) are summed: 2 x (100 in, 20 out)
+    assert usage.tokens_input == 200
+    assert usage.tokens_output == 40
+    assert usage.cost_usd > 0
+
+
+def test_successful_repair_sums_both_billed_attempts(tmp_path):
+    """ADR-077 Gap B: when a repair succeeds, the logged usage includes the first
+    (parse-failed) billed attempt, not just the final leg."""
+    ai_in = AIMessage(content="", usage_metadata={"input_tokens": 100, "output_tokens": 20, "total_tokens": 120})
+    bad  = {"raw": ai_in, "parsed": None, "parsing_error": "missing field 'score'"}
+    good = {"raw": ai_in, "parsed": _Score(result="ok", score=1), "parsing_error": None}
+
+    chain = MagicMock()
+    chain.invoke.side_effect = [bad, good]
+    mock_model = MagicMock()
+    mock_model.with_structured_output.return_value = chain
+
+    provider = _make_provider(tmp_path, model=mock_model)
+    provider.complete("test_agent", {}, _Score)
+    tokens_in, tokens_out, _cost = provider.last_call_usage()
+    assert tokens_in == 200   # 100 (failed attempt) + 100 (repair)
+    assert tokens_out == 40   # 20 + 20
+
     # Second invoke must receive more messages than the first (the repair hint)
     first_call_msgs  = chain.invoke.call_args_list[0][0][0]
     second_call_msgs = chain.invoke.call_args_list[1][0][0]
