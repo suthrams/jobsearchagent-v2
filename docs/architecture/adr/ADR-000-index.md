@@ -81,3 +81,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-073 | [Wire Security-Event Emit Sites and a Unified System Dashboard](ADR-073-wire-security-events-and-system-dashboard.md) | Accepted |
 | ADR-074 | [Close the Remaining Observability Gaps](ADR-074-close-remaining-observability-gaps.md) | Accepted (fully closed: Gaps 1-5 + both minors) |
 | ADR-075 | [Funnel UI Reads Through the API (Retire the Direct-SQLite Read Path)](ADR-075-funnel-ui-reads-through-api.md) | Accepted (fully implemented; db_reader deleted) |
+| ADR-076 | [Observe Runtime Budget-Cap Trips](ADR-076-observe-runtime-budget-cap-trips.md) | Accepted (implemented) |

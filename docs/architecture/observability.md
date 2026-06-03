@@ -703,9 +703,10 @@ built. Workflow lifecycle is handled by the `register_run` / `generate_report`
 nodes writing `workflow_runs` directly; review rounds persist via
 `ReviewRepository`. The workflow orchestrator calls this service consistently.
 
-> **`log_security_event` is wired (ADR-073).** Four deterministic emit sites
+> **`log_security_event` is wired (ADR-073).** Five deterministic emit sites
 > (SSRF block, PII redaction, Fidelity reject/unsupported claim, cost-cap
-> violation) now write `security_events`, and they are visualized system-level on
+> violation, and a runtime budget-cap trip in `score_jobs`/`deep_review` per
+> ADR-076) now write `security_events`, and they are visualized system-level on
 > the **System Dashboard** (renamed from Cost Dashboard) alongside Performance,
 > Reliability, Scalability, and Cost. Run-less events use the `SYSTEM_RUN_ID`
 > sentinel; reads scope by profile (ADR-062) via

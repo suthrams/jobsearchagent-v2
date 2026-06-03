@@ -97,6 +97,7 @@ logs" and is enforced by a dedicated test.
 | 2 | `pii_redacted` | `info` | `app/workflows/nodes/load_resume.py` (after `redact_pii_for_llm`) | Direct identifiers dropped before LLM context | `Redacted 4 direct identifier field(s) before LLM context: name, email, location, raw_text` |
 | 3 | `unsupported_claim` | `warning` | `app/api/routers/tailoring.py` (`trigger_tailoring`) + `app/services/resume_clinic_runner.py` | Fidelity `reject` OR any unsupported_claims / fabricated_metrics | `Fidelity flagged 3 unsupported claim(s), 1 fabricated metric(s); recommendation=reject` |
 | 4 | `cost_cap_violation` | `warning` | `app/api/routers/config.py` + `app/api/routers/workflows.py` (override validation) | High-volume agent assigned a model outside `HIGH_VOLUME_SAFE_MODELS` | `Rejected cost-cap violation: agent=scoring_agent model=claude-opus-4-8` |
+| 5 | `budget_cap_reached` | `warning` | `app/workflows/nodes/score_jobs.py` + `app/workflows/nodes/deep_review.py` (pre-flight budget gate) | A run hits `MAX_LLM_CALLS_PER_RUN` and sheds jobs (ADR-076); surfaced as "runs hit cap" in `reliability_summary` | `deep_review budget cap: skipped 4 job(s), 196/200 calls used` |
 
 Severity scale (recorded in `security.model.md`): `info` = a control worked as
 designed, logged for audit; `warning` = a guardrail tripped and blocked/flagged

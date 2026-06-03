@@ -25,10 +25,13 @@ from app.repositories.workflow_repository import WorkflowRepository
 from app.services import system_health as sh
 from app.services.custom_url_scraper import CustomUrlScraper
 from app.services.observability_service import (
+    budget_cap_security_description,
     emit_security_event_safe,
     fidelity_review_security_description,
 )
+from app.workflows.nodes.deep_review import make_deep_review_node
 from app.workflows.nodes.load_resume import _emit_pii_redaction
+from app.workflows.nodes.score_jobs import make_score_jobs_node
 
 APP_DIR = Path(__file__).resolve().parents[2] / "app"
 
@@ -123,6 +126,14 @@ def test_pii_redaction_no_event_when_nothing_present():
     obs.log_security_event.assert_not_called()
 
 
+def test_budget_cap_description_is_counts_only():
+    """The budget_cap_reached description (ADR-076) carries the node name + counts
+    + numeric call figures only — never job content."""
+    desc = budget_cap_security_description("deep_review", 4, 196, 200)
+    assert desc == "deep_review budget cap: skipped 4 job(s), 196/200 calls used"
+    assert "deep_review" in desc and "4 job(s)" in desc and "196/200" in desc
+
+
 # ── Layer 3: behavioral per emit site ─────────────────────────────────────────
 
 
@@ -148,6 +159,64 @@ def test_ssrf_block_noop_without_observability():
     """No observability wired -> the scraper still blocks, just no audit row."""
     scraper = CustomUrlScraper(["http://127.0.0.1/"], llm_client=None)
     assert scraper.scrape() == []  # must not raise
+
+
+def test_score_jobs_emits_budget_cap_reached_on_trip():
+    """When score_jobs hits the per-run call budget and sheds jobs, it emits a
+    budget_cap_reached event (ADR-076) instead of only logging — and the
+    description leaks no posting content."""
+    obs = MagicMock()
+    node = make_score_jobs_node(MagicMock(), MagicMock(), MagicMock(), obs)
+    state = {
+        "workflow_id": "wf-cap",
+        # budget already fully spent -> max_scoreable = 0 -> every job is shed,
+        # so the agents are never invoked (mocks stay untouched).
+        "run_metrics": {"llm_calls": 200},
+        "normalized_jobs": [
+            {"id": "j1", "title": "Secret Staff Engineer", "job_description": "d"},
+            {"id": "j2", "title": "Confidential Architect", "job_description": "d"},
+        ],
+    }
+    out = node(state)
+    obs.log_security_event.assert_called_once()
+    kwargs = obs.log_security_event.call_args.kwargs
+    assert kwargs["event_type"] == "budget_cap_reached"
+    assert kwargs["severity"] == "warning"
+    assert kwargs["workflow_id"] == "wf-cap"
+    assert "skipped 2 job(s)" in kwargs["description"]
+    for leak in ("Secret", "Confidential", "Architect"):
+        assert leak not in kwargs["description"]
+    # the shed jobs are still passed through, marked budget_skipped
+    assert all(j["status"] == "budget_skipped" for j in out["scored_jobs"])
+
+
+def test_score_jobs_no_event_when_within_budget():
+    """No trip -> no budget_cap_reached event (the common path stays silent)."""
+    obs = MagicMock()
+    node = make_score_jobs_node(MagicMock(), MagicMock(), MagicMock(), obs)
+    node({"workflow_id": "wf-ok", "run_metrics": {"llm_calls": 0},
+          "normalized_jobs": []})
+    obs.log_security_event.assert_not_called()
+
+
+def test_deep_review_emits_budget_cap_reached_on_trip():
+    """deep_review's independent budget gate emits its own budget_cap_reached on a
+    trip (ADR-076: both gates are audited, not just one)."""
+    obs = MagicMock()
+    node = make_deep_review_node(MagicMock(), MagicMock(), MagicMock(), obs)
+    state = {
+        "workflow_id": "wf-cap2",
+        "run_metrics": {"llm_calls": 200},
+        "selected_jobs": [{"job_id": "j1", "title": "Top Secret Role"}],
+        "scored_jobs": [],
+    }
+    node(state)
+    obs.log_security_event.assert_called_once()
+    kwargs = obs.log_security_event.call_args.kwargs
+    assert kwargs["event_type"] == "budget_cap_reached"
+    assert kwargs["severity"] == "warning"
+    assert "deep_review budget cap" in kwargs["description"]
+    assert "Top Secret Role" not in kwargs["description"]
 
 
 def test_cost_cap_emit_writes_sentinel_row(db_path):
@@ -207,6 +276,28 @@ def test_security_summary_counts(db_path):
     assert summ["by_severity"] == {"high": 1, "warning": 1, "info": 1}
     types = {d["event_type"] for d in summ["by_type"]}
     assert types == {"blocked_url_fetch", "pii_redacted", "cost_cap_violation"}
+
+
+def test_reliability_summary_counts_distinct_runs_hit_cap(db_path):
+    """reliability_summary.runs_hit_cap (ADR-076) counts DISTINCT runs with a
+    budget_cap_reached event, profile-scoped — two events on one run count once."""
+    wf_repo = WorkflowRepository(db_path)
+    sec = SecurityRepository(db_path)
+    wf_repo.create("run-a", "job_search", {"user_id": "1", "status": "completed"})
+    wf_repo.create("run-b", "job_search", {"user_id": "1", "status": "completed"})
+    wf_repo.create("run-c", "job_search", {"user_id": "2", "status": "completed"})
+    # run-a trips both gates (two events, one run); run-b trips once; run-c is
+    # another profile; a non-cap event must not be counted.
+    sec.create("c1", "run-a", "budget_cap_reached", "warning", "score_jobs budget cap: skipped 3 job(s), 200/200 calls used")
+    sec.create("c2", "run-a", "budget_cap_reached", "warning", "deep_review budget cap: skipped 1 job(s), 200/200 calls used")
+    sec.create("c3", "run-b", "budget_cap_reached", "warning", "score_jobs budget cap: skipped 2 job(s), 200/200 calls used")
+    sec.create("c4", "run-c", "budget_cap_reached", "warning", "score_jobs budget cap: skipped 1 job(s), 200/200 calls used")
+    sec.create("c5", "run-a", "pii_redacted", "info", "name")
+
+    u1 = sh.reliability_summary(user_id="1", db_path=db_path)
+    assert u1["runs_hit_cap"] == 2          # run-a + run-b, deduped
+    everyone = sh.reliability_summary(user_id=None, db_path=db_path)
+    assert everyone["runs_hit_cap"] == 3    # + run-c
 
 
 def test_profiles_overview_groups_and_labels(db_path):

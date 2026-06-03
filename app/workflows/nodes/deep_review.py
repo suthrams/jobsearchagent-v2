@@ -18,7 +18,10 @@ from app.agents.review_auditor import ReviewAuditor
 from app.repositories.database import utcnow_iso
 from app.repositories.review_repository import ReviewRepository
 from app.services.deep_review_runner import review_one_job
-from app.services.observability_service import ObservabilityService
+from app.services.observability_service import (
+    ObservabilityService,
+    budget_cap_security_description,
+)
 from app.workflows.limits import (
     MAX_LLM_CALLS_PER_RUN,
     MAX_REVIEW_ROUNDS,
@@ -69,6 +72,16 @@ def make_deep_review_node(
             logger.warning(
                 "deep_review: budget cap — skipping %d jobs (%d/%d calls used)",
                 len(budget_skipped), calls_used, MAX_LLM_CALLS_PER_RUN,
+            )
+            # ADR-076: the cost guardrail tripped — make the truncation observable
+            # (never-crash; PII-safe counts only) instead of only a log line.
+            observability.log_security_event(
+                workflow_id=workflow_id,
+                event_type="budget_cap_reached",
+                severity="warning",
+                description=budget_cap_security_description(
+                    "deep_review", len(budget_skipped), calls_used, MAX_LLM_CALLS_PER_RUN
+                ),
             )
 
         # ── Worker: process one job's full reflection loop ────────────────────

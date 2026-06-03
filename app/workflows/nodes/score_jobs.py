@@ -21,7 +21,10 @@ from app.providers.llm_client import LLMProviderError
 from app.repositories.database import utcnow_iso
 from app.repositories.score_repository import ScoreRepository
 from app.services.context_trimmer import trim_resume_profile
-from app.services.observability_service import ObservabilityService
+from app.services.observability_service import (
+    ObservabilityService,
+    budget_cap_security_description,
+)
 from app.workflows.limits import (
     MAX_LLM_CALLS_PER_RUN,
     add_llm_calls_bulk,
@@ -72,6 +75,16 @@ def make_score_jobs_node(
             logger.warning(
                 "score_jobs: budget cap — skipping %d jobs (%d/%d calls used)",
                 len(budget_skipped), calls_used, MAX_LLM_CALLS_PER_RUN,
+            )
+            # ADR-076: the cost guardrail tripped — make the truncation observable
+            # (never-crash; PII-safe counts only) instead of only a log line.
+            observability.log_security_event(
+                workflow_id=workflow_id,
+                event_type="budget_cap_reached",
+                severity="warning",
+                description=budget_cap_security_description(
+                    "score_jobs", len(budget_skipped), calls_used, MAX_LLM_CALLS_PER_RUN
+                ),
             )
 
         def _score_one(job: dict) -> tuple[dict, int, list[dict], int, int, float]:

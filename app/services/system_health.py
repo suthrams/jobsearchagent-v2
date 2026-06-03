@@ -260,11 +260,12 @@ def reliability_summary(
     Returns:
       {"runs_total", "runs_completed", "runs_failed", "success_rate",
        "agent_failures", "failures_by_agent": [{"agent_name","count"}...],
-       "recent_failures": [{agent_name, workflow_run_id, output_summary, created_at}...]}
+       "recent_failures": [{agent_name, workflow_run_id, output_summary, created_at}...],
+       "runs_hit_cap"}   # ADR-076: distinct runs that tripped a budget cap
     """
     empty = {"runs_total": 0, "runs_completed": 0, "runs_failed": 0,
              "success_rate": 0.0, "agent_failures": 0,
-             "failures_by_agent": [], "recent_failures": []}
+             "failures_by_agent": [], "recent_failures": [], "runs_hit_cap": 0}
     conn = _connect(db_path)
     if conn is None:
         return empty
@@ -295,12 +296,24 @@ def reliability_summary(
     completed = counts.get("completed", 0)
     failed = counts.get("failed", 0)
     agent_failures = sum(int(c or 0) for _a, c in by_agent)
+
+    # ADR-076: distinct runs that tripped a budget cap (cost guardrail). Reuses
+    # SecurityRepository.list_for_user so the profile COALESCE-to-'0' scoping
+    # lives in exactly one place, same as security_summary.
+    cap_rows = SecurityRepository(db_path).list_for_user(user_id=user_id, days=days)
+    runs_hit_cap = len({
+        r.get("workflow_run_id")
+        for r in cap_rows
+        if r.get("event_type") == "budget_cap_reached" and r.get("workflow_run_id")
+    })
+
     return {
         "runs_total": total,
         "runs_completed": completed,
         "runs_failed": failed,
         "success_rate": (completed / total) if total else 0.0,
         "agent_failures": agent_failures,
+        "runs_hit_cap": runs_hit_cap,
         "failures_by_agent": [
             {"agent_name": a or "?", "count": int(c or 0)} for a, c in by_agent
         ],

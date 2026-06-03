@@ -269,10 +269,18 @@ def _render_reliability(rel: dict) -> None:
                "audit row records them.")
     c1, c2 = st.columns(2)
     with c1:
-        m1, m2 = st.columns(2)
+        m1, m2, m3 = st.columns(3)
         m1.metric("Run success rate", f"{rel['success_rate'] * 100:.0f}%",
                   delta=f"{rel['runs_completed']}/{rel['runs_total']}")
         m2.metric("Agent failures", rel["agent_failures"])
+        # ADR-076: runs that tripped a budget cap (cost guardrail) - a truncated
+        # run is otherwise invisible here, looking deceptively cheap.
+        cap = rel.get("runs_hit_cap", 0)
+        m3.metric("Runs hit cap", cap,
+                  delta="budget-truncated" if cap else None,
+                  delta_color="inverse" if cap else "normal",
+                  help="Runs that hit MAX_LLM_CALLS_PER_RUN and dropped jobs "
+                       "(security_events: budget_cap_reached).")
         if rel["failures_by_agent"]:
             fdf = pd.DataFrame(rel["failures_by_agent"])
             fig = px.bar(fdf.sort_values("count"), x="count", y="agent_name",

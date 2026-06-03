@@ -134,6 +134,23 @@ def fidelity_review_security_description(fidelity: dict | None) -> str | None:
     )
 
 
+def budget_cap_security_description(
+    node: str, skipped: int, calls_used: int, limit: int
+) -> str:
+    """Return a PII-safe `budget_cap_reached` description (ADR-076).
+
+    Emitted when a pre-flight budget gate (`score_jobs` / `deep_review`) sheds
+    work because the run hit the `MAX_LLM_CALLS_PER_RUN` backstop. Counts + the
+    node name + numeric call figures ONLY — never job titles, URLs, or any posting
+    content. Shared by both emit sites so the wording + the PII contract live and
+    are tested in one place (mirrors `fidelity_review_security_description`).
+    """
+    return (
+        f"{node} budget cap: skipped {int(skipped)} job(s), "
+        f"{int(calls_used)}/{int(limit)} calls used"
+    )
+
+
 class ObservabilityService:
     """Single entry point for all observability writes."""
 

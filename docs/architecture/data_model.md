@@ -1033,7 +1033,7 @@ CREATE TABLE security_events (
 |-------------------|---------|-------------|
 | `id`              | TEXT PK | UUID. |
 | `workflow_run_id` | TEXT    | Correlation id → `workflow_runs.id`. The reserved sentinel `"system"` (ADR-073 `SYSTEM_RUN_ID`) is used for run-less events (cost-cap on a config edit, or at kickoff before the run UUID exists); it has no `workflow_runs` row and COALESCEs to user `"0"` on read. |
-| `event_type`      | TEXT    | Wired types (ADR-073): `blocked_url_fetch` \| `pii_redacted` \| `unsupported_claim` \| `cost_cap_violation`. Room to grow (e.g. a future JD prompt-injection detector). |
+| `event_type`      | TEXT    | Wired types: `blocked_url_fetch` \| `pii_redacted` \| `unsupported_claim` \| `cost_cap_violation` (ADR-073) \| `budget_cap_reached` (ADR-076, a run hit `MAX_LLM_CALLS_PER_RUN` and shed jobs). Room to grow (e.g. a future JD prompt-injection detector). |
 | `severity`        | TEXT    | `"info"` (control worked as designed) \| `"warning"` (a guardrail tripped) \| `"high"` (a defense blocked a potentially malicious request). |
 | `description`     | TEXT    | Short, **PII-safe** summary — counts / field names / reason classes / hosts only; never resume content, identifiers, claim text, or fetched page text (ADR-069). |
 | `created_at`      | TEXT    | ISO 8601 UTC. |

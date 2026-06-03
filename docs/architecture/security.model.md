@@ -394,7 +394,7 @@ ANTHROPIC_API_KEY → environment variable
 ### Security Events
 
 **Wired since ADR-073** (the table existed from ADR-026 but had zero emit
-sites). Four deterministic emit sites, each over detection that already existed:
+sites). Five deterministic emit sites, each over detection that already existed:
 
 | event_type | severity | Emit site |
 |---|---|---|
@@ -402,6 +402,7 @@ sites). Four deterministic emit sites, each over detection that already existed:
 | `pii_redacted` | info | `load_resume` after `redact_pii_for_llm` |
 | `unsupported_claim` | warning | tailoring router + `resume_clinic_runner` on a Fidelity reject/unsupported claim |
 | `cost_cap_violation` | warning | config-edit + kickoff override validation (uses the `"system"` sentinel run id) |
+| `budget_cap_reached` | warning | `score_jobs` + `deep_review` when a run hits `MAX_LLM_CALLS_PER_RUN` and sheds jobs (ADR-076) |
 
 Severity scale: `info` = a control worked as designed (audit); `warning` = a
 guardrail tripped and blocked/flagged something; `high` = a defense blocked a
