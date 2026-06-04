@@ -74,6 +74,7 @@ Used for:
 * preferred locations (`search.locations`) — stored one-per-line so "City, State" is preserved
 * search keywords
 * experience targeting (ADR-065): a `[min, max]` years window via `search.min_years_experience` / `search.max_years_experience` (0 = that bound off) plus `search.exclude_senior` (bool; drops senior roles). Per-profile, off by default; postings that don't state experience are kept.
+* relevance pre-filter (ADR-079): `search.relevance_filter` (bool, default off). When on (and `scoring.manual_selection` off), discovery casts the wide net and one cheap LLM pass drops clear seniority/relevance mismatches before scoring. Profile-relative + bidirectional (too_senior / too_junior / unrelated). Read via `get_relevance_filter(state)`.
 * job limits (within bounds)
 * scoring preferences (`scoring.min_match_score` — the per-profile lever for non-senior personas)
 * active scoring tracks (ADR-071): `scoring.tracks` — the subset of `["ic","architect","management"]` a profile pursues. Default all three (Primary unchanged). Inactive tracks are not scored, do not gate deep review, and are hidden in the UI. Read via `get_active_tracks(state)`; distinct from `scoring.career_track` (weighting emphasis)
@@ -148,7 +149,8 @@ safety.
 | Key | Meaning | Default | Hard ceiling |
 |---|---|---|---|
 | `scoring.max_scored` | How many jobs get research + scoring. In auto mode this is also the discovery cap. | 10 (`MAX_JOBS_PER_RUN`) | 25 (`MAX_SCORED_CEILING`) |
-| `search.max_discovered` | Manual-selection (ADR-060) wide discovery net. Ignored in auto mode. | 50 | 50 (`MAX_DISCOVERED_JOBS`) |
+| `search.max_discovered` | Wide discovery net for manual-selection (ADR-060) OR the relevance pre-filter (ADR-079). Ignored in plain auto mode. | 50 | 50 (`MAX_DISCOVERED_JOBS`) |
+| `search.relevance_filter` | Opt-in reasoning pre-filter (ADR-079): one cheap LLM pass drops seniority/relevance mismatches before scoring. Bool. | off | n/a (bool) |
 | `search.max_jobs` | Discovery-SERVICE backstop (how many postings the scraper layer returns). Not a user-facing knob; the precise per-run caps are applied in the nodes. | 50 | 50 (`_SYSTEM_MAX_JOBS`) |
 
 Clamping happens in two places: `ConfigService._enforce_limits` (the per-user

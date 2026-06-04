@@ -339,6 +339,8 @@ Guardrails:
 
 * configurable scored width (`scoring.max_scored`, ceiling 25) and discovery net
   (`search.max_discovered`, ceiling 50) — system-wide default + per-run override
+* optional reasoning pre-filter between discover and score (`search.relevance_filter`,
+  ADR-079): one cheap LLM pass drops seniority/relevance mismatches before scoring
 * bounded research steps and review loops
 * bounded auto-selection (`MAX_SELECTED_JOBS` = 3 reach in-graph deep review)
 * `MAX_LLM_CALLS_PER_RUN` = 200 as the absolute per-run cost backstop

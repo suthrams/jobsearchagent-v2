@@ -14,10 +14,11 @@ Thirteen LLM-using components (eleven `BaseAgent` subclasses + two utility helpe
 grouped by responsibility. Same style as the
 [API surface diagram](api_surface_overview.md).
 
-![Agent graph — twelve LLM-using components grouped by responsibility](images/agent_graph.png)
+![Agent graph — LLM-using components grouped by responsibility](images/agent_graph.png)
 
-> The rendered PNG above is the canonical reference. The Mermaid source
-> below renders the same diagram inline on platforms that support Mermaid.
+> The Mermaid source below is the current reference (thirteen components). The
+> rendered PNG above predates ADR-079 and still shows twelve — it omits the
+> `RelevanceFilterAgent`; regenerate it to refresh.
 
 ```mermaid
 flowchart TB
