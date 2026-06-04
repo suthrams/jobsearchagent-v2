@@ -28,6 +28,13 @@ search:
   # min_years_experience: 5    # drop postings asking for FEWER than N years (0 = off)
   # exclude_senior: true       # drop senior/principal/staff/lead/director/etc.
 
+  # ADR-079: opt-in reasoning relevance pre-filter. When true, discovery casts the
+  # wider net and ONE cheap LLM pass drops jobs that are a clear seniority or role
+  # mismatch BEFORE scoring (saves the 2 scoring calls/job on the noise). Judged
+  # relative to the profile's own band, so it drops too-senior roles for an
+  # early-career profile and too-junior roles for a senior one. Off by default.
+  # relevance_filter: true
+
 # ─── Scoring ────────────────────────────────────────────────────────────────
 # Usually set per profile via the Settings UI (writes to user_config), not here.
 scoring:
@@ -90,6 +97,7 @@ retention:
 agents:
   research_agent:       {provider: claude, model: claude-haiku-4-5-20251001}
   scoring_agent:        {provider: claude, model: claude-haiku-4-5-20251001}
+  relevance_filter:     {provider: claude, model: claude-haiku-4-5-20251001}   # ADR-079 pre-scoring filter; one cheap batched call/run
   resume_critic:        {provider: claude, model: claude-haiku-4-5-20251001}
   review_auditor:       {provider: claude, model: claude-haiku-4-5-20251001}
   fidelity_reviewer:    {provider: claude, model: claude-haiku-4-5-20251001}

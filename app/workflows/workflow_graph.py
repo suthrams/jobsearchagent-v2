@@ -15,6 +15,7 @@ from langgraph.graph import END, StateGraph
 from app.agents.career_advisor import CareerAdvisor
 from app.agents.fidelity_reviewer import FidelityReviewer
 from app.agents.interview_coach import InterviewCoach
+from app.agents.relevance_filter_agent import RelevanceFilterAgent
 from app.agents.research_agent import ResearchAgent
 from app.agents.resume_chat import ResumeChatAgent
 from app.agents.resume_critic import ResumeCritic
@@ -44,6 +45,7 @@ from app.workflows.nodes.generate_report import make_generate_report_node
 from app.workflows.nodes.interview_prep import make_interview_prep_node
 from app.workflows.nodes.load_resume import make_load_resume_node
 from app.workflows.nodes.register_run import make_register_run_node
+from app.workflows.nodes.relevance_filter import make_relevance_filter_node
 from app.workflows.nodes.score_jobs import make_score_jobs_node
 from app.workflows.routers import (
     deep_review_gate,
@@ -59,6 +61,8 @@ class WorkflowDependencies:
     # Agents
     research_agent: ResearchAgent
     scoring_agent: ScoringAgent
+    # ADR-079: opt-in reasoning relevance pre-filter (in-graph, before scoring).
+    relevance_filter_agent: RelevanceFilterAgent
     resume_critic: ResumeCritic
     review_auditor: ReviewAuditor
     career_advisor: CareerAdvisor
@@ -150,6 +154,9 @@ def build_graph(deps: WorkflowDependencies):
             deps.resume_parser, deps.observability, deps.resume_repo),
         "score_jobs": make_score_jobs_node(
             deps.research_agent, deps.scoring_agent, deps.score_repo, deps.observability),
+        # ADR-079: opt-in cheap reasoning pre-filter on the auto-scoring branch.
+        "relevance_filter": make_relevance_filter_node(
+            deps.relevance_filter_agent, deps.observability),
         "await_job_selection": make_await_job_selection_node(),
         # Manual-selection mode (ADR-060): phase-1 terminal that parks discovered
         # jobs for the user to triage before any scoring spend.
@@ -177,6 +184,8 @@ def build_graph(deps: WorkflowDependencies):
     # ── Sequential edges ──────────────────────────────────────────────────────
     graph.add_edge("register_run",   "discover_jobs")
     graph.add_edge("discover_jobs",  "load_resume")
+    # ADR-079: the relevance pre-filter feeds straight into scoring.
+    graph.add_edge("relevance_filter", "score_jobs")
     graph.add_edge("score_jobs",     "await_job_selection")
     graph.add_edge("deep_review",    "career_advice")
     graph.add_edge("await_scoring_selection", END)
@@ -184,11 +193,16 @@ def build_graph(deps: WorkflowDependencies):
 
     # ── Conditional edges ─────────────────────────────────────────────────────
     # After load_resume: manual-selection mode parks for user triage (ADR-060);
+    # the relevance pre-filter (ADR-079) triages with a cheap LLM then scores;
     # otherwise score every discovered job as before.
     graph.add_conditional_edges(
         "load_resume",
         scoring_mode_gate,
-        {"score_jobs": "score_jobs", "await_scoring_selection": "await_scoring_selection"},
+        {
+            "score_jobs": "score_jobs",
+            "relevance_filter": "relevance_filter",
+            "await_scoring_selection": "await_scoring_selection",
+        },
     )
 
     # After auto-select: skip deep review entirely if no jobs qualified.

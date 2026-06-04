@@ -236,6 +236,7 @@ def _make_deps() -> WorkflowDependencies:
     return WorkflowDependencies(
         research_agent=MagicMock(),
         scoring_agent=MagicMock(),
+        relevance_filter_agent=MagicMock(),
         resume_critic=MagicMock(),
         review_auditor=MagicMock(),
         career_advisor=MagicMock(),

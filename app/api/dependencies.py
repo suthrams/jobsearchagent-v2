@@ -14,6 +14,7 @@ from unittest.mock import MagicMock
 from app.agents.career_advisor import CareerAdvisor
 from app.agents.fidelity_reviewer import FidelityReviewer
 from app.agents.interview_coach import InterviewCoach
+from app.agents.relevance_filter_agent import RelevanceFilterAgent
 from app.agents.research_agent import ResearchAgent
 from app.agents.resume_chat import ResumeChatAgent
 from app.agents.resume_critic import ResumeCritic
@@ -41,6 +42,7 @@ from app.schemas.fidelity_review import FidelityReview
 from app.schemas.interview_prep import InterviewPrep
 from app.schemas.job_posting import JobPosting, JobSource, WorkMode
 from app.schemas.job_score import JobScore
+from app.schemas.relevance_filter import RelevanceFilterResult
 from app.schemas.research_context import ResearchContext
 from app.schemas.resume_chat import ResumeChatTurnResult
 from app.schemas.resume_clinic import ResumeClinicReview
@@ -95,6 +97,13 @@ def _make_scoring_side_effect(workflow_id: str, context: dict) -> JobScore:
         recommended_next_action="Apply.",
         confidence=82,
     )
+
+
+def _make_relevance_filter_side_effect(workflow_id: str, context: dict) -> RelevanceFilterResult:
+    """ADR-079: mock relevance filter. Returns no verdicts, so the node keeps every
+    discovered job (the filter is a no-op in mock mode — it is also opt-in and never
+    enabled by the mocked config, but the agent must still be a valid double)."""
+    return RelevanceFilterResult(verdicts=[])
 
 
 def _make_critic_side_effect(workflow_id: str, context: dict) -> ResumeReview:
@@ -252,6 +261,9 @@ def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
     scoring = MagicMock(spec=ScoringAgent)
     scoring.run.side_effect = _make_scoring_side_effect
 
+    relevance = MagicMock(spec=RelevanceFilterAgent)
+    relevance.run.side_effect = _make_relevance_filter_side_effect
+
     critic = MagicMock(spec=ResumeCritic)
     critic.run.side_effect = _make_critic_side_effect
 
@@ -298,6 +310,7 @@ def _build_mocked_deps(checkpointer) -> WorkflowDependencies:
     return WorkflowDependencies(
         research_agent=research,
         scoring_agent=scoring,
+        relevance_filter_agent=relevance,
         resume_critic=critic,
         review_auditor=auditor,
         career_advisor=advisor,
@@ -393,6 +406,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     # Agents — each gets the provider its assignment maps to
     research = ResearchAgent(registry.for_agent("research_agent"), obs)
     scoring = ScoringAgent(registry.for_agent("scoring_agent"), obs)
+    relevance = RelevanceFilterAgent(registry.for_agent("relevance_filter"), obs)
     critic = ResumeCritic(registry.for_agent("resume_critic"), obs)
     auditor = ReviewAuditor(registry.for_agent("review_auditor"), obs)
     advisor = CareerAdvisor(registry.for_agent("career_advisor"), obs)
@@ -484,6 +498,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     return WorkflowDependencies(
         research_agent=research,
         scoring_agent=scoring,
+        relevance_filter_agent=relevance,
         resume_critic=critic,
         review_auditor=auditor,
         career_advisor=advisor,
@@ -669,6 +684,7 @@ def reload_deps_and_graph() -> dict:
         for agent_name, attr in (
             ("research_agent",   "research_agent"),
             ("scoring_agent",    "scoring_agent"),
+            ("relevance_filter", "relevance_filter_agent"),
             ("resume_critic",    "resume_critic"),
             ("review_auditor",   "review_auditor"),
             ("career_advisor",   "career_advisor"),

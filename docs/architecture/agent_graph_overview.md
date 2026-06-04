@@ -10,7 +10,7 @@ in detail, see [`workflow_model.md`](workflow_model.md).
 
 ## All agents at a glance
 
-Twelve LLM-using components (ten `BaseAgent` subclasses + two utility helpers),
+Thirteen LLM-using components (eleven `BaseAgent` subclasses + two utility helpers),
 grouped by responsibility. Same style as the
 [API surface diagram](api_surface_overview.md).
 
@@ -22,6 +22,7 @@ grouped by responsibility. Same style as the
 ```mermaid
 flowchart TB
     subgraph Funnel [Job-search funnel - in-graph LangGraph]
+        a0[RelevanceFilterAgent - Structured output, batched - opt-in pre-scoring]
         a1[ResearchAgent - Bounded ReAct]
         a2[ScoringAgent - Structured output]
         a3[ResumeCritic - Critique]
@@ -58,6 +59,7 @@ assignment) and `tests/model_pins.json` (build-time pin).
 
 | Agent | `AGENT_NAME` | Pattern | When it runs |
 |---|---|---|---|
+| `RelevanceFilterAgent` | `relevance_filter` | Structured output (batch) | Opt-in (`search.relevance_filter`, ADR-079). One cheap call before scoring; hard-drops seniority/relevance mismatches. |
 | `ResearchAgent` | `research_agent` | Bounded ReAct | Always — once per discovered job, before scoring. |
 | `ScoringAgent` | `scoring_agent` | Structured output (batch) | Always — scores every researched job. |
 | `ResumeCritic` | `resume_critic` | Critique | Only for jobs that pass the deep-review gate. |
@@ -102,6 +104,8 @@ START
                                                        │        │
                                                        ▼        ▼
                                                   score_jobs ◀── scoring_mode_gate
+                                                       ▲        │
+                                          relevance_filter ◀────┤  (ADR-079, opt-in)
                                                        │        │
                                                        │        └── manual ──> await_scoring_selection ──> END (phase 1)
                                                        │
@@ -138,6 +142,7 @@ Per-node agent calls:
 | `discover_jobs` | (none) | Uses `JobDiscoveryService` + the v1 scrapers (Adzuna, LinkedIn, CustomUrl). `CustomUrlScraper` may call the `custom_url_extractor` LLM as a fallback per URL. |
 | `load_resume` | (none) | Reads the active resume from `ResumeRepository`. |
 | `await_scoring_selection` | (none) | ADR-060: parks until `POST /workflows/{wf}/scoring` continues. |
+| `relevance_filter` | `RelevanceFilterAgent` | ADR-079, opt-in: one batched call drops seniority/relevance mismatches before scoring. Keep-all on failure. |
 | `score_jobs` | `ResearchAgent` ⇒ `ScoringAgent` | Per-job: research first (bounded ReAct), then structured-output scoring. |
 | `await_job_selection` | (none) | Auto-selects up to `MAX_SELECTED_JOBS` qualifying jobs (no interrupt). |
 | `deep_review` | `ResumeCritic` ⇄ `ReviewAuditor` | Reflection loop bounded by `MAX_REVIEW_ROUNDS` + the auditor's `stop` signal. |

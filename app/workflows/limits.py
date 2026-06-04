@@ -169,6 +169,19 @@ def get_manual_selection(state: dict) -> bool:
     return bool(scoring.get("manual_selection", False))
 
 
+def get_relevance_filter(state: dict) -> bool:
+    """Return whether the reasoning relevance pre-filter is enabled (ADR-079).
+
+    When true (and manual_selection is off), the graph discovers a wider net and a
+    cheap LLM pass drops seniority/relevance mismatches before scoring. Read from
+    effective_config['search']['relevance_filter']; default False (Primary
+    unaffected).
+    """
+    cfg = state.get("effective_config") or {}
+    search = cfg.get("search") or {}
+    return bool(search.get("relevance_filter", False))
+
+
 def get_max_scored(state: dict) -> int:
     """Per-run cap on how many jobs get scored (ADR-061).
 
@@ -189,14 +202,16 @@ def get_max_scored(state: dict) -> int:
 
 
 def get_max_discovered_jobs(state: dict) -> int:
-    """Discovery cap for this run (ADR-060 + ADR-061).
+    """Discovery cap for this run (ADR-060 + ADR-061 + ADR-079).
 
-    Manual-selection mode: the wide net from effective_config['search']
-    ['max_discovered'], defaulting to and clamped at MAX_DISCOVERED_JOBS.
-    Auto mode: equals the scored cap — there is no point discovering more jobs
+    Wide-net modes (manual selection OR the relevance pre-filter): the wide net
+    from effective_config['search']['max_discovered'], defaulting to and clamped at
+    MAX_DISCOVERED_JOBS. Both modes triage the wide set down before scoring, so
+    discovering more than the scored cap is the whole point.
+    Plain auto mode: equals the scored cap — there is no point discovering more jobs
     than we will score, since auto mode scores every discovered job.
     """
-    if not get_manual_selection(state):
+    if not (get_manual_selection(state) or get_relevance_filter(state)):
         return get_max_scored(state)
     cfg = state.get("effective_config") or {}
     search = cfg.get("search") or {}

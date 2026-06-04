@@ -4,6 +4,37 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-04
+
+### Added — Reasoning relevance pre-filter before scoring (ADR-079)
+
+Opt-in per profile (`search.relevance_filter`, off by default). A new in-graph
+`RelevanceFilterAgent` (Haiku, one batched call/run) reasons over every discovered
+posting on the auto-scoring branch and hard-drops clear seniority/relevance
+mismatches BEFORE scoring, so the 2 LLM calls/job that scoring costs are never paid
+on the noise. Net cost-negative on a noisy (e.g. fresh-grad) profile — it is the
+automated cousin of ADR-060 manual selection (wide net -> cheap LLM triage ->
+narrow -> score), with no `interrupt()`.
+
+- **Profile-relative + bidirectional.** Judges each posting against the candidate's
+  own band: `too_senior` for early-career, `too_junior` for senior, `unrelated` for
+  off-domain. The LLM counterpart to ADR-065's deterministic `exceeds_cap` /
+  `below_floor`, reasoning over the whole posting (catches Lead/Staff/Principal /
+  substance-senior roles the keyword filters miss).
+- **Wiring.** New `relevance_filter` node; three-way `scoring_mode_gate`
+  (manual > relevance > score); `get_relevance_filter` + `get_max_discovered_jobs`
+  widening; `search.relevance_filter` registered agent (Haiku) + model pin; Start
+  New Run toggle.
+- **Safety.** Never loses a run — any agent failure / empty / unparseable verdicts
+  keeps ALL jobs; drops audited in `discovery_stats.relevance_drops`. Profile enters
+  the agent only via `trim_resume_profile()` (ADR-069 seam); PII invariant holds.
+- 885 tests (+14), UI smoke 15/15, secret audit clean. Docs: ADR-079 +
+  `relevance_filter_design.md` (control/data/agent-graph flow) + index, CLAUDE.md,
+  workflow_model, agent_model, agent_graph_overview, config.example, wiki. NOT run
+  live yet.
+
+---
+
 ## 2026-06-02
 
 ### Changed — UI read funnel COMPLETE: db_reader retired (ADR-075 Phases 3-9)

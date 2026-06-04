@@ -123,6 +123,15 @@ def render(ctx: ViewContext) -> None:
                 help="ADR-065: drop senior/principal/staff/lead/director/manager/architect "
                      "roles at the source and by title. Use for entry-level profiles.",
             )
+            relevance_filter = st.checkbox(
+                "Reasoning relevance filter (drop mismatches before scoring)",
+                value=bool(search_cfg.get("relevance_filter", False)),
+                help="ADR-079: one cheap LLM pass reasons over every discovered job "
+                     "and drops clear seniority or role mismatches BEFORE scoring, so "
+                     "you don't pay to score the noise. Judged against your own level, "
+                     "so it drops too-senior roles for an early-career profile and "
+                     "too-junior roles for a senior one. Widens discovery to triage from.",
+            )
             persist_prefs = st.checkbox(
                 "Save these settings as my defaults for future runs",
                 value=False,
@@ -171,6 +180,8 @@ def render(ctx: ViewContext) -> None:
                 **({"min_years_experience": int(min_years_experience)}
                    if int(min_years_experience) > 0 else {}),
                 "exclude_senior": bool(exclude_senior),
+                # ADR-079: opt-in reasoning pre-filter before scoring.
+                "relevance_filter": bool(relevance_filter),
             },
         }
 
@@ -185,6 +196,7 @@ def render(ctx: ViewContext) -> None:
                 api.put_config("search.max_years_experience", int(max_years_experience))
                 api.put_config("search.min_years_experience", int(min_years_experience))
                 api.put_config("search.exclude_senior", bool(exclude_senior))
+                api.put_config("search.relevance_filter", bool(relevance_filter))
                 st.session_state.config_cache = None  # invalidate
             except Exception as exc:
                 st.warning(f"Settings save failed (run will still start): {exc}")

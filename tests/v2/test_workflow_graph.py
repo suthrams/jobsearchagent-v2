@@ -174,6 +174,7 @@ def _make_deps(checkpointer=None, override_scoring_score: int = 80) -> WorkflowD
     return WorkflowDependencies(
         research_agent=_mock_research(),
         scoring_agent=_mock_scoring(),
+        relevance_filter_agent=MagicMock(),
         resume_critic=_mock_critic(),
         review_auditor=_mock_auditor(),
         career_advisor=_mock_advisor(),

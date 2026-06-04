@@ -62,6 +62,7 @@ This keeps coordination centralized and avoids uncontrolled agent-to-agent behav
 
 | Agent                   | Purpose                                            | Pattern                |
 | ----------------------- | -------------------------------------------------- | ---------------------- |
+| Relevance Filter Agent  | Drop seniority/relevance mismatches before scoring | Structured output (batch) |
 | Research Agent          | Gather job/company context                         | Bounded ReAct          |
 | Scoring Agent           | Score job fit                                      | Structured reasoning   |
 | Resume Critic Agent     | Identify resume gaps and improvement opportunities | Critique               |
@@ -94,6 +95,52 @@ Every agent must follow these rules:
 8. Do not make final user decisions.
 9. Return uncertainty when evidence is insufficient.
 10. Provide outputs that can be validated and persisted.
+
+---
+
+## 5b. Relevance Filter Agent (ADR-079)
+
+### Purpose
+
+Cheaply triage freshly discovered postings BEFORE scoring, hard-dropping the ones
+that are a clear seniority or relevance mismatch for the profile so the run only
+pays the (2 calls/job) scoring spend on jobs worth scoring. Opt-in per profile
+(`search.relevance_filter`); off by default. Runs in-graph on the auto-scoring
+branch (`load_resume -> relevance_filter -> score_jobs`).
+
+### Pattern
+
+Structured output, ONE batched call per run (not per job). Haiku by default — the
+filter must be cheaper than the scoring it prevents. Profile-relative and
+bidirectional: judges each posting against the candidate's own target band.
+
+### Inputs
+
+* `_cached.resume_profile` — REDACTED via `trim_resume_profile()` (ADR-069 seam).
+* `target_roles` — the run's roles/titles.
+* `seniority_signals` — `min_years_experience`, `max_years_experience`,
+  `exclude_senior` from `effective_config.search`.
+* `jobs[]` — `{job_id, title, company, description}` (description truncated).
+
+### Outputs
+
+`RelevanceFilterResult { verdicts: list[RelevanceVerdict] }`, one verdict per
+posting: `{ job_id, keep: bool, mismatch: Literal["none","too_senior","too_junior","unrelated"], reason }`.
+`reason` is PII-safe (about the posting, never the candidate).
+
+### Constraints
+
+* Conservative: drop ONLY on a clear mismatch; keep when unsure (recall-biased).
+* Job descriptions are untrusted input — evaluated as data, never followed.
+* Never lose the run: the node keeps ALL jobs on any failure / empty / unparseable
+  result; drops are audited in `discovery_stats.relevance_drops`.
+
+### Observability Events
+
+* `relevance_filter.started` / `relevance_filter.completed` / `relevance_filter.failed`
+* One `llm_calls` row per run (the batched call), counted against `MAX_LLM_CALLS_PER_RUN`.
+
+See `relevance_filter_design.md` for the full control + data flow.
 
 ---
 

@@ -10,6 +10,7 @@ from app.workflows.limits import (
     best_track_score,
     get_manual_selection,
     get_min_match_score,
+    get_relevance_filter,
 )
 
 
@@ -25,10 +26,20 @@ def entry_router(state: dict) -> str:
 
 
 def scoring_mode_gate(state: dict) -> str:
-    """After load_resume: in manual-selection mode (ADR-060) stop for the user to
-    pick which jobs to score; otherwise score every discovered job as before.
+    """Route off load_resume between three modes (ADR-060 + ADR-079).
+
+    Fixed precedence:
+      1. manual_selection on  -> await_scoring_selection (a human triages; the LLM
+         filter is pointless when a person is already curating).
+      2. relevance_filter on  -> relevance_filter (a cheap LLM drops mismatches,
+         then scoring continues automatically).
+      3. otherwise            -> score_jobs (the unchanged default).
     """
-    return "await_scoring_selection" if get_manual_selection(state) else "score_jobs"
+    if get_manual_selection(state):
+        return "await_scoring_selection"
+    if get_relevance_filter(state):
+        return "relevance_filter"
+    return "score_jobs"
 
 
 def deep_review_gate(state: dict) -> str:

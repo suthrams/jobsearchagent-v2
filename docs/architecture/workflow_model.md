@@ -62,10 +62,13 @@ flowchart TD
     SC[/"Search criteria + resume"/] --> DISC
 
     subgraph ingraph["In-graph workflow — runs end to end, no interrupt (ADR-059)"]
-        DISC["1 - DISCOVER<br/>auto: up to scoring.max_scored<br/>manual: up to search.max_discovered (&le;50)"]
+        DISC["1 - DISCOVER<br/>auto: up to scoring.max_scored<br/>manual / relevance_filter: up to search.max_discovered (&le;50)"]
         DISC --> MAN{"manual_selection?<br/>(ADR-060)"}
         MAN -- "yes" --> TRIAGE["Human triage between phases:<br/>pick which jobs to score"]
-        MAN -- "no" --> SCORE
+        MAN -- "no" --> RF{"relevance_filter?<br/>(ADR-079)"}
+        RF -- "yes" --> FILT["1b - RELEVANCE FILTER<br/>one cheap LLM call drops<br/>seniority/relevance mismatches"]
+        RF -- "no" --> SCORE
+        FILT --> SCORE
         TRIAGE --> SCORE["2 - SCORE<br/>research + scoring<br/>up to scoring.max_scored (&le;25)"]
         SCORE --> SEL["3 - AUTO-SELECT<br/>top-3 qualifying by best track score<br/>(MAX_SELECTED_JOBS = 3)"]
         SEL --> DEEP["4 - DEEP REVIEW<br/>critic + auditor reflection loop"]
@@ -312,6 +315,10 @@ The `await_job_selection` node does NOT call `interrupt()`.
 * **Before scoring (ADR-060):** when `scoring.manual_selection` is on, the run
   parks between phases at `awaiting_scoring_selection` and the human picks which
   discovered jobs to score. This is a phase boundary, not an in-graph pause.
+* **Before scoring, automated (ADR-079):** when `search.relevance_filter` is on
+  (and manual selection is off), the `relevance_filter` node runs one cheap LLM
+  pass that drops seniority/relevance mismatches before scoring — the automated
+  cousin of the manual triage above. See `relevance_filter_design.md`.
 * **After scoring (ADR-055/061):** the human can pull **any scored job** — not
   just the auto-selected 3 — through out-of-graph tailoring, deep review, or
   interview prep (see Section 11 + the on-demand operations).

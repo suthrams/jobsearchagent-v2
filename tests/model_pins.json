@@ -22,6 +22,7 @@
   "pins": {
     "research_agent":       {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
     "scoring_agent":        {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
+    "relevance_filter":     {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-06-04"},
     "resume_critic":        {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
     "review_auditor":       {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
     "fidelity_reviewer":    {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-05-28"},
