@@ -35,6 +35,12 @@ search:
   # early-career profile and too-junior roles for a senior one. Off by default.
   # relevance_filter: true
 
+  # ADR-080: opt-in max posting age. Drop postings older than N days at discovery
+  # (upstream of the relevance filter AND scoring). Stale postings correlate with
+  # pulled requisitions / dead apply links. Postings with no parseable date are
+  # kept. 0/absent = off. Deterministic, no network fetch.
+  # max_posting_age_days: 30
+
 # ─── Scoring ────────────────────────────────────────────────────────────────
 # Usually set per profile via the Settings UI (writes to user_config), not here.
 scoring:

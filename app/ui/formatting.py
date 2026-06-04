@@ -22,6 +22,23 @@ def _checked(flag) -> str:
     return "✅" if pd.notna(flag) and flag else "—"
 
 
+def format_posting_age(posted_at, *, now=None) -> str:
+    """Human 'Posted N days ago' label for a posting (ADR-080).
+
+    Returns "" when the date is unknown/unparseable (so the UI shows nothing
+    rather than a wrong age). Pure given an injected ``now`` -> unit-testable.
+    """
+    from app.services.posting_age_filter import posting_age_days
+    age = posting_age_days(posted_at, now=now)
+    if age is None:
+        return ""
+    if age <= 0:
+        return "Posted today"
+    if age == 1:
+        return "Posted 1 day ago"
+    return f"Posted {age} days ago"
+
+
 def _get_nested(d: dict, keys: list[str]):
     cur = d
     for k in keys:

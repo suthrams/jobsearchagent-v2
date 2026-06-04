@@ -81,7 +81,8 @@ def _node_with(capture: dict, factory):
     svc = MagicMock(spec=JobDiscoveryService)
     def _discover_with_stats(workflow_id, search_criteria, extra_scrapers=None,
                              skip_builtin_adzuna=False, max_years_experience=None,
-                             min_years_experience=None, user_id=None):
+                             min_years_experience=None, max_posting_age_days=None,
+                             user_id=None):
         capture["extra"] = list(extra_scrapers or [])
         capture["skip"] = skip_builtin_adzuna
         capture["max_years"] = max_years_experience

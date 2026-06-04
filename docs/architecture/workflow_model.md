@@ -113,6 +113,14 @@ ADR-065 adds per-profile experience targeting (opt-in, off by default):
 above the cap (regex, no LLM; silent JDs kept), and `search.exclude_senior` drops
 senior roles via Adzuna `what_exclude` + the title gate.
 
+ADR-080 adds an opt-in posting-age cap (`search.max_posting_age_days`): a
+deterministic filter in `discover_with_stats` (after the experience filter) drops
+postings older than N days using `posted_at`; postings with no parseable date are
+kept. Stale postings correlate with dead apply links. This runs upstream of both
+the ADR-079 relevance filter and scoring. The funnel `stats` gains
+`age_filter_dropped`. `posted_at` is persisted on the `jobs` row and surfaced as
+"Posted N days ago" + a stale badge on Job Detail.
+
 ---
 
 ### Inputs

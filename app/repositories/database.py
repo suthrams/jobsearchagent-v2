@@ -58,6 +58,7 @@ CREATE TABLE IF NOT EXISTS jobs (
     job_description TEXT,
     normalized_job_json TEXT,
     url TEXT,
+    posted_at TEXT,                        -- ADR-080: when the employer posted it (ISO 8601 UTC); null if the source omits it
     created_at TEXT NOT NULL,
     excluded INTEGER NOT NULL DEFAULT 0,   -- ADR-057: per-job pipeline-filter flag (1 = hidden / skipped)
     excluded_reason TEXT,                  -- ADR-057: optional free-text recall; never parsed
@@ -344,6 +345,8 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             "ALTER TABLE jobs ADD COLUMN excluded INTEGER NOT NULL DEFAULT 0",
             "ALTER TABLE jobs ADD COLUMN excluded_reason TEXT",
             "ALTER TABLE jobs ADD COLUMN excluded_at TEXT",
+            # ADR-080: posting date for the staleness signal + max-age filter.
+            "ALTER TABLE jobs ADD COLUMN posted_at TEXT",
         ):
             try:
                 conn.execute(col_ddl)

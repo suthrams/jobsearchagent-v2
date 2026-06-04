@@ -44,6 +44,7 @@ def make_discover_jobs_node(
                 return None
         max_years = _years("max_years_experience")
         min_years = _years("min_years_experience")
+        max_posting_age_days = _years("max_posting_age_days")  # ADR-080; 0/None = off
         exclude_senior = bool(_search_cfg.get("exclude_senior", False))
 
         # Per-run scrapers: build one CustomUrlScraper if URLs were provided.
@@ -81,6 +82,7 @@ def make_discover_jobs_node(
                 skip_builtin_adzuna=skip_builtin_adzuna,
                 max_years_experience=max_years,
                 min_years_experience=min_years,
+                max_posting_age_days=max_posting_age_days,
                 user_id=user_id,
             )
             # ADR-060: manual-selection mode casts a wider net (the user triages
@@ -116,6 +118,7 @@ def make_discover_jobs_node(
                 "location": posting.location,
                 "job_description": posting.description,
                 "url": posting.url,
+                "posted_at": getattr(posting, "posted_at", None),  # ADR-080
             }
             try:
                 job_repo.upsert(db_dict)

@@ -249,11 +249,12 @@ def get_job_pipeline(workflow_id: str, job_id: str,
 
     try:
         with get_connection(db_path) as conn:
-            r = conn.execute("SELECT id, title, company, location, url, source, created_at "
+            r = conn.execute("SELECT id, title, company, location, url, source, posted_at, created_at "
                              "FROM jobs WHERE id = ?", (job_id,)).fetchone()
             if r:
                 out["job"] = {"id": r["id"], "title": r["title"], "company": r["company"],
                               "location": r["location"], "url": r["url"], "source": r["source"],
+                              "posted_at": r["posted_at"],  # ADR-080
                               "found_at": r["created_at"]}
             r = conn.execute("SELECT score_json, overall_score, created_at FROM job_scores "
                              "WHERE workflow_run_id = ? AND job_id = ?", (workflow_id, job_id)).fetchone()

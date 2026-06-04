@@ -16,8 +16,8 @@ class JobRepository:
             conn.execute(
                 """INSERT INTO jobs
                    (id, source, source_job_id, title, company, location,
-                    job_description, normalized_job_json, url, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    job_description, normalized_job_json, url, posted_at, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                    ON CONFLICT(id) DO UPDATE SET
                        normalized_job_json = excluded.normalized_job_json""",
                 (
@@ -30,6 +30,7 @@ class JobRepository:
                     job.get("job_description"),
                     json.dumps(job.get("normalized", {})),
                     job.get("url"),
+                    job.get("posted_at"),  # ADR-080: null if the source omitted it
                     now,
                 ),
             )

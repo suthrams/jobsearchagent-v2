@@ -123,6 +123,14 @@ def render(ctx: ViewContext) -> None:
                 help="ADR-065: drop senior/principal/staff/lead/director/manager/architect "
                      "roles at the source and by title. Use for entry-level profiles.",
             )
+            max_posting_age_days = st.number_input(
+                "Max posting age in days (0 = no limit)",
+                min_value=0, max_value=365,
+                value=int(search_cfg.get("max_posting_age_days") or 0),
+                help="ADR-080: drop postings older than this many days at discovery "
+                     "(before the relevance filter and scoring). Stale postings often "
+                     "have dead apply links. Postings with no date are kept. 0 = off.",
+            )
             relevance_filter = st.checkbox(
                 "Reasoning relevance filter (drop mismatches before scoring)",
                 value=bool(search_cfg.get("relevance_filter", False)),
@@ -182,6 +190,9 @@ def render(ctx: ViewContext) -> None:
                 "exclude_senior": bool(exclude_senior),
                 # ADR-079: opt-in reasoning pre-filter before scoring.
                 "relevance_filter": bool(relevance_filter),
+                # ADR-080: 0 = off (omit so discovery leaves the age bound off).
+                **({"max_posting_age_days": int(max_posting_age_days)}
+                   if int(max_posting_age_days) > 0 else {}),
             },
         }
 
@@ -197,6 +208,7 @@ def render(ctx: ViewContext) -> None:
                 api.put_config("search.min_years_experience", int(min_years_experience))
                 api.put_config("search.exclude_senior", bool(exclude_senior))
                 api.put_config("search.relevance_filter", bool(relevance_filter))
+                api.put_config("search.max_posting_age_days", int(max_posting_age_days))
                 st.session_state.config_cache = None  # invalidate
             except Exception as exc:
                 st.warning(f"Settings save failed (run will still start): {exc}")

@@ -172,6 +172,7 @@ CREATE TABLE jobs (
     job_description     TEXT,
     normalized_job_json TEXT,
     url                 TEXT,
+    posted_at           TEXT,                          -- ADR-080
     created_at          TEXT NOT NULL,
     excluded            INTEGER NOT NULL DEFAULT 0,   -- ADR-057
     excluded_reason     TEXT,                          -- ADR-057
@@ -192,6 +193,7 @@ CREATE TABLE jobs (
 | `job_description`     | TEXT        | Full posting text. Treated as **untrusted input** — never followed as instructions. |
 | `normalized_job_json` | TEXT (JSON) | Structured `JobPosting` (Pydantic) for agent consumption. |
 | `url`                 | TEXT        | Canonical posting URL. The dedup key for `JobDiscoveryService.deduplicate`. |
+| `posted_at`           | TEXT        | ADR-080. ISO 8601 UTC when the employer posted it (from Adzuna `created`); null if the source omits it. Drives the staleness signal + `search.max_posting_age_days` filter. |
 | `created_at`          | TEXT        | ISO 8601 UTC; first time this URL was seen. |
 | `excluded`            | INT         | ADR-057. `1` = filtered from cross-run analytics + dropped at next discovery via `url_exists`. |
 | `excluded_reason`     | TEXT        | ADR-057. Optional free-text recall. Never parsed by the system. |

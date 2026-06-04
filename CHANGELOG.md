@@ -6,6 +6,28 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-04
 
+### Added — Posting-age staleness signal + opt-in max-age filter (ADR-080)
+
+Live runs surfaced Adzuna listings that render but whose employer "apply" link is
+dead. A one-URL diagnostic showed automated link-verification is not viable
+(Adzuna 429-blocks server fetches with `Retry-After: 3600`; the dead link is the
+employer terminal behind a JS/click-gated apply button; ATS pages soft-expire with
+200). So instead we use **posting age** as the reliable, free staleness proxy.
+
+- New per-profile `search.max_posting_age_days` (int; 0/None = off). Deterministic
+  filter in `JobDiscoveryService.discover_with_stats` (after the experience filter)
+  drops postings older than N days; postings with no parseable `posted_at` are kept.
+  Runs UPSTREAM of the ADR-079 relevance filter and scoring, so one age cap gates
+  both. Funnel `stats` gains `age_filter_dropped`.
+- `posted_at` (already on `JobPosting` from Adzuna `created`) is now persisted on
+  the `jobs` row (new column + migration) and surfaced as "Posted N days ago" + a
+  stale badge on Job Detail. New `app/services/posting_age_filter.py` helper +
+  `format_posting_age` UI formatter. Start New Run gains a max-age input.
+- 892 tests (+7). Docs: ADR-080 + `spike_job_data_sources.md` (the parallel
+  ATS-direct exploration) + index, data_model (`jobs.posted_at`), config_model,
+  workflow_model, architecture_overview, wiki, CLAUDE.md, config.example. NOT run
+  live yet.
+
 ### Added — Reasoning relevance pre-filter before scoring (ADR-079)
 
 Opt-in per profile (`search.relevance_filter`, off by default). A new in-graph

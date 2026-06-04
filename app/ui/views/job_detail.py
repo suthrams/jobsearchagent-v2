@@ -13,7 +13,7 @@ from app.ui.data import (
     _cached_recent_workflows,
     _cached_workflow_jobs,
 )
-from app.ui.formatting import _fmt_ts
+from app.ui.formatting import _fmt_ts, format_posting_age
 from app.ui.nav import ViewContext, _navigate
 
 
@@ -76,6 +76,13 @@ def render(ctx: ViewContext) -> None:
     )
     if job.get("url"):
         st.markdown(f"[Open posting ↗]({job['url']})")
+    # ADR-080: posting age + stale badge so the user can gauge freshness before
+    # trusting the apply link (stale postings often have dead apply links).
+    _age_label = format_posting_age(job.get("posted_at"))
+    if _age_label:
+        from app.services.posting_age_filter import is_stale
+        _badge = "  ⚠️ may be stale" if is_stale(job.get("posted_at")) else ""
+        st.caption(f"{_age_label}{_badge}")
     st.caption(
         f"Workflow `{wf_id}`  ·  job_id `{job_id}`  ·  "
         f"first found `{_fmt_ts(job.get('found_at'))}`"

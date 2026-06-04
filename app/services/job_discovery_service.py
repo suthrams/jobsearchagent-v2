@@ -64,6 +64,7 @@ class JobDiscoveryService:
         skip_builtin_adzuna: bool = False,
         max_years_experience: int | None = None,
         min_years_experience: int | None = None,
+        max_posting_age_days: int | None = None,
         user_id: str | None = None,
     ) -> list[JobPosting]:
         """Backward-compat wrapper. Returns postings only; discards stats.
@@ -80,6 +81,7 @@ class JobDiscoveryService:
             skip_builtin_adzuna=skip_builtin_adzuna,
             max_years_experience=max_years_experience,
             min_years_experience=min_years_experience,
+            max_posting_age_days=max_posting_age_days,
             user_id=user_id,
         )
         return postings
@@ -92,6 +94,7 @@ class JobDiscoveryService:
         skip_builtin_adzuna: bool = False,
         max_years_experience: int | None = None,
         min_years_experience: int | None = None,
+        max_posting_age_days: int | None = None,
         user_id: str | None = None,
     ) -> tuple[list[JobPosting], dict]:
         """Run all scrapers, normalise, filter, dedupe, cap. Returns
@@ -164,6 +167,20 @@ class JobDiscoveryService:
                             min_years_experience, max_years_experience,
                             experience_filter_dropped, before_exp)
 
+        # ADR-080: per-profile max posting age. Drop postings strictly older than
+        # the cap; keep postings with no parseable posted_at (unknown age is not
+        # penalized, mirroring the experience filter). Deterministic, no fetch.
+        age_filter_dropped = 0
+        if max_posting_age_days:
+            from app.services.posting_age_filter import is_older_than
+            before_age = len(postings)
+            postings = [p for p in postings
+                        if not is_older_than(p.posted_at, max_posting_age_days)]
+            age_filter_dropped = before_age - len(postings)
+            if age_filter_dropped > 0:
+                logger.info("Posting-age cap (max_days=%s) dropped %d of %d postings",
+                            max_posting_age_days, age_filter_dropped, before_age)
+
         before_dedup = len(postings)
         postings, dedup_stats = self._dedup_with_stats(postings, user_id=user_id)
         dedup_total_dropped = before_dedup - len(postings)
@@ -180,6 +197,7 @@ class JobDiscoveryService:
             "scraper_raw_total":         scraper_raw_total,
             "title_filter_dropped":      title_filter_dropped,
             "experience_filter_dropped": experience_filter_dropped,
+            "age_filter_dropped":        age_filter_dropped,
             "dedup_total_dropped":       dedup_total_dropped,
             "dedup_batch_dropped":       dedup_stats["batch"],
             "dedup_excluded_dropped":    dedup_stats["excluded"],
