@@ -61,7 +61,7 @@ def test_job_posting_optional_fields_default_none():
 
 def test_job_posting_invalid_source():
     with pytest.raises(ValidationError):
-        JobPosting(**_valid_posting(source="indeed"))
+        JobPosting(**_valid_posting(source="not_a_real_source"))
 
 
 def test_salary_info_all_none():

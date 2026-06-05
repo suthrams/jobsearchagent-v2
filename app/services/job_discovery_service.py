@@ -24,6 +24,10 @@ _SCRAPER_TIMEOUT_S = 180
 _SOURCE_MAP: dict[str, JobSource] = {
     "linkedin": JobSource.LINKEDIN,
     "adzuna": JobSource.ADZUNA,
+    # The v1 AdzunaScraper tags its results JobSource.INDEED ("Adzuna aggregates
+    # Indeed among others"), so map "indeed" -> ADZUNA; without this they fell back
+    # to MANUAL and were mislabeled in the UI.
+    "indeed": JobSource.ADZUNA,
     "greenhouse": JobSource.GREENHOUSE,   # ADR-081
     "lever": JobSource.LEVER,             # ADR-081
 }

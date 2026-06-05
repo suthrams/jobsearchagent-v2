@@ -67,6 +67,13 @@ page. Both APIs verified live (no auth, 200, full JD, real apply URL, no 429).
   Off until a profile lists targets. Follow-ups (company-list sourcing, concurrency,
   dedup quality) tracked in ADR-081 + `spike_job_data_sources.md`.
 
+### Fixed — Adzuna jobs mislabeled as source "manual"
+
+`JobDiscoveryService._SOURCE_MAP` now maps `"indeed" -> JobSource.ADZUNA`. The v1
+`AdzunaScraper` tags its results `JobSource.INDEED` ("Adzuna aggregates Indeed"),
+which was not in the map, so every Adzuna job fell back to `MANUAL` and showed the
+wrong source in the UI. New discoveries now label correctly as `adzuna`.
+
 ### Removed — unused job sources
 
 Dropped the unused `GLASSDOOR` / `LADDERS` `JobSource` values (no scrapers since

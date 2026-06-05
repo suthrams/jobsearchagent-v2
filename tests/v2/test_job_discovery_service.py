@@ -68,6 +68,14 @@ def test_normalize_adzuna_source():
     assert posting.source == JobSource.ADZUNA
 
 
+def test_normalize_indeed_maps_to_adzuna():
+    # The v1 AdzunaScraper tags results JobSource.INDEED; v2 maps that to ADZUNA
+    # so they are not mislabeled as MANUAL in the UI.
+    svc = _svc()
+    posting = svc.normalize(_mock_v1_job(source="indeed"), "wf-001")
+    assert posting.source == JobSource.ADZUNA
+
+
 def test_normalize_unknown_source_maps_to_manual():
     svc = _svc()
     posting = svc.normalize(_mock_v1_job(source="monster"), "wf-001")
