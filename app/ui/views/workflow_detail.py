@@ -100,7 +100,7 @@ def render(ctx: ViewContext) -> None:
             _bits.append(_age)
         st.caption("  ·  ".join(_bits))
         if job.get("url"):
-            st.markdown(f"[Open posting ↗]({job['url']})")
+            st.link_button("🔗 Open the full posting ↗", job["url"])
         _status = str(job.get("_status") or "")
         if job.get("overall_score") is not None or _status.startswith("✅"):
             _msg = "Scored"
@@ -115,6 +115,53 @@ def render(ctx: ViewContext) -> None:
             st.warning("Discovered — not scored")
         st.markdown("**Job description**")
         st.write(desc or "_(no description was captured for this job)_")
+        # Adzuna's API returns only a short snippet, not the full posting, so the
+        # text above can be much shorter than what the link shows. Flag it when the
+        # captured description is snippet-sized. ATS-direct sources (Greenhouse /
+        # Lever) and pasted custom URLs store the full description, so no note.
+        if desc and len(desc) < 900:
+            st.caption(
+                "This is the short summary captured at discovery — aggregators like "
+                "Adzuna only return a snippet. Open the full posting above for the "
+                "complete description. (ATS-direct sources store the full text.)"
+            )
+
+    def _render_discovered() -> None:
+        """Compact 'all discovered jobs' table (incl. not scored). Rendered for
+        every run with discovered jobs — even when 0 were scored, which is exactly
+        when surfacing the unscored set matters most."""
+        _discovered = state.get("normalized_jobs") or []
+        if not _discovered:
+            return
+        _rows = build_discovered_rows(_discovered, state.get("scored_jobs") or [])
+        _unscored = sum(1 for r in _rows if not r["Status"].startswith("✅"))
+        with st.expander(
+            f"🔎 All discovered jobs ({len(_rows)}) — {_unscored} not scored",
+            expanded=_unscored > 0,
+        ):
+            _funnel = discovery_funnel_summary(state.get("discovery_stats"))
+            if _funnel:
+                st.caption(_funnel)
+            _dev = st.dataframe(
+                pd.DataFrame(_rows),
+                key=f"discovered_table_{wf_id}",
+                hide_index=True,
+                use_container_width=True,
+                on_select="rerun",
+                selection_mode="single-row",
+                column_config={
+                    "Posted": st.column_config.TextColumn("Posted", width="small"),
+                    "Status": st.column_config.TextColumn("Status", width="small"),
+                },
+            )
+            _dsel = (_dev.selection.rows if _dev and getattr(_dev, "selection", None) else []) or []
+            if _dsel and _dsel[0] < len(_discovered):
+                _dj = dict(_discovered[_dsel[0]])
+                _dj["_status"] = _rows[_dsel[0]]["Status"]
+                if st.button("📄 View details", key=f"jd_disc_btn_{wf_id}"):
+                    _show_job(_dj, _dj.get("job_description"))
+            else:
+                st.caption("Select a row to view its job details.")
 
     # ── Manual scoring selection (ADR-060) ────────────────────────────────────
     # When a manual-selection run is parked after discovery, let the user pick
@@ -190,7 +237,8 @@ def render(ctx: ViewContext) -> None:
 
     jobs_df = _cached_workflow_jobs(wf_id)
     if jobs_df.empty:
-        st.info("No scored jobs yet for this run.")
+        st.info("No jobs were scored for this run — the discovered set is below.")
+        _render_discovered()
     else:
         # ADR-057: hide-by-default toggle for excluded rows in this run.
         n_excluded = int(jobs_df["excluded"].fillna(0).sum()) if "excluded" in jobs_df.columns else 0
@@ -268,11 +316,18 @@ def render(ctx: ViewContext) -> None:
         if sel_rows and sel_rows[0] < len(jobs_df):
             sel_job = jobs_df.iloc[sel_rows[0]].to_dict()
 
-        ex_col1, ex_view, ex_col2 = st.columns([1, 1, 3])
+        # Selected-job actions — one consistent cluster driven by the row click:
+        # View details (quick modal), Drill in (full Job Detail), Exclude. No
+        # separate job picker; the table IS the picker.
+        b_view, b_drill, b_excl, b_cap = st.columns([1, 1, 1, 2])
         if sel_job:
             is_excluded = bool(sel_job.get("excluded") or 0)
-            label = "♻ Un-exclude selected" if is_excluded else "🚫 Exclude selected"
-            if ex_col1.button(label, key=f"excl_btn_{wf_id}", use_container_width=True):
+            if b_view.button("📄 View details", key=f"jd_btn_{wf_id}", use_container_width=True):
+                _show_job(sel_job, _desc_by_id.get(sel_job.get("job_id")))
+            if b_drill.button("Drill in ▶", key=f"drill_in_job_{wf_id}", use_container_width=True):
+                _navigate("Job Detail", detail_workflow_id=wf_id, detail_job_id=sel_job["job_id"])
+            excl_label = "♻ Un-exclude" if is_excluded else "🚫 Exclude"
+            if b_excl.button(excl_label, key=f"excl_btn_{wf_id}", use_container_width=True):
                 try:
                     if is_excluded:
                         api.unexclude_job(sel_job["job_id"])
@@ -284,71 +339,24 @@ def render(ctx: ViewContext) -> None:
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Action failed: {exc}")
-            if ex_view.button("📄 View details", key=f"jd_btn_{wf_id}", use_container_width=True):
-                _show_job(sel_job, _desc_by_id.get(sel_job.get("job_id")))
-            ex_col2.caption(
+            b_cap.caption(
                 f"Selected: **{sel_job.get('title','(untitled)')}** @ {sel_job.get('company','')}"
                 + ("  ·  currently excluded" if is_excluded else "")
             )
         else:
-            ex_col1.button("🚫 Exclude selected", disabled=True, use_container_width=True,
-                           key=f"excl_btn_disabled_{wf_id}")
-            ex_view.button("📄 View details", disabled=True, use_container_width=True,
-                           key=f"jd_btn_disabled_{wf_id}")
-            ex_col2.caption("Select a row above to view details / Exclude.")
+            b_view.button("📄 View details", disabled=True, use_container_width=True,
+                          key=f"jd_btn_disabled_{wf_id}")
+            b_drill.button("Drill in ▶", disabled=True, use_container_width=True,
+                           key=f"drill_disabled_{wf_id}")
+            b_excl.button("🚫 Exclude", disabled=True, use_container_width=True,
+                          key=f"excl_btn_disabled_{wf_id}")
+            b_cap.caption("Select a job row above to view details, drill in, or exclude.")
 
-        # ── Discovered jobs (incl. not scored) — ADR-080 surfacing ────────────
-        # The scored table above is an inner-join to job_scores, so it can't show
-        # jobs that were discovered but never scored (manual-mode parked,
-        # budget-skipped, over-cap). Those live only in state.normalized_jobs;
-        # surface them compactly, posted_at-led, with a scored/not-scored flag.
-        _discovered = state.get("normalized_jobs") or []
-        if _discovered:
-            _rows = build_discovered_rows(_discovered, state.get("scored_jobs") or [])
-            _unscored = sum(1 for r in _rows if not r["Status"].startswith("✅"))
-            with st.expander(
-                f"🔎 All discovered jobs ({len(_rows)}) — {_unscored} not scored",
-                expanded=_unscored > 0,
-            ):
-                _funnel = discovery_funnel_summary(state.get("discovery_stats"))
-                if _funnel:
-                    st.caption(_funnel)
-                _dev = st.dataframe(
-                    pd.DataFrame(_rows),
-                    key=f"discovered_table_{wf_id}",
-                    hide_index=True,
-                    use_container_width=True,
-                    on_select="rerun",
-                    selection_mode="single-row",
-                    column_config={
-                        "Posted": st.column_config.TextColumn("Posted", width="small"),
-                        "Status": st.column_config.TextColumn("Status", width="small"),
-                    },
-                )
-                _dsel = (_dev.selection.rows if _dev and getattr(_dev, "selection", None) else []) or []
-                if _dsel and _dsel[0] < len(_discovered):
-                    _dj = dict(_discovered[_dsel[0]])
-                    _dj["_status"] = _rows[_dsel[0]]["Status"]
-                    if st.button("📄 View details", key=f"jd_disc_btn_{wf_id}"):
-                        _show_job(_dj, _dj.get("job_description"))
-                else:
-                    st.caption("Select a row to view its job details.")
+        st.caption("Tip: click a job row above, then use **View details** (quick look) "
+                   "or **Drill in** (full scoring, reviews, advice, prep).")
 
-        # Drill into a specific job — picker + button
-        st.markdown("**Drill into a job →**")
-        _options = {
-            f"{r['title']} @ {r['company']}  ·  overall {int(r['overall_score'])}": r["job_id"]
-            for _, r in jobs_df.iterrows()
-        }
-        _label = st.selectbox(
-            "Pick a job to see all of its outputs (scoring, every review round, advice, prep) with timestamps",
-            options=list(_options.keys()),
-            label_visibility="collapsed",
-        )
-        if st.button("Drill in ▶", key="drill_in_job"):
-            _navigate("Job Detail",
-                      detail_workflow_id=wf_id,
-                      detail_job_id=_options[_label])
+        # Discovered jobs (incl. not scored) — surfaced for every run below.
+        _render_discovered()
 
     # ── Review — deep critic + career advice (per job) ────────────────────────
     rev_df = _cached_deep_review_results(wf_id)

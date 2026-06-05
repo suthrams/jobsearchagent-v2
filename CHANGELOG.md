@@ -6,6 +6,23 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-04
 
+### Changed — Workflow Detail UX pass
+
+- **Discovered-jobs table now renders for every run** — including runs that scored
+  0 jobs (it was nested inside the "has scored jobs" branch, so it was hidden
+  exactly when surfacing the unscored set matters most) and past runs (their
+  persisted state already carries the descriptions; only `posted_at` is blank on
+  pre-ADR-080 runs). Extracted into a shared `_render_discovered()` helper.
+- **Unified job actions.** Selecting a row in the scored table now drives one
+  consistent button cluster — **View details · Drill in · Exclude** — and the
+  separate "Drill into a job" dropdown is removed. The table is the picker.
+- **Job-description honesty.** The details modal now shows a prominent
+  "Open the full posting" link button, and flags snippet-sized descriptions:
+  Adzuna's API returns only a short summary (verified: ~98% of stored descriptions
+  are <=750 chars), so the modal text can be far shorter than the live posting.
+  ATS-direct (Greenhouse/Lever) and pasted custom URLs store the full text, so the
+  note is suppressed for those.
+
 ### Changed — Workflow Detail: posting age up front + discovered-jobs surfacing
 
 UI/UX follow-up to ADR-080. The scored-jobs table is reshaped and a discovered-but-
