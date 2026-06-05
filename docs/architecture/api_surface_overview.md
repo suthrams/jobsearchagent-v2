@@ -8,7 +8,7 @@ see the **Overview** section there.
 
 ## All endpoints at a glance
 
-Eight domains, twenty-eight endpoints. Path parameters are written
+Eight domains, twenty-nine endpoints. Path parameters are written
 without curly braces (`/users/id` rather than `/users/{id}`) so the
 diagram renders cleanly; the canonical form with braces lives in the
 reference table below.
@@ -35,6 +35,7 @@ flowchart TB
         w2[GET /workflows/id]
         w3[POST /workflows/id/retry]
         w4[POST /workflows/id/scoring]
+        w5[POST /workflows/id/cancel]
     end
 
     subgraph Workflow_reads
@@ -100,7 +101,12 @@ braces.
 | `POST` | `/workflows` | Start a workflow run (202, async). |
 | `GET` | `/workflows/{workflow_id}` | Poll workflow status. |
 | `POST` | `/workflows/{workflow_id}/retry` | Re-submit a workflow after a server restart (202). |
+| `POST` | `/workflows/{workflow_id}/cancel` | Request cooperative cancellation of a running run (202, ADR-083). |
 | `POST` | `/workflows/{workflow_id}/scoring` | ADR-060 phase 2: score selected jobs from a manual-selection run (202, async). |
+
+`POST /workflows` also accepts an optional `Idempotency-Key` header (ADR-082): the
+same key + body replays the original run instead of starting a second; `retry` and
+`scoring` are guarded against concurrent re-submit by an in-flight execution guard.
 
 ### Workflow reads — scored jobs + final report
 

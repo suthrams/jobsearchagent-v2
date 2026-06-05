@@ -6,6 +6,7 @@ go through this module. Read-only browse views go through db_reader.py instead.
 from __future__ import annotations
 
 import os
+import uuid
 
 import httpx
 
@@ -39,9 +40,13 @@ def start_workflow(
     effective_config: dict | None = None,
     custom_urls: list[str] | None = None,
 ) -> dict:
+    # ADR-082: attach a fresh Idempotency-Key so an automatic retry of this same
+    # kickoff call replays the original run instead of starting (and paying for) a
+    # second one. A deliberate new run is a new submission with a new key.
     r = httpx.post(
         f"{BASE_URL}/workflows",
         params=_user_params(),
+        headers={"Idempotency-Key": str(uuid.uuid4())},
         json={
             "resume_id": resume_id,
             "search_criteria": search_criteria,
@@ -51,6 +56,16 @@ def start_workflow(
         },
         timeout=_TIMEOUT_POST,
     )
+    r.raise_for_status()
+    return r.json()
+
+
+def cancel_workflow(workflow_id: str) -> dict:
+    """Request cooperative cancellation of a running workflow (ADR-083).
+
+    Returns 202 with status 'cancelling'; the run stops at the next node boundary.
+    """
+    r = httpx.post(f"{BASE_URL}/workflows/{workflow_id}/cancel", timeout=_TIMEOUT_POST)
     r.raise_for_status()
     return r.json()
 

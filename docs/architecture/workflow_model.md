@@ -48,6 +48,14 @@ All workflows are:
   (ADR-059). Human involvement happens *between phases* (manual scoring triage,
   ADR-060) or *out of the graph* (on-demand tailoring / deep review / interview,
   ADR-055/061), never as an in-graph pause.
+* **idempotent + cancellable at the kickoff boundary** — a run is a real bill, so
+  `POST /workflows` is idempotent via an optional `Idempotency-Key` (ADR-082), and
+  a running graph can be cooperatively cancelled (`POST /workflows/{id}/cancel`,
+  ADR-083). Cancellation is checked at each node boundary by `_instrument_step`
+  (raises `WorkflowCancelled`), so it is not an `interrupt()` — the graph still has
+  no in-graph pause; it either runs or is torn down to `cancelled`. Re-entry
+  endpoints (retry / scoring) are protected from concurrent re-submit by an
+  in-flight guard (`app/workflows/run_control.py`).
 
 ---
 

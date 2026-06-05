@@ -1,17 +1,24 @@
-"""Workflow router — POST /workflows, GET /workflows/{id}, status + retry."""
+"""Workflow router — POST /workflows, GET /workflows/{id}, status + retry + cancel.
+
+Run-lifecycle controls live here: idempotent kickoff + in-flight guard (ADR-082)
+and cooperative cancellation (ADR-083), both via app/workflows/run_control.py.
+"""
 from __future__ import annotations
 
 import concurrent.futures
+import hashlib
+import json
 import logging
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from app.api.dependencies import get_graph
 from app.api.identity import get_current_user_id
 from app.api.schemas.requests import StartWorkflowRequest
 from app.api.schemas.responses import WorkflowRunList, WorkflowStatusResponse
+from app.workflows import run_control
 from app.workflows.limits import get_max_scored
 from app.providers.model_registry import (
     HIGH_VOLUME_AGENTS,
@@ -21,7 +28,8 @@ from app.providers.model_registry import (
     defaults_from_config,
     known_models_from_catalog,
 )
-from app.repositories.database import SYSTEM_RUN_ID, utcnow_iso
+from app.repositories.database import DEFAULT_DB_PATH, SYSTEM_RUN_ID, utcnow_iso
+from app.repositories.idempotency_repository import IdempotencyRepository
 from app.services.config_service import ConfigService
 from app.services.observability_service import emit_security_event_safe
 from app.services.reads.paging import clamp_limit
@@ -32,6 +40,36 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
+
+# Terminal workflow statuses — a run in one of these is finished and cannot be
+# cancelled or re-run (ADR-082/083).
+_TERMINAL_STATUSES = ("completed", "failed", "cancelled")
+
+
+def _get_idempotency_repo() -> IdempotencyRepository:
+    """Factory for the idempotency store (ADR-082). Indirected so tests can point
+    it at a temp DB without an Idempotency-Key touching the real data/v2.db."""
+    return IdempotencyRepository(DEFAULT_DB_PATH)
+
+
+def _kickoff_fingerprint(body: StartWorkflowRequest, user_id: str) -> str:
+    """Stable SHA-256 over the kickoff request as submitted (ADR-082).
+
+    Fingerprints the caller's intent (user + resume + criteria + type + config +
+    urls) so the same Idempotency-Key replayed with the SAME body is a replay,
+    while the same key with a DIFFERENT body is a 409 conflict. The per-run agent
+    snapshot is injected later by the handler, so it is excluded here.
+    """
+    payload = {
+        "user_id": user_id,
+        "resume_id": body.resume_id,
+        "search_criteria": body.search_criteria,
+        "workflow_type": body.workflow_type,
+        "effective_config": body.effective_config,
+        "custom_urls": list(body.custom_urls or []),
+    }
+    canonical = json.dumps(payload, sort_keys=True, default=str)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 def _build_initial_state(req: StartWorkflowRequest, workflow_id: str,
@@ -79,14 +117,33 @@ def _build_initial_state(req: StartWorkflowRequest, workflow_id: str,
     }
 
 
+def _thread_id(config: dict) -> str:
+    return config.get("configurable", {}).get("thread_id", "")
+
+
+def _finalize_cancelled(graph, config: dict) -> None:
+    """Write the terminal `cancelled` status after a WorkflowCancelled unwinds.
+
+    Safe to write here: the invoke() has already unwound, so no node is
+    concurrently writing the checkpoint (ADR-083)."""
+    try:
+        graph.update_state(config, {"status": "cancelled", "updated_at": utcnow_iso()})
+    except Exception:
+        logger.exception("Failed to write cancelled status for %s", config)
+
+
 def _run_graph(graph, initial_state: dict, config: dict) -> None:
-    """Execute graph.invoke() in thread pool."""
+    """Execute graph.invoke() in the thread pool. Finalizes cancel/fail and always
+    releases the in-flight guard + cancel flag (ADR-082/083)."""
+    wfid = _thread_id(config)
     try:
         graph.invoke(initial_state, config)
+    except run_control.WorkflowCancelled:
+        logger.info("Workflow %s cancelled at a node boundary.", wfid)
+        _finalize_cancelled(graph, config)
     except Exception as exc:
         logger.exception("Unhandled error in graph thread for config %s", config)
         try:
-            from app.repositories.database import utcnow_iso
             graph.update_state(config, {
                 "status": "failed",
                 "errors": [{"stage": "graph", "error_type": type(exc).__name__, "message": str(exc), "recoverable": False}],
@@ -94,12 +151,19 @@ def _run_graph(graph, initial_state: dict, config: dict) -> None:
             })
         except Exception:
             logger.exception("Failed to write failed status to graph state for %s", config)
+    finally:
+        run_control.release_running(wfid)
+        run_control.clear_cancel(wfid)
 
 
 def _retry_graph(graph, config: dict) -> None:
     """Re-invoke a workflow from its last checkpoint after a server restart."""
+    wfid = _thread_id(config)
     try:
         graph.invoke(None, config)
+    except run_control.WorkflowCancelled:
+        logger.info("Workflow %s cancelled at a node boundary (retry).", wfid)
+        _finalize_cancelled(graph, config)
     except Exception as exc:
         logger.exception("Unhandled error retrying graph for config %s", config)
         try:
@@ -110,6 +174,9 @@ def _retry_graph(graph, config: dict) -> None:
             })
         except Exception:
             logger.exception("Failed to write failed status after retry for %s", config)
+    finally:
+        run_control.release_running(wfid)
+        run_control.clear_cancel(wfid)
 
 
 def _read_status(graph, workflow_id: str) -> WorkflowStatusResponse | None:
@@ -122,10 +189,19 @@ def _read_status(graph, workflow_id: str) -> WorkflowStatusResponse | None:
 
     state = snapshot.values
 
-    if snapshot.next:
+    # Status precedence (ADR-083): an explicit terminal status wins over the
+    # snapshot.next heuristic (this also makes a written `failed` status surface,
+    # which the bare heuristic previously masked). A cancel that has been requested
+    # but not yet finalized reports `cancelling`.
+    state_status = state.get("status")
+    if state_status in _TERMINAL_STATUSES:
+        status = state_status
+    elif run_control.is_cancel_requested(workflow_id):
+        status = "cancelling"
+    elif snapshot.next:
         status = "running"
     else:
-        status = state.get("status", "completed")
+        status = state_status or "completed"
 
     return WorkflowStatusResponse(
         workflow_id=workflow_id,
@@ -142,6 +218,7 @@ def start_workflow(
     body: StartWorkflowRequest,
     graph=Depends(get_graph),
     user_id: str = Depends(get_current_user_id),
+    idempotency_key: str | None = Header(default=None, alias="Idempotency-Key"),
 ) -> dict:
     """Start a new workflow. Returns 202 immediately; execution is async in thread pool.
 
@@ -153,7 +230,15 @@ def start_workflow(
     Phase 1 note: overrides are persisted in the snapshot but the runtime
     agents still resolve through the global registry. The response includes a
     `warnings` array surfacing this gap when overrides are supplied.
+
+    Idempotency (ADR-082): an optional `Idempotency-Key` header makes the kickoff
+    safe to retry. The same key + same request body replays the original response
+    without starting a second (paid) run; the same key + a different body is a 409
+    conflict. Absent the header, behavior is unchanged.
     """
+    # Fingerprint the request as submitted, BEFORE injecting the agent snapshot.
+    fingerprint = _kickoff_fingerprint(body, user_id) if idempotency_key else None
+
     warnings: list[str] = []
     snapshot_agents, override_warnings = _resolve_agent_snapshot(
         body.agent_overrides, user_id,
@@ -169,17 +254,43 @@ def start_workflow(
     workflow_id = str(uuid.uuid4())
     config = {"configurable": {"thread_id": workflow_id}}
     initial_state = _build_initial_state(body, workflow_id, user_id)
-
-    _executor.submit(_run_graph, graph, initial_state, config)
-
-    logger.info("Workflow %s submitted to thread pool.", workflow_id)
-    return {
+    response = {
         "workflow_id": workflow_id,
         "status": "running",
         "created_at": initial_state["created_at"],
         "agent_assignment": snapshot_agents,
         "warnings": warnings,
     }
+
+    # ADR-082: atomic claim. On replay, return the stored response and do NOT
+    # start a second run. On conflict, 409.
+    if idempotency_key:
+        outcome, stored = _get_idempotency_repo().claim(
+            idempotency_key=idempotency_key,
+            user_id=user_id,
+            endpoint="POST /workflows",
+            request_fingerprint=fingerprint,
+            workflow_id=workflow_id,
+            response=response,
+        )
+        if outcome == "replay":
+            logger.info("Workflow kickoff replayed for Idempotency-Key (no new run).")
+            return stored or response
+        if outcome == "conflict":
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "error": "idempotency_key_reused",
+                    "message": ("This Idempotency-Key was already used for a different "
+                                "request body."),
+                },
+            )
+
+    run_control.try_acquire_running(workflow_id)  # fresh id; always succeeds
+    _executor.submit(_run_graph, graph, initial_state, config)
+
+    logger.info("Workflow %s submitted to thread pool.", workflow_id)
+    return response
 
 
 def _resolve_agent_snapshot(
@@ -362,9 +473,62 @@ def retry_workflow(
             },
         )
 
+    # ADR-082: a workflow already executing must not be re-submitted (a second
+    # invoke() on the same thread corrupts state + double-bills).
+    if not run_control.try_acquire_running(workflow_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "workflow_already_running",
+                "message": "Workflow is already executing; refusing to re-submit.",
+                "workflow_id": workflow_id,
+            },
+        )
+
     _executor.submit(_retry_graph, graph, config)
     logger.info("Workflow %s re-submitted for retry, resuming from: %s", workflow_id, list(snapshot.next))
     return {"workflow_id": workflow_id, "status": "running", "resuming_from": list(snapshot.next)}
+
+
+@router.post("/{workflow_id}/cancel", status_code=202)
+def cancel_workflow(
+    workflow_id: str,
+    graph=Depends(get_graph),
+) -> dict:
+    """Request cooperative cancellation of a running workflow (ADR-083).
+
+    Cancellation takes effect at the next node boundary (a node already running
+    finishes first). Idempotent: re-cancelling a cancelling run returns 202 again.
+    409 if the run has no pending steps (already terminal or parked).
+    """
+    config = {"configurable": {"thread_id": workflow_id}}
+    snapshot = graph.get_state(config)
+    if snapshot is None or not snapshot.values:
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "workflow_not_found",
+                    "message": f"Workflow {workflow_id!r} not found.",
+                    "workflow_id": workflow_id},
+        )
+
+    if not snapshot.next:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "workflow_not_cancellable",
+                "message": ("Workflow has no pending steps; it is already finished or "
+                            "parked and cannot be cancelled."),
+                "workflow_id": workflow_id,
+            },
+        )
+
+    run_control.request_cancel(workflow_id)
+    try:
+        graph.update_state(config, {"status": "cancelling", "updated_at": utcnow_iso()})
+    except Exception:
+        logger.exception("Failed to write cancelling status for %s", workflow_id)
+    logger.info("Workflow %s: cancellation requested.", workflow_id)
+    return {"workflow_id": workflow_id, "status": "cancelling"}
 
 
 class ScoreSelectedRequest(BaseModel):
@@ -423,6 +587,18 @@ def submit_scoring_selection(
                 "error": "no_valid_jobs_selected",
                 "message": ("None of the selected_job_ids match jobs discovered for "
                             "this workflow."),
+                "workflow_id": workflow_id,
+            },
+        )
+
+    # ADR-082: guard against a double-submitted phase-2 trigger racing the status
+    # flip from awaiting_scoring_selection to running (read-then-act window).
+    if not run_control.try_acquire_running(workflow_id):
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "workflow_already_running",
+                "message": "Workflow is already executing; refusing to re-submit.",
                 "workflow_id": workflow_id,
             },
         )

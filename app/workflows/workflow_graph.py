@@ -35,6 +35,7 @@ from app.services.job_discovery_service import JobDiscoveryService
 from app.services.observability_service import ObservabilityService
 from app.services.report_generator import ReportGenerator
 from app.services.resume_parser import ResumeParser
+from app.workflows import run_control
 from app.workflows.graph_state import WorkflowGraphState
 from app.workflows.nodes.await_job_selection import make_await_job_selection_node
 from app.workflows.nodes.await_scoring_selection import make_await_scoring_selection_node
@@ -118,9 +119,17 @@ def _instrument_step(step_name: str, fn: Callable[[dict], dict], observability):
     row if it raises (then re-raises - the failure path is the node's, not the
     audit's). All logging routes through ObservabilityService, which swallows its
     own errors, so a broken audit write never breaks a workflow step.
+
+    Cooperative cancellation (ADR-083): before the node runs, if a cancel was
+    requested for this run, raise WorkflowCancelled *before* logging a started row
+    (a node cancelled before it ran is not a failed step). The run wrappers in the
+    workflows router catch this and finalize the run to `cancelled`. Granularity is
+    one node - a node already executing finishes first.
     """
     def wrapped(state: dict) -> dict:
         workflow_id = state.get("workflow_id", "")
+        if workflow_id and run_control.is_cancel_requested(workflow_id):
+            raise run_control.WorkflowCancelled(workflow_id)
         step_id = observability.log_step_started(workflow_id, step_name)
         try:
             result = fn(state)

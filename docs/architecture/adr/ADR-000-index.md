@@ -87,3 +87,5 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-079 | [Reasoning Relevance Pre-Filter Between Discovery and Scoring](ADR-079-relevance-prefilter-before-scoring.md) | Accepted (implemented) |
 | ADR-080 | [Posting-Age Staleness Signal + Opt-In Max-Age Filter](ADR-080-posting-age-staleness.md) | Accepted (implemented) |
 | ADR-081 | [ATS-Direct Job Sources (Greenhouse + Lever)](ADR-081-ats-direct-sources.md) | Accepted (prototype) |
+| ADR-082 | [Idempotent Workflow Kickoff + In-Flight Execution Guard](ADR-082-idempotent-workflow-kickoff.md) | Accepted (implemented) |
+| ADR-083 | [Cooperative Workflow Run Cancellation](ADR-083-cooperative-run-cancellation.md) | Accepted (implemented) |

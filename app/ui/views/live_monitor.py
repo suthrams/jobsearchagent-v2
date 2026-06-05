@@ -60,7 +60,22 @@ def render(ctx: ViewContext) -> None:
         except Exception as exc:
             st.error(f"Retry failed: {exc}")
 
-    icon = {"running": "🔵", "completed": "🟢", "failed": "🔴"}.get(status, "⚪")
+    # ADR-083: cooperative cancel. Takes effect at the next node boundary.
+    if status in ("running", "cancelling") and cols[2].button(
+        "⏹ Cancel", help="Stop this run at the next step boundary"
+    ):
+        try:
+            api.cancel_workflow(wf_id)
+            st.session_state.last_status = "cancelling"
+            st.warning("Cancellation requested - the run will stop at the next step.")
+            st.rerun()
+        except Exception as exc:
+            st.error(f"Cancel failed: {exc}")
+
+    icon = {
+        "running": "🔵", "completed": "🟢", "failed": "🔴",
+        "cancelling": "🟠", "cancelled": "⚫",
+    }.get(status, "⚪")
     st.markdown(f"**Status:** {icon} `{status}`")
     if resp.get("current_step"):
         st.markdown(f"**Step:** `{resp['current_step']}`")
@@ -137,3 +152,7 @@ def render(ctx: ViewContext) -> None:
         st.success("Workflow complete — open it in **Workflow Detail** for a unified view.")
     elif status == "failed":
         st.error("Workflow failed — see errors above.")
+    elif status == "cancelled":
+        st.info("Workflow cancelled.")
+    elif status == "cancelling":
+        st.warning("Cancelling — the run will stop at the next step boundary.")

@@ -44,9 +44,10 @@ runs in a background thread pool; callers poll `GET /workflows/{id}` to track
 progress.
 
 ```
-POST /workflows                                → start a run (202, async)
+POST /workflows                                → start a run (202, async; optional Idempotency-Key, ADR-082)
 GET  /workflows/{id}                           → poll status
 POST /workflows/{id}/retry                     → re-submit a workflow after a server restart (202)
+POST /workflows/{id}/cancel                    → request cooperative cancellation of a running run (202, ADR-083)
 POST /workflows/{id}/scoring                   → ADR-060 phase 2: score selected jobs from a manual-selection run (202, async)
 GET  /workflows/{id}/jobs                      → list scored jobs
 GET  /workflows/{id}/report                    → fetch the final report
@@ -122,6 +123,31 @@ while True:
 2. Review the draft and its fidelity flags.
 3. `POST /tailorings/{id}/decisions` with `approval` in `{approve, revise, reject, edit}` (`edit` also sends the human-authored draft).
 
+### Idempotent kickoff (ADR-082)
+
+`POST /workflows` accepts an optional `Idempotency-Key` request header. A run is a
+real bill (LLM spend), so a retried kickoff must not start a second one. With the
+header set:
+
+- same key + same request body -> the original `202` response is replayed; **no
+  second run is started**.
+- same key + a different body -> `409 idempotency_key_reused`.
+- absent the header -> behaviour is unchanged (each call is its own run).
+
+The re-entry endpoints (`POST /workflows/{id}/retry`, `POST /workflows/{id}/scoring`)
+do not take a key; their natural dedup key is the `workflow_id`, protected by an
+in-flight execution guard that returns `409 workflow_already_running` if the run is
+already executing.
+
+### Cancellation (ADR-083)
+
+`POST /workflows/{id}/cancel` requests cooperative cancellation of a running run.
+It returns `202 {workflow_id, status: "cancelling"}`; the run stops at the **next
+node boundary** (a node already executing finishes first) and is then finalized to
+`cancelled`. Idempotent (re-cancel returns `202`). `409 workflow_not_cancellable`
+if the run has no pending steps (already terminal or parked). The Streamlit Live
+Run Monitor exposes a Cancel control while a run is running / cancelling.
+
 ---
 
 ## Error Codes
@@ -143,6 +169,9 @@ All error responses share this structure:
 | 404 | `workflow_not_found` | No checkpoint exists for that `workflow_id` |
 | 409 | `workflow_not_completed` | Report requested but workflow not yet `completed` |
 | 404 | `tailoring_not_found` | No tailoring draft exists for that `tailoring_id` |
+| 409 | `idempotency_key_reused` | An `Idempotency-Key` was reused with a different request body (ADR-082) |
+| 409 | `workflow_already_running` | A retry / scoring re-submit was refused because the run is already executing (ADR-082) |
+| 409 | `workflow_not_cancellable` | Cancel requested on a run with no pending steps (already terminal or parked) (ADR-083) |
 | 422 | `validation_error` | Request body / path / query fails schema validation. Pydantic field errors appear in `detail.details` (a list). Normalised by a global handler in `app/api/main.py` so the consumer reads errors uniformly across all endpoints. |
 
 ---
@@ -1182,6 +1211,9 @@ The former in-graph decision union (`select_jobs_for_deep_review`,
 | `running` | Graph is executing in the background thread pool |
 | `completed` | All nodes finished; report is available |
 | `failed` | Unrecoverable error; check `errors` array |
+| `cancelling` | Cancel requested (ADR-083); run will stop at the next node boundary |
+| `cancelled` | Run was cancelled cooperatively; terminal |
+| `awaiting_scoring_selection` | Manual-selection run parked after discovery (ADR-060) |
 
 #### Job status (`JobSummaryResponse.status`)
 

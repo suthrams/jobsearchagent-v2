@@ -274,6 +274,20 @@ CREATE TABLE IF NOT EXISTS api_requests (
     created_at TEXT NOT NULL
 );
 
+-- ADR-082: idempotent workflow kickoff. The Idempotency-Key (client-supplied) is
+-- the PRIMARY KEY, so the INSERT itself is the atomic claim. A replay of the same
+-- key + fingerprint returns the stored response without starting a second (paid)
+-- run. Not PII; small (ids + a hash + the stored kickoff response).
+CREATE TABLE IF NOT EXISTS idempotency_keys (
+    idempotency_key     TEXT PRIMARY KEY,
+    user_id             TEXT,
+    endpoint            TEXT NOT NULL,
+    request_fingerprint TEXT,
+    workflow_id         TEXT,
+    response_json       TEXT,
+    created_at          TEXT NOT NULL
+);
+
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_status     ON workflow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_started_at ON workflow_runs(started_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_company             ON jobs(company);

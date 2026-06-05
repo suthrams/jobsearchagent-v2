@@ -4,6 +4,38 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-05
+
+### Added — Run-lifecycle controls: idempotent kickoff + cancellation
+
+Two agentic-API hardening features for the run surface (a workflow run is a real
+LLM bill, so a duplicate or runaway run is wasted money).
+
+- **Idempotent kickoff (ADR-082).** `POST /workflows` accepts an optional
+  `Idempotency-Key` header. Same key + same body replays the original `202`
+  response without starting a second run; same key + different body is
+  `409 idempotency_key_reused`. New `idempotency_keys` table + `IdempotencyRepository`
+  (insert-first atomic claim on the PK). The Streamlit kickoff (`api_client.start_workflow`)
+  sends a fresh key per call.
+- **In-flight execution guard (ADR-082).** `POST /workflows/{id}/retry` and
+  `/scoring` are guarded by a process-local single-flight registry
+  (`app/workflows/run_control.py`); a run already executing returns
+  `409 workflow_already_running`. Closes the double-invoke / read-then-act races.
+- **Cooperative cancellation (ADR-083).** `POST /workflows/{id}/cancel` requests
+  cancellation; `_instrument_step` checks the cancel registry at each node boundary
+  and raises `WorkflowCancelled`, and the run wrappers finalize the run to
+  `cancelled`. New statuses `cancelling`/`cancelled`; `_read_status` now gives an
+  explicit terminal status precedence over the `snapshot.next` heuristic (also
+  surfaces a written `failed` that the bare heuristic previously masked). Cancel
+  control added to the Streamlit Live Run Monitor.
+- Docs swept: ADR-082/083 + index, `api_reference.md`, `api_surface_overview.md`,
+  `data_model.md`, `workflow_model.md`, CLAUDE.md. Tests: `tests/v2/test_run_lifecycle.py`
+  (run_control, `_instrument_step` cancel, idempotency replay/conflict/no-key,
+  cancel endpoint 404/409/202, in-flight guard); `idempotency_keys` added to the
+  schema-tables invariant.
+
+---
+
 ## 2026-06-04
 
 ### Changed — Workflow Detail UX pass

@@ -1,7 +1,8 @@
 # Data Model — jobsearchagent-v2
 
 This document is the authoritative reference for the SQLite schema in `data/v2.db`.
-For each of the 20 tables (18 original + `users` ADR-062 + `resume_clinic_reviews` ADR-066) you get the SQL DDL, a per-column data dictionary,
+For each table (the core schema plus the observability tables of ADR-073/074 and
+`idempotency_keys` of ADR-082) you get the SQL DDL, a per-column data dictionary,
 and a "workflow usage" block describing which agent / service / endpoint
 writes the rows and which UI helper / endpoint / report reads them.
 
@@ -125,7 +126,7 @@ CREATE TABLE workflow_runs (
 |-------------------|---------|-------------|
 | `id`              | TEXT PK | UUID; the workflow_id used everywhere as `workflow_run_id`. |
 | `workflow_type`   | TEXT    | The graph run type (e.g. `"full_career_review"`), plus lightweight cost-attribution correlation rows for out-of-graph work: `"resume_clinic"` (ADR-066) and `"resume_upload"` (ADR-074 minor — attributes the upload-time parse LLM call to the profile). |
-| `status`          | TEXT    | `running` \| `waiting_for_user` \| `completed` \| `completed_with_errors` \| `failed`. |
+| `status`          | TEXT    | `running` \| `waiting_for_user` \| `awaiting_scoring_selection` \| `cancelling` \| `cancelled` \| `completed` \| `completed_with_errors` \| `failed`. `cancelling`/`cancelled` added by ADR-083 (the `update_state` SQL already stamps `completed_at` for `cancelled`). |
 | `current_step`    | TEXT    | Name of the most recently entered LangGraph node. Drives the History "Stage" column. |
 | `state_json`      | TEXT    | Serialized `WorkflowState` — the entire run snapshot, restorable. |
 | `user_id`         | TEXT    | ADR-062: the run's owner, written at `register_run` from `state["user_id"]` (decimal-string `users.id`). Per-run tables inherit ownership transitively via `workflow_run_id`. Pre-existing rows backfilled to `"0"`. |
@@ -1109,6 +1110,40 @@ CREATE TABLE api_requests (
   profile-scoped (COALESCE null `user_id` to `"0"`).
 - **Retention**: `retention.observability_days` (30), purged on the independent
   window (no run FK — not part of the workflow_runs cascade).
+
+---
+
+## 6.3 idempotency_keys (ADR-082)
+
+### Purpose
+
+Make `POST /workflows` safe to retry. A workflow run is a real bill, so a
+duplicate kickoff is a duplicate cost. The client-supplied `Idempotency-Key` is
+the PRIMARY KEY, so the INSERT is the atomic claim: the first caller wins and
+starts the run; a replay with the same key + fingerprint returns the stored
+response without a second run; a different fingerprint is a `409` conflict.
+
+### Schema
+
+```sql
+CREATE TABLE idempotency_keys (
+    idempotency_key     TEXT PRIMARY KEY,  -- client-supplied; the atomic claim
+    user_id             TEXT,              -- acting profile (?user_id=, ADR-062)
+    endpoint            TEXT NOT NULL,     -- e.g. "POST /workflows"
+    request_fingerprint TEXT,              -- SHA-256 of the request as submitted
+    workflow_id         TEXT,              -- the run created on first use
+    response_json       TEXT,              -- the stored 202 response to replay
+    created_at          TEXT NOT NULL
+);
+```
+
+### Workflow usage
+
+- **Written by**: `IdempotencyRepository.claim()` from the `start_workflow`
+  handler when an `Idempotency-Key` header is present.
+- **Read by**: the same `claim()` path on a duplicate key (replay vs conflict).
+- **Retention**: not PII and small; not yet wired into the purge cascade — a TTL
+  sweep is a minor follow-up (ADR-082).
 
 ---
 
