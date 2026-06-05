@@ -23,6 +23,14 @@ unscored view is added.
   a one-line funnel ("Filtered out before scoring — age 5, relevance 6").
 - Pure, unit-tested helpers in `formatting.py`: `format_posting_age_short`,
   `build_discovered_rows`, `discovery_funnel_summary`. 904 tests (+5), UI smoke 15/15.
+- **Job-details modal (`st.dialog`).** Select a row in any jobs table on Workflow
+  Detail (scored, discovered, or the manual-selection picker) and "View details"
+  opens a modal with the title/company/location/posting-age/URL, the score summary
+  if scored, and the full job description — for a quick review without leaving the
+  page. Descriptions come from `state` (no extra read). In a manual-selection run
+  this lets the user review each posting before choosing which to score; ad-hoc
+  re-scoring of a *completed* run is not offered (the scoring endpoint is gated to
+  `awaiting_scoring_selection`).
 
 ### Added — ATS-direct job sources, prototype (ADR-081)
 

@@ -31,6 +31,7 @@ from app.ui.formatting import (
     _fmt_ts,
     build_discovered_rows,
     discovery_funnel_summary,
+    format_posting_age,
     format_posting_age_short,
 )
 from app.ui.nav import ViewContext, _navigate
@@ -80,6 +81,41 @@ def render(ctx: ViewContext) -> None:
     g7.metric("Tokens out", f"{metrics['tokens_output']:,}")
     g8.metric("Review rounds", metrics["review_rounds"])
 
+    # Quick-look job-details modal, shared by every jobs table on this page
+    # (manual-selection picker, scored table, discovered table). Descriptions
+    # already live in state (normalized_jobs / scored_jobs carry job_description),
+    # so no extra read is needed.
+    _desc_by_id: dict = {}
+    for _j in (state.get("scored_jobs") or []) + (state.get("normalized_jobs") or []):
+        _jid = _j.get("job_id") or _j.get("id")
+        if _jid and _j.get("job_description") and _jid not in _desc_by_id:
+            _desc_by_id[_jid] = _j.get("job_description")
+
+    @st.dialog("Job details", width="large")
+    def _show_job(job: dict, desc: str | None) -> None:
+        st.markdown(f"### {job.get('title') or '(untitled)'}")
+        _bits = [job.get("company") or "—", job.get("location") or "—"]
+        _age = format_posting_age(job.get("posted_at"))
+        if _age:
+            _bits.append(_age)
+        st.caption("  ·  ".join(_bits))
+        if job.get("url"):
+            st.markdown(f"[Open posting ↗]({job['url']})")
+        _status = str(job.get("_status") or "")
+        if job.get("overall_score") is not None or _status.startswith("✅"):
+            _msg = "Scored"
+            if job.get("overall_score") is not None:
+                _msg += f" — overall {int(job['overall_score'])}"
+            if job.get("match_summary"):
+                _msg += f".  {job['match_summary']}"
+            st.success(_msg)
+        elif _status and _status != "not scored":
+            st.warning(f"Discovered, not scored (status: {_status})")
+        else:
+            st.warning("Discovered — not scored")
+        st.markdown("**Job description**")
+        st.write(desc or "_(no description was captured for this job)_")
+
     # ── Manual scoring selection (ADR-060) ────────────────────────────────────
     # When a manual-selection run is parked after discovery, let the user pick
     # which discovered jobs are worth the research + scoring spend. Only the
@@ -96,6 +132,26 @@ def render(ctx: ViewContext) -> None:
         if not discovered:
             st.info("No jobs were discovered for this run.")
         else:
+            # Review affordance: select a row to preview its full JD in a modal
+            # before deciding which jobs are worth the scoring spend.
+            _mrows = build_discovered_rows(discovered, [])
+            _mev = st.dataframe(
+                pd.DataFrame(_mrows),
+                key=f"manual_review_table_{wf_id}",
+                hide_index=True,
+                use_container_width=True,
+                on_select="rerun",
+                selection_mode="single-row",
+                column_config={"Posted": st.column_config.TextColumn("Posted", width="small")},
+            )
+            _msel = (_mev.selection.rows if _mev and getattr(_mev, "selection", None) else []) or []
+            if _msel and _msel[0] < len(discovered):
+                _mj = dict(discovered[_msel[0]])
+                if st.button("📄 View details", key=f"jd_manual_btn_{wf_id}"):
+                    _show_job(_mj, _mj.get("job_description"))
+            else:
+                st.caption("Select a row above to preview a job's details before picking.")
+
             options: dict[str, str] = {}
             for j in discovered:
                 jid = j.get("id") or j.get("source_job_id") or ""
@@ -212,7 +268,7 @@ def render(ctx: ViewContext) -> None:
         if sel_rows and sel_rows[0] < len(jobs_df):
             sel_job = jobs_df.iloc[sel_rows[0]].to_dict()
 
-        ex_col1, ex_col2 = st.columns([1, 4])
+        ex_col1, ex_view, ex_col2 = st.columns([1, 1, 3])
         if sel_job:
             is_excluded = bool(sel_job.get("excluded") or 0)
             label = "♻ Un-exclude selected" if is_excluded else "🚫 Exclude selected"
@@ -228,6 +284,8 @@ def render(ctx: ViewContext) -> None:
                     st.rerun()
                 except Exception as exc:
                     st.error(f"Action failed: {exc}")
+            if ex_view.button("📄 View details", key=f"jd_btn_{wf_id}", use_container_width=True):
+                _show_job(sel_job, _desc_by_id.get(sel_job.get("job_id")))
             ex_col2.caption(
                 f"Selected: **{sel_job.get('title','(untitled)')}** @ {sel_job.get('company','')}"
                 + ("  ·  currently excluded" if is_excluded else "")
@@ -235,7 +293,9 @@ def render(ctx: ViewContext) -> None:
         else:
             ex_col1.button("🚫 Exclude selected", disabled=True, use_container_width=True,
                            key=f"excl_btn_disabled_{wf_id}")
-            ex_col2.caption("Select a row above to enable Exclude / Un-exclude.")
+            ex_view.button("📄 View details", disabled=True, use_container_width=True,
+                           key=f"jd_btn_disabled_{wf_id}")
+            ex_col2.caption("Select a row above to view details / Exclude.")
 
         # ── Discovered jobs (incl. not scored) — ADR-080 surfacing ────────────
         # The scored table above is an inner-join to job_scores, so it can't show
@@ -253,15 +313,26 @@ def render(ctx: ViewContext) -> None:
                 _funnel = discovery_funnel_summary(state.get("discovery_stats"))
                 if _funnel:
                     st.caption(_funnel)
-                st.dataframe(
+                _dev = st.dataframe(
                     pd.DataFrame(_rows),
+                    key=f"discovered_table_{wf_id}",
                     hide_index=True,
                     use_container_width=True,
+                    on_select="rerun",
+                    selection_mode="single-row",
                     column_config={
                         "Posted": st.column_config.TextColumn("Posted", width="small"),
                         "Status": st.column_config.TextColumn("Status", width="small"),
                     },
                 )
+                _dsel = (_dev.selection.rows if _dev and getattr(_dev, "selection", None) else []) or []
+                if _dsel and _dsel[0] < len(_discovered):
+                    _dj = dict(_discovered[_dsel[0]])
+                    _dj["_status"] = _rows[_dsel[0]]["Status"]
+                    if st.button("📄 View details", key=f"jd_disc_btn_{wf_id}"):
+                        _show_job(_dj, _dj.get("job_description"))
+                else:
+                    st.caption("Select a row to view its job details.")
 
         # Drill into a specific job — picker + button
         st.markdown("**Drill into a job →**")
