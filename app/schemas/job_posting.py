@@ -9,6 +9,8 @@ class JobSource(str, Enum):
     ADZUNA = "adzuna"
     LADDERS = "ladders"
     MANUAL = "manual"
+    GREENHOUSE = "greenhouse"   # ADR-081: ATS-direct source-of-truth
+    LEVER = "lever"             # ADR-081: ATS-direct source-of-truth
 
 
 class WorkMode(str, Enum):

@@ -21,18 +21,18 @@ class JobSource(str, Enum):
     """
     Identifies which scraper or intake method produced this job posting.
     Used to route display logic and track which sources yield the best results.
-    - LINKEDIN  : manually pasted URLs from inbox/linkedin.txt
-    - INDEED    : parsed from Indeed RSS feed
-    - GLASSDOOR : parsed from Glassdoor RSS feed
-    - LADDERS   : scraped from Ladders, which focuses on $100k+ roles
-    - ADZUNA    : scraped from Adzuna job search API
+    - LINKEDIN   : manually pasted URLs from inbox/linkedin.txt
+    - INDEED     : Adzuna results (it aggregates Indeed among others)
+    - ADZUNA     : scraped from Adzuna job search API
+    - GREENHOUSE : ATS-direct public board (ADR-081)
+    - LEVER      : ATS-direct public board (ADR-081)
     """
 
     LINKEDIN = "linkedin"
-    INDEED = "indeed"
-    GLASSDOOR = "glassdoor"
-    LADDERS = "ladders"
+    INDEED = "indeed"           # Adzuna results map here (it aggregates Indeed)
     ADZUNA = "adzuna"
+    GREENHOUSE = "greenhouse"   # ADR-081: ATS-direct source-of-truth
+    LEVER = "lever"             # ADR-081: ATS-direct source-of-truth
 
 
 class WorkMode(str, Enum):

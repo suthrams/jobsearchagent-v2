@@ -121,6 +121,13 @@ the ADR-079 relevance filter and scoring. The funnel `stats` gains
 `age_filter_dropped`. `posted_at` is persisted on the `jobs` row and surfaced as
 "Posted N days ago" + a stale badge on Job Detail.
 
+ADR-081 adds opt-in ATS-direct sources (`GreenhouseScraper`/`LeverScraper`,
+`app/services/ats_scrapers.py`) built per run from `scrapers.{greenhouse,lever}.companies`.
+These are source-of-truth employer feeds (live apply links, full JD, no 429) — the
+root-cause fix for the Adzuna dead-link problem ADR-080 patches. They run additively
+alongside Adzuna through the same normalize/dedup seam, title-gated by the run's
+roles. Queried per company (curated list); off until companies are configured.
+
 ---
 
 ### Inputs

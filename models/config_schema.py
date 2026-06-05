@@ -147,15 +147,6 @@ class AdzunaConfig(BaseModel):
     remote_keywords: list[str] = Field(default_factory=list, description="Subset of titles for US-wide remote search. Kept separate for quota control — remote adds one call per entry.")
 
 
-class LaddersConfig(BaseModel):
-    """
-    Ladders focuses on $100k+ roles — high signal-to-noise for senior jobs.
-    keywords are used to build the search URL.
-    """
-    enabled:  bool      = Field(True, description="Whether to run the Ladders scraper")
-    keywords: list[str] = Field(default_factory=list, description="Search keywords for Ladders")
-
-
 class ScrapersConfig(BaseModel):
     """
     Top-level container for all scraper configurations.
@@ -163,7 +154,6 @@ class ScrapersConfig(BaseModel):
     """
     linkedin: LinkedInConfig = Field(default_factory=LinkedInConfig,  description="LinkedIn manual intake settings")
     adzuna:   AdzunaConfig   = Field(default_factory=AdzunaConfig,    description="Adzuna API scraper settings")
-    ladders:  LaddersConfig  = Field(default_factory=LaddersConfig,   description="Ladders scraper settings")
 
 # ─── Storage ──────────────────────────────────────────────────────────────────
 

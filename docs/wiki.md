@@ -93,7 +93,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | [architecture/agent_model.md](architecture/agent_model.md) | Per-agent input/output contracts, patterns, tools, constraints, observability events; shared rules for all 8 agents; input/output contract standard; prompt structure template |
 | [architecture/workflow_model.md](architecture/workflow_model.md) | Complete execution blueprint for all sub-workflows: discovery, resume profile, scoring, shortlist + HITL, deep review, interview prep, tailoring, reporting, error handling; state transition diagrams; parallelization strategy |
 | [architecture/relevance_filter_design.md](architecture/relevance_filter_design.md) | Control + data flow for the opt-in reasoning relevance pre-filter (ADR-079): the three-way `scoring_mode_gate`, the wide-net-then-narrow coupling, the redaction seam, the new `RelevanceFilterAgent`, and the never-lose-the-run fallback |
-| [architecture/spike_job_data_sources.md](architecture/spike_job_data_sources.md) | Spike (ADR-080 companion): free job-data API alternatives to Adzuna. Aggregator-vs-source-of-truth framing; ATS-direct (Greenhouse/Lever) as the root-cause fix for dead apply links; per-company-list tradeoff; integration effort against the scraper seam |
+| [architecture/spike_job_data_sources.md](architecture/spike_job_data_sources.md) | Spike (ADR-080 companion): free job-data API alternatives to Adzuna. Aggregator-vs-source-of-truth framing; ATS-direct (Greenhouse/Lever) as the root-cause fix for dead apply links — **prototyped in ADR-081** (`app/services/ats_scrapers.py`); per-company-list tradeoff |
 
 **Agent model tiering (Phase 9):**
 
@@ -317,7 +317,7 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
 | docs/ top-level | 9 |
 | docs/architecture/ | 29 |
-| docs/architecture/adr/ | 81 (index + 80 ADRs) |
+| docs/architecture/adr/ | 82 (index + 81 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/agents/ | 3 |
 | docs/claude/ | 3 |

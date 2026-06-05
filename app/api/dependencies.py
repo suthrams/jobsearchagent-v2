@@ -495,6 +495,18 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
             logger.warning("adzuna_scraper_factory failed: %s", exc)
             return None
 
+    # ADR-081: per-run ATS-direct scrapers (Greenhouse/Lever) built from the
+    # configured company list. Purely additive alongside Adzuna; returns [] when
+    # no companies are configured, so it is off until a profile lists targets.
+    from app.services.ats_scrapers import build_ats_scrapers
+    _scrapers_cfg = config_dict.get("scrapers", {})
+    def _ats_factory(roles: list[str]) -> list:
+        try:
+            return build_ats_scrapers(roles, _scrapers_cfg)
+        except Exception as exc:
+            logger.warning("ats_scraper_factory failed: %s", exc)
+            return []
+
     return WorkflowDependencies(
         research_agent=research,
         scoring_agent=scoring,
@@ -522,6 +534,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
         checkpointer=checkpointer,
         custom_url_scraper_factory=custom_url_factory,
         adzuna_scraper_factory=_adzuna_factory,
+        ats_scraper_factory=_ats_factory,
     )
 
 

@@ -24,6 +24,7 @@ def make_discover_jobs_node(
     observability: ObservabilityService,
     custom_url_scraper_factory: Callable[[list[str], str], Any] | None = None,
     adzuna_scraper_factory: Callable[[list[str], list[str]], Any] | None = None,
+    ats_scraper_factory: Callable[[list[str]], list] | None = None,
 ) -> Callable[[dict], dict]:
     def discover_jobs(state: dict) -> dict:
         workflow_id: str = state.get("workflow_id", "")
@@ -74,6 +75,15 @@ def make_discover_jobs_node(
                     skip_builtin_adzuna = True
             except Exception as exc:
                 logger.warning("discover_jobs: failed to build per-run Adzuna scraper: %s", exc)
+
+        # ADR-081: per-run ATS-direct scrapers (Greenhouse/Lever) from the
+        # configured company list, with title relevance derived from the run's
+        # roles. Purely additive: returns [] when no companies are configured.
+        if ats_scraper_factory is not None:
+            try:
+                extra_scrapers.extend(ats_scraper_factory(roles) or [])
+            except Exception as exc:
+                logger.warning("discover_jobs: failed to build ATS scrapers: %s", exc)
 
         discovery_stats: dict = {}
         try:

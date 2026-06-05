@@ -1,7 +1,8 @@
 # Spike: Free job-data API alternatives to Adzuna
 
-Status: SPIKE (research only, no production code). 2026-06-04. Companion to
-ADR-080 (the near-term posting-age patch). This explores the root-cause fix.
+Status: SPIKE (research). 2026-06-04. Companion to ADR-080 (the near-term
+posting-age patch). The recommendation below (Greenhouse + Lever, ATS-direct) was
+**prototyped in ADR-081** (`app/services/ats_scrapers.py`).
 
 > Source-terms caveat: API terms, free-tier limits, and coverage change. Endpoints
 > and shapes below reflect research as of 2026-06; **verify current terms against

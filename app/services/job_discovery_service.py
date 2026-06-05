@@ -24,7 +24,8 @@ _SCRAPER_TIMEOUT_S = 180
 _SOURCE_MAP: dict[str, JobSource] = {
     "linkedin": JobSource.LINKEDIN,
     "adzuna": JobSource.ADZUNA,
-    "ladders": JobSource.LADDERS,
+    "greenhouse": JobSource.GREENHOUSE,   # ADR-081
+    "lever": JobSource.LEVER,             # ADR-081
 }
 
 _WORK_MODE_MAP: dict[str, WorkMode] = {

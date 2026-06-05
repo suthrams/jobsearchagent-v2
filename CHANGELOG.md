@@ -6,6 +6,29 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-04
 
+### Added — ATS-direct job sources, prototype (ADR-081)
+
+The root-cause fix for the Adzuna dead-link problem ADR-080 patched. Adzuna's
+staleness is structural to being an aggregator; an employer's own ATS board only
+returns currently-published postings and the apply URL is the employer's own ATS
+page. Both APIs verified live (no auth, 200, full JD, real apply URL, no 429).
+
+- New `app/services/ats_scrapers.py`: `GreenhouseScraper`
+  (`boards-api.greenhouse.io`) + `LeverScraper` (`api.lever.co`), implementing the
+  v1 `BaseScraper`. Field mappings verified against the live APIs. Built per run by
+  `WorkflowDependencies.ats_scraper_factory(roles)` from
+  `scrapers.{greenhouse,lever}.companies` (board tokens/slugs; empty = off),
+  title-gated by the run's roles, bounded per board, additive alongside Adzuna.
+  New `JobSource.GREENHOUSE`/`LEVER` (v1 + v2 + `_SOURCE_MAP`).
+- Tradeoff: queried per company, so it needs a curated company list (config).
+  Off until a profile lists targets. Follow-ups (company-list sourcing, concurrency,
+  dedup quality) tracked in ADR-081 + `spike_job_data_sources.md`.
+
+### Removed — unused job sources
+
+Dropped the unused `GLASSDOOR` / `LADDERS` `JobSource` values (no scrapers since
+ADR-063) and the vestigial `LaddersConfig`. `INDEED` is kept (Adzuna maps to it).
+
 ### Added — Posting-age staleness signal + opt-in max-age filter (ADR-080)
 
 Live runs surfaced Adzuna listings that render but whose employer "apply" link is

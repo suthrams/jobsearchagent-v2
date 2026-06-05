@@ -70,7 +70,7 @@ def test_normalize_adzuna_source():
 
 def test_normalize_unknown_source_maps_to_manual():
     svc = _svc()
-    posting = svc.normalize(_mock_v1_job(source="glassdoor"), "wf-001")
+    posting = svc.normalize(_mock_v1_job(source="monster"), "wf-001")
     assert posting.source == JobSource.MANUAL
 
 

@@ -104,6 +104,11 @@ class WorkflowDependencies:
     # config and returns a scraper (or None) so a profile's own roles drive
     # auto-discovery. None falls back to the built-in startup Adzuna.
     adzuna_scraper_factory: Callable[[list[str], list[str], bool], Any] | None = None
+    # ADR-081: optional per-run ATS-direct scraper factory; receives the run's
+    # roles and returns a list of BaseScraper-compatible objects (Greenhouse +
+    # Lever) built from the configured company list. None / [] disables ATS
+    # discovery (purely additive alongside Adzuna).
+    ats_scraper_factory: Callable[[list[str]], list] | None = None
 
 
 def _instrument_step(step_name: str, fn: Callable[[dict], dict], observability):
@@ -149,7 +154,8 @@ def build_graph(deps: WorkflowDependencies):
         "discover_jobs": make_discover_jobs_node(
             deps.discovery_service, deps.job_repo, deps.observability,
             custom_url_scraper_factory=deps.custom_url_scraper_factory,
-            adzuna_scraper_factory=deps.adzuna_scraper_factory),
+            adzuna_scraper_factory=deps.adzuna_scraper_factory,
+            ats_scraper_factory=deps.ats_scraper_factory),
         "load_resume": make_load_resume_node(
             deps.resume_parser, deps.observability, deps.resume_repo),
         "score_jobs": make_score_jobs_node(

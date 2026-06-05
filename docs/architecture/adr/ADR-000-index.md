@@ -86,3 +86,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-078 | [Observe the Structured-Output Repair Rate (Tier-1 Drift Proxy)](ADR-078-observe-structured-output-repair-rate.md) | Accepted (implemented) |
 | ADR-079 | [Reasoning Relevance Pre-Filter Between Discovery and Scoring](ADR-079-relevance-prefilter-before-scoring.md) | Accepted (implemented) |
 | ADR-080 | [Posting-Age Staleness Signal + Opt-In Max-Age Filter](ADR-080-posting-age-staleness.md) | Accepted (implemented) |
+| ADR-081 | [ATS-Direct Job Sources (Greenhouse + Lever)](ADR-081-ats-direct-sources.md) | Accepted (prototype) |

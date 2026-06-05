@@ -140,7 +140,7 @@ Per-node agent calls:
 | Node | Agents invoked | Notes |
 |---|---|---|
 | `register_run` | (none) | Writes the initial state to `workflow_runs` so the UI sees it. |
-| `discover_jobs` | (none) | Uses `JobDiscoveryService` + the v1 scrapers (Adzuna, LinkedIn, CustomUrl). `CustomUrlScraper` may call the `custom_url_extractor` LLM as a fallback per URL. |
+| `discover_jobs` | (none) | Uses `JobDiscoveryService` + the scrapers (Adzuna, LinkedIn, CustomUrl, and the ADR-081 ATS-direct Greenhouse/Lever). `CustomUrlScraper` may call the `custom_url_extractor` LLM as a fallback per URL. |
 | `load_resume` | (none) | Reads the active resume from `ResumeRepository`. |
 | `await_scoring_selection` | (none) | ADR-060: parks until `POST /workflows/{wf}/scoring` continues. |
 | `relevance_filter` | `RelevanceFilterAgent` | ADR-079, opt-in: one batched call drops seniority/relevance mismatches before scoring. Keep-all on failure. |
