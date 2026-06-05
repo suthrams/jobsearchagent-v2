@@ -26,7 +26,13 @@ from app.ui.data import (
     _cached_workflow_detail,
     _cached_workflow_jobs,
 )
-from app.ui.formatting import _checked, _fmt_ts
+from app.ui.formatting import (
+    _checked,
+    _fmt_ts,
+    build_discovered_rows,
+    discovery_funnel_summary,
+    format_posting_age_short,
+)
 from app.ui.nav import ViewContext, _navigate
 from app.workflows.limits import TRACK_TO_SCORE_KEY, get_active_tracks
 
@@ -144,9 +150,15 @@ def render(ctx: ViewContext) -> None:
 
         view_df = jobs_df.copy()
         view_df["🚫"] = view_df["excluded"].fillna(0).apply(lambda v: "🚫" if v else "")
-        view_df["✅ Reviewed"] = view_df["reviewed_at"].apply(_checked)
-        view_df["✅ Advised"] = view_df["advised_at"].apply(_checked)
-        view_df["✅ Prep"] = view_df["prep_at"].apply(_checked)
+        # ADR-080: posting freshness as a leading column.
+        _posted = view_df["posted_at"] if "posted_at" in view_df.columns else None
+        view_df["Posted"] = _posted.apply(format_posting_age_short) if _posted is not None else ""
+        # Trim horizontal scroll: collapse the 3 pipeline checkmarks into one
+        # compact R/A/P cell (Reviewed / Advised / Prep) instead of 3 columns.
+        view_df["R/A/P"] = view_df.apply(
+            lambda r: _checked(r["reviewed_at"]) + _checked(r["advised_at"]) + _checked(r["prep_at"]),
+            axis=1,
+        )
 
         # ADR-071: show only the track columns active for this run's profile.
         # The active set is read from the run's stored effective_config.
@@ -155,21 +167,26 @@ def render(ctx: ViewContext) -> None:
         active_score_cols = [TRACK_TO_SCORE_KEY[t] for t in active_tracks]
         active_short = {TRACK_TO_SCORE_KEY[t]: _track_short[t] for t in active_tracks}
 
+        # Posted is 2nd (after Title); Found dropped (Scored timestamp is enough);
+        # the 3 stage flags are now one R/A/P cell — all to reduce the scroll.
         display_cols = (
-            ["🚫", "title", "company", "location", "url", "overall_score"]
+            ["🚫", "title", "Posted", "company", "location", "url", "overall_score"]
             + active_score_cols
-            + ["✅ Reviewed", "✅ Advised", "✅ Prep", "found_at", "scored_at"]
+            + ["R/A/P", "scored_at"]
         )
         rename_map = {
             "title": "Title", "company": "Company", "location": "Location", "url": "URL",
-            "overall_score": "Overall",
-            "found_at": "Found", "scored_at": "Scored",
+            "overall_score": "Overall", "scored_at": "Scored",
             **{col: active_short[col] for col in active_score_cols},
         }
         col_config = {
             "🚫":      st.column_config.TextColumn("🚫", width="small",
                                                    help="🚫 = excluded from cross-run analytics + future discovery"),
+            "Posted":  st.column_config.TextColumn("Posted", width="small",
+                                                   help="Age of the posting (ADR-080). Blank = source gave no date."),
             "URL":     st.column_config.LinkColumn("URL", width="small"),
+            "R/A/P":   st.column_config.TextColumn("R/A/P", width="small",
+                                                   help="Reviewed / Advised / Prep — pipeline stages reached"),
             "Overall": st.column_config.ProgressColumn("Overall", min_value=0, max_value=100, format="%d"),
             **{
                 active_short[col]: st.column_config.ProgressColumn(
@@ -219,6 +236,32 @@ def render(ctx: ViewContext) -> None:
             ex_col1.button("🚫 Exclude selected", disabled=True, use_container_width=True,
                            key=f"excl_btn_disabled_{wf_id}")
             ex_col2.caption("Select a row above to enable Exclude / Un-exclude.")
+
+        # ── Discovered jobs (incl. not scored) — ADR-080 surfacing ────────────
+        # The scored table above is an inner-join to job_scores, so it can't show
+        # jobs that were discovered but never scored (manual-mode parked,
+        # budget-skipped, over-cap). Those live only in state.normalized_jobs;
+        # surface them compactly, posted_at-led, with a scored/not-scored flag.
+        _discovered = state.get("normalized_jobs") or []
+        if _discovered:
+            _rows = build_discovered_rows(_discovered, state.get("scored_jobs") or [])
+            _unscored = sum(1 for r in _rows if not r["Status"].startswith("✅"))
+            with st.expander(
+                f"🔎 All discovered jobs ({len(_rows)}) — {_unscored} not scored",
+                expanded=_unscored > 0,
+            ):
+                _funnel = discovery_funnel_summary(state.get("discovery_stats"))
+                if _funnel:
+                    st.caption(_funnel)
+                st.dataframe(
+                    pd.DataFrame(_rows),
+                    hide_index=True,
+                    use_container_width=True,
+                    column_config={
+                        "Posted": st.column_config.TextColumn("Posted", width="small"),
+                        "Status": st.column_config.TextColumn("Status", width="small"),
+                    },
+                )
 
         # Drill into a specific job — picker + button
         st.markdown("**Drill into a job →**")

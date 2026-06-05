@@ -6,6 +6,24 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-04
 
+### Changed — Workflow Detail: posting age up front + discovered-jobs surfacing
+
+UI/UX follow-up to ADR-080. The scored-jobs table is reshaped and a discovered-but-
+unscored view is added.
+
+- **Posted** is now the 2nd column (after Title) of the Workflow Detail jobs table,
+  showing a compact age ("12d" / "today"); `posted_at` was added to the
+  `list_workflow_jobs` read.
+- The table is trimmed to cut horizontal scroll: the three Reviewed/Advised/Prep
+  checkmarks collapse into one `R/A/P` cell and the `Found` column is dropped.
+- New **"All discovered jobs"** expander (auto-opens when any are unscored): a
+  compact, posted_at-led table from `state.normalized_jobs` flagging each job
+  scored / not-scored — surfacing jobs the inner-join scored table can't show
+  (manual-parked, budget-skipped, over-cap). Filter-dropped jobs are summarized as
+  a one-line funnel ("Filtered out before scoring — age 5, relevance 6").
+- Pure, unit-tested helpers in `formatting.py`: `format_posting_age_short`,
+  `build_discovered_rows`, `discovery_funnel_summary`. 904 tests (+5), UI smoke 15/15.
+
 ### Added — ATS-direct job sources, prototype (ADR-081)
 
 The root-cause fix for the Adzuna dead-link problem ADR-080 patched. Adzuna's

@@ -39,6 +39,60 @@ def format_posting_age(posted_at, *, now=None) -> str:
     return f"Posted {age} days ago"
 
 
+def format_posting_age_short(posted_at, *, now=None) -> str:
+    """Compact age label for a table cell (ADR-080): "today" / "12d" / "" (unknown)."""
+    from app.services.posting_age_filter import posting_age_days
+    age = posting_age_days(posted_at, now=now)
+    if age is None:
+        return ""
+    return "today" if age <= 0 else f"{age}d"
+
+
+def build_discovered_rows(normalized_jobs, scored_jobs, *, now=None) -> list[dict]:
+    """Compact rows for the 'discovered jobs' table (ADR-080 surfacing).
+
+    Every job that survived discovery (state.normalized_jobs), flagged scored vs
+    not by cross-referencing state.scored_jobs status. Pure -> unit-testable.
+    Posted is the leading field so freshness reads first.
+    """
+    status_by_id: dict = {}
+    for sj in (scored_jobs or []):
+        jid = sj.get("job_id") or sj.get("id")
+        if jid:
+            status_by_id[jid] = sj.get("status")
+    rows: list[dict] = []
+    for j in (normalized_jobs or []):
+        jid = j.get("id") or j.get("job_id")
+        status = status_by_id.get(jid)
+        rows.append({
+            "Posted": format_posting_age_short(j.get("posted_at"), now=now),
+            "Title": j.get("title") or "(untitled)",
+            "Company": j.get("company") or "—",
+            "Location": j.get("location") or "—",
+            "Status": "✅ scored" if status == "scored" else (status or "not scored"),
+        })
+    return rows
+
+
+def discovery_funnel_summary(stats) -> str:
+    """One-line 'filtered out' summary from discovery_stats (ADR-080 surfacing).
+
+    Lists only the non-zero drop stages so the user sees WHERE discovered jobs went
+    (incl. age + relevance filters). Empty string when nothing was dropped. Pure.
+    """
+    s = stats or {}
+    pairs = [
+        ("title", "title_filter_dropped"),
+        ("experience", "experience_filter_dropped"),
+        ("age", "age_filter_dropped"),
+        ("relevance", "relevance_dropped"),
+        ("dedup", "dedup_total_dropped"),
+        ("over-cap", "max_jobs_truncated"),
+    ]
+    parts = [f"{label} {int(s.get(key) or 0)}" for label, key in pairs if int(s.get(key) or 0)]
+    return ("Filtered out before scoring — " + ", ".join(parts)) if parts else ""
+
+
 def _get_nested(d: dict, keys: list[str]):
     cur = d
     for k in keys:

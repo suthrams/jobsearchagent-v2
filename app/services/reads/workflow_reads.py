@@ -106,7 +106,7 @@ def list_workflow_jobs(workflow_id: str, include_excluded: bool = True,
     where = "" if include_excluded else "AND (j.excluded = 0 OR j.excluded IS NULL)"
     items = _rows(db_path, f"""
         SELECT j.id AS job_id, j.title, j.company, j.location, j.url, j.source,
-               j.created_at AS found_at, COALESCE(j.excluded, 0) AS excluded,
+               j.posted_at, j.created_at AS found_at, COALESCE(j.excluded, 0) AS excluded,
                j.excluded_reason, j.excluded_at, js.overall_score,
                json_extract(js.score_json, '$.technical_score')     AS technical_score,
                json_extract(js.score_json, '$.architecture_score')  AS architecture_score,
