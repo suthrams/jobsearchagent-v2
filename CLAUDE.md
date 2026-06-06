@@ -200,73 +200,34 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 
 ## v2 File Structure
 
+Full browseable map: `docs/wiki.md`. Skeleton:
+
 ```
 app/
-  api/              ← FastAPI endpoints + dependency wiring (Phase 7 gate)
-    routers/        ← workflows.py, jobs.py, reports.py, config.py, tailoring.py, users.py
-    identity.py     ← get_current_user_id seam (ADR-062)
-  workflows/        ← LangGraph workflow graphs (orchestrator)
-  agents/           ← 8 specialized agents (all inherit BaseAgent)
-  services/         ← deterministic services (no LLM)
-    concurrent_adzuna_scraper.py  ← v2 wrapper: 5-worker concurrent Adzuna scraper
-  providers/        ← LLM provider abstraction (Claude + OpenAI via ModelRegistry)
-  state/            ← WorkflowState schema
-  schemas/          ← Pydantic output schemas for all agents
-  repositories/     ← SQLite data access (incl. memory_repository.py)
-  prompts/
-    shared/         ← guardrails.txt (injected into every agent)
-    agents/         ← one prompt file per agent
-  ui/               ← Streamlit frontend. Refactored into a thin entrypoint + package
-                       (docs/architecture/ui_refactor_plan.md): streamlit_app.py (~215-line
-                       shell: page config + sidebar + dispatch) · nav.py (NAV_ITEMS,
-                       ViewContext, _navigate) · views/<name>.py (one render(ctx) per
-                       screen, wired in views/REGISTRY) · components/ (shared render
-                       helpers) · formatting.py (pure) · data.py (cached reads) ·
-                       api_client.py (ALL backend calls, reads + writes; ADR-075) ·
-                       services/reads/ (server-side read SQL).
-                       Add a screen: new views/<name>.py with render(ctx), register it
-                       in views/__init__.py, add its name to nav.NAV_ITEMS.
+  api/              FastAPI endpoints + dependency wiring (Phase 7 gate)
+    routers/        workflows · jobs · reports · config · tailoring · users
+    identity.py     get_current_user_id seam (ADR-062)
+  workflows/        LangGraph graphs (orchestrator)
+  agents/           specialized agents (all inherit BaseAgent — see Agents table)
+  services/         deterministic services (no LLM); incl. concurrent_adzuna_scraper.py
+  providers/        LLM provider abstraction (Claude + OpenAI via ModelRegistry)
+  state/            WorkflowState schema
+  schemas/          Pydantic output schemas for all agents
+  repositories/     SQLite data access (incl. memory_repository.py)
+  prompts/          shared/guardrails.txt (every agent) + agents/<one per agent>
+  ui/               Streamlit: thin entrypoint + views package (see ui_architecture.md).
+                    Add a screen: views/<name>.py with render(ctx) -> register in
+                    views/__init__.py -> add to nav.NAV_ITEMS
 
-docs/architecture/
-  adr/              ← 72 Architecture Decision Records (start at ADR-000-index.md)
-  implementation_plan.md
-  agent_model.md · workflow_model.md · state_and_memory_model.md
-  data_model.md · observability.md · security.model.md
-  hitl.md · prompt_and_guardrails_model.md · config_model.md
-  patterns.md · principles.md · architecture_overview.md
-  api_reference.md  ← REST endpoint contracts
-
-.claude/skills/     ← agent-skills loaded by Claude Code. Project-own skill
-                     (smoke-test-ui) + the addyosmani/agent-skills pack (21
-                     curated skills, moved here so Claude Code discovers them;
-                     it only scans .claude/skills/, not a top-level skills/).
-                     See .claude/skills/README.md for which skill applies when.
-                     The pack is pinned via skills-lock.json at the repo root
-
-config/
-  config.example.yaml
-  config.yaml       ← your settings (gitignored)
-
-data/               ← SQLite databases (v2.db, jobs.db); gitignored
-tests/              ← pytest suite (456 passed, 1 skipped — no real LLM calls in CI)
-notebooks/
-  phase_7_validation.ipynb  ← E2E live-agent validation notebook
+docs/architecture/  design docs + adr/ (start at ADR-000-index.md)
+config/             config.example.yaml + config.yaml (gitignored)
+data/               SQLite databases (v2.db, jobs.db); gitignored
+tests/              pytest suite (no real LLM calls in CI)
+notebooks/          phase_7_validation.ipynb (E2E live-agent validation)
+.claude/skills/     project skill (smoke-test-ui) + addyosmani pack; see README there
 ```
 
-### Architecture Reference
-
-All design decisions live in `docs/architecture/`. Start here for any implementation question:
-
-- `implementation_plan.md` — phased build plan with review gates
-- `agent_model.md` — per-agent input/output contracts and constraints
-- `agent_graph_overview.md` — one-page visual map (PNG + Mermaid) of every agent grouped by responsibility, plus the in-graph workflow flow and out-of-graph operations
-- `workflow_model.md` — complete workflow execution blueprint
-- `state_and_memory_model.md` — WorkflowState schema and memory rules
-- `data_model.md` — all SQLite table definitions (incl. `users`, ADR-062; `resume_clinic_reviews`, ADR-066; `idempotency_keys`, ADR-082), per-column data dictionary, and per-table workflow usage
-- `api_reference.md` — REST contracts (URLs, status codes, error envelope)
-- `api_surface_overview.md` — one-page visual map (PNG + Mermaid) of every REST endpoint grouped by domain
-- `ui_architecture.md` — how the Streamlit UI is built: the thin entrypoint + views package, navigation, and the single data path (ADR-075: all reads + writes go through `api_client` -> FastAPI; reads are cached in `data.py` over `services/reads/`; no UI code opens the DB). Companions: `ui_refactor_plan.md` (how it got that shape), `ui_read_funnel_implementation_plan.md` (the funnel)
-- `adr/` — 72 Architecture Decision Records
+**Architecture reference:** all design docs live in `docs/architecture/`, indexed and annotated in `docs/wiki.md` (the browseable entry point). Highest-traffic: `adr/ADR-000-index.md` (every ADR), `data_model.md` (tables), `api_reference.md` (REST contracts), `workflow_model.md`, `agent_model.md`, `ui_architecture.md`.
 
 ---
 
@@ -285,53 +246,26 @@ All design decisions live in `docs/architecture/`. Start here for any implementa
 | Fidelity Reviewer | Validation / Guardrail | Always after tailoring AND after Resume Reviewer rewrites (ADR-066) |
 | Resume Reviewer | Structured output (job-agnostic) | Out-of-graph; runs from Resume Clinic user request only (ADR-066) |
 
-### Typical agent skeleton
-
-Every agent inherits `BaseAgent`, sets `AGENT_NAME` matching its prompt file, and implements `run()` by calling `_run()` and constructing the right Pydantic schema:
-
-```python
-class ScoringAgent(BaseAgent):
-    AGENT_NAME = "scoring_agent"  # → app/prompts/agents/scoring_agent.txt
-
-    def __init__(self, provider: LLMClient, observability: ObservabilityService) -> None:
-        super().__init__(provider, observability)
-
-    def run(self, workflow_id: str, context: dict) -> JobScore:
-        result = self._run(workflow_id, context, JobScore)
-        return JobScore(**result)
-```
-
-The split between `_run()` (infrastructure: timing, observability, provider dispatch) and `run()` (schema construction) keeps observability logic out of concrete agents and makes testing easy: mock the provider, assert on the schema type.
+Every agent inherits `BaseAgent`, sets `AGENT_NAME` matching its prompt file, and implements `run()` by calling `_run()` then constructing its Pydantic schema. The `_run()` (infrastructure: timing, observability, provider dispatch) / `run()` (schema construction) split keeps observability out of concrete agents. See `agent_model.md` for per-agent contracts.
 
 ---
 
 ## v2 Stack
 
-| Layer | Technology |
-|---|---|
-| Orchestration | LangGraph (stateful workflow graphs) + SqliteSaver |
-| Agent framework | LangChain + LangChain-Anthropic |
-| LLM | Claude + OpenAI (per-agent assignment via ModelRegistry — ADR-053, refined by ADR-058). Catalog, pricing, and defaults live in `config/config.yaml` (`models:` and `agents:` blocks); `HIGH_VOLUME_SAFE_MODELS` policy stays in code. |
-| Backend API | FastAPI + Uvicorn |
-| UI | Streamlit (thin control surface only) |
-| Persistence | SQLite (raw sqlite3, no SQLAlchemy) |
-| Validation | Pydantic v2 |
-| Config | config.yaml defaults + DB user overrides via ConfigService |
-| Testing | pytest + pytest-asyncio + pytest-mock |
+LangGraph + SqliteSaver (orchestration) · LangChain-Anthropic (agent framework) · Claude + OpenAI via `ModelRegistry` (LLM; catalog/pricing/defaults in `config/config.yaml`, `HIGH_VOLUME_SAFE_MODELS` policy in code — ADR-053/058) · FastAPI + Uvicorn (API) · Streamlit (thin control surface) · SQLite raw sqlite3 (persistence) · Pydantic v2 (validation) · pytest (testing).
 
-Explicitly excluded: SQLAlchemy · Celery · Redis · LangSmith (for now)
+Explicitly excluded: SQLAlchemy · Celery · Redis · LangSmith (for now).
 
 ---
 
 ## Build status
 
-Phases 1–8 + post-8 work all complete. 456 tests pass, 1 skipped. **Latest activity → see `CHANGELOG.md`** for the up-to-date narrative; the per-phase status table moved out of this file because it had stopped changing meaningfully.
+Phases 1-8 + post-8 work all complete. **Latest activity -> see `CHANGELOG.md`.** Current test/ADR counts live in the ADR index and CI, not here (they go stale).
 
 ---
 
 ## Shared libraries from v1 (ADR-063)
 
-The v1 runtime (`main.py`, `dashboard.py`, `agents/`, `storage/`, `claude/`, `prompts/`, plus `scrapers/ladders.py` and `models/profile.py`) was **removed** in ADR-063. Only the modules v2 imports are kept, reframed as shared libraries (not "v1 reference"):
-- `scrapers/` — `base.py`, `adzuna.py`, `linkedin.py`. The v2 `JobDiscoveryService` + `ConcurrentAdzunaScraper` wrap the Adzuna scraper; `app/api/dependencies.py` builds the LinkedIn scraper. Not called from v2 directly except through that boundary. The ATS-direct scrapers (ADR-081) are v2-native (`app/services/ats_scrapers.py`) but implement `scrapers/base.py::BaseScraper`.
-- `models/` — `job.py` (`Job`/`JobSource`/`SalaryRange`, used by the scrapers), `config_schema.py` (`AdzunaConfig`), `filters.py` (`EXCLUDED_TITLE_KEYWORDS`, `TECH_DESCRIPTION_KEYWORDS`, `RELEVANT_TITLE_KEYWORDS`, reused by `app/services/job_discovery_service.py`).
-- The retired runtime stays recoverable from git history if ever needed.
+The v1 runtime was removed in ADR-063; only the modules v2 imports are kept as shared libraries (recoverable from git history if needed):
+- `scrapers/` — `base.py`, `adzuna.py`, `linkedin.py`, wrapped by v2 (`JobDiscoveryService` + `ConcurrentAdzunaScraper`; LinkedIn built in `app/api/dependencies.py`). The ATS-direct scrapers (ADR-081) are v2-native but implement `scrapers/base.py::BaseScraper`
+- `models/` — `job.py` (`Job`/`JobSource`/`SalaryRange`), `config_schema.py` (`AdzunaConfig`), `filters.py` (the title/description keyword sets reused by `job_discovery_service.py`)
