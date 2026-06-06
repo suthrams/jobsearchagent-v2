@@ -249,20 +249,8 @@ GET /workflows/{workflow_id}
 ```json
 {
   "workflow_id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
-  "status": "waiting_for_user",
-  "current_step": "await_job_selection",
-  "pending_decision": {
-    "decision_type": "select_jobs_for_deep_review",
-    "eligible_jobs": [
-      {
-        "job_id": "job-001",
-        "title": "Staff Engineer",
-        "company": "Acme Corp",
-        "overall_score": 82,
-        "match_summary": "Strong technical fit."
-      }
-    ]
-  },
+  "status": "running",
+  "current_step": "score_jobs",
   "run_metrics": {
     "llm_calls": 4,
     "tokens_input": 12000,
@@ -282,7 +270,6 @@ GET /workflows/{workflow_id}
 | `workflow_id` | string | UUID of the run |
 | `status` | string | See [Status Values](#status-values) |
 | `current_step` | string \| null | Name of the last completed graph node |
-| `pending_decision` | object \| null | Present only when `status == "waiting_for_user"`. Shape depends on `decision_type` — see [Decision Types](#decision-types) |
 | `run_metrics` | object \| null | Cumulative token + cost counters |
 | `errors` | array | Non-fatal per-job errors that did not abort the run |
 | `updated_at` | string \| null | ISO-8601 timestamp of last state write |
@@ -293,8 +280,7 @@ GET /workflows/{workflow_id}
 
 ### GET /workflows/{workflow_id}/jobs
 
-Return all scored jobs for a workflow. Available as soon as `score_jobs` completes
-(before the workflow reaches `waiting_for_user`).
+Return all scored jobs for a workflow. Available as soon as `score_jobs` completes.
 
 **Request**
 
@@ -1223,12 +1209,12 @@ The former in-graph decision union (`select_jobs_for_deep_review`,
 | `scored` | Scoring agent has run |
 | `shortlisted` | Score ≥ threshold; selected for deep review |
 | `reviewed` | Resume Critic + Review Auditor completed |
-| `applied` | User marked as applied |
-| `passed` | Removed from active tracking |
-| `rejected` | Application rejected |
-| `offer` | Offer received |
+| `passed` | Excluded from active views via the pipeline filter (ADR-057) |
 | `error` | Agent error during processing |
 | `skipped` | Skipped due to budget exhaustion |
+
+There are no `applied` / `rejected` / `offer` application-status values — outcome
+tracking is out of scope by design (the "No application tracking" rule in `CLAUDE.md`).
 
 ---
 
@@ -1253,14 +1239,15 @@ abort the entire run set `workflow.status = "failed"`.
 
 ## Execution Limits
 
-These limits are enforced by the orchestrator and cannot be overridden at runtime.
+These limits are enforced by the orchestrator. The scored and discovery caps are
+per-run overridable within hard ceilings (ADR-061); the rest are fixed.
 
 | Constant | Value | Enforced where |
 |----------|-------|----------------|
-| `MAX_JOBS_PER_RUN` | 10 | `discover_jobs` node — excess jobs are silently dropped |
-| `MAX_SELECTED_JOBS` | 10 | Decision endpoint (422) + `JobSelectionDecision` schema |
+| `MAX_JOBS_PER_RUN` | 10 | Default scored cap; per-run override up to `MAX_SCORED_CEILING` = 25 (ADR-061) |
+| `MAX_SELECTED_JOBS` | 3 | Auto-selection in `await_job_selection` (qualifying jobs that reach in-graph deep review) |
 | `MAX_RESEARCH_STEPS` | 2 | ResearchAgent ReAct loop |
-| `MAX_REVIEW_ROUNDS` | 3 | `deep_review` reflection loop |
+| `MAX_REVIEW_ROUNDS` | 2 | `deep_review` reflection loop |
 | `MAX_LLM_CALLS_PER_JOB` | 10 | Per-job budget check in scoring loop |
 | `MAX_LLM_CALLS_PER_RUN` | 200 | `check_budget()` called before every agent invocation |
 

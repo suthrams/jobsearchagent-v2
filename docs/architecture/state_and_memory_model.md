@@ -167,10 +167,12 @@ Recommended status values:
 | ---------------- | --------------------------------- |
 | initialized      | Workflow created                  |
 | running          | Workflow actively executing       |
-| waiting_for_user | Workflow paused for HITL          |
+| awaiting_scoring_selection | Manual scoring triage: parked between phases for the user to pick jobs (ADR-060; no `interrupt()`) |
+| cancelling       | Cooperative cancellation requested (ADR-083) |
+| cancelled        | Run cancelled (user or system)    |
 | completed        | Workflow completed successfully   |
+| completed_with_errors | Completed with non-fatal per-job errors |
 | failed           | Workflow failed                   |
-| cancelled        | User or system cancelled workflow |
 
 ---
 
@@ -727,31 +729,20 @@ This gives the UI and developer a trustworthy execution timeline.
 
 ## 22. HITL and State
 
-When the system needs user input, state should move to:
+The workflow runs end to end with no in-graph pause (ADR-059) — state never moves to
+a `waiting_for_user` / `pending_decision` hold. Human input enters in two ways:
 
-```text
-status = waiting_for_user
-```
+* **Between phases (in-state, no interrupt):** when manual scoring triage is on
+  (ADR-060) the run parks at `status = awaiting_scoring_selection` after discovery.
+  The discovered jobs live in state; the user picks a subset via
+  `POST /workflows/{id}/scoring`, which re-enters the same graph/thread at
+  `score_jobs`. This is a between-phase wait, not a graph `interrupt()`.
+* **Out-of-graph (after the run):** tailoring, deep review, interview prep, and the
+  Resume Clinic are triggered by REST and persist to their own tables; the decision
+  (`approve / revise / reject / edit`) is a column on that table plus a
+  `human_decisions` audit row (ADR-074). No workflow state is paused for them.
 
-And include:
-
-```json
-{
-  "pending_decision": {
-    "decision_type": "approve_tailoring",
-    "message": "Approve this tailored resume draft?",
-    "options": ["approve", "edit", "reject"],
-    "payload": {}
-  }
-}
-```
-
-When the user responds:
-
-1. Persist the human decision.
-2. Clear `pending_decision`.
-3. Update workflow status.
-4. Resume workflow.
+The backend validates every decision before persisting; the UI never auto-approves.
 
 ---
 

@@ -110,10 +110,11 @@ error_message
 ```text
 initialized
 running
-waiting_for_user
+awaiting_scoring_selection
+cancelling
+cancelled
 completed
 failed
-cancelled
 ```
 
 ### Example Steps
@@ -296,7 +297,7 @@ error_message
 job_discovery.started
 job_discovery.completed
 resume_parser.completed
-skill_normalizer.completed
+scoring_agent.completed
 report_generator.completed
 ```
 
@@ -415,11 +416,9 @@ created_at
 ### Example Decision Types
 
 ```text
-select_jobs_for_deep_review
-approve_tailoring
-reject_tailoring
-request_interview_prep
-mark_job_applied
+tailoring_decision (approve / revise / reject / edit)
+resume_clinic_decision (approve / revise / reject / edit)
+scoring_selection (manual triage, ADR-060)
 cancel_workflow
 ```
 

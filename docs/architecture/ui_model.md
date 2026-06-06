@@ -508,10 +508,11 @@ that the senior-tuned funnel underserves.
 | ---------------- | -------------- |
 | initialized      | show start     |
 | running          | show progress  |
-| waiting_for_user | show decision  |
+| awaiting_scoring_selection | show scoring-selection picker (ADR-060) |
+| cancelling       | show cancelling |
+| cancelled        | show cancelled |
 | completed        | show report    |
 | failed           | show error     |
-| cancelled        | show cancelled |
 
 ---
 

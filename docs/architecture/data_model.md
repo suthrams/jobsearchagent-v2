@@ -126,7 +126,7 @@ CREATE TABLE workflow_runs (
 |-------------------|---------|-------------|
 | `id`              | TEXT PK | UUID; the workflow_id used everywhere as `workflow_run_id`. |
 | `workflow_type`   | TEXT    | The graph run type (e.g. `"full_career_review"`), plus lightweight cost-attribution correlation rows for out-of-graph work: `"resume_clinic"` (ADR-066) and `"resume_upload"` (ADR-074 minor — attributes the upload-time parse LLM call to the profile). |
-| `status`          | TEXT    | `running` \| `waiting_for_user` \| `awaiting_scoring_selection` \| `cancelling` \| `cancelled` \| `completed` \| `completed_with_errors` \| `failed`. `cancelling`/`cancelled` added by ADR-083 (the `update_state` SQL already stamps `completed_at` for `cancelled`). |
+| `status`          | TEXT    | `running` \| `awaiting_scoring_selection` \| `cancelling` \| `cancelled` \| `completed` \| `completed_with_errors` \| `failed`. `cancelling`/`cancelled` added by ADR-083 (the `update_state` SQL already stamps `completed_at` for `cancelled`); the legacy `waiting_for_user` value was retired with the in-graph pause in ADR-059. |
 | `current_step`    | TEXT    | Name of the most recently entered LangGraph node. Drives the History "Stage" column. |
 | `state_json`      | TEXT    | Serialized `WorkflowState` — the entire run snapshot, restorable. |
 | `user_id`         | TEXT    | ADR-062: the run's owner, written at `register_run` from `state["user_id"]` (decimal-string `users.id`). Per-run tables inherit ownership transitively via `workflow_run_id`. Pre-existing rows backfilled to `"0"`. |

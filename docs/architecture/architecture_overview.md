@@ -51,7 +51,7 @@ Job Discovery + Resume Profile Services
         ↓
 Scoring Layer
         ↓
-Shortlist + Human Decision (HITL)
+Auto-select qualifying jobs (no in-graph pause; ADR-059)
         ↓
 Deep Review Workflow
         ↓
@@ -134,7 +134,7 @@ The system minimizes user friction by making manual inputs optional.
 * manages workflow state
 * invokes agents, tools, and services
 * handles loops and stopping conditions
-* implements HITL pauses
+* runs end to end with no in-graph pause; human decisions are out-of-graph (ADR-059)
 
 ---
 
@@ -144,14 +144,16 @@ Agents perform reasoning tasks only.
 
 Core agents:
 
-* Scoring Agent
+* Relevance Filter (opt-in pre-scoring triage, ADR-079)
 * Research Agent (bounded ReAct)
+* Scoring Agent
 * Resume Critic
 * Review Auditor
 * Career Advisor
 * Interview Coach
 * Tailoring Agent
 * Fidelity Reviewer
+* Resume Reviewer (Resume Clinic, ADR-066)
 
 Agents do not execute actions directly.
 
@@ -164,9 +166,9 @@ Deterministic components:
 * job discovery and scraping
 * job normalization
 * resume parsing
-* skill normalization
+* PII redaction at the LLM seam (context trimmer, ADR-069)
+* deep-review / Resume Clinic runners and the resume text renderer
 * report generation
-* status management
 * observability logging
 
 Rule:
@@ -228,17 +230,17 @@ Research → Critic → Auditor → Career Advice
 
 Critic ↔ Auditor (bounded iterations)
 
-### Tailoring
+### Tailoring (out-of-graph, on demand)
 
-Tailor → Validate → Approve
+Tailor → Validate (Fidelity Reviewer) → Decide (approve / revise / reject / edit)
 
 ### Interview Prep
 
 Generate role-specific preparation
 
-### Human-in-the-Loop
+### Human-in-the-Loop (out-of-graph)
 
-Pause → Decision → Resume
+Run completes → user triggers an on-demand op → decision recorded (no graph pause; ADR-059)
 
 ---
 
@@ -286,8 +288,11 @@ Long-term learning:
 
 State is authoritative for execution.
 
-Memory is used selectively, and is **isolated per profile** (ADR-062) — one
-person's learned patterns never seed another's runs.
+> **Designed, not yet wired into the runtime.** The `memory_items` table,
+> `MemoryRepository`, and per-profile scoping exist, but no agent or node reads or
+> writes memory today (there is no `MemoryService` / `app/memory/`). When wired, it
+> is **isolated per profile** (ADR-062) — one person's learned patterns never seed
+> another's runs. See `state_and_memory_model.md` and `CLAUDE.md`.
 
 ---
 

@@ -128,8 +128,6 @@ Implement all deterministic services. No LLM calls in this phase.
 ```text
 app/services/job_discovery_service.py
 app/services/resume_parser.py
-app/services/skill_normalizer.py
-app/services/status_manager.py
 app/services/observability_service.py
 app/services/report_generator.py
 scrapers/          ← preserved from v1, wrapped by JobDiscoveryService
@@ -312,18 +310,20 @@ Wire agents, services, and state into complete, runnable workflows.
 **Execution Limits Enforced**
 
 ```text
-MAX_JOBS_PER_RUN = 10   (reduced from 20 in Phase 9)
+MAX_JOBS_PER_RUN = 10   (default scored cap; per-run override up to 25, ADR-061)
 MAX_SELECTED_JOBS = 3
 MAX_RESEARCH_STEPS = 2
-MAX_REVIEW_ROUNDS = 3
+MAX_REVIEW_ROUNDS = 2
 MAX_LLM_CALLS_PER_JOB = 10
-MAX_LLM_CALLS_PER_RUN = 100
+MAX_LLM_CALLS_PER_RUN = 200
 ```
 
-**HITL State Transitions**
+**Workflow State Transitions** (no in-graph pause; ADR-059)
 
 ```text
-running → waiting_for_user → running → completed
+running → completed                                          (auto path)
+running → awaiting_scoring_selection → running → completed   (manual scoring triage, ADR-060)
+running → cancelling → cancelled                             (cooperative cancel, ADR-083)
 ```
 
 **Code Locations**
