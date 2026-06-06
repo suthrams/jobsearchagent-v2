@@ -4,6 +4,47 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-06
+
+### Added — Deterministic figure renderer for the article series
+
+- New `tools/render_figures.py` + `tools/figure_renderer/` (HTML/CSS + headless
+  Chromium, JSON specs under `specs/`) render the blog-series diagrams
+  deterministically with exact, literal text — no image model, no fabrication risk.
+  The theme reaches ChatGPT-grade richness (icon chips; `table`/`compare`/`lanes`/
+  `cards`/`scene` layouts; highlight + takeaway band) while staying ASCII. Adopted
+  as the diagram default for the series; Article 12 specs included. Blog-article
+  tooling only — the agentic system is unchanged.
+
+### Changed — Documentation reconciled with architecture + ADRs
+
+- **User-facing docs corrected against the code/ADRs.** `features.md` Section 9
+  described the retired in-graph `interrupt()` / `waiting_for_user` HITL path;
+  rewritten as the real out-of-graph decision model (ADR-059), and its
+  application-status row (which violated the No application tracking rule) removed.
+  `disclaimer.md` parser/cache facts fixed (`pdfminer.six`; parsed profile cached in
+  the `resumes` table, not `data/profile.json`). README fixed: `db_reader` (deleted
+  in ADR-075), `MAX_SELECTED_JOBS` 10->3, `MAX_REVIEW_ROUNDS` 3->2, the routers list,
+  and the retired HITL pattern. Stale counts corrected/de-brittled (56->83 ADRs,
+  448->917 tests, 8->10 agents). README Agents table gained the Relevance Filter
+  (ADR-079) and Resume Reviewer (ADR-066), models confirmed from `tests/model_pins.json`.
+- **Wiki index verified + corrected.** All links resolve and every architecture doc
+  is reachable; the Document Count table was stale (it listed the v1 doc directories
+  deleted in `f78e80f`) and is now accurate, with `docs/incidents/` indexed.
+- **CLAUDE.md trimmed ~41%** (45.7K -> 26.8K chars): the Key Invariants collapsed to
+  rule + seam + ADR pointer and the structure/reference/status sections condensed.
+  No rule, constant, seam, or contract removed.
+
+### Added — write-series-article Claude Code skill
+
+- New project-own skill (`.claude/skills/write-series-article/`) that orchestrates
+  the LinkedIn article-series process (frame -> ground -> draft -> diagrams -> verify
+  -> promo -> publish), enforcing the frame-before-draft and verify-before-publish
+  gates and the never-overwrite-a-published-image rule. Registered in
+  `.claude/skills/README.md`.
+
+---
+
 ## 2026-06-05
 
 ### Added — Run-lifecycle controls: idempotent kickoff + cancellation
