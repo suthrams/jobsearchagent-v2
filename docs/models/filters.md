@@ -61,7 +61,7 @@ Extracts a 2-letter US state abbreviation from an unstructured location string. 
 1. `, XX` pattern — matches common scraper formats like `"Atlanta, GA"` and `"Seattle, WA, United States"`
 2. Full state name word-boundary match — handles `"Austin, Texas"` and `"New York, New York"`. Names are matched longest-first so `"west virginia"` is never shadowed by `"virginia"`.
 3. Standalone 2-letter uppercase token at end of string — fallback for unusual formats.
-4. **County/Parish/Borough lookup** — regex-matches `"[Name] County"`, `"[Name] Parish"`, or `"[Name] Borough"` substrings and looks up the base name in `_COUNTY_STATE` (~100 unambiguous entries). Handles the dominant Ladders format: `"Atlanta, Fulton County"` → `GA`, `"Seattle, King County"` → `WA`, `"Jersey City, Hudson County"` → `NJ`.
+4. **County/Parish/Borough lookup** — regex-matches `"[Name] County"`, `"[Name] Parish"`, or `"[Name] Borough"` substrings and looks up the base name in `_COUNTY_STATE` (~100 unambiguous entries). Handles `"City, County"` location strings: `"Atlanta, Fulton County"` → `GA`, `"Seattle, King County"` → `WA`, `"Jersey City, Hudson County"` → `NJ`.
 5. **City/borough lookup** — splits on commas and checks each segment against `_CITY_STATE` (~200 entries). Handles borough-as-location patterns: `"Grand Central, Manhattan"` → `NY`, `"Nob Hill, San Francisco"` → `CA`.
 
 **Data structures:**

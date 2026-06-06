@@ -26,10 +26,11 @@ This makes it trivial to query "which jobs need scoring?" (`get_by_status(NEW)`)
 ### `JobSource`
 | Value | Meaning |
 |---|---|
-| `linkedin` | Manually pasted URL from `inbox/linkedin.txt` |
+| `linkedin` | Manually pasted URL from the LinkedIn inbox |
 | `indeed` | From Adzuna API (which aggregates Indeed) |
-| `glassdoor` | Glassdoor RSS (legacy, replaced by Adzuna) |
-| `ladders` | Scraped from Ladders.com |
+| `adzuna` | Adzuna API result |
+| `greenhouse` | ATS-direct, source-of-truth employer board (ADR-081) |
+| `lever` | ATS-direct, source-of-truth employer board (ADR-081) |
 
 ### `WorkMode`
 | Value | Meaning |

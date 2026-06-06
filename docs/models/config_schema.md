@@ -26,8 +26,7 @@ AppConfig
 │   └── temperature: TemperatureConfig
 ├── scrapers:  ScrapersConfig
 │   ├── linkedin: LinkedInConfig
-│   ├── adzuna:   AdzunaConfig
-│   └── ladders:  LaddersConfig
+│   └── adzuna:   AdzunaConfig
 ├── storage:   StorageConfig
 └── staleness: StalenessConfig
 ```

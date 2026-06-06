@@ -33,6 +33,10 @@ A named logger (`scrapers.<name>`) automatically created in `__init__`. All scra
 
 | Class | Source | Method |
 |---|---|---|
-| `LinkedInScraper` | LinkedIn | Reads URLs from `inbox/linkedin.txt`, fetches HTML |
+| `LinkedInScraper` | LinkedIn | Reads URLs from the LinkedIn inbox, fetches HTML |
 | `AdzunaScraper` | Adzuna API | REST JSON API — most reliable source |
-| `LaddersScraper` | Ladders.com | HTML scraping — most fragile (markup may change) |
+
+`LaddersScraper` was removed with the v1 runtime (ADR-063). v2 adds two ATS-direct
+subclasses of this same `BaseScraper` — `GreenhouseScraper` and `LeverScraper`
+(`app/services/ats_scrapers.py`, ADR-081) — source-of-truth employer boards with
+live apply links.
