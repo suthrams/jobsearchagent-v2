@@ -1,0 +1,49 @@
+{
+  "id": "agent_graph",
+  "width": 1800,
+  "height": 1360,
+  "layout": "scene",
+  "title": "Agent graph - LLM-using components by responsibility",
+  "headSub": "13 components: 11 BaseAgent subclasses + 2 utility helpers.",
+  "scene": {
+    "viewBox": [0, 0, 1800, 1050],
+    "zones": [
+      {"x": 50, "y": 70, "w": 1700, "h": 370, "accent": "blue", "dashed": false, "fill": false, "label": "Job-search funnel - in-graph LangGraph"},
+      {"x": 50, "y": 490, "w": 480, "h": 230, "accent": "amber", "dashed": true, "fill": false, "label": "On-demand tailoring - out-of-graph"},
+      {"x": 570, "y": 490, "w": 640, "h": 230, "accent": "amber", "dashed": true, "fill": false, "label": "Resume Clinic - out-of-graph"},
+      {"x": 1250, "y": 490, "w": 500, "h": 230, "accent": "red", "dashed": false, "fill": false, "label": "Validation guardrail"},
+      {"x": 50, "y": 770, "w": 1700, "h": 210, "accent": "gray", "dashed": true, "fill": false, "label": "Utility LLM helpers - not BaseAgent"}
+    ],
+    "nodes": [
+      {"id": "relevance", "x": 90, "y": 150, "w": 360, "h": 110, "accent": "green", "icon": "filter", "title": "RelevanceFilterAgent", "sub": "structured batch - opt-in (ADR-079)"},
+      {"id": "research", "x": 490, "y": 150, "w": 300, "h": 110, "accent": "blue", "icon": "eye", "title": "ResearchAgent", "sub": "bounded ReAct"},
+      {"id": "scoring", "x": 830, "y": 150, "w": 300, "h": 110, "accent": "blue", "icon": "gauge", "title": "ScoringAgent", "sub": "structured output"},
+      {"id": "critic", "x": 1170, "y": 150, "w": 300, "h": 110, "accent": "magenta", "icon": "pen", "title": "ResumeCritic", "sub": "critique"},
+      {"id": "auditor", "x": 490, "y": 300, "w": 300, "h": 110, "accent": "magenta", "icon": "check", "title": "ReviewAuditor", "sub": "evaluator / reflection"},
+      {"id": "advisor", "x": 830, "y": 300, "w": 300, "h": 110, "accent": "blue", "icon": "chart", "title": "CareerAdvisor", "sub": "advisory"},
+      {"id": "coach", "x": 1170, "y": 300, "w": 320, "h": 110, "accent": "blue", "icon": "target", "title": "InterviewCoach", "sub": "conditional on threshold"},
+
+      {"id": "tailoring", "x": 90, "y": 565, "w": 400, "h": 110, "accent": "amber", "focal": true, "icon": "edit", "title": "TailoringAgent", "sub": "evidence-bound generation"},
+
+      {"id": "reviewer", "x": 610, "y": 565, "w": 280, "h": 110, "accent": "amber", "icon": "doc", "title": "ResumeReviewerAgent", "sub": "structured, job-agnostic"},
+      {"id": "chat", "x": 910, "y": 565, "w": 270, "h": 110, "accent": "amber", "icon": "pen", "title": "ResumeChatAgent", "sub": "iterative per turn"},
+
+      {"id": "fidelity", "x": 1290, "y": 565, "w": 420, "h": 110, "accent": "red", "icon": "shield", "title": "FidelityReviewer", "sub": "fabrication guardrail"},
+
+      {"id": "parser", "x": 90, "y": 840, "w": 520, "h": 100, "accent": "gray", "icon": "doc", "title": "ResumeParser", "sub": "resume_parser - PDF field enhance"},
+      {"id": "extractor", "x": 660, "y": 840, "w": 640, "h": 100, "accent": "gray", "icon": "globe", "title": "CustomUrlExtractor", "sub": "custom_url_extractor - URL fallback"}
+    ],
+    "edges": [
+      {"from": "relevance:right", "to": "research:left", "accent": "blue", "style": "thin"},
+      {"from": "research:right", "to": "scoring:left", "accent": "blue", "style": "thin"},
+      {"from": "scoring:right", "to": "critic:left", "accent": "blue", "style": "thin"},
+      {"from": "auditor:right", "to": "advisor:left", "accent": "blue", "style": "thin"},
+      {"from": "advisor:right", "to": "coach:left", "accent": "blue", "style": "thin"},
+      {"from": "critic:bottom", "to": "auditor:top", "accent": "magenta", "style": "thick", "dashed": true, "label": "reflect <-> loop", "bend": 0.3}
+    ],
+    "labels": [
+      {"x": 90, "y": 134, "text": "discover -> research -> score -> deep review -> advise -> prep", "accent": "blue", "tag": true, "size": 15}
+    ]
+  },
+  "takeaway": {"icon": "robot", "accent": "amber", "text": "Agents {{magenta:reason}}; the orchestrator and endpoints decide. {{blue:Seven}} funnel agents run in-graph, {{amber:three}} generation agents out-of-graph, and the {{red:Fidelity Reviewer}} polices every generated draft."}
+}

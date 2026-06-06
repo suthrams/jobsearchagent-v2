@@ -11,14 +11,16 @@ in detail, see [`workflow_model.md`](workflow_model.md).
 ## All agents at a glance
 
 Thirteen LLM-using components (eleven `BaseAgent` subclasses + two utility helpers),
-grouped by responsibility. Same style as the
-[API surface diagram](api_surface_overview.md).
+grouped by responsibility.
 
 ![Agent graph — LLM-using components grouped by responsibility](images/agent_graph.png)
 
-> The Mermaid source below is the current reference (thirteen components). The
-> rendered PNG above predates ADR-079 and still shows twelve — it omits the
-> `RelevanceFilterAgent`; regenerate it to refresh.
+> The PNG above is rendered deterministically from
+> `tools/figure_renderer/specs/agent_graph.json` (the same HTML/CSS engine as the
+> article figures) — the JSON spec is the render source of truth; the Mermaid block
+> below is a textual mirror kept in sync. Re-render after any agent change with
+> `python tools/render_figures.py agent_graph`, then copy
+> `blogs/blog_images/agent_graph.png` over `docs/architecture/images/agent_graph.png`.
 
 ```mermaid
 flowchart TB

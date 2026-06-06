@@ -1,5 +1,9 @@
+%% Textual mirror only. The published PNG is rendered from
+%% tools/figure_renderer/specs/agent_graph.json (deterministic figure renderer),
+%% not from this file. Keep both in sync on any agent change.
 flowchart TB
     subgraph Funnel [Job-search funnel - in-graph LangGraph]
+        a0[RelevanceFilterAgent - Structured output, batched - opt-in pre-scoring]
         a1[ResearchAgent - Bounded ReAct]
         a2[ScoringAgent - Structured output]
         a3[ResumeCritic - Critique]

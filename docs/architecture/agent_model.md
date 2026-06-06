@@ -70,6 +70,8 @@ This keeps coordination centralized and avoids uncontrolled agent-to-agent behav
 | Career Advisor Agent    | Separate resume gaps from career gaps              | Advisory reasoning     |
 | Interview Coach Agent   | Prepare user for high-value roles                  | Conditional execution  |
 | Tailoring Agent         | Suggest evidence-bound resume improvements         | Controlled generation  |
+| Resume Reviewer Agent   | Job-agnostic resume overhaul for the Resume Clinic | Structured output (ADR-066) |
+| Resume Chat Agent       | Iterative resume revision, one call per chat turn  | Iterative generation (ADR-068) |
 | Fidelity Reviewer Agent | Detect unsupported tailoring claims                | Validation / Guardrail |
 
 > ADR-061: the Tailoring Agent, Fidelity Reviewer, Resume Critic + Review Auditor
@@ -78,6 +80,11 @@ This keeps coordination centralized and avoids uncontrolled agent-to-agent behav
 > `POST /workflows/{wf}/jobs/{job}/{tailorings,deep-review,interview-prep}`
 > endpoints. The single-job deep-review loop is shared with the in-graph node
 > (`app/services/deep_review_runner.py`).
+>
+> The Resume Reviewer and Resume Chat agents are **out-of-graph only** — they
+> belong to the standalone Resume Clinic (ADR-066/068), never the LangGraph
+> workflow. The Relevance Filter (5b) is in-graph but opt-in. See
+> `agent_graph_overview.md` for the full grouping.
 
 ---
 
@@ -925,36 +932,36 @@ lightweight `workflow_runs` row (`workflow_type="resume_clinic"`,
 
 ---
 
-## 14. Status Manager
+## 14. Status / application tracking (intentionally absent)
 
-The Status Manager is not an LLM agent.
+There is **no status-manager component and no application-tracking feature**, by
+design. An early `status_manager` service was removed (dead-code audit); the
+decision points it would have recorded (Apply / Save / "marked applied") are
+deliberately out of scope so the career decision stays human-owned (the
+"No application tracking" rule in `CLAUDE.md`).
 
-It is deterministic service logic.
+What the system does record instead is workflow *run* lifecycle and per-artifact
+*decisions*, both deterministic and auditable:
 
-### Purpose
+* run status transitions on `workflow_runs` (incl. `cancelling`/`cancelled`,
+  ADR-083) written only by the orchestrator / run wrappers;
+* human decisions on tailorings and clinic reviews (`approve`/`revise`/`reject`/
+  `edit`) persisted by the out-of-graph endpoints and mirrored to the
+  `human_decisions` audit table (ADR-074).
 
-Manage workflow or application status updates.
-
-Examples:
-
-```text
-job_saved
-job_shortlisted
-deep_review_requested
-tailoring_approved
-report_generated
-application_marked_applied
-```
-
-### Constraints
-
-* Must not be implemented as an LLM
-* Must require explicit user or workflow events
-* Must be auditable
+No agent ever writes status. Agents return structured output; the orchestrator and
+the REST endpoints own all state transitions.
 
 ---
 
 ## 15. Memory Agent / Memory Service
+
+> **Designed, NOT wired into the runtime.** The `memory_items` table,
+> `MemoryRepository`, and per-user scoping (ADR-062) exist, but no agent or
+> workflow node reads or writes memory today, and there is no `MemoryService` /
+> `app/memory/`. This section is the design contract for when memory is wired,
+> not a description of current behavior (see `CLAUDE.md` and
+> `state_and_memory_model.md`).
 
 Memory is future-facing but should be modeled early.
 
