@@ -1,0 +1,35 @@
+{
+  "id": "ui_refactor_before",
+  "outDir": "docs/architecture/images",
+  "width": 1500,
+  "height": 1320,
+  "layout": "scene",
+  "title": "UI refactor - BEFORE: the monolith",
+  "headSub": "streamlit_app.py did everything; one if/elif chain held every screen.",
+  "scene": {
+    "viewBox": [0, 0, 1500, 1000],
+    "zones": [
+      {"x": 50, "y": 60, "w": 880, "h": 900, "accent": "red", "dashed": false, "fill": false, "label": "streamlit_app.py - ONE FILE, 3,665 lines"},
+      {"x": 95, "y": 470, "w": 790, "h": 450, "accent": "red", "dashed": true, "fill": false, "label": "flat if / elif view == ... chain (L1015-3665)"}
+    ],
+    "nodes": [
+      {"id": "setup", "x": 110, "y": 140, "w": 760, "h": 84, "accent": "red", "icon": "code", "title": "setup + cache wrappers + page config", "sub": "L1-132"},
+      {"id": "helpers", "x": 110, "y": 248, "w": 760, "h": 96, "accent": "red", "icon": "filter", "title": "26 helpers - MIXED concerns", "sub": "formatting + render + nav + cached data (L134-894)"},
+      {"id": "nav", "x": 110, "y": 368, "w": 760, "h": 80, "accent": "red", "icon": "steps", "title": "sidebar nav - view = st.radio", "sub": "L896-1013"},
+      {"id": "api", "x": 1010, "y": 300, "w": 420, "h": 96, "accent": "blue", "icon": "arrow", "title": "api_client.py", "sub": "control-path writes"},
+      {"id": "db", "x": 1010, "y": 470, "w": 420, "h": 96, "accent": "blue", "icon": "database", "title": "db_reader.py", "sub": "direct DB reads"}
+    ],
+    "edges": [
+      {"from": [885, 560], "to": "api:left", "accent": "blue", "label": "writes"},
+      {"from": [885, 620], "to": "db:left", "accent": "blue", "label": "reads"}
+    ],
+    "labels": [
+      {"x": 130, "y": 560, "text": "Workflow History   Workflow Detail   Job Detail", "anchor": "start", "size": 19},
+      {"x": 130, "y": 630, "text": "Start New Run   Live Run Monitor   Run Report", "anchor": "start", "size": 19},
+      {"x": 130, "y": 700, "text": "Resume Clinic   Settings   Profiles", "anchor": "start", "size": 19},
+      {"x": 130, "y": 770, "text": "Cost Dashboard   Analytics x5", "anchor": "start", "size": 19},
+      {"x": 130, "y": 850, "text": "15 screens, all inline in one elif chain", "accent": "red", "anchor": "start", "size": 17, "tag": true}
+    ]
+  },
+  "takeaway": {"icon": "alert", "accent": "red", "text": "One {{red:3,665-line}} file mixed routing, rendering, formatting, and data access - and reads bypassed the API straight to the DB."}
+}

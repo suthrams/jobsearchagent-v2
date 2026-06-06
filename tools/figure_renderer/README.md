@@ -35,7 +35,13 @@ to copy it over the canonical name (the current image is backed up to
 Common keys: `id` (output filename stem), `width`, `height` (pick a
 3:1 to 5:1 ratio; tables/compares run taller), `title`, `layout`,
 optional `headSub`, optional `footer` (list of strings or
-`{main, sub}`), optional `takeaway` (see below).
+`{main, sub}`), optional `takeaway` (see below), optional `outDir`.
+
+**`outDir`** (repo-relative path) sends the rendered PNG somewhere other
+than `blogs/blog_images/`. Article/blog figures omit it. Architecture-doc
+figures (`agent_graph`, `api_surface`, `ui_refactor_*`) set
+`"outDir": "docs/architecture/images"` so they render straight into the
+committed docs tree - no gitignored intermediate, no manual copy step.
 
 **Title / takeaway highlight.** Any title, takeaway, label, or cell text
 may color one keyword with `{{accent:word}}` tokens, e.g.

@@ -1,5 +1,6 @@
 {
   "id": "agent_graph",
+  "outDir": "docs/architecture/images",
   "width": 1800,
   "height": 1360,
   "layout": "scene",

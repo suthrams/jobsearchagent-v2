@@ -1,0 +1,36 @@
+{
+  "id": "ui_refactor_after",
+  "outDir": "docs/architecture/images",
+  "width": 1640,
+  "height": 1200,
+  "layout": "scene",
+  "title": "UI refactor - AFTER (current): thin entrypoint + views package",
+  "headSub": "streamlit_app.py 3,665 -> ~215 lines; all reads + writes funnel through the API (ADR-075).",
+  "scene": {
+    "viewBox": [0, 0, 1640, 880],
+    "zones": [
+      {"x": 510, "y": 70, "w": 640, "h": 320, "accent": "blue", "dashed": false, "fill": false, "label": "app/ui/views/ - one render(ctx) per screen"},
+      {"x": 510, "y": 450, "w": 640, "h": 360, "accent": "gray", "dashed": true, "fill": false, "label": "shared presentation layer"}
+    ],
+    "nodes": [
+      {"id": "entry", "x": 60, "y": 120, "w": 390, "h": 130, "accent": "green", "focal": true, "icon": "code", "title": "streamlit_app.py", "sub": "THIN entrypoint (~215 lines): page config + sidebar + dispatch"},
+      {"id": "nav", "x": 60, "y": 320, "w": 390, "h": 110, "accent": "green", "icon": "steps", "title": "nav.py", "sub": "NAV_ITEMS - ViewContext - _navigate"},
+      {"id": "views1", "x": 550, "y": 150, "w": 560, "h": 90, "accent": "blue", "icon": "eye", "title": "15 view modules", "sub": "history - workflow_detail - job_detail - start_run"},
+      {"id": "views2", "x": 550, "y": 270, "w": 560, "h": 90, "accent": "blue", "icon": "eye", "title": "(one render(ctx) each)", "sub": "run_report - resume_clinic - settings - profiles - analytics"},
+      {"id": "comp", "x": 550, "y": 520, "w": 560, "h": 76, "accent": "gray", "icon": "table", "title": "components/", "sub": "bullets, tailoring, tracks, status"},
+      {"id": "fmt", "x": 550, "y": 612, "w": 560, "h": 76, "accent": "gray", "icon": "doc", "title": "formatting.py", "sub": "pure formatters - unit-testable, no st"},
+      {"id": "data", "x": 550, "y": 704, "w": 560, "h": 76, "accent": "gray", "icon": "database", "title": "data.py", "sub": "cached reads (@st.cache_data)"},
+      {"id": "api", "x": 1230, "y": 560, "w": 350, "h": 130, "accent": "green", "icon": "arrow", "title": "api_client.py", "sub": "ALL reads + writes -> FastAPI (ADR-075)"}
+    ],
+    "edges": [
+      {"from": "entry:bottom", "to": "nav:top", "accent": "green", "style": "thick", "label": "dispatch"},
+      {"from": "nav:right", "to": "views1:left", "accent": "green", "label": "render(ctx)"},
+      {"from": "views2:bottom", "to": "comp:top", "accent": "gray", "label": "use"},
+      {"from": "data:right", "to": "api:left", "accent": "green", "style": "thick", "label": "reads via API"}
+    ],
+    "labels": [
+      {"x": 1230, "y": 544, "text": "Single data path", "accent": "green", "tag": true, "size": 17}
+    ]
+  },
+  "takeaway": {"icon": "check", "accent": "green", "text": "Thin entrypoint, one render() per screen, a shared layer. Since ADR-075 the UI {{green:never}} opens the DB - every read and write goes through api_client."}
+}

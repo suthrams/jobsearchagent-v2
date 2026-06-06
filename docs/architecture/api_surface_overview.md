@@ -15,10 +15,12 @@ reference table below.
 
 ![API surface — all endpoints grouped by domain](images/api_surface.png)
 
-> The rendered PNG above is the canonical reference. The Mermaid source
-> below renders the same diagram inline on platforms that support
-> Mermaid (GitHub, VS Code, the offline CLI). If you only see one of
-> them, you have what you need.
+> The PNG above is rendered deterministically from
+> `tools/figure_renderer/specs/api_surface.json` (the same engine as the article
+> figures); the JSON spec is the render source of truth and writes straight into
+> `docs/architecture/images/` via its `outDir`. Regenerate with
+> `python tools/render_figures.py api_surface`. The Mermaid block below is a
+> textual mirror kept in sync for inline rendering on GitHub / IDE preview.
 
 ```mermaid
 flowchart TB

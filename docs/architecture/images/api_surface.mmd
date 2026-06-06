@@ -1,3 +1,6 @@
+%% Textual mirror only. The published PNG is rendered from
+%% tools/figure_renderer/specs/api_surface.json (deterministic figure renderer),
+%% not from this file. Keep both in sync on any endpoint change.
 flowchart TB
     subgraph Profiles
         p1[GET /users]
@@ -12,6 +15,7 @@ flowchart TB
         w2[GET /workflows/id]
         w3[POST /workflows/id/retry]
         w4[POST /workflows/id/scoring]
+        w5[POST /workflows/id/cancel]
     end
 
     subgraph Workflow_reads

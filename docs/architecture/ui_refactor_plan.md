@@ -31,10 +31,12 @@ This document captures the **current state**, the **desired state**, and an
 
 ![Before: streamlit_app.py as one 3,665-line file - setup, 26 mixed helpers, sidebar nav, and a flat if/elif dispatch holding all 15 views, all calling api_client.py and db_reader.py](images/ui_refactor_before.png)
 
-> The rendered PNG above is the canonical reference. The Mermaid source below
-> ([`images/ui_refactor_before.mmd`](images/ui_refactor_before.mmd)) renders the
-> same diagram inline on platforms that support Mermaid. Regenerate the PNG per
-> Section 10.
+> The PNG above is rendered deterministically from
+> `tools/figure_renderer/specs/ui_refactor_before.json` (same engine as the article
+> figures), straight into `docs/architecture/images/` via its `outDir`. Regenerate
+> with `python tools/render_figures.py ui_refactor_before`. The Mermaid block below
+> ([`images/ui_refactor_before.mmd`](images/ui_refactor_before.mmd)) is a textual
+> mirror for inline rendering. This is the historical pre-refactor monolith.
 
 ```mermaid
 flowchart TB
@@ -181,18 +183,23 @@ app/ui/
                             (they share render_track_table; keep together)
 ```
 
-`api_client.py` and `db_reader.py` are **unchanged** — they are already the
-correct seams (control-path writes vs. direct DB reads). This refactor only
-reorganizes the presentation layer that sits on top of them.
+The UI refactor itself left the data seams alone and only reorganized the
+presentation layer on top. **ADR-075 has since removed `db_reader.py` entirely** —
+all reads and writes now funnel through `api_client.py` to the FastAPI backend, so
+the UI never opens the database directly. The diagram below shows that current state.
 
-![After: a thin streamlit_app.py entrypoint dispatching through nav.py to per-view render() modules under app/ui/views, which draw on a shared presentation layer (components, formatting, data) over the unchanged api_client.py and db_reader.py seams](images/ui_refactor_after.png)
+![After (current): a thin streamlit_app.py entrypoint dispatching through nav.py to per-view render() modules under app/ui/views, which draw on a shared presentation layer (components, formatting, data) over the single api_client.py seam; db_reader was removed by ADR-075](images/ui_refactor_after.png)
 
-> The rendered PNG above is the canonical reference. Mermaid source:
-> [`images/ui_refactor_after.mmd`](images/ui_refactor_after.mmd).
+> The PNG above is rendered deterministically from
+> `tools/figure_renderer/specs/ui_refactor_after.json`, straight into
+> `docs/architecture/images/` via its `outDir`. Regenerate with
+> `python tools/render_figures.py ui_refactor_after`. It reflects the CURRENT
+> post-ADR-075 state (db_reader removed). The Mermaid block below
+> ([`images/ui_refactor_after.mmd`](images/ui_refactor_after.mmd)) is a textual mirror.
 
 ```mermaid
 flowchart TB
-    entry["streamlit_app.py - THIN entrypoint, target < 120 lines<br/>page config + bootstrap + set_user_id + dispatch"]
+    entry["streamlit_app.py - THIN entrypoint, ~215 lines<br/>page config + bootstrap + set_user_id + dispatch"]
     nav["nav.py - view registry, _navigate, session-state key constants"]
 
     subgraph VIEWS["app/ui/views/ - one render() per screen"]
@@ -209,8 +216,7 @@ flowchart TB
         data["data.py - @st.cache_data wrappers"]
     end
 
-    api["api_client.py - unchanged"]
-    db["db_reader.py - unchanged"]
+    api["api_client.py - ALL reads + writes -> FastAPI (ADR-075)"]
 
     entry --> nav
     nav --> VIEWS
@@ -219,14 +225,13 @@ flowchart TB
     VIEWS --> data
     comp --> fmt
     data --> api
-    data --> db
 
     classDef thin fill:#1f5a2f,stroke:#27ae60,color:#fff
     classDef pkg fill:#2a2a3a,stroke:#8e8eb0,color:#fff
     classDef seam fill:#1f3a5a,stroke:#2980b9,color:#fff
     class entry,nav thin
     class VIEWS,SHARED,comp,fmt,data pkg
-    class api,db seam
+    class api seam
 ```
 
 ### 3.2 The view contract
@@ -470,14 +475,17 @@ the other architecture diagrams:
 - [`images/ui_refactor_after.mmd`](images/ui_refactor_after.mmd) +
   `ui_refactor_after.png` — the target package.
 
-The PNGs were rendered 2026-05-30 with mermaid-cli. To regenerate after editing a
-`.mmd` source, run locally:
+The PNGs are rendered by the deterministic figure renderer from JSON specs in
+`tools/figure_renderer/specs/` (`ui_refactor_before.json`, `ui_refactor_after.json`),
+which carry `"outDir": "docs/architecture/images"` so they write straight into the
+committed docs tree (no gitignored intermediate, no manual copy). Regenerate after
+editing a spec with:
 
 ```
-npx -y @mermaid-js/mermaid-cli -i docs/architecture/images/ui_refactor_before.mmd \
-    -o docs/architecture/images/ui_refactor_before.png -b transparent
-npx -y @mermaid-js/mermaid-cli -i docs/architecture/images/ui_refactor_after.mmd \
-    -o docs/architecture/images/ui_refactor_after.png -b transparent
+python tools/render_figures.py ui_refactor_before
+python tools/render_figures.py ui_refactor_after
 ```
 
-(The first run downloads mermaid-cli + a headless Chromium.)
+The `.mmd` files beside the PNGs are textual mirrors (inline Mermaid for GitHub / IDE
+preview), not the render source. The "after" PNG reflects the current post-ADR-075
+state (db_reader removed); the "before" PNG is the historical pre-refactor monolith.

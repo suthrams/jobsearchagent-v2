@@ -84,19 +84,26 @@ def render(args: argparse.Namespace) -> int:
             try:
                 spec = json.loads(sp.read_text(encoding="utf-8"))
                 w, h = int(spec["width"]), int(spec["height"])
+                # Optional per-spec output dir. Blog/article figures omit it and
+                # land in the (gitignored) blog_images folder. Architecture-doc
+                # figures set "outDir" (e.g. "docs/architecture/images") so they
+                # render straight into the committed docs tree - no manual copy,
+                # no gitignored intermediate.
+                out_dir = (ROOT / spec["outDir"]) if spec.get("outDir") else COMPARE
+                out_dir.mkdir(parents=True, exist_ok=True)
                 TMP.write_text(tpl.replace("__SPEC_JSON__", json.dumps(spec)),
                                encoding="utf-8")
                 page = browser.new_page(viewport={"width": w, "height": h},
                                         device_scale_factor=2)
                 page.goto(TMP.as_uri(), wait_until="networkidle")
                 page.wait_for_timeout(300)
-                dest = COMPARE / f"{spec['id']}.png"
+                dest = out_dir / f"{spec['id']}.png"
                 page.screenshot(path=str(dest))
                 page.close()
                 ratio = w / h
                 flag = "" if 3.0 <= ratio <= 5.0 else "  (ratio outside 3-5:1)"
-                print(f"OK  blog_images/{dest.name}  {w}x{h} @2x  "
-                      f"{ratio:.2f}:1{flag}")
+                rel = dest.relative_to(ROOT).as_posix()
+                print(f"OK  {rel}  {w}x{h} @2x  {ratio:.2f}:1{flag}")
                 rendered.append(spec["id"])
             except Exception as e:  # noqa: BLE001
                 rc = 1
@@ -106,8 +113,9 @@ def render(args: argparse.Namespace) -> int:
     if TMP.exists():
         TMP.unlink()
 
-    print(f"\nRendered directly into blogs/blog_images/ ({len(rendered)} figure(s)). "
-          "These are the published assets; specs are the source of truth.")
+    print(f"\nRendered {len(rendered)} figure(s). Specs are the source of truth; "
+          "figures with an \"outDir\" write straight into the committed docs tree, "
+          "the rest into blogs/blog_images/.")
     return rc
 
 

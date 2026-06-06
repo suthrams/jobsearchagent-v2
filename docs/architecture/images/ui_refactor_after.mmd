@@ -1,5 +1,8 @@
+%% Textual mirror only. The published PNG is rendered from
+%% tools/figure_renderer/specs/ui_refactor_after.json (deterministic figure
+%% renderer), not from this file. Reflects the current post-ADR-075 state.
 flowchart TB
-    entry["streamlit_app.py - THIN entrypoint, target < 120 lines<br/>page config + bootstrap + set_user_id + dispatch"]
+    entry["streamlit_app.py - THIN entrypoint, ~215 lines<br/>page config + bootstrap + set_user_id + dispatch"]
     nav["nav.py - view registry, _navigate, session-state key constants"]
 
     subgraph VIEWS["app/ui/views/ - one render() per screen"]
@@ -16,8 +19,7 @@ flowchart TB
         data["data.py - @st.cache_data wrappers"]
     end
 
-    api["api_client.py - unchanged"]
-    db["db_reader.py - unchanged"]
+    api["api_client.py - ALL reads + writes -> FastAPI (ADR-075)"]
 
     entry --> nav
     nav --> VIEWS
@@ -26,11 +28,10 @@ flowchart TB
     VIEWS --> data
     comp --> fmt
     data --> api
-    data --> db
 
     classDef thin fill:#1f5a2f,stroke:#27ae60,color:#fff
     classDef pkg fill:#2a2a3a,stroke:#8e8eb0,color:#fff
     classDef seam fill:#1f3a5a,stroke:#2980b9,color:#fff
     class entry,nav thin
     class VIEWS,SHARED,comp,fmt,data pkg
-    class api,db seam
+    class api seam
