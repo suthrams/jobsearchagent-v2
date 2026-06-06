@@ -57,7 +57,7 @@
 | [user_guide.md](user_guide.md) | End-to-end v2 walkthrough — install, configure, start backend + UI, HITL workflow, daily routine, troubleshooting |
 | [cost_troubleshooting.md](cost_troubleshooting.md) | Step-by-step cost diagnosis: per-agent cost queries, reconciliation against the provider billing console, lever decision matrix, pre-flight estimation, regression-prevention invariants. Read this when cost surprises happen. |
 | [model_recommendations.md](model_recommendations.md) | Recommended per-agent model assignment with rationale, estimated cost per run, escalation order if budget pressure mounts, symptoms that signal an agent should be upgraded. Read this when configuring or tuning the system. |
-| [features.md](features.md) | Complete v2 feature reference — all 8 agents, HITL checkpoints, observability, model tiering, feature summary table |
+| [features.md](features.md) | Complete v2 feature reference — every agent, out-of-graph human decision points, observability, model tiering, feature summary table |
 | [README.md](README.md) | Docs index — maps every topic area to its authoritative file; v1 reference section |
 
 **Execution limits (enforced in `app/workflows/limits.py`):**
@@ -90,7 +90,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 
 | Document | What it covers |
 |---|---|
-| [architecture/agent_model.md](architecture/agent_model.md) | Per-agent input/output contracts, patterns, tools, constraints, observability events; shared rules for all 8 agents; input/output contract standard; prompt structure template |
+| [architecture/agent_model.md](architecture/agent_model.md) | Per-agent input/output contracts, patterns, tools, constraints, observability events; shared rules for every agent; input/output contract standard; prompt structure template |
 | [architecture/workflow_model.md](architecture/workflow_model.md) | Complete execution blueprint for all sub-workflows: discovery, resume profile, scoring, shortlist + HITL, deep review, interview prep, tailoring, reporting, error handling; state transition diagrams; parallelization strategy |
 | [architecture/relevance_filter_design.md](architecture/relevance_filter_design.md) | Control + data flow for the opt-in reasoning relevance pre-filter (ADR-079): the three-way `scoring_mode_gate`, the wide-net-then-narrow coupling, the redaction seam, the new `RelevanceFilterAgent`, and the never-lose-the-run fallback |
 | [architecture/spike_job_data_sources.md](architecture/spike_job_data_sources.md) | Spike (ADR-080 companion): free job-data API alternatives to Adzuna. Aggregator-vs-source-of-truth framing; ATS-direct (Greenhouse/Lever) as the root-cause fix for dead apply links — **prototyped in ADR-081** (`app/services/ats_scrapers.py`); per-company-list tradeoff |
@@ -265,7 +265,7 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 
 **Phase 3 — LLM Provider:** Establishes ClaudeProvider abstraction (LLMClient interface), PromptLoader with guardrails injection and versioning, retry policy, schema repair loop, ephemeral prompt caching.
 
-**Phase 4 — Agents:** Contracts, prompts, and implementations for all 8 agents; BaseAgent abstraction; observability event patterns; shared constraints.
+**Phase 4 — Agents:** Contracts, prompts, and implementations for the workflow agents; BaseAgent abstraction; observability event patterns; shared constraints.
 
 **Phase 5 — Orchestrator:** LangGraph StateGraph with all workflow nodes, conditional routers, HITL interrupts, reflection loop with stagnation detection, budget enforcement.
 
@@ -302,9 +302,9 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 | Document | What it covers |
 |---|---|
 | [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — the observability arc (security events + System Dashboard ADR-073, gap-closing + `api_requests` ADR-074, UI read funnel ADR-075, budget-cap/failed-call/drift ADR-076/077/078), Resume Clinic (ADR-066), PII redaction (ADR-069), multi-user profiles (ADR-062), multi-provider (ADR-053), back through Phase 7/8 live agents and performance |
-| [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic, langchain-openai) + v1 shared (anthropic, pydantic, httpx, pdfplumber) |
+| [dependencies.md](dependencies.md) | All third-party libraries with versions and licence types — v2 stack (langgraph, fastapi, langchain-anthropic, langchain-openai) + shared (anthropic, pydantic, httpx, pdfminer.six) |
 | [disclaimer.md](disclaimer.md) | Apache 2.0 terms, no-warranty statement, user responsibility for API costs, scraper compliance notes (Adzuna official, LinkedIn/Ladders grey-area), resume data privacy |
-| [../.claude/skills/README.md](../.claude/skills/README.md) | Index for the `.claude/skills/` agent-skills pack — maps each of the 21 skills to the jobsearchagent-v2 workflow stage where it applies (Claude Code discovers skills only under `.claude/skills/`) |
+| [../.claude/skills/README.md](../.claude/skills/README.md) | Index for the `.claude/skills/` agent-skills pack — maps each of the 21 pack skills (plus the project-own `smoke-test-ui` and `write-series-article`) to the jobsearchagent-v2 workflow stage where it applies (Claude Code discovers skills only under `.claude/skills/`) |
 | [../bugs/README.md](../bugs/README.md) | Root-cause analyses for critical *runtime* bugs (distinct from operational postmortems). Convention + four-section template (`_TEMPLATE.md`), an index table, and one RCA per bug (e.g. `BUG-001` — a dropped `httpx` import in two Streamlit views). Each RCA pairs with a forcing-function test so the same class cannot return silently. |
 
 ---
@@ -316,8 +316,8 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
 | docs/ top-level | 9 |
-| docs/architecture/ | 29 |
-| docs/architecture/adr/ | 82 (index + 81 ADRs) |
+| docs/architecture/ | 31 |
+| docs/architecture/adr/ | 84 (index + 83 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/agents/ | 3 |
 | docs/claude/ | 3 |
@@ -326,7 +326,7 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 | docs/storage/ | 1 |
 | docs/prompts/ | 1 |
 | prompts/ (project root) | 3 |
-| .claude/skills/ (agent-skills pack: 21 SKILL.md + supporting + README, plus project-own smoke-test-ui) | 26 |
+| .claude/skills/ (agent-skills pack: 21 SKILL.md + supporting + README, plus project-own smoke-test-ui and write-series-article) | 27 |
 
 ---
 

@@ -122,7 +122,7 @@ For each shortlisted job, a reflection loop produces a thorough resume review.
 - Model: **Haiku** (validation/checking task)
 
 ### Reflection loop
-- Loop runs until: `audit_score ≥ AUDIT_QUALITY_THRESHOLD (75)` OR stagnation (< 5-point improvement) OR `MAX_REVIEW_ROUNDS = 3`
+- Loop runs until: `audit_score ≥ AUDIT_QUALITY_THRESHOLD (75)` OR stagnation (< 5-point improvement) OR `MAX_REVIEW_ROUNDS = 2`
 - Best review across all rounds is persisted
 
 ---
@@ -171,21 +171,19 @@ The Fidelity Reviewer must clear the draft before it is persisted or shown to th
 
 ---
 
-## 9. Human-in-the-Loop Checkpoints
+## 9. Human Decision Points (out-of-graph)
 
-The workflow pauses at seven points for user decisions. The backend sets `status = waiting_for_user` and records a `pending_decision` before each pause.
+The workflow runs end to end with **no in-graph pause** — ADR-059 retired the `interrupt()` / `waiting_for_user` path. Job selection auto-selects qualifying jobs; human judgment enters through out-of-graph, on-demand operations the user triggers from the UI after (or alongside) a run, plus one optional curate-before-scoring phase. The backend always validates a decision before persisting it; the UI never auto-approves agent output.
 
-| Checkpoint | Decision |
+| Decision point | How it works |
 |---|---|
-| Job Selection | Which shortlisted jobs to deep-review |
-| Deep Review Approval | Accept review or request another round |
-| Interview Prep Decision | Proceed with coaching or skip |
-| Tailoring Approval | Accept tailored draft or reject |
-| Fidelity Review Resolution | Accept flagged claims or override |
-| Report Export Approval | Confirm before generating report |
-| Application Status Update | Mark job as applied / rejected / offer |
+| Manual scoring selection (opt-in, ADR-060) | When enabled, discovery casts a wide net and the run parks at `awaiting_scoring_selection`; the user picks which jobs to score, then a second phase scores only those (no `interrupt()` — the choice sits between two phases) |
+| Deep review / interview prep on demand (ADR-061) | The user triggers a single-job critic+auditor loop or interview coaching for any scored job |
+| Tailoring decision (ADR-055/059) | The user runs tailoring on a scored job, then records approve / revise / reject / edit. An `edit` is the human's own final draft, trusted as-is and not re-reviewed |
+| Resume Clinic decision (ADR-066) | The user reviews job-agnostic resume rewrites and records approve / revise / reject / edit |
+| Run cancellation (ADR-083) | The user can request cooperative cancellation of a running workflow; it stops at the next node boundary |
 
-All decisions are validated by the backend before the workflow resumes. The UI never auto-approves outputs.
+There is no Apply / Save / application-status feature by design — the career decision point stays human-owned (see the "No application tracking" rule in `CLAUDE.md`).
 
 ---
 

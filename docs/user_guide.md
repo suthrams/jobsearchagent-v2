@@ -687,11 +687,12 @@ Once configured, a typical session looks like:
 - Check `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env`
 - Verify `config/config.yaml` has entries in `search.titles` and `scrapers.adzuna.location`
 
-**Workflow stuck at `waiting_for_user`**
-- This is expected — the workflow has paused at a HITL checkpoint waiting for your input
-- Open **Monitor / HITL**, click **Refresh**, and submit the pending decision
+**Workflow seems to hang mid-run**
+- The workflow runs end to end with no human-in-the-loop pause (ADR-059) — it does not stop and wait for input. A long run is usually research/scoring on many jobs or rate-limit backoff, not a HITL pause
+- Open **Live Run Monitor**, click **Refresh**, and watch the activity feed. If a run truly stalls, you can request cancellation (ADR-083); it stops at the next node boundary
+- Tailoring, deep review, interview prep, and the Resume Clinic happen on demand AFTER the run, not as in-run pauses
 
-**Monitor / HITL shows "No active workflow"**
+**Live Run Monitor shows "No active workflow"**
 - The session state is in-browser only; it resets on page reload or if Streamlit restarts
 - You can still use Browse views — all historical data is in `data/v2.db`
 
@@ -702,7 +703,7 @@ Once configured, a typical session looks like:
 
 **No deep review results or interview prep data**
 - These views require a workflow that completed a full deep review pass
-- Check that status reached `completed` in **Monitor / HITL**
+- Check that status reached `completed` in **Live Run Monitor**
 
 **API error in the UI (red banner)**
 - Confirm the backend is running: `curl http://localhost:8000/docs`

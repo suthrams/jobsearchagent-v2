@@ -47,8 +47,8 @@ This application fetches job data from external sources. You are responsible for
 
 This application processes your personal resume. Please be aware:
 
-- Your resume is parsed locally using `pdfplumber` — it is never transmitted to any service except the Anthropic Claude API (for profile extraction and scoring).
-- Parsed profile data is cached in `data/profile.json` on your local machine.
+- Your resume is parsed locally using `pdfminer.six` — it is never transmitted to any service except the Anthropic Claude API (for profile extraction and scoring).
+- Parsed profile data is cached in the local SQLite database (`data/v2.db`, the `resumes` table), keyed by a hash of the PDF text (ADR-067).
 - Job data and application history are stored in `data/jobs.db` on your local machine.
 - Neither file is committed to version control (both are in `.gitignore`).
 - When you call the Anthropic API, your resume content and job descriptions are sent to Anthropic's servers in accordance with [Anthropic's privacy policy](https://www.anthropic.com/legal/privacy).

@@ -224,7 +224,7 @@ config/             config.example.yaml + config.yaml (gitignored)
 data/               SQLite databases (v2.db, jobs.db); gitignored
 tests/              pytest suite (no real LLM calls in CI)
 notebooks/          phase_7_validation.ipynb (E2E live-agent validation)
-.claude/skills/     project skill (smoke-test-ui) + addyosmani pack; see README there
+.claude/skills/     project skills (smoke-test-ui, write-series-article) + addyosmani pack; see README there
 ```
 
 **Architecture reference:** all design docs live in `docs/architecture/`, indexed and annotated in `docs/wiki.md` (the browseable entry point). Highest-traffic: `adr/ADR-000-index.md` (every ADR), `data_model.md` (tables), `api_reference.md` (REST contracts), `workflow_model.md`, `agent_model.md`, `ui_architecture.md`.

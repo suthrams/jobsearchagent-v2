@@ -2,7 +2,7 @@
 
 A multi-agent career intelligence system that discovers jobs, scores fit across the career tracks each profile pursues (ADR-071), identifies resume gaps, prepares you for interviews, and tailors your resume — all orchestrated with LangGraph.
 
-Built as a real-world exploration of **production agentic AI patterns**: stateful workflow graphs, structured output, bounded ReAct loops, critique-reflection cycles, evidence-bound generation, and human-in-the-loop checkpointing.
+Built as a real-world exploration of **production agentic AI patterns**: stateful workflow graphs, structured output, bounded ReAct loops, critique-reflection cycles, evidence-bound generation, and out-of-graph human review (ADR-059).
 
 ## What It Does
 
@@ -68,6 +68,8 @@ flowchart TD
     style CP fill:#fef9c3,stroke:#eab308
     style DB fill:#fef9c3,stroke:#eab308
 ```
+
+The in-graph flow runs discover -> research -> score -> deep review (critic <-> auditor) -> advisor -> report with no `interrupt()` (ADR-059). Interview prep, resume tailoring + fidelity review, and the Resume Clinic are **out-of-graph** operations the user triggers on demand after a run (ADR-055/061/066). An optional relevance pre-filter (ADR-079) and ATS-direct sources (Greenhouse/Lever, ADR-081) are opt-in.
 
 ---
 
@@ -148,9 +150,10 @@ python -m pytest tests/ -m integration   # live-API smoke tests (requires .env)
 ```
 app/
 ├── api/              FastAPI endpoints and dependency wiring
-│   └── routers/      workflows, jobs, reports, config, tailoring
+│   └── routers/      workflows, jobs, reports, config, tailoring, users,
+│                     resume_clinic, dashboard, reads, admin
 ├── workflows/        LangGraph workflow graph and node implementations
-├── agents/           8 specialized agents
+├── agents/           specialized agents (all inherit BaseAgent — see Agents table)
 ├── services/         Deterministic services (no LLM)
 │   └── concurrent_adzuna_scraper.py
 ├── providers/        Claude + OpenAI providers via ModelRegistry (ADR-053)
@@ -160,7 +163,8 @@ app/
 ├── prompts/
 │   ├── shared/       guardrails.txt — injected into every agent
 │   └── agents/       one prompt file per agent
-└── ui/               Streamlit frontend (streamlit_app.py + db_reader + api_client)
+└── ui/               Streamlit frontend: thin entrypoint + views package;
+                      all reads + writes go through api_client -> API (ADR-075)
 
 config/
 ├── config.example.yaml
@@ -170,16 +174,16 @@ data/                 SQLite databases (gitignored)
 └── v2.db             Workflow runs, jobs, scores, reviews, advice, tailorings
 
 docs/architecture/
-├── adr/              56 Architecture Decision Records
+├── adr/              Architecture Decision Records (see ADR-000-index.md)
 ├── implementation_plan.md
 └── *.md              Agent, workflow, state, data, and security models
 
 .claude/skills/       Claude Code agent-skills (discovered here only):
-                      smoke-test-ui (project-own) + the addyosmani/agent-skills
-                      pack — 21 curated skills. Pinned via skills-lock.json
-                      (repo root). See .claude/skills/README.md for the index.
+                      smoke-test-ui + write-series-article (project-own) + the
+                      addyosmani/agent-skills pack — 21 curated skills. Pinned via
+                      skills-lock.json (repo root). See .claude/skills/README.md.
 
-tests/                pytest suite (448 passed, 1 skipped — mock mode)
+tests/                pytest suite (mock mode — no real API calls in CI)
 notebooks/            Phase validation notebooks
 ```
 
@@ -189,16 +193,18 @@ notebooks/            Phase validation notebooks
 
 | Agent | Model | Pattern | When |
 |---|---|---|---|
+| Relevance Filter | Haiku | Structured output (batch) | Opt-in (`search.relevance_filter`) — one cheap call before scoring (ADR-079) |
 | Research Agent | Haiku | Bounded ReAct | Every job |
 | Scoring Agent | Haiku | Structured output | Every job (concurrent) |
 | Resume Critic | Sonnet | Critique | High-match jobs only |
 | Review Auditor | Haiku | Evaluator / Reflection | High-match jobs only |
 | Career Advisor | Sonnet | Advisory | After reflection loop |
-| Interview Coach | Sonnet | Conditional | match_score ≥ threshold |
+| Interview Coach | Sonnet | Conditional | match_score ≥ threshold, on demand |
 | Tailoring Agent | Sonnet | Evidence-bound generation | On user request |
-| Fidelity Reviewer | Haiku | Validation / Guardrail | After every tailoring call |
+| Fidelity Reviewer | Haiku | Validation / Guardrail | After every tailoring call AND every Resume Clinic rewrite |
+| Resume Reviewer | Sonnet | Structured output (job-agnostic) | Resume Clinic, on user request (ADR-066) |
 
-Haiku handles all high-volume and validation tasks. Sonnet handles generative and advisory tasks where quality matters most.
+Haiku handles all high-volume and validation tasks. Sonnet handles generative and advisory tasks where quality matters most. Per-agent provider+model assignment is configurable via the ModelRegistry (ADR-053) and pinned in `tests/model_pins.json`.
 
 ---
 
@@ -219,10 +225,10 @@ Cost is tracked per run in the `llm_calls` observability table and surfaced in t
 
 | Limit | Value |
 |---|---|
-| MAX_JOBS_PER_RUN | 10 |
-| MAX_SELECTED_JOBS | 10 |
+| MAX_JOBS_PER_RUN | 10 (default scored cap; per-run override up to MAX_SCORED_CEILING = 25, ADR-061) |
+| MAX_SELECTED_JOBS | 3 |
 | MAX_RESEARCH_STEPS | 2 |
-| MAX_REVIEW_ROUNDS | 3 |
+| MAX_REVIEW_ROUNDS | 2 |
 | MAX_LLM_CALLS_PER_RUN | 200 |
 
 ---
@@ -247,7 +253,7 @@ LinkedIn does not allow automated scraping. To include LinkedIn roles:
 | **Critique-Reflection Loop** | ResumeCritic → ReviewAuditor, up to MAX_REVIEW_ROUNDS |
 | **Evidence-Bound Generation** | TailoringAgent — every claim requires supporting_evidence from original resume |
 | **Guardrail Agent** | FidelityReviewer — blocks fabricated experience before persistence |
-| **Human-in-the-Loop** | Workflow pauses at `waiting_for_user` with a `pending_decision` before resuming |
+| **Human-in-the-Loop (out-of-graph)** | The graph runs end to end with no `interrupt()` (ADR-059); tailoring, deep review, interview prep, and the Resume Clinic are on-demand operations the user triggers and decides on after the run |
 | **Concurrent Fan-Out** | Scoring and Adzuna scraping run across ThreadPoolExecutor workers |
 | **Pre-Filter Gate** | Keyword filters applied before any LLM call |
 | **Prompt Caching** | System messages marked `cache_control: ephemeral` — 90% cost reduction on repeated agent calls within a session |
@@ -262,12 +268,12 @@ LinkedIn does not allow automated scraping. To include LinkedIn roles:
 |---|---|
 | Orchestration | LangGraph + SqliteSaver |
 | Agent framework | LangChain + LangChain-Anthropic |
-| LLM | Claude Haiku (high-volume) + Claude Sonnet (generative) |
+| LLM | Claude Haiku (high-volume) + Claude Sonnet (generative); OpenAI optional, per-agent via ModelRegistry (ADR-053) |
 | Backend API | FastAPI + Uvicorn |
 | UI | Streamlit |
 | Persistence | SQLite (raw `sqlite3`) |
 | Validation | Pydantic v2 |
-| PDF parsing | pdfplumber |
+| PDF parsing | pdfminer.six |
 | Testing | pytest + pytest-asyncio + pytest-mock |
 
 ---
