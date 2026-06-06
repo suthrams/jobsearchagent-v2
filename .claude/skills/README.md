@@ -58,6 +58,13 @@ Type `/<skill-name>` in Claude Code, or ask Claude to use it (`"use the code-rev
 |-------|------|
 | `/using-agent-skills` | Discovering and invoking skills (start of a new session) |
 
+### Project-own skills (this folder, not from the pack)
+
+| Skill | When |
+|-------|------|
+| `/smoke-test-ui` | After touching `app/ui/` — render all screens headlessly and confirm none raises |
+| `/write-series-article` | Writing, drafting, revising, or reviewing a v2 LinkedIn series article (`blogs/blog_v2_articleN.md`) or its promo post. Orchestrates frame -> ground -> draft -> diagrams -> verify -> promo; enforces the frame-before-draft and verify-before-publish gates |
+
 ---
 
 ## Project-specific guidance
