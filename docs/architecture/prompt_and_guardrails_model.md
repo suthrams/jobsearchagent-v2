@@ -180,6 +180,10 @@ relevant role preference memory
 
 ## 8. Memory Injection Rules
 
+> **Designed, not yet wired.** Long-term memory is not injected into any prompt today
+> (there is no `MemoryService` / `app/memory/`); these rules apply for when it is
+> wired. See `state_and_memory_model.md`.
+
 Memory is optional and controlled.
 
 ### Rules

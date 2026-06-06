@@ -130,8 +130,9 @@ boundary:
   authenticated session/token instead of the query parameter). Repositories, the
   workflow, and read paths already depend only on a *resolved* `user_id`, so they
   are untouched.
-- History/analytics isolation is therefore a **read-scoping** property (the UI
-  and `db_reader` show the active profile's data), not an authorization one.
+- History/analytics isolation is therefore a **read-scoping** property (the UI, via
+  the API, shows the active profile's data — there is no direct DB read since ADR-075),
+  not an authorization one.
 
 ---
 
@@ -323,6 +324,10 @@ Added performance metrics not supported
 
 ## 11. Memory Security
 
+> **Designed, not yet wired.** No agent or node reads or writes long-term memory
+> today (there is no `MemoryService` / `app/memory/`); these are the rules for when
+> it is wired. See `state_and_memory_model.md` and `CLAUDE.md`.
+
 ### Risks
 
 * Memory treated as fact
@@ -440,12 +445,16 @@ bounded. Same "log summaries / structure, not raw content" rule as Section 14.
 
 ---
 
-### Critical Decision Points
+### Critical Decision Points (all out-of-graph or between-phase; ADR-059)
 
-* job selection
-* tailoring approval
-* interview prep usage
-* application actions
+* tailoring decision (approve / revise / reject / edit)
+* Resume Clinic decision
+* manual scoring triage (optional, ADR-060)
+* on-demand deep review / interview prep
+* run cancellation (ADR-083)
+
+There are no application actions — applying or submitting is out of scope by design
+(the "No application tracking" rule in `CLAUDE.md`).
 
 ---
 
