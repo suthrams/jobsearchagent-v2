@@ -453,7 +453,7 @@ Resume Critic → Review Auditor → Evaluate → Repeat
 ### Limits
 
 ```text
-MAX_REVIEW_ROUNDS = 3
+MAX_REVIEW_ROUNDS = 2
 ```
 
 ---
@@ -645,32 +645,40 @@ Generate final output for the user.
 
 ### Purpose
 
-Allow user control over decisions.
+Allow user control over the decisions that matter, without pausing the graph.
 
 ---
 
 ### Pattern
 
+The workflow runs end to end with no `interrupt()` (ADR-059). Human judgment enters
+out-of-graph — after (or alongside) a run — plus one optional curate-before-scoring
+phase:
+
 ```text
-Backend pauses → UI displays → User decides → Backend resumes
+Workflow completes → User triggers an on-demand op → Agent runs → User records a decision
 ```
 
 ---
 
-### Decision Points
+### Decision Points (all out-of-graph)
 
-* job selection
-* deep review confirmation (optional)
-* tailoring approval
-* interview prep trigger
-* application status
+* manual scoring selection (opt-in, ADR-060) — the run parks at `awaiting_scoring_selection` between two phases; the user picks which jobs to score
+* tailoring decision — `approve / revise / reject / edit` on a generated draft (ADR-055/059)
+* deep review / interview prep — triggered on demand for any scored job (ADR-061)
+* Resume Clinic decision (ADR-066)
+* run cancellation — cooperative, stops at the next node boundary (ADR-083)
+
+Job selection is automatic (no pause). There is no Apply / Save / application-status
+decision, by design (the "No application tracking" rule).
 
 ---
 
 ### Requirements
 
-* state must persist pause context
-* decisions must be logged
+* the backend validates every decision before persisting
+* decisions are logged (domain table + the `human_decisions` audit trail, ADR-074)
+* the UI never auto-approves agent output
 
 ---
 

@@ -2,23 +2,13 @@
 
 ---
 
-> **Status note (ADR-059, extended by ADR-060/061).** This document describes the
-> original interrupt-resume HITL model, which has been **retired**. The workflow
-> graph no longer calls `interrupt()` and there is no `waiting_for_user` pause.
-> Human involvement now takes three out-of-graph / between-phase forms:
-> 1. **Auto-selection** of jobs for in-graph deep review (no pause).
-> 2. **Manual scoring triage between phases** (ADR-060): when
->    `scoring.manual_selection` is on, the run parks at `awaiting_scoring_selection`
->    and the human picks which discovered jobs to score via `POST /workflows/{id}/scoring`.
-> 3. **Out-of-graph on-demand operations** for **any scored job** (ADR-055/061):
->    tailoring (`POST .../tailorings`) with its approve/revise/reject/edit decision
->    (`POST /tailorings/{id}/decisions`), on-demand deep review (`POST .../deep-review`),
->    and on-demand interview prep (`POST .../interview-prep`).
->
-> Sections below that describe in-graph interrupts, `waiting_for_user`, and
-> `POST /workflows/{id}/decisions` are retained for historical context only. See
-> `CLAUDE.md` (HITL rules), `api_reference.md`, and ADR-055 / ADR-059 / ADR-060 /
-> ADR-061 for the current model.
+> **Status note (ADR-059).** The in-graph interrupt-resume HITL model was **retired**:
+> the workflow no longer calls `interrupt()` and there is no `waiting_for_user` pause.
+> **The sections immediately below — Purpose, Core Principle, and the current HITL
+> surface — are the authoritative model** (out-of-graph decisions plus one
+> between-phase scoring triage). Everything under "Historical design" is the
+> retired design, kept for context only. See also `CLAUDE.md` (HITL rules),
+> `api_reference.md`, and ADR-055 / 059 / 060 / 061 / 066 / 083.
 
 ---
 
@@ -26,36 +16,57 @@
 
 This document defines the **Human-in-the-Loop (HITL) model** for `jobsearchagent-v2`.
 
-The system uses agents and workflows to assist with career decisions, but the user remains in control of consequential actions.
-
-The HITL model defines:
-
-* when the workflow pauses
-* what decisions the user makes
-* how decisions are represented
-* how the backend resumes execution
-* how decisions are persisted and observed
+The system uses agents and workflows to assist with career decisions, but the user
+remains in control of consequential decisions. As of ADR-059 the model is
+**out-of-graph**: the workflow runs end to end with no `interrupt()` and no
+`waiting_for_user` pause.
 
 ---
 
 ## 2. Core Principle
 
-The system follows this rule:
-
 > Backend owns workflow execution. User owns business decisions. UI collects and submits user decisions.
 
-The user should not decide which internal node runs next.
+The user does not decide which internal node runs next. The user decides:
 
-The user should decide:
+* which jobs to score, when manual scoring triage is on (ADR-060)
+* whether to run deep review, interview prep, or tailoring on a scored job (ADR-061)
+* whether to accept a tailored draft: `approve / revise / reject / edit` (ADR-055/059)
+* whether to accept Resume Clinic rewrites (ADR-066)
+* whether to cancel a running workflow (ADR-083)
 
-* which jobs matter
-* whether to continue deeper analysis
-* whether to generate interview prep
-* whether to accept tailoring suggestions
-* whether to save/export results
-* whether to update job/application status
+There is no Apply / Save / application-status decision — that is out of scope by
+design (the "No application tracking" rule in `CLAUDE.md`). The backend converts each
+user decision into persistence and, where relevant, the next on-demand operation; it
+never resumes a paused graph, because the graph never pauses.
 
-The backend converts those user decisions into workflow routing.
+---
+
+## The current HITL surface (authoritative)
+
+| Form | Trigger | Decision |
+|------|---------|----------|
+| Auto-selection | in-graph, automatic | none — top-N qualifying jobs picked for deep review, no pause (ADR-054/059) |
+| Manual scoring triage | `scoring.manual_selection` on; run parks at `awaiting_scoring_selection` | `POST /workflows/{id}/scoring` with the chosen job ids (ADR-060) |
+| On-demand tailoring | `POST /workflows/{wf}/jobs/{job}/tailorings` | `POST /tailorings/{id}/decisions` -> approve / revise / reject / edit (ADR-055) |
+| On-demand deep review / interview prep | `POST .../deep-review`, `POST .../interview-prep` | none beyond triggering (ADR-061) |
+| Resume Clinic | `POST /users/{id}/resume-clinic` | `POST /resume-clinic/{id}/decisions` (ADR-066) |
+| Run cancellation | `POST /workflows/{id}/cancel` | cooperative; stops at the next node boundary (ADR-083) |
+
+Decisions are validated by the backend before persisting, recorded on the domain table
+AND the cross-cutting `human_decisions` audit table (ADR-074, now wired), and surfaced
+in the System Dashboard. The UI never auto-approves agent output. A human `edit`
+decision makes the user the accountable author and is not re-reviewed by the Fidelity
+Reviewer (ADR-059).
+
+---
+
+# Historical design (retired in ADR-059 — kept for context only)
+
+> Everything below describes the original interrupt-resume design: in-graph
+> `interrupt()`, `WorkflowState.status = waiting_for_user`, `pending_decision`, and
+> `POST /workflows/{id}/decisions`. **None of it is wired today.** It is preserved to
+> explain how the model evolved; for current behaviour see the sections above.
 
 ---
 
@@ -137,7 +148,6 @@ A submitted decision should use a structured format.
 | reject_tailoring            | User rejects tailored resume draft     |
 | request_tailoring_revision  | User asks for revised tailoring        |
 | approve_report_export       | User approves report generation/export |
-| mark_job_applied            | User confirms application status       |
 | cancel_workflow             | User cancels workflow                  |
 | defer_job                   | User defers a job for later            |
 
@@ -228,11 +238,11 @@ Before exporting a final resume or report, the user may approve:
 
 ---
 
-### 7.7 Application Status Update
+### 7.7 Application Status Update — never in scope
 
-If the app tracks job statuses, updates such as “applied” should require explicit confirmation.
-
-The Status Manager is deterministic and non-AI.
+This was sketched in the original design but **never built and never planned**:
+application/status tracking (apply date, "marked applied") is out of scope by design.
+See the "No application tracking" rule in `CLAUDE.md`.
 
 ---
 
