@@ -1,0 +1,28 @@
+{
+  "id": "diag_v2_article12_04b_api_surface",
+  "width": 1660,
+  "height": 1020,
+  "layout": "cards",
+  "cardWidth": 392,
+  "title": "Drive, mapped: the {{green:exposed}} REST surface.",
+  "headSub": "8 domains, ~30 endpoints - the control plane a human drives the system through.",
+  "cards": [
+    {"icon": "user", "accent": "green", "label": "Profiles", "sub": "identity + resume",
+     "lines": ["GET /users", "POST /users", "PUT /users/{id}", "POST /users/{id}/resume", "DELETE .../resume/{rid}"]},
+    {"icon": "clock", "accent": "amber", "label": "Workflows", "sub": "run lifecycle",
+     "lines": ["POST /workflows", "GET /workflows/{id}", "POST .../retry", "POST .../cancel", "POST .../scoring"]},
+    {"icon": "doc", "accent": "blue", "label": "Workflow reads", "sub": "results",
+     "lines": ["GET .../jobs", "GET .../report"]},
+    {"icon": "edit", "accent": "magenta", "label": "Per-job on-demand", "sub": "out-of-graph ops",
+     "lines": ["POST .../tailorings", "POST .../deep-review", "POST .../interview-prep"]},
+    {"icon": "check", "accent": "green", "label": "Tailoring drafts", "sub": "HITL decisions",
+     "lines": ["GET .../tailorings", "GET /tailorings/{id}", "POST .../decisions"]},
+    {"icon": "filter", "accent": "red", "label": "Job exclusion", "sub": "filter inputs",
+     "lines": ["GET /jobs/excluded", "POST /jobs/{id}/exclude", "DELETE /jobs/{id}/exclude"]},
+    {"icon": "pen", "accent": "blue", "label": "Resume Clinic", "sub": "job-agnostic resume",
+     "lines": ["POST .../resume-clinic", "GET .../resume-clinic", "POST .../decisions", "POST .../chat", "POST .../discard-edits", "GET .../export"]},
+    {"icon": "gauge", "accent": "amber", "label": "Config", "sub": "per-user overrides",
+     "lines": ["GET /config", "PUT /config", "GET /config/providers", "POST /config/reload"]}
+  ],
+  "takeaway": {"icon": "info", "accent": "amber", "text": "Not a Swagger dump - a {{amber:map}}, grouped by what the human is trying to do. Identity scoped by ?user_id=, one error envelope, async runs."}
+}

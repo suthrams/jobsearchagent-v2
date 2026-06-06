@@ -7,7 +7,10 @@
   --bg0: #0b1220;
   --bg1: #0e1626;
   --ink: #e8eefc;
-  --muted: #94a3b8;
+  --muted: #b4c0d6;   /* brightened from #94a3b8: small gray-on-dark dies under
+                         LinkedIn compression. Legibility invariant (ADR-ish:
+                         series guidelines Section 7). Reserve --muted for
+                         SECONDARY chrome only; a lesson line is never muted. */
   --line: #243049;
 
   --blue: #38bdf8;
@@ -29,9 +32,10 @@ body {
                "Helvetica Neue", Arial, sans-serif;
   color: var(--ink);
   background:
-    radial-gradient(1200px 600px at 18% -10%, rgba(56,189,248,0.10), transparent 60%),
-    radial-gradient(1000px 600px at 95% 110%, rgba(232,121,249,0.08), transparent 60%),
-    linear-gradient(180deg, var(--bg0), var(--bg1));
+    radial-gradient(1100px 640px at 6% 0%, rgba(56,189,248,0.22), transparent 60%),
+    radial-gradient(1100px 700px at 98% 104%, rgba(232,121,249,0.20), transparent 62%),
+    radial-gradient(950px 640px at 62% 120%, rgba(124,108,255,0.16), transparent 64%),
+    linear-gradient(160deg, #0b1220, #0d1424 60%, #0e1020);
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -57,11 +61,11 @@ body::before {
 
 .fig-head { display: flex; flex-direction: column; gap: 6px; }
 .fig-title {
-  font-size: 40px; font-weight: 800; letter-spacing: -0.02em;
+  font-size: 48px; font-weight: 800; letter-spacing: -0.02em;
   line-height: 1.12;
 }
 .fig-title .hl { color: var(--blue); }
-.fig-sub { font-size: 20px; color: var(--muted); font-weight: 500; }
+.fig-sub { font-size: 25px; color: var(--muted); font-weight: 500; }
 
 .fig-body { flex: 1; display: flex; align-items: center; gap: 28px; }
 
@@ -79,12 +83,12 @@ body::before {
 .node {
   border: 1px solid var(--line);
   border-radius: 14px;
-  padding: 16px 18px;
+  padding: 18px 20px;
   background: rgba(255,255,255,0.03);
-  font-size: 19px; line-height: 1.3;
+  font-size: 24px; line-height: 1.3;
 }
 .node .n-title { font-weight: 700; }
-.node .n-meta { color: var(--muted); font-size: 17px; margin-top: 4px; }
+.node .n-meta { color: var(--muted); font-size: 20px; margin-top: 4px; }
 
 /* accents + glow */
 .a-blue    { border-color: rgba(56,189,248,.55);  box-shadow: 0 0 0 1px rgba(56,189,248,.20), 0 0 30px -10px rgba(56,189,248,.55); }
@@ -95,7 +99,7 @@ body::before {
              box-shadow: 0 0 0 1px rgba(245,158,11,.30), 0 0 40px -8px rgba(245,158,11,.6); }
 
 .tag {
-  display: inline-block; font-size: 14px; font-weight: 700;
+  display: inline-block; font-size: 17px; font-weight: 700;
   letter-spacing: .08em; text-transform: uppercase;
   color: var(--muted);
 }
@@ -143,3 +147,160 @@ body::before {
               padding: 12px 16px; background: rgba(52,211,153,0.05);
               font-weight: 700; font-size: 17px; text-align: center; }
 .foot .cell .c-sub { color: var(--muted); font-weight: 500; font-size: 14px; }
+
+/* ============================================================
+   Article-11 component upgrade (2026-06-05).
+   Patterns extracted from the Article 11 published figures:
+   icon chips, icon-rail table rows, two-panel compare,
+   swimlanes, the takeaway band, metric cards, highlight spans,
+   and overlap-proof edge-label chips.
+   Legibility invariants: a lesson / takeaway / load-bearing
+   value is ALWAYS --ink or #fff and large; --muted is reserved
+   for secondary chrome only (and was brightened above).
+   All additive: the ranked_rows / bars / flow / tiers layouts
+   are unchanged and still render the Article-6 specs.
+   ============================================================ */
+
+/* highlight one keyword in a title / takeaway (the "GREEN" in
+   NEVER TRUST THE GREEN DASHBOARD). Spec syntax: {{green:word}} */
+.hl-blue { color: var(--blue); }
+.hl-green { color: var(--green); }
+.hl-amber { color: var(--amber); }
+.hl-magenta { color: var(--magenta); }
+.hl-red { color: var(--red); }
+
+/* icon chip: a tinted rounded square holding a line icon. The
+   single biggest richness multiplier in the Article-11 figures. */
+.ichip { display: inline-flex; align-items: center; justify-content: center;
+         width: 42px; height: 42px; border-radius: 12px; flex: 0 0 auto;
+         background: rgba(255,255,255,0.04); border: 1px solid var(--panel-line);
+         color: var(--ink); }
+.ichip svg { width: 23px; height: 23px; display: block; }
+.ichip.a-blue    { color: var(--blue);    border-color: rgba(56,189,248,.5);  box-shadow: 0 0 24px -10px rgba(56,189,248,.7); }
+.ichip.a-green   { color: var(--green);   border-color: rgba(52,211,153,.5);  box-shadow: 0 0 24px -10px rgba(52,211,153,.6); }
+.ichip.a-magenta { color: var(--magenta); border-color: rgba(232,121,249,.5); box-shadow: 0 0 24px -10px rgba(232,121,249,.6); }
+.ichip.a-amber   { color: var(--amber);   border-color: rgba(245,158,11,.6);  box-shadow: 0 0 26px -8px rgba(245,158,11,.7); }
+.ichip.a-red     { color: var(--red);     border-color: rgba(248,113,113,.55);box-shadow: 0 0 24px -10px rgba(248,113,113,.6); }
+
+/* table layout: icon-rail rows (what / why / how / when). Grid
+   columns are set inline by the renderer from the spec. */
+.table { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.t-head { display: grid; gap: 16px; align-items: end; padding: 0 14px 4px; }
+.t-head .th { font-size: 18px; font-weight: 800; letter-spacing: .06em;
+              text-transform: uppercase; color: var(--muted); }
+.trow { display: grid; gap: 16px; align-items: center; background: var(--panel);
+        border: 1px solid var(--panel-line); border-left: 4px solid var(--line);
+        border-radius: 14px; padding: 12px 14px; }
+.trow.a-green   { border-left-color: var(--green); }
+.trow.a-blue    { border-left-color: var(--blue); }
+.trow.a-magenta { border-left-color: var(--magenta); }
+.trow.a-red     { border-left-color: var(--red); }
+.trow.focal { border-color: rgba(245,158,11,.6); border-left-color: var(--amber);
+              box-shadow: 0 0 0 1px rgba(245,158,11,.25), 0 0 40px -14px rgba(245,158,11,.6); }
+.trow .lead { display: flex; align-items: center; gap: 12px; }
+.trow .lead .lab { font-size: 24px; font-weight: 800; }
+.trow .lead .sub-lead { color: var(--muted); font-size: 18px; margin-top: 2px; }
+.tcell { font-size: 22px; color: var(--ink); }
+.tcell.num { font-weight: 800; font-variant-numeric: tabular-nums; }
+.tcell .sub { color: var(--muted); font-size: 19px; }
+.tcell .code { font-family: "SFMono-Regular", Consolas, monospace; font-size: 19px;
+               background: rgba(255,255,255,0.06); border: 1px solid var(--panel-line);
+               border-radius: 6px; padding: 1px 6px; color: var(--blue); }
+
+/* two-panel compare: KEEP/DROP, BEFORE/AFTER (row-list style) */
+.compare { display: flex; align-items: stretch; gap: 18px; width: 100%; }
+.cmp { flex: 1; border-radius: 18px; padding: 16px; background: var(--panel);
+       border: 1px solid var(--panel-line); display: flex; flex-direction: column; gap: 12px; }
+.cmp.good { border-color: rgba(52,211,153,.45); box-shadow: 0 0 0 1px rgba(52,211,153,.14); }
+.cmp.bad  { border-color: rgba(248,113,113,.45); box-shadow: 0 0 0 1px rgba(248,113,113,.14); }
+.cmp-head { display: flex; align-items: center; gap: 10px; font-size: 20px; font-weight: 800; }
+.cmp.good .cmp-head { color: #86efac; } .cmp.bad .cmp-head { color: #fca5a5; }
+.cmp-head .dot { width: 12px; height: 12px; border-radius: 50%; }
+.cmp.good .dot { background: var(--green); } .cmp.bad .dot { background: var(--red); }
+.crow { display: flex; align-items: center; gap: 12px; border: 1px solid var(--line);
+        border-radius: 12px; padding: 10px 12px; background: rgba(255,255,255,0.02); }
+.crow .lab { font-weight: 700; font-size: 18px; }
+.crow .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+.cmp-mid { flex: 0 0 150px; display: flex; flex-direction: column; align-items: center;
+           justify-content: center; gap: 10px; text-align: center; }
+.cmp-mid .fixtext { font-size: 15px; font-weight: 700; color: #fff; line-height: 1.3; max-width: 170px; }
+
+/* swimlane: a titled bordered region grouping a sub-flow */
+.lane { border: 1px solid var(--panel-line); border-radius: 18px; padding: 16px 18px;
+        background: var(--panel); display: flex; flex-direction: column; gap: 12px; }
+.lane.good { border-color: rgba(52,211,153,.4); }
+.lane.blue { border-color: rgba(56,189,248,.4); }
+.lane-head { font-size: 18px; font-weight: 800; }
+.lane.good .lane-head { color: #86efac; } .lane.blue .lane-head { color: #7dd3fc; }
+.lane-sub { color: var(--muted); font-size: 14px; font-weight: 500; }
+
+/* takeaway band: the one-line lesson. ALWAYS white + large. */
+.takeaway { display: flex; align-items: center; gap: 16px; justify-content: center;
+            border-radius: 16px; padding: 16px 22px; text-align: center;
+            background: linear-gradient(180deg, rgba(56,189,248,0.08), rgba(232,121,249,0.06));
+            border: 1px solid var(--panel-line); }
+.takeaway .tk-text { font-size: 27px; font-weight: 800; color: #fff; line-height: 1.28; }
+.takeaway .ichip { width: 46px; height: 46px; }
+
+/* metric card + stat strip (dashboards / banners) */
+.cards { display: flex; gap: 16px; flex-wrap: wrap; width: 100%; justify-content: center; }
+.mcard { border-radius: 16px; padding: 14px 16px; background: var(--panel);
+         border: 1px solid var(--panel-line); display: flex; flex-direction: column;
+         gap: 6px; min-width: 150px; }
+.mcard .m-top { display: flex; align-items: center; gap: 9px; color: var(--muted);
+                font-size: 16px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
+.mcard .m-top .ichip { width: 34px; height: 34px; border-radius: 10px; }
+.mcard .m-top .ichip svg { width: 19px; height: 19px; }
+.mcard .m-val { font-size: 36px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.mcard .m-sub { color: var(--muted); font-size: 16px; }
+/* endpoint list inside a card (API-surface map: method-colored paths) */
+.mcard .m-lines { display: flex; flex-direction: column; gap: 5px; margin-top: 9px; }
+.mcard .ep { font-size: 18px; font-family: "SFMono-Regular", Consolas, monospace;
+             display: flex; gap: 9px; align-items: baseline; }
+.mcard .ep-m { font-weight: 800; font-size: 14px; letter-spacing: .03em; min-width: 52px; }
+.mcard .ep-GET { color: var(--green); }   .mcard .ep-POST { color: var(--amber); }
+.mcard .ep-PUT { color: var(--magenta); } .mcard .ep-DELETE { color: var(--red); }
+.mcard .ep-PATCH { color: var(--blue); }
+.mcard .ep-p { color: var(--ink); }
+
+/* edge-label chip for flow arrows: opaque, so an arrow line can
+   never bleed through the label (the proof's overlap fix). */
+.edge-chip { display: inline-block; background: #0b1220; border: 1px solid var(--panel-line);
+             border-radius: 8px; padding: 3px 10px; font-size: 18px; font-weight: 600;
+             color: var(--muted); }
+
+/* scene layout: bespoke SVG node-graph for custom topologies
+   (radial maps, before/after graphs). Nodes, edges (anchored to
+   node sides or explicit points, thin/thick/dashed/bent, with
+   overlap-proof label chips), grouping zones, and free labels are
+   all spec-driven. See README "scene". */
+.scene { width: 100%; height: 100%; }
+.scene text { font-family: "Inter", "Segoe UI", system-ui, -apple-system, Roboto,
+              "Helvetica Neue", Arial, sans-serif; }
+
+/* banner layout: thesis as big words (never architecture). One
+   highlighted keyword via {{accent:word}}. Kept inside the center
+   safe zone for LinkedIn's edge crop. */
+.banner { position: relative; overflow: hidden; flex: 1; align-self: stretch;
+          display: flex; flex-direction: column; align-items: center;
+          justify-content: center; gap: 20px; text-align: center; }
+/* vivid multi-color glow field behind the thesis (the "gradient" look) */
+.banner::before { content: ""; position: absolute; inset: -120px; z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(700px 360px at 50% 32%, rgba(56,189,248,0.32), transparent 68%),
+    radial-gradient(780px 440px at 12% 120%, rgba(232,121,249,0.28), transparent 70%),
+    radial-gradient(780px 440px at 90% -22%, rgba(124,108,255,0.26), transparent 70%); }
+.banner > * { position: relative; z-index: 1; }
+.banner .b-kicker { font-size: 17px; font-weight: 800; letter-spacing: .22em;
+                    text-transform: uppercase; color: #9fb2d6; }
+.banner .b-title { font-size: 78px; font-weight: 900; letter-spacing: -0.02em;
+                   line-height: 1.04; max-width: 86%;
+                   background: linear-gradient(96deg, #ffffff 0%, #dbe8ff 55%, #c7dcff 100%);
+                   -webkit-background-clip: text; background-clip: text; color: transparent;
+                   filter: drop-shadow(0 3px 24px rgba(56,189,248,0.30)); }
+.banner .b-title .hl-amber {
+  background: linear-gradient(96deg, #fcd34d, #f59e0b 55%, #fb923c);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+  filter: drop-shadow(0 0 20px rgba(245,158,11,0.65)); }
+.banner .b-sub { font-size: 25px; color: #aebbd6; font-weight: 500; max-width: 80%; }

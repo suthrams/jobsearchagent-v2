@@ -1,0 +1,34 @@
+{
+  "id": "diag_v2_article12_05_scraper_contract",
+  "width": 1620,
+  "height": 840,
+  "layout": "scene",
+  "title": "Ingest: four untrusted feeds, {{green:one}} normalized schema.",
+  "scene": {
+    "viewBox": [0, 0, 1620, 580],
+    "nodes": [
+      {"id": "adz", "x": 60, "y": 120, "w": 300, "h": 86, "accent": "blue", "icon": "globe", "title": "Adzuna", "sub": "REST search"},
+      {"id": "gh",  "x": 60, "y": 232, "w": 300, "h": 86, "accent": "blue", "icon": "database", "title": "Greenhouse", "sub": "ATS feed"},
+      {"id": "lev", "x": 60, "y": 344, "w": 300, "h": 86, "accent": "blue", "icon": "database", "title": "Lever", "sub": "ATS feed"},
+      {"id": "url", "x": 60, "y": 456, "w": 300, "h": 86, "accent": "blue", "icon": "globe", "title": "custom URL", "sub": "fetch + extract"},
+
+      {"id": "bs", "x": 560, "y": 250, "w": 340, "h": 160, "accent": "amber", "focal": true, "icon": "filter", "title": "BaseScraper.scrape()", "sub": "one interface, defended"},
+
+      {"id": "job", "x": 1000, "y": 268, "w": 300, "h": 124, "accent": "green", "icon": "table", "title": "Job schema", "sub": "normalized"},
+
+      {"id": "sys", "x": 1400, "y": 286, "w": 170, "h": 88, "accent": "amber", "icon": "steps", "title": "orchestrator", "sub": ""}
+    ],
+    "edges": [
+      {"from": "adz:right", "to": "bs:left", "accent": "blue", "style": "thin", "label": "scrape()"},
+      {"from": "gh:right", "to": "bs:left", "accent": "blue", "style": "thin"},
+      {"from": "lev:right", "to": "bs:left", "accent": "blue", "style": "thin"},
+      {"from": "url:right", "to": "bs:left", "accent": "blue", "style": "thin"},
+      {"from": "bs:right", "to": "job:left", "accent": "amber", "style": "thick", "label": "list[Job]"},
+      {"from": "job:right", "to": "sys:left", "accent": "green", "label": "to scoring"}
+    ],
+    "labels": [
+      {"x": 60, "y": 104, "text": "Consumed - untrusted feeds", "accent": "blue", "tag": true, "size": 14}
+    ]
+  },
+  "takeaway": {"icon": "shield", "accent": "green", "text": "Heterogeneous, untrusted feeds collapse to one schema and one failure-handling seam. The {{amber:orchestrator}} calls them - the model never does."}
+}

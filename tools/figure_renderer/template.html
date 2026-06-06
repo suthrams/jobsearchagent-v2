@@ -21,13 +21,74 @@ const esc = s => String(s)
   .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
 const accent = a => a ? (" a-" + a) : "";
 
+// Highlight one or more keywords in literal text. Spec syntax:
+//   "Keep it {{amber:cheap}} and {{green:private}}."
+// Text stays literal + ASCII in the spec; only the marked spans get color.
+function hilite(s) {
+  return String(s).split(/(\{\{[a-z]+:[^}]*\}\})/g).map(p => {
+    const m = p.match(/^\{\{([a-z]+):([\s\S]*)\}\}$/);
+    return m ? `<span class="hl-${m[1]}">${esc(m[2])}</span>` : esc(p);
+  }).join("");
+}
+
+// ---- inline SVG icon library (stroke = currentColor) -------------------
+const ICONS = {
+  cost: '<line x1="12" y1="1.5" x2="12" y2="22.5"/><path d="M17 5.5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
+  activity: '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>',
+  globe: '<circle cx="12" cy="12" r="9"/><line x1="3" y1="12" x2="21" y2="12"/><path d="M12 3a14 14 0 0 1 0 18 14 14 0 0 1 0-18z"/>',
+  steps: '<polygon points="12 2 22 8 12 14 2 8 12 2"/><polyline points="2 16 12 22 22 16"/>',
+  shield: '<path d="M12 2l8 3v6c0 5-3.5 8-8 11-4.5-3-8-6-8-11V5z"/>',
+  user: '<circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/>',
+  gauge: '<path d="M12 13l4-4"/><path d="M3.5 18a9 9 0 1 1 17 0"/>',
+  chart: '<line x1="5" y1="21" x2="5" y2="11"/><line x1="10.5" y1="21" x2="10.5" y2="4"/><line x1="16" y1="21" x2="16" y2="14"/><line x1="20.5" y1="21" x2="20.5" y2="8"/>',
+  eye: '<path d="M1.5 12s4-7 10.5-7 10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z"/><circle cx="12" cy="12" r="3"/>',
+  eyeoff: '<path d="M3 3l18 18"/><path d="M10.6 5.1A9.5 9.5 0 0 1 12 5c6.5 0 10.5 7 10.5 7a18 18 0 0 1-2.6 3.4"/><path d="M6.7 6.7A17 17 0 0 0 1.5 12s4 7 10.5 7a9 9 0 0 0 4.7-1.3"/>',
+  check: '<polyline points="20 6 9 17 4 12"/>',
+  doc: '<path d="M6 2h8l4 4v16H6z"/><polyline points="14 2 14 6 18 6"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="15" y2="17"/>',
+  robot: '<rect x="4" y="8" width="16" height="12" rx="2"/><circle cx="9" cy="14" r="1.3"/><circle cx="15" cy="14" r="1.3"/><line x1="12" y1="4.5" x2="12" y2="8"/><circle cx="12" cy="3.5" r="1"/>',
+  database: '<ellipse cx="12" cy="5" rx="8" ry="3"/><path d="M4 5v14c0 1.7 3.6 3 8 3s8-1.3 8-3V5"/><path d="M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  code: '<polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/>',
+  filter: '<polygon points="22 3 2 3 10 12.5 10 19 14 21 14 12.5 22 3"/>',
+  table: '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/>',
+  edit: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  target: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/>',
+  flask: '<path d="M9 3h6"/><path d="M10 3v6l-5.5 9.5A2 2 0 0 0 6.2 21h11.6a2 2 0 0 0 1.7-3.5L14 9V3"/>',
+  alert: '<path d="M12 3l10 18H2z"/><line x1="12" y1="9.5" x2="12" y2="14"/><line x1="12" y1="17.5" x2="12" y2="17.5"/>',
+  arrow: '<line x1="3" y1="12" x2="19" y2="12"/><polyline points="13 6 20 12 13 18"/>',
+  info: '<circle cx="12" cy="12" r="9"/><line x1="12" y1="11" x2="12" y2="16"/><line x1="12" y1="8" x2="12" y2="8"/>',
+  lock: '<rect x="4" y="10" width="16" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 16 14"/>',
+  pen: '<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+};
+function iconSvg(name) {
+  const inner = ICONS[name] || ICONS.info;
+  return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" '
+       + 'stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
+}
+function ichipEl(name, ac) {
+  const s = el("span", "ichip" + accent(ac));
+  s.innerHTML = iconSvg(name);
+  return s;
+}
+
+// ---- node (used by flow, tiers, lanes); icon optional -------------------
 function node(item) {
   const n = el("div", "node" + accent(item.accent) + (item.focal ? " a-amber" : ""));
-  n.appendChild(el("div", "n-title", esc(item.title)));
-  (item.meta || []).forEach(m => n.appendChild(el("div", "n-meta", esc(m))));
+  if (item.icon) {
+    const r = el("div"); r.style.cssText = "display:flex;align-items:center;gap:10px";
+    r.appendChild(ichipEl(item.icon, item.accent || (item.focal ? "amber" : "")));
+    const t = el("div");
+    t.appendChild(el("div", "n-title", hilite(item.title)));
+    (item.meta || []).forEach(m => t.appendChild(el("div", "n-meta", esc(m))));
+    r.appendChild(t); n.appendChild(r);
+  } else {
+    n.appendChild(el("div", "n-title", hilite(item.title)));
+    (item.meta || []).forEach(m => n.appendChild(el("div", "n-meta", esc(m))));
+  }
   return n;
 }
 
+// ---- existing layouts (unchanged behavior, icons now optional) ----------
 function renderRankedRows(body) {
   const wrap = el("div", "panel");
   if (SPEC.subtitle) wrap.appendChild(el("div", "tag", esc(SPEC.subtitle)));
@@ -36,7 +97,7 @@ function renderRankedRows(body) {
   SPEC.rows.forEach(r => {
     const row = el("div", "row" + (r.focal ? " focal" : ""));
     const lab = el("div");
-    lab.appendChild(el("div", "r-label", esc(r.label)));
+    lab.appendChild(el("div", "r-label", hilite(r.label)));
     lab.appendChild(el("div", "r-meta", esc(r.meta)));
     const bw = el("div", "bar-wrap");
     const b = el("div", "bar"); b.style.width = (100 * r.weight / max) + "%";
@@ -71,35 +132,35 @@ function renderBars(body) {
   body.appendChild(wrap);
 }
 
+function renderFlowStep(host, step) {
+  if (step.arrow) {
+    const a = el("div", "arrow");
+    a.innerHTML = '<svg width="60" height="26" viewBox="0 0 60 26" fill="none">'
+      + '<path d="M4 13 H48" stroke="#b4c0d6" stroke-width="4" stroke-linecap="round"/>'
+      + '<path d="M43 6 L55 13 L43 20" stroke="#b4c0d6" stroke-width="4" fill="none" '
+      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    if (step.arrow !== true) {
+      const box = el("div");
+      box.style.cssText = "display:flex;flex-direction:column;align-items:center;gap:6px";
+      box.appendChild(a);
+      const lab = el("div", "edge-chip"); lab.textContent = step.arrow;
+      box.appendChild(lab);
+      host.appendChild(box);
+    } else host.appendChild(a);
+    return;
+  }
+  if (step.stack) {
+    const s = el("div", "stack" + accent(step.accent));
+    if (step.title) { const h = el("div", "tag"); h.textContent = step.title; s.appendChild(h); }
+    step.stack.forEach(it => s.appendChild(node(it)));
+    host.appendChild(s);
+    return;
+  }
+  host.appendChild(node(step));
+}
 function renderFlow(body) {
   const flow = el("div", "flow");
-  SPEC.flow.forEach((step, i) => {
-    if (step.arrow) {
-      const a = el("div", "arrow");
-      a.innerHTML = "&rsaquo;".repeat(1) + "";
-      a.textContent = "->";
-      if (step.arrow !== true) {
-        const box = el("div");
-        box.style.display = "flex"; box.style.flexDirection = "column";
-        box.style.alignItems = "center"; box.style.gap = "6px";
-        box.appendChild(a);
-        box.appendChild(el("div", "edge-label", esc(step.arrow)));
-        flow.appendChild(box);
-      } else flow.appendChild(a);
-      return;
-    }
-    if (step.stack) {
-      const s = el("div", "stack" + accent(step.accent));
-      if (step.title) {
-        const h = el("div", "tag"); h.textContent = step.title;
-        s.appendChild(h);
-      }
-      step.stack.forEach(it => s.appendChild(node(it)));
-      flow.appendChild(s);
-      return;
-    }
-    flow.appendChild(node(step));
-  });
+  SPEC.flow.forEach(step => renderFlowStep(flow, step));
   body.appendChild(flow);
 }
 
@@ -125,6 +186,258 @@ function renderTiers(body) {
   body.appendChild(tiers);
 }
 
+// ---- new layouts (Article-11 patterns) ----------------------------------
+function cell(c) {
+  if (c && typeof c === "object") {
+    const d = el("div", "tcell" + (c.num ? " num" : ""));
+    let h = c.text ? hilite(c.text) : "";
+    if (c.code) h = '<span class="code">' + esc(c.code) + '</span>' + (h ? " " + h : "");
+    if (c.sub) h += '<div class="sub">' + hilite(c.sub) + '</div>';
+    d.innerHTML = h;
+    return d;
+  }
+  return el("div", "tcell", hilite(c));
+}
+function renderTable(body) {
+  const wrap = el("div", "table");
+  const cols = SPEC.head || [];
+  const gtc = SPEC.gridCols
+    || ("minmax(210px,1.1fr) " + Array(Math.max(0, cols.length - 1)).fill("1fr").join(" "));
+  if (cols.length) {
+    const h = el("div", "t-head"); h.style.gridTemplateColumns = gtc;
+    cols.forEach(c => h.appendChild(el("div", "th", esc(c))));
+    wrap.appendChild(h);
+  }
+  SPEC.rows.forEach(r => {
+    const row = el("div", "trow" + accent(r.accent) + (r.focal ? " focal" : ""));
+    row.style.gridTemplateColumns = gtc;
+    const lead = el("div", "lead");
+    if (r.icon) lead.appendChild(ichipEl(r.icon, r.accent));
+    const lb = el("div");
+    lb.appendChild(el("div", "lab", hilite(r.label)));
+    if (r.sub) lb.appendChild(el("div", "sub-lead", hilite(r.sub)));
+    lead.appendChild(lb);
+    row.appendChild(lead);
+    (r.cells || []).forEach(c => row.appendChild(cell(c)));
+    wrap.appendChild(row);
+  });
+  body.appendChild(wrap);
+}
+
+function renderCompare(body) {
+  const c = el("div", "compare");
+  const mkcol = col => {
+    const cc = el("div", "cmp " + (col.tone || ""));
+    const h = el("div", "cmp-head");
+    h.appendChild(el("span", "dot"));
+    h.appendChild(el("span", null, hilite(col.head)));
+    cc.appendChild(h);
+    const iconAccent = col.tone === "good" ? "green" : (col.tone === "bad" ? "red" : "");
+    (col.rows || []).forEach(r => {
+      const cr = el("div", "crow");
+      if (r.icon) cr.appendChild(ichipEl(r.icon, r.accent || iconAccent));
+      const tx = el("div");
+      tx.appendChild(el("div", "lab", hilite(r.label)));
+      if (r.sub) tx.appendChild(el("div", "sub", hilite(r.sub)));
+      cr.appendChild(tx); cc.appendChild(cr);
+    });
+    return cc;
+  };
+  c.appendChild(mkcol(SPEC.left));
+  if (SPEC.mid) {
+    const m = el("div", "cmp-mid");
+    if (SPEC.mid.tag) m.appendChild(el("div", "tag", esc(SPEC.mid.tag)));
+    (SPEC.mid.lines || []).forEach(l => {
+      const d = el("div", "fixtext"); d.innerHTML = hilite(l); m.appendChild(d);
+    });
+    c.appendChild(m);
+  }
+  c.appendChild(mkcol(SPEC.right));
+  body.appendChild(c);
+}
+
+function renderLanes(body) {
+  const wrap = el("div");
+  wrap.style.cssText = "display:flex;flex-direction:column;gap:14px;width:100%";
+  SPEC.lanes.forEach(ln => {
+    if (ln.transition) { wrap.appendChild(el("div", "tag", esc(ln.transition))); return; }
+    const lane = el("div", "lane " + (ln.tone || ""));
+    const hd = el("div", "lane-head"); hd.innerHTML = hilite(ln.title); lane.appendChild(hd);
+    if (ln.sub) lane.appendChild(el("div", "lane-sub", esc(ln.sub)));
+    const fl = el("div", "flow");
+    if (ln.direction === "down") { fl.style.flexDirection = "column"; fl.style.alignItems = "flex-start"; }
+    (ln.flow || []).forEach(step => renderFlowStep(fl, step));
+    lane.appendChild(fl);
+    wrap.appendChild(lane);
+  });
+  body.appendChild(wrap);
+}
+
+function renderCards(body) {
+  const row = el("div", "cards");
+  SPEC.cards.forEach(c => {
+    const card = el("div", "mcard" + accent(c.accent));
+    if (SPEC.cardWidth) card.style.width = SPEC.cardWidth + "px";
+    const top = el("div", "m-top");
+    if (c.icon) top.appendChild(ichipEl(c.icon, c.accent));
+    top.appendChild(el("span", null, esc(c.label)));
+    card.appendChild(top);
+    if (c.lines) {
+      // API-surface card: a domain panel listing its endpoints
+      if (c.sub) card.appendChild(el("div", "m-sub", esc(c.sub)));
+      const lines = el("div", "m-lines");
+      c.lines.forEach(ln => {
+        const m = String(ln).match(/^(GET|POST|PUT|DELETE|PATCH)\s+(.*)$/);
+        const ep = el("div", "ep");
+        if (m) ep.innerHTML = `<span class="ep-m ep-${m[1]}">${m[1]}</span>`
+                            + `<span class="ep-p">${esc(m[2])}</span>`;
+        else ep.textContent = ln;
+        lines.appendChild(ep);
+      });
+      card.appendChild(lines);
+    } else {
+      // metric card (unchanged): value then sub
+      if (c.value != null) card.appendChild(el("div", "m-val", esc(c.value)));
+      if (c.sub) card.appendChild(el("div", "m-sub", esc(c.sub)));
+    }
+    row.appendChild(card);
+  });
+  body.appendChild(row);
+}
+
+// ---- scene layout: bespoke SVG node-graph (custom topologies) -----------
+const ACC = { blue:"#38bdf8", green:"#34d399", magenta:"#e879f9",
+              amber:"#f59e0b", red:"#f87171", gray:"#9aa6bd" };
+const TINT = { blue:"rgba(56,189,248,0.10)", green:"rgba(52,211,153,0.09)",
+               magenta:"rgba(232,121,249,0.10)", amber:"rgba(245,158,11,0.13)",
+               red:"rgba(248,113,113,0.09)", gray:"rgba(148,163,184,0.05)" };
+const SSTROKE = { blue:"rgba(56,189,248,.6)", green:"rgba(52,211,153,.6)",
+                  magenta:"rgba(232,121,249,.6)", amber:"rgba(245,158,11,.75)",
+                  red:"rgba(248,113,113,.6)", gray:"rgba(148,163,184,.4)" };
+// accents that have a glow filter in sceneDefs (others render without glow)
+const GLOW = ["blue", "green", "magenta", "amber", "red"];
+
+function sceneDefs() {
+  const m = Object.keys(ACC).map(k =>
+    `<marker id="m_${k}" markerWidth="10" markerHeight="10" refX="7.6" refY="3.7" orient="auto">`
+    + `<path d="M0,0 L8,3.7 L0,7.4 Z" fill="${ACC[k]}"/></marker>`).join("");
+  const f = ["blue","green","magenta","amber","red"].map(k =>
+    `<filter id="g_${k}" x="-50%" y="-50%" width="200%" height="200%">`
+    + `<feDropShadow dx="0" dy="0" stdDeviation="7" flood-color="${ACC[k]}" flood-opacity="0.35"/></filter>`).join("");
+  return `<defs>${m}${f}</defs>`;
+}
+function anchorPt(spec, byId) {
+  if (Array.isArray(spec)) return spec;
+  const [id, side] = String(spec).split(":");
+  const n = byId[id]; if (!n) return [0, 0];
+  const x = n.x, y = n.y, w = n.w, h = n.h;
+  return side === "left" ? [x, y + h/2] : side === "right" ? [x + w, y + h/2]
+       : side === "top" ? [x + w/2, y] : side === "bottom" ? [x + w/2, y + h]
+       : [x + w/2, y + h/2];
+}
+function sceneZone(z) {
+  const acc = z.accent || "blue";
+  const dash = z.dashed ? 'stroke-dasharray="9 7"' : '';
+  const fill = z.fill === false ? "none" : (TINT[acc] || "rgba(255,255,255,0.02)");
+  let s = `<rect x="${z.x}" y="${z.y}" width="${z.w}" height="${z.h}" rx="20" fill="${fill}" `
+        + `stroke="${SSTROKE[acc] || '#2a3550'}" stroke-width="1.6" ${dash}/>`;
+  if (z.label) s += `<text x="${z.x + 18}" y="${z.y + 29}" fill="${ACC[acc]}" `
+        + `font-size="20" font-weight="800" letter-spacing="0.8">${esc(z.label)}</text>`;
+  return s;
+}
+function sceneEdge(e, byId) {
+  const p1 = anchorPt(e.from, byId), p2 = anchorPt(e.to, byId);
+  const w = e.style === "thick" ? 6.5 : (e.style === "thin" ? 3.2 : 4.5);
+  const acc = e.accent || "gray"; const col = ACC[acc] || ACC.gray;
+  const dash = e.dashed ? 'stroke-dasharray="7 6"' : '';
+  let d;
+  if (e.bend) {
+    const mx = (p1[0]+p2[0])/2, my = (p1[1]+p2[1])/2;
+    const dx = p2[0]-p1[0], dy = p2[1]-p1[1], len = Math.hypot(dx, dy) || 1;
+    d = `M${p1[0]},${p1[1]} Q${mx - dy/len*e.bend},${my + dx/len*e.bend} ${p2[0]},${p2[1]}`;
+  } else d = `M${p1[0]},${p1[1]} L${p2[0]},${p2[1]}`;
+  const glow = (e.style === "thick" && GLOW.includes(acc)) ? `filter="url(#g_${acc})"` : "";
+  return `<path d="${d}" stroke="${col}" stroke-width="${w}" fill="none" stroke-linecap="round" `
+       + `marker-end="url(#m_${acc})" ${dash} ${glow}/>`;
+}
+function sceneEdgeLabel(e, byId) {
+  if (!e.label) return "";
+  const p1 = anchorPt(e.from, byId), p2 = anchorPt(e.to, byId);
+  let cx = (p1[0]+p2[0])/2, cy = (p1[1]+p2[1])/2;
+  const ddx = p2[0]-p1[0], ddy = p2[1]-p1[1], dlen = Math.hypot(ddx, ddy) || 1;
+  if (e.bend) { cx += -ddy/dlen*e.bend*0.5; cy += ddx/dlen*e.bend*0.5; }
+  // push the label OFF the line, perpendicular, so it sits above/beside the arrow
+  // (never on it). labelOff can flip side (negative) or change distance.
+  let perpx = -ddy/dlen, perpy = ddx/dlen;
+  if (perpy > 0) { perpx = -perpx; perpy = -perpy; }   // default to the upper side
+  const off = (e.labelOff != null) ? e.labelOff : 21;
+  cx += perpx * off; cy += perpy * off;
+  if (e.labelDx) cx += e.labelDx; if (e.labelDy) cy += e.labelDy;
+  const col = (e.accent && e.accent !== "gray") ? ACC[e.accent] : "#cdd6e6";
+  const wpx = String(e.label).length * 9.6 + 22;
+  return `<g><rect x="${cx - wpx/2}" y="${cy - 15}" width="${wpx}" height="30" rx="8" `
+       + `fill="#0b1220" fill-opacity="0.92" stroke="rgba(255,255,255,0.10)"/>`
+       + `<text x="${cx}" y="${cy}" fill="${col}" font-size="18" font-weight="600" `
+       + `text-anchor="middle" dominant-baseline="central">${esc(e.label)}</text></g>`;
+}
+function sceneNode(n) {
+  const acc = n.accent || (n.focal ? "amber" : "");
+  const fill = n.focal ? TINT.amber : (TINT[acc] || "rgba(255,255,255,0.03)");
+  const stroke = n.focal ? SSTROKE.amber : (SSTROKE[acc] || "#2a3550");
+  const glow = GLOW.includes(acc) ? `filter="url(#g_${acc})"` : "";
+  const cx = n.x + n.w/2, hasIcon = !!n.icon, hasSub = !!n.sub;
+  const blockH = (hasIcon ? 34 : 0) + 30 + (hasSub ? 24 : 0);
+  let cur = n.y + (n.h - blockH)/2;
+  let parts = `<rect x="${n.x}" y="${n.y}" width="${n.w}" height="${n.h}" rx="14" `
+            + `fill="${fill}" stroke="${stroke}" stroke-width="1.6" ${glow}/>`;
+  if (hasIcon) {
+    const col = acc ? ACC[acc] : "#e8eefc";
+    parts += `<g transform="translate(${cx - 12},${cur}) scale(1.05)" fill="none" stroke="${col}" `
+           + `stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICONS[n.icon] || ICONS.info}</g>`;
+    cur += 34;
+  }
+  parts += `<text x="${cx}" y="${cur + 15}" fill="#eef3ff" font-size="23" font-weight="800" `
+         + `text-anchor="middle" dominant-baseline="central">${esc(n.title)}</text>`;
+  cur += 30;
+  if (hasSub) parts += `<text x="${cx}" y="${cur + 11}" fill="#bcc8de" font-size="18" font-weight="500" `
+         + `text-anchor="middle" dominant-baseline="central">${esc(n.sub)}</text>`;
+  return parts;
+}
+function sceneLabel(l) {
+  const col = l.accent ? ACC[l.accent] : "#bcc8de";
+  const t = l.tag ? esc(l.text).toUpperCase() : esc(l.text);
+  const ls = l.tag ? 'letter-spacing="1.2"' : '';
+  return `<text x="${l.x}" y="${l.y}" fill="${col}" font-size="${l.size || 15}" `
+       + `font-weight="${l.weight || 800}" text-anchor="${l.anchor || 'start'}" ${ls}>${t}</text>`;
+}
+function renderScene(body) {
+  const sc = SPEC.scene, vb = sc.viewBox;
+  const byId = {}; (sc.nodes || []).forEach(n => byId[n.id] = n);
+  const svg = `<svg class="scene" viewBox="${vb[0]} ${vb[1]} ${vb[2]} ${vb[3]}" `
+    + `preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">`
+    + sceneDefs()
+    + (sc.zones || []).map(sceneZone).join("")
+    + (sc.edges || []).map(e => sceneEdge(e, byId)).join("")
+    + (sc.nodes || []).map(sceneNode).join("")
+    + (sc.labels || []).map(sceneLabel).join("")
+    + (sc.edges || []).map(e => sceneEdgeLabel(e, byId)).join("")
+    + `</svg>`;
+  const wrap = el("div");
+  wrap.style.cssText = "flex:1;align-self:stretch;display:flex";
+  wrap.innerHTML = svg;
+  body.appendChild(wrap);
+}
+
+// ---- banner: thesis as big words ----------------------------------------
+function renderBanner(body) {
+  const b = el("div", "banner");
+  if (SPEC.kicker) b.appendChild(el("div", "b-kicker", esc(SPEC.kicker)));
+  const t = el("div", "b-title"); t.innerHTML = hilite(SPEC.title); b.appendChild(t);
+  if (SPEC.subtitle) { const s = el("div", "b-sub"); s.innerHTML = hilite(SPEC.subtitle); b.appendChild(s); }
+  body.appendChild(b);
+}
+
+// ---- footer + takeaway --------------------------------------------------
 function renderFooter(host) {
   if (!SPEC.footer) return;
   const f = el("div", "foot");
@@ -132,26 +445,40 @@ function renderFooter(host) {
     const cell = el("div", "cell");
     if (typeof c === "string") cell.textContent = c;
     else {
-      cell.appendChild(el("div", null, esc(c.main)));
+      cell.appendChild(el("div", null, hilite(c.main)));
       cell.appendChild(el("div", "c-sub", esc(c.sub)));
     }
     f.appendChild(cell);
   });
   host.appendChild(f);
 }
+function renderTakeaway(host) {
+  if (!SPEC.takeaway) return;
+  const tk = el("div", "takeaway");
+  if (SPEC.takeaway.icon) tk.appendChild(ichipEl(SPEC.takeaway.icon, SPEC.takeaway.accent || "amber"));
+  const t = el("div", "tk-text"); t.innerHTML = hilite(SPEC.takeaway.text);
+  tk.appendChild(t);
+  host.appendChild(tk);
+}
 
 (function main() {
   const fig = document.getElementById("figure");
-  const head = el("div", "fig-head");
-  head.appendChild(el("div", "fig-title", esc(SPEC.title)));
-  if (SPEC.headSub) head.appendChild(el("div", "fig-sub", esc(SPEC.headSub)));
-  fig.appendChild(head);
+  if (SPEC.layout !== "banner") {
+    const head = el("div", "fig-head");
+    const ttl = el("div", "fig-title"); ttl.innerHTML = hilite(SPEC.title);
+    head.appendChild(ttl);
+    if (SPEC.headSub) { const s = el("div", "fig-sub"); s.innerHTML = hilite(SPEC.headSub); head.appendChild(s); }
+    fig.appendChild(head);
+  }
 
   const body = el("div", "fig-body");
-  ({ ranked_rows: renderRankedRows, bars: renderBars,
-     flow: renderFlow, tiers: renderTiers }[SPEC.layout] || (()=>{}))(body);
+  ({ ranked_rows: renderRankedRows, bars: renderBars, flow: renderFlow,
+     tiers: renderTiers, table: renderTable, compare: renderCompare,
+     lanes: renderLanes, cards: renderCards, scene: renderScene,
+     banner: renderBanner }[SPEC.layout] || (()=>{}))(body);
   fig.appendChild(body);
 
+  renderTakeaway(fig);
   renderFooter(fig);
 })();
 </script>

@@ -1,0 +1,24 @@
+{
+  "id": "diag_v2_article12_02_call_path",
+  "width": 1780,
+  "height": 940,
+  "layout": "flow",
+  "title": "Think: how an agent turns a dict into a {{green:billed, validated}} answer.",
+  "flow": [
+    {"icon": "robot", "title": "ScoringAgent.run", "meta": ["workflow_id, context"]},
+    {"arrow": true},
+    {"icon": "steps", "title": "BaseAgent._run", "meta": ["timing + observability"]},
+    {"arrow": "the seam"},
+    {"icon": "code", "title": "LLMClient", "accent": "amber", "focal": true, "meta": ["provider-agnostic", "complete_with_usage()"]},
+    {"arrow": true},
+    {"title": "ClaudeProvider", "accent": "magenta", "stack": [
+      {"title": "assemble prompt", "meta": ["guardrails + cached"]},
+      {"title": "structured output", "meta": ["via tool-use"]},
+      {"title": "retry / 429", "meta": ["6 tries"]},
+      {"title": "usage + cost", "meta": ["cache-aware"]}
+    ]},
+    {"arrow": true},
+    {"icon": "check", "title": "validated dict + LLMUsage", "accent": "green", "meta": ["-> log llm_calls"]}
+  ],
+  "takeaway": {"icon": "info", "accent": "amber", "text": "One operation, schema-constrained: we do not parse prose, we constrain the output shape at the API. {{magenta:Anthropic}} via tool-use, {{blue:OpenAI}} via response_format - different wire, same idea."}
+}

@@ -1,0 +1,17 @@
+{
+  "id": "diag_v2_article12_06_agent_contract",
+  "width": 1800,
+  "height": 740,
+  "layout": "flow",
+  "title": "Coordinate: the API that {{amber:isn't HTTP}} - a typed in-process contract.",
+  "flow": [
+    {"icon": "steps", "title": "orchestrator", "accent": "amber", "focal": true, "meta": ["only state-writer"]},
+    {"arrow": "context: dict"},
+    {"icon": "robot", "title": "agent.run()", "accent": "blue", "meta": ["pure function"]},
+    {"arrow": "Pydantic out"},
+    {"icon": "check", "title": "validate", "accent": "green", "meta": ["schema-checked"]},
+    {"arrow": true},
+    {"icon": "database", "title": "orchestrator writes state", "accent": "amber", "meta": ["agents never do"]}
+  ],
+  "takeaway": {"icon": "shield", "accent": "green", "text": "Agents return validated structured output and {{red:never}} touch state, the database, the filesystem, or the network. That one rule keeps them pure and testable."}
+}

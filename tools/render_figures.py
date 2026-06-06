@@ -38,7 +38,7 @@ ROOT = Path(__file__).resolve().parents[1]
 RDIR = ROOT / "tools" / "figure_renderer"
 SPECS = RDIR / "specs"
 OUT = ROOT / "blogs" / "blog_images"
-COMPARE = OUT / "_rendered"
+COMPARE = OUT   # render directly into blog_images/ (the published assets)
 TEMPLATE = RDIR / "template.html"
 TMP = RDIR / "_render_tmp.html"   # next to theme.css so the link resolves
 
@@ -95,7 +95,7 @@ def render(args: argparse.Namespace) -> int:
                 page.close()
                 ratio = w / h
                 flag = "" if 3.0 <= ratio <= 5.0 else "  (ratio outside 3-5:1)"
-                print(f"OK  _rendered/{dest.name}  {w}x{h} @2x  "
+                print(f"OK  blog_images/{dest.name}  {w}x{h} @2x  "
                       f"{ratio:.2f}:1{flag}")
                 rendered.append(spec["id"])
             except Exception as e:  # noqa: BLE001
@@ -106,15 +106,8 @@ def render(args: argparse.Namespace) -> int:
     if TMP.exists():
         TMP.unlink()
 
-    if args.promote:
-        print("\nPromoting (current images backed up to *__prev_backup.png):")
-        for sid in rendered:
-            _promote(sid)
-    else:
-        print("\nNON-DESTRUCTIVE: published images untouched. Compare "
-              "blogs/blog_images/_rendered/<id>.png vs blogs/blog_images/"
-              "<id>.png, send the rendered ones back for verification, then "
-              "re-run with --promote.")
+    print(f"\nRendered directly into blogs/blog_images/ ({len(rendered)} figure(s)). "
+          "These are the published assets; specs are the source of truth.")
     return rc
 
 

@@ -1,0 +1,20 @@
+{
+  "id": "diag_v2_article12_03_enterprise_vs_agentic",
+  "width": 1600,
+  "height": 1200,
+  "layout": "table",
+  "title": "An agentic API is not a {{blue:CRUD}} API.",
+  "head": ["Axis", "Enterprise app API", "Agentic app API"],
+  "gridCols": "minmax(190px,0.7fr) 1fr 1.1fr",
+  "rows": [
+    {"icon": "clock", "label": "Latency", "cells": ["sub-second, fixed", "seconds to minutes, variable"]},
+    {"icon": "gauge", "label": "Output", "cells": ["same input, same output", "probabilistic"]},
+    {"icon": "steps", "label": "Lifecycle", "cells": ["request / response", "long-running run objects, terminal states"]},
+    {"icon": "database", "label": "State", "cells": ["stateless per request", "durable runs (checkpointer + DB)"]},
+    {"icon": "cost", "accent": "amber", "focal": true, "label": "Retries", "cells": ["idempotent = nice to have", "idempotent = load-bearing (a retry is a bill)"]},
+    {"icon": "user", "label": "Human-in-loop", "cells": ["none in the request path", "a pause is part of the lifecycle"]},
+    {"icon": "chart", "label": "Cost / observability", "cells": ["an ops concern", "a first-class API concern (tokens per call)"]},
+    {"icon": "alert", "label": "Cancellation", "cells": ["rarely needed", "a kill switch for a money-spending job"]}
+  ],
+  "takeaway": {"icon": "shield", "accent": "green", "text": "The enterprise fundamentals - versioning, auth, idempotency, typed contracts - don't get replaced. They get {{amber:more load-bearing}}."}
+}

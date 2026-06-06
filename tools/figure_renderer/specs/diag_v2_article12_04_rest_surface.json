@@ -1,0 +1,19 @@
+{
+  "id": "diag_v2_article12_04_rest_surface",
+  "width": 1840,
+  "height": 740,
+  "layout": "flow",
+  "title": "Drive: a run is a {{amber:resource with a lifecycle}}, not a request.",
+  "flow": [
+    {"icon": "user", "title": "human / UI", "meta": ["Streamlit"]},
+    {"arrow": "POST /workflows"},
+    {"icon": "code", "title": "202 Accepted", "accent": "blue", "meta": ["Idempotency-Key"]},
+    {"arrow": true},
+    {"icon": "clock", "title": "run object", "accent": "amber", "focal": true, "meta": ["queued -> running"]},
+    {"arrow": "poll GET /workflows/id"},
+    {"icon": "check", "title": "completed", "accent": "green", "meta": ["or cancelled / failed"]},
+    {"arrow": true},
+    {"icon": "doc", "title": "reads", "meta": ["/jobs, /report"]}
+  ],
+  "takeaway": {"icon": "info", "accent": "amber", "text": "Because a run is a bill, the control API makes it {{green:idempotent}} (replay a key) and {{red:cancellable}}. Good capabilities - not the headline."}
+}

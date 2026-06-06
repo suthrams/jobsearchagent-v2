@@ -1,0 +1,49 @@
+{
+  "id": "diag_v2_article12_01_api_roles",
+  "width": 1720,
+  "height": 1260,
+  "layout": "scene",
+  "title": "Every boundary in this app is a different kind of API.",
+  "headSub": "Consumed, exposed, internal - and the two we chose not to build.",
+  "scene": {
+    "viewBox": [0, 0, 1720, 1000],
+    "zones": [
+      {"x": 500, "y": 300, "w": 720, "h": 470, "accent": "amber", "dashed": true, "fill": false, "label": "THE SYSTEM"}
+    ],
+    "nodes": [
+      {"id": "rest",  "x": 600,  "y": 100, "w": 260, "h": 92, "accent": "green", "icon": "code", "title": "REST API", "sub": "FastAPI"},
+      {"id": "human", "x": 1000, "y": 100, "w": 240, "h": 92, "accent": "green", "icon": "user", "title": "human / UI", "sub": "Streamlit"},
+
+      {"id": "orch",   "x": 560,  "y": 370, "w": 240, "h": 100, "accent": "amber", "focal": true, "icon": "steps", "title": "orchestrator", "sub": "only state-writer"},
+      {"id": "agents", "x": 940,  "y": 370, "w": 240, "h": 100, "accent": "amber", "icon": "robot", "title": "agents", "sub": "pure, typed output"},
+      {"id": "repos",  "x": 740,  "y": 600, "w": 260, "h": 96,  "accent": "amber", "icon": "database", "title": "repositories", "sub": "raw sqlite3"},
+
+      {"id": "data", "x": 60,   "y": 390, "w": 380, "h": 150, "accent": "blue", "icon": "globe", "title": "job-source scrapers", "sub": "Adzuna - Greenhouse - Lever - custom URL"},
+      {"id": "llm",  "x": 1320, "y": 370, "w": 300, "h": 100, "accent": "magenta", "icon": "activity", "title": "LLM provider API", "sub": "Anthropic / OpenAI"},
+
+      {"id": "tools", "x": 1320, "y": 560, "w": 300, "h": 88, "accent": "gray", "icon": "filter", "title": "model tools / MCP", "sub": "not built"},
+      {"id": "vec",   "x": 980,  "y": 740, "w": 320, "h": 88, "accent": "gray", "icon": "database", "title": "vector store / memory", "sub": "designed, unwired"}
+    ],
+    "edges": [
+      {"from": "human:left", "to": "rest:right", "accent": "green", "style": "thin", "label": "drive + read"},
+      {"from": "rest:bottom", "to": [730, 300], "accent": "green", "style": "thick", "label": "Drive"},
+
+      {"from": "agents:right", "to": "llm:left", "accent": "magenta", "style": "thick", "label": "Think"},
+
+      {"from": "data:right", "to": "orch:left", "accent": "blue", "label": "Ingest"},
+
+      {"from": "orch:right", "to": "agents:left", "accent": "amber", "style": "thick", "label": "Coordinate"},
+      {"from": "orch:bottom", "to": "repos:top", "accent": "amber", "label": "Persist", "labelDx": -30},
+
+      {"from": "llm:bottom", "to": "tools:top", "accent": "gray", "dashed": true, "label": "Act"},
+      {"from": "agents:bottom", "to": "vec:top", "accent": "gray", "dashed": true, "label": "Remember"}
+    ],
+    "labels": [
+      {"x": 600, "y": 80, "text": "Exposed", "accent": "green", "tag": true, "size": 18},
+      {"x": 60, "y": 374, "text": "Consumed", "accent": "blue", "tag": true, "size": 18},
+      {"x": 1320, "y": 354, "text": "Consumed", "accent": "magenta", "tag": true, "size": 18},
+      {"x": 1320, "y": 544, "text": "Boundaries we don't build", "accent": "gray", "tag": true, "size": 17}
+    ]
+  },
+  "takeaway": {"icon": "target", "accent": "amber", "text": "One app, {{amber:five}} kinds of API boundary built - and {{red:two}} we chose not to. Each boundary is a different contract."}
+}

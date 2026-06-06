@@ -1,0 +1,14 @@
+{
+  "id": "diag_v2_article12_07_not_built",
+  "width": 1640,
+  "height": 600,
+  "layout": "table",
+  "title": "Act and Remember: two boundaries left out {{amber:on purpose}}.",
+  "head": ["Skipped boundary", "What it would add", "Why we leave it out"],
+  "gridCols": "minmax(300px,1fr) 1.1fr 1.3fr",
+  "rows": [
+    {"icon": "filter", "accent": "gray", "label": "Act", "sub": "model -> tools / MCP", "cells": ["the model decides to call tools and APIs", "reopens the spend problem the cost caps solved; the human owns the decision"]},
+    {"icon": "database", "accent": "gray", "label": "Remember", "sub": "agents -> vector store", "cells": ["semantic retrieval + a memory the agents read", "structured context suffices; memory is designed but unwired"]}
+  ],
+  "takeaway": {"icon": "shield", "accent": "green", "text": "The strongest boundary is sometimes the one you {{amber:don't}} build. Naming the boundary tells you the contract - and sometimes it is {{red:none}}."}
+}
