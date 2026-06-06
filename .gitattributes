@@ -1,0 +1,21 @@
+# Pin line-ending handling so it does not depend on each clone's core.autocrlf.
+# Text files are stored as LF in the repository. Git may still present CRLF in the
+# working tree on Windows; shell scripts and git hooks must stay LF everywhere.
+
+* text=auto
+
+# Always LF in the working tree (executable / EOL-sensitive)
+*.sh        text eol=lf
+*.bash      text eol=lf
+tools/git-hooks/*  text eol=lf
+
+# Binary assets - never normalize or diff as text.
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.ico   binary
+*.pdf   binary
+*.docx  binary
+*.db    binary
+*.sqlite binary
