@@ -90,6 +90,7 @@ Optimizations:
 
 * limit number of jobs fetched
 * stop when enough relevant jobs found
+* optional posting-age cap drops stale postings at discovery, before any scoring spend (`search.max_posting_age_days`, ADR-080)
 * cache results per query (future)
 
 ---
@@ -98,6 +99,7 @@ Optimizations:
 
 Optimizations:
 
+* optional relevance pre-filter: one cheap batched LLM call (Haiku) drops clear seniority/relevance mismatches BEFORE scoring, so the per-job research+scoring spend is never paid on the noise (`search.relevance_filter`, ADR-079) — net cost-negative on a noisy profile
 * batch processing
 * no ReAct
 * no reflection
@@ -124,14 +126,15 @@ All workflows must enforce limits.
 ### Limits
 
 ```text
-MAX_JOBS_PER_RUN = 10   # reduced from 20 in Phase 9
-MAX_SELECTED_JOBS = 10  # raised from 3 in ADR-054 — every qualifying job reaches deep review
+MAX_JOBS_PER_RUN = 10   # default scored cap; per-run override up to MAX_SCORED_CEILING=25 (ADR-061)
+MAX_DISCOVERED_JOBS = 50 # wide-net cap (manual selection / relevance filter); search.max_discovered (ADR-060/061)
+MAX_SELECTED_JOBS = 3    # qualifying jobs that reach in-graph deep review (cost cut from 10)
 
 MAX_RESEARCH_STEPS = 2
-MAX_REVIEW_ROUNDS = 3
+MAX_REVIEW_ROUNDS = 2    # cost cut from 3
 
 MAX_LLM_CALLS_PER_JOB = 10
-MAX_LLM_CALLS_PER_RUN = 200  # raised from 100 in ADR-054 to accommodate up to 10 deep-reviewed jobs
+MAX_LLM_CALLS_PER_RUN = 200  # global per-run budget backstop
 
 MAX_COST_PER_RUN = configurable
 ```
@@ -193,7 +196,7 @@ The reflection loop must be strictly bounded.
 ### Rules
 
 ```text
-MAX_REVIEW_ROUNDS = 3
+MAX_REVIEW_ROUNDS = 2
 ```
 
 ### Stop Conditions

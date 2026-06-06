@@ -55,9 +55,9 @@ v1 (`main.py` + three agents) established the core patterns that v2 built on. Un
 | Retry with Backoff | `tenacity` on client | Schema repair loop + `tenacity` on provider | Extended |
 | Workflow Orchestration | `main.py` sequential calls | LangGraph stateful graph + SqliteSaver | New |
 | Bounded ReAct | — | Research Agent (MAX_RESEARCH_STEPS = 2) | New |
-| Reflection Loop | — | Resume Critic → Review Auditor (MAX_REVIEW_ROUNDS = 3) | New |
+| Reflection Loop | — | Resume Critic → Review Auditor (MAX_REVIEW_ROUNDS = 2) | New |
 | Evaluator/Critic | — | Review Auditor scores Critic output | New |
-| Human-in-the-Loop | — | One active path: per-draft tailoring decisions (out-of-graph). Several in-graph checkpoints designed but later removed (ADR-054) or kept dark (ADR-055). | Reduced from original design |
+| Human-in-the-Loop | — | One active path: per-draft tailoring decisions (out-of-graph, ADR-055). The in-graph interrupt path was retired entirely (ADR-059) — the workflow runs end-to-end with no pause. | Reduced from original design |
 | Evidence-Bound Generation | — | TailoringAgent: every claim requires `supporting_evidence`; page-budget + section_label + impact_rationale enforced (ADR-056) | New, then tightened |
 | Guardrail Agent | — | FidelityReviewer validates claims, layout, rationale after every tailoring call | New |
 | Observability | Basic logging | 6-layer event tracking, per-call cost, security events | New |
@@ -75,7 +75,7 @@ v1 (`main.py` + three agents) established the core patterns that v2 built on. Un
 
 **v1:** `main.py` called agents in a fixed sequence. No shared state object. No conditional branching. No pause/resume. A crash lost all progress.
 
-**v2:** LangGraph stateful graph. Each node reads from and writes to `WorkflowState`. `SqliteSaver` persists state after every node so HITL pause/resume survives process restarts. The orchestrator is the only code that updates state — agents return structured outputs, never mutate state directly.
+**v2:** LangGraph stateful graph. Each node reads from and writes to `WorkflowState`. `SqliteSaver` persists state after every node for durability, error recovery, and the ADR-060 two-phase scoring re-entry — the workflow itself runs end-to-end with no `interrupt()` pause (ADR-059). The orchestrator is the only code that updates state — agents return structured outputs, never mutate state directly.
 
 ```
 v1: main.py → profile_agent.load() → scoring_agent.score_batch() → [done]
@@ -169,12 +169,12 @@ Thought → Action (fetch/extract) → Observation → [repeat ≤ 2] → Resear
 ```
 Resume Critic produces ResumeReview
   → Review Auditor scores it (audit_score 0–100)
-    → if audit_score < 75 AND improvement > 5 AND round < 3:
+    → if audit_score < 75 AND improvement > 5 AND round < 2:
         Resume Critic runs again with auditor feedback
     → else: best review is persisted
 ```
 
-The loop self-terminates on quality (`audit_score ≥ 75`), stagnation (< 5-point improvement across rounds), or the round cap (`MAX_REVIEW_ROUNDS = 3`).
+The loop self-terminates on quality (`audit_score ≥ 75`), stagnation (< 5-point improvement across rounds), or the round cap (`MAX_REVIEW_ROUNDS = 2`).
 
 **Why it matters:** A single-pass critique may miss gaps or produce generic analysis. The reflection loop catches weak reviews before they reach the user — without requiring human review of every round.
 
@@ -190,7 +190,7 @@ The loop self-terminates on quality (`audit_score ≥ 75`), stagnation (< 5-poin
 
 Model assignment: **Haiku** — quality evaluation is a checking task, not a generative one. The auditor reads existing text and applies criteria; it does not need Sonnet-level generation.
 
-**Why it matters:** Without an evaluator, the only quality signal is user approval. The auditor introduces automated quality gating before the HITL checkpoint, reducing the amount of weak output the user needs to review.
+**Why it matters:** Without an evaluator, the only quality signal is user approval. The auditor introduces automated quality gating before any human review, reducing the amount of weak output the user needs to review.
 
 ---
 
@@ -198,25 +198,26 @@ Model assignment: **Haiku** — quality evaluation is a checking task, not a gen
 
 **v1:** None. `--tailor` was a separate CLI invocation after reviewing terminal output. No in-workflow pause/resume.
 
-**v2 (current state, post ADR-054 / ADR-055):** The HITL surface deliberately collapsed from the original 7-checkpoint design as we learned what users actually wanted to control. Two paths exist today:
+**v2 (current state, post ADR-054 / ADR-055 / ADR-059):** The HITL surface deliberately collapsed from the original 7-checkpoint design as we learned what users actually wanted to control. The workflow now runs end-to-end with **no `interrupt()` pause** — the single active path is out-of-graph:
 
 | Path | Status | What it does |
 |------|--------|--------------|
-| **In-graph interrupts** (`await_tailoring_approval`) | UI-dark, code retained | The original design: graph pauses, `WorkflowState.status = waiting_for_user`, SqliteSaver persists, UI serves `pending_decision`, API resumes graph on `POST /workflows/{id}/decisions`. Currently triggered only when `state["user_requested_tailoring"]=True` is set before run start, which the UI never does. |
-| **Out-of-graph decisions** (per draft, ADR-055) | Active | The current default for tailoring. After a workflow completes, the user generates drafts via `POST /workflows/{wf}/jobs/{job}/tailorings` and decides per draft via `POST /tailorings/{id}/decisions`. Decision lives on `tailored_resumes.decision` — there is no graph paused for the call. |
+| **Out-of-graph decisions** (per draft, ADR-055) | Active (only path) | After a workflow completes, the user generates drafts via `POST /workflows/{wf}/jobs/{job}/tailorings` and decides per draft via `POST /tailorings/{id}/decisions` with `approve / revise / reject / edit` (an `edit` is the human's own final draft). Decision lives on `tailored_resumes.decision` — no graph is paused for the call. The Resume Clinic (ADR-066) follows the same out-of-graph shape. |
+| **In-graph interrupts** (`await_tailoring_approval`) | **Retired (ADR-059)** | The original design paused the graph (`status = waiting_for_user`, `pending_decision`, resume on `POST /workflows/{id}/decisions`). It was UI-dark for a long time and then removed outright in ADR-059 — the node, the `interrupt()`, and the `user_requested_tailoring` trigger are gone. Reintroduce only for a genuinely irreversible action (e.g. submitting an application). |
 
 What was removed and why:
 
 - **Job-selection HITL** (was checkpoint #1 in the original design): replaced by auto-select (ADR-054). Users found "pause to pick jobs" friction outweighed value when the threshold was already a meaningful filter.
+- **In-graph tailoring approval**: retired in ADR-059 in favor of the out-of-graph decision above (a human `edit` makes the user the accountable author; the Fidelity Reviewer polices the agent, not the human).
 - **Deep-review approval, interview-prep gate, fidelity-review resolution, report-export approval, application-status update**: never wired. The first four were design intent that the rest of the pipeline never demanded; the last is out of scope per CLAUDE.md ("no application tracking features").
 
 **Key invariants that survived all the surface change:**
 - The UI never auto-approves outputs.
-- The backend validates every decision before persisting (out-of-graph) or resuming (in-graph).
+- The backend validates every decision before persisting.
 - The frontend renders state — it does not drive execution.
 - Per-job exclusion (ADR-057) is *not* HITL — it's a filter input the user gives at any time, not a graph pause.
 
-**References:** ADR-011 (in-graph pause primitive, retained for the dark path) · ADR-054 (auto-select replaced job HITL) · ADR-055 (out-of-graph tailoring decisions) · ADR-057 (exclusion is filter, not HITL).
+**References:** ADR-054 (auto-select replaced job HITL) · ADR-055 (out-of-graph tailoring decisions) · ADR-059 (retired the in-graph interrupt path; human `edit` decision) · ADR-057 (exclusion is filter, not HITL).
 
 ---
 
@@ -224,7 +225,7 @@ What was removed and why:
 
 **v1:** `ResponseParser._strip_code_fences()` + `_extract_json()` + Pydantic validation. `TailoringAgent` bypassed Pydantic entirely (output was a plain dict). Manual error handling for malformed JSON.
 
-**v2:** All 8 agents use `ClaudeProvider.complete(schema=SomePydanticModel)`, which calls `model.with_structured_output(schema, include_raw=True)`. If parsing fails, a schema repair prompt is sent once before raising. No raw JSON extraction anywhere in the agent layer.
+**v2:** Every agent uses `ClaudeProvider.complete(schema=SomePydanticModel)`, which calls `model.with_structured_output(schema, include_raw=True)`. If parsing fails, a schema repair prompt is sent once before raising. No raw JSON extraction anywhere in the agent layer.
 
 ```
 v1: raw string → _strip_code_fences → _extract_json → json.loads → Pydantic (sometimes)
@@ -246,11 +247,11 @@ v2: ChatAnthropic.with_structured_output(schema) → Pydantic always
 **v2:** A set of hard limits enforced in `app/workflows/limits.py`. `check_budget()` is called before every LLM call in the workflow — if the run budget is exhausted, `BudgetExceededError` is raised and the workflow transitions to an error state.
 
 ```python
-MAX_JOBS_PER_RUN       = 10   # volume cap — halved in Phase 9
-MAX_SELECTED_JOBS      = 10   # raised in ADR-054 — every qualifying job reaches deep review
+MAX_JOBS_PER_RUN       = 10   # default scored cap (per-run override up to MAX_SCORED_CEILING=25, ADR-061)
+MAX_SELECTED_JOBS      = 3    # qualifying jobs that reach in-graph deep review (cost cut from 10)
 MAX_RESEARCH_STEPS     = 2    # ReAct loop cap
-MAX_REVIEW_ROUNDS      = 3    # reflection loop cap
-MAX_LLM_CALLS_PER_RUN  = 200  # global budget — raised in ADR-054
+MAX_REVIEW_ROUNDS      = 2    # reflection loop cap (cost cut from 3)
+MAX_LLM_CALLS_PER_RUN  = 200  # global per-run budget backstop
 ```
 
 **Why it matters:** A single misconfigured or adversarial run cannot spend unbounded API budget. Cost is first-class, not an afterthought.
@@ -266,10 +267,11 @@ MAX_LLM_CALLS_PER_RUN  = 200  # global budget — raised in ADR-054
 **v2:** Execution is gated at multiple points:
 - Deep review runs **only for jobs that meet `min_match_score`** on any **active** track (the profile's `scoring.tracks` subset — ADR-071; ≤ `MAX_SELECTED_JOBS`, auto-selected — ADR-054)
 - Interview Coach runs **only when match_score ≥ 75** or user requests it
-- Tailoring runs **on user request only** — either pre-run via `user_requested_tailoring=True` (in-graph node) or post-hoc via the dedicated tailoring router (ADR-055)
-- Fidelity Reviewer runs **only after tailoring**, on both paths
+- Tailoring runs **on user request only**, post-hoc via the out-of-graph tailoring router (ADR-055/059) — the in-graph tailoring node was retired
+- Fidelity Reviewer runs **only after a generation agent** — every tailoring call and every Resume Clinic rewrite
+- Relevance Filter runs **only when `search.relevance_filter` is on** (opt-in, ADR-079), as one cheap batched call before scoring
 
-**Why it matters:** The most expensive agents (Sonnet for Critic, Coach, Tailoring) only run when there is a clear signal of value. Without conditional execution, a 10-job run would invoke all 8 agents for all 10 jobs.
+**Why it matters:** The most expensive agents (Sonnet for Critic, Coach, Tailoring) only run when there is a clear signal of value. Without conditional execution, a 10-job run would invoke every agent for all 10 jobs.
 
 **Reference:** ADR-012 · ADR-014 · ADR-054 · ADR-055
 
@@ -279,10 +281,11 @@ MAX_LLM_CALLS_PER_RUN  = 200  # global budget — raised in ADR-054
 
 **v1:** 3 general-purpose agents. `TailoringAgent` did both generation and output formatting. `ProfileAgent` handled both PDF parsing and caching.
 
-**v2:** 8 specialized agents. Each has one responsibility, one prompt file, one output schema, and one pattern.
+**v2:** Specialized, single-responsibility agents — each with one prompt file, one output schema, and one pattern. The set has grown past the original eight as features landed (relevance pre-filter, Resume Clinic):
 
 | Agent | Single Responsibility |
 |---|---|
+| Relevance Filter | Pre-scoring seniority/relevance triage (opt-in, ADR-079) |
 | Research Agent | Company and role context extraction |
 | Scoring Agent | Multi-track fitness scoring |
 | Resume Critic | Gap identification and improvement suggestions |
@@ -290,6 +293,8 @@ MAX_LLM_CALLS_PER_RUN  = 200  # global budget — raised in ADR-054
 | Career Advisor | Cross-job career positioning synthesis |
 | Interview Coach | Role-specific interview preparation |
 | Tailoring Agent | Evidence-bound resume section rewriting |
+| Resume Reviewer | Job-agnostic resume overhaul for the Resume Clinic (ADR-066) |
+| Resume Chat | Iterative resume revision per chat turn (ADR-068) |
 | Fidelity Reviewer | Claim validation against original resume |
 
 **Why it matters:** Smaller prompts improve output quality. Single-responsibility agents are easier to test, tune, and replace independently. A failure in the Fidelity Reviewer does not affect the Scoring Agent.
@@ -386,7 +391,7 @@ v2: cache key = SHA-256(pdf text) (content identity)
 
 ```
 v1: one cached prompt per run (ScoringAgent only)
-v2: one cached prompt per agent per 5-minute window (all 8 agents)
+v2: one cached prompt per agent per 5-minute window (every agent)
 ```
 
 **Reference:** ADR-024 (prompt versioning)
@@ -407,7 +412,7 @@ v2: [job1] [job2] ... [job10]              ×5 parallel workers
 
 **Tradeoff:** v1 was more token-efficient (one call, 10 jobs). v2 uses more calls but produces higher-quality per-job scores because the Research Agent enriches each job before scoring.
 
-**Extended to deep_review (post-9):** The `deep_review` node uses the same template — a `_review_one(job)` worker that handles one job's full critic+auditor reflection loop, dispatched across `_DEEP_REVIEW_WORKERS=5` threads via `ThreadPoolExecutor` + `as_completed`. Estimated ~4× wall-clock speedup at `MAX_SELECTED_JOBS=10` (ADR-054). Budget is pre-flighted at `MAX_REVIEW_ROUNDS * 2` calls per job (worst case). Final-review semantics preserved: walk `selected_jobs` in input order and pick the last best_review (matches the previous "last writer wins" behaviour).
+**Extended to deep_review (post-9):** The `deep_review` node uses the same template — a `_review_one(job)` worker that handles one job's full critic+auditor reflection loop, dispatched across `_DEEP_REVIEW_WORKERS=5` threads via `ThreadPoolExecutor` + `as_completed`. The speedup scales with how many jobs qualify (`MAX_SELECTED_JOBS=3` in-graph, ADR-061; was 10 under ADR-054). Budget is pre-flighted at `MAX_REVIEW_ROUNDS * 2` calls per job (worst case). Final-review semantics preserved: walk `selected_jobs` in input order and pick the last best_review (matches the previous "last writer wins" behaviour).
 
 **References:** ADR-049 · ADR-039 · ADR-054
 
@@ -422,11 +427,11 @@ v2: [job1] [job2] ... [job10]              ×5 parallel workers
 The **out-of-graph operation** pattern: expose the same agents as a small REST surface that reads the workflow state from the LangGraph checkpoint and persists results to the relational tables, without going through the state machine. The agents, prompts, schemas, and fidelity invariants are identical to the in-graph version.
 
 ```
-in-graph:    discover → score → ... → tailoring (gated by user_requested_tailoring)
-out-of-graph: POST /workflows/{wf}/jobs/{job}/tailor  → TailoringAgent → FidelityReviewer → tailored_resumes
+in-graph:    discover → score → ... → auto-select → deep_review → report (no tailoring node)
+out-of-graph: POST /workflows/{wf}/jobs/{job}/tailorings → TailoringAgent → FidelityReviewer → tailored_resumes
 ```
 
-Currently used for: on-demand resume tailoring (ADR-055). Decisions are recorded as a column on `tailored_resumes`, not as a graph interrupt — there is no graph paused for the decision.
+Currently used for: on-demand tailoring, deep review, and interview prep for any scored job (ADR-055/061), plus the standalone Resume Clinic (ADR-066). Decisions are recorded as a column on the relevant table, not as a graph interrupt — there is no graph paused for the decision.
 
 **Why it matters:** Workflow completion is a discrete event; user intent isn't. Tying every agent call to a graph run forces lifetimes that don't actually share. The out-of-graph pattern preserves the structural invariants (evidence binding, fidelity check) while decoupling trigger from workflow state.
 
@@ -440,9 +445,9 @@ Currently used for: on-demand resume tailoring (ADR-055). Decisions are recorded
 
 **v2:** At startup, `app/api/dependencies.py` checks `ANTHROPIC_API_KEY`:
 - Present → `_build_real_deps()`: real `ClaudeProvider`, `SqliteSaver`, real scrapers
-- Absent → `_build_mocked_deps()`: all 8 agents mocked, `MemorySaver`
+- Absent → `_build_mocked_deps()`: all agents mocked, `MemorySaver`
 
-The graph topology is identical in both modes. The full 470-test suite runs in mock mode — no API keys required for CI.
+The graph topology is identical in both modes. The full test suite runs in mock mode — no API keys required for CI.
 
 **Why it matters:** Makes the system testable without API credentials and enables engineers to develop the UI and API layer without incurring LLM costs.
 
@@ -485,7 +490,7 @@ The cost-saving payoff comes for free via the existing dedup logic: `JobDiscover
 
 - **Single-pass → reflection loop**: quality requires iteration, not just better prompts
 - **Implicit pipeline → explicit state machine**: HITL is impossible without durable, inspectable state
-- **3 general agents → 8 specialized agents**: one responsibility per agent enables targeted improvement
+- **3 general agents → specialized, single-responsibility agents**: one responsibility per agent enables targeted improvement
 - **Free-form generation → evidence-bound generation**: ethical AI requires structural constraints, not just ethical prompts
 - **Trust then verify → verify always**: the Fidelity Reviewer runs unconditionally after every tailoring call
 
