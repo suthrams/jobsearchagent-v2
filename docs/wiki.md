@@ -306,6 +306,7 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 | [disclaimer.md](disclaimer.md) | Apache 2.0 terms, no-warranty statement, user responsibility for API costs, scraper compliance notes (Adzuna official, LinkedIn/Ladders grey-area), resume data privacy |
 | [../.claude/skills/README.md](../.claude/skills/README.md) | Index for the `.claude/skills/` agent-skills pack — maps each of the 21 pack skills (plus the project-own `smoke-test-ui` and `write-series-article`) to the jobsearchagent-v2 workflow stage where it applies (Claude Code discovers skills only under `.claude/skills/`) |
 | [../bugs/README.md](../bugs/README.md) | Root-cause analyses for critical *runtime* bugs (distinct from operational postmortems). Convention + four-section template (`_TEMPLATE.md`), an index table, and one RCA per bug (e.g. `BUG-001` — a dropped `httpx` import in two Streamlit views). Each RCA pairs with a forcing-function test so the same class cannot return silently. |
+| [incidents/README.md](incidents/README.md) | Operational postmortem log (distinct from the `bugs/` runtime-RCA log) — convention + entry-shape template, with one postmortem per critical operational issue (e.g. the 2026-05-07 cost-tracking undercount). |
 
 ---
 
@@ -315,17 +316,13 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 |---|---|
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
-| docs/ top-level | 9 |
+| docs/ top-level | 8 |
 | docs/architecture/ | 31 |
 | docs/architecture/adr/ | 84 (index + 83 ADRs) |
 | docs/architecture/phases/ | 8 |
-| docs/agents/ | 3 |
-| docs/claude/ | 3 |
-| docs/models/ | 4 |
-| docs/scrapers/ | 4 |
-| docs/storage/ | 1 |
-| docs/prompts/ | 1 |
-| prompts/ (project root) | 3 |
+| docs/incidents/ (postmortem log: README + per-incident) | 2 |
+| docs/models/ | 3 |
+| docs/scrapers/ | 3 |
 | .claude/skills/ (agent-skills pack: 21 SKILL.md + supporting + README, plus project-own smoke-test-ui and write-series-article) | 27 |
 
 ---
