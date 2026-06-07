@@ -55,6 +55,7 @@
 | Document | What it covers |
 |---|---|
 | [user_guide.md](user_guide.md) | End-to-end v2 walkthrough — install, configure, start backend + UI, HITL workflow, daily routine, troubleshooting |
+| [business_rules.md](business_rules.md) | Plain-language explainability layer — what the system decides and why, by stage (discover/filter/score/select/deep-review/advice/prep/tailor), with execution limits, config rules, HITL/scope boundaries, and privacy rules; each rule cites the enforcing constant/ADR |
 | [cost_troubleshooting.md](cost_troubleshooting.md) | Step-by-step cost diagnosis: per-agent cost queries, reconciliation against the provider billing console, lever decision matrix, pre-flight estimation, regression-prevention invariants. Read this when cost surprises happen. |
 | [model_recommendations.md](model_recommendations.md) | Recommended per-agent model assignment with rationale, estimated cost per run, escalation order if budget pressure mounts, symptoms that signal an agent should be upgraded. Read this when configuring or tuning the system. |
 | [features.md](features.md) | Complete v2 feature reference — every agent, out-of-graph human decision points, observability, model tiering, feature summary table |
@@ -317,7 +318,7 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 |---|---|
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
-| docs/ top-level | 8 |
+| docs/ top-level | 9 |
 | docs/architecture/ | 32 |
 | docs/architecture/adr/ | 88 (index + 87 ADRs) |
 | docs/architecture/phases/ | 8 |
