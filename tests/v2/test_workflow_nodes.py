@@ -545,13 +545,25 @@ def _make_scored_job(job_id: str = "job-001", *,
     }
 
 
-def test_interview_prep_high_track_score_triggers_coach():
-    """Any track score >= threshold triggers the coach."""
+def test_interview_prep_high_track_score_triggers_coach_when_auto_on():
+    """With scoring.auto_interview_prep on (ADR-085), any track score >= threshold triggers the coach."""
     job = _make_scored_job("job-001", architecture=80)  # only architecture qualifies
-    state = _base_state(selected_jobs=[job], scored_jobs=[job])
+    state = _base_state(selected_jobs=[job], scored_jobs=[job],
+                        effective_config={"scoring": {"auto_interview_prep": True}})
     node = make_interview_prep_node(_make_coach(), _advice_repo(), _obs())
     result = node(state)
     assert result["interview_prep"] is not None
+
+
+def test_interview_prep_auto_off_by_default_is_noop():
+    """ADR-085: interview prep is on-demand by default — a high score alone does not fire it."""
+    job = _make_scored_job("job-001", architecture=90)
+    state = _base_state(selected_jobs=[job], scored_jobs=[job],
+                        user_requested_interview_prep=False)  # no auto, no request
+    coach = MagicMock(spec=InterviewCoach)
+    node = make_interview_prep_node(coach, _advice_repo(), _obs())
+    node(state)
+    coach.run.assert_not_called()
 
 
 def test_interview_prep_low_score_no_request_is_noop():
@@ -582,7 +594,7 @@ def test_interview_prep_custom_threshold_from_config():
     job = _make_scored_job("job-001", technical=70)  # above 65, below default 75
     state = _base_state(
         selected_jobs=[job], scored_jobs=[job],
-        effective_config={"scoring": {"min_match_score": 65}},
+        effective_config={"scoring": {"min_match_score": 65, "auto_interview_prep": True}},
     )
     node = make_interview_prep_node(_make_coach(), _advice_repo(), _obs())
     result = node(state)
@@ -631,10 +643,17 @@ def test_generate_report_error_sets_completed_with_errors():
 
 # ── routers ────────────────────────────────────────────────────────────────────
 
-def test_interview_router_high_track_score_returns_interview_prep():
-    """Any single track score >= threshold qualifies."""
-    state = {"selected_jobs": [{"architecture_score": 90, "technical_score": 30, "leadership_score": 20}]}
+def test_interview_router_high_track_score_returns_interview_prep_when_auto_on():
+    """With scoring.auto_interview_prep on (ADR-085), any single track score >= threshold qualifies."""
+    state = {"selected_jobs": [{"architecture_score": 90, "technical_score": 30, "leadership_score": 20}],
+             "effective_config": {"scoring": {"auto_interview_prep": True}}}
     assert interview_router(state) == "interview_prep"
+
+
+def test_interview_router_auto_off_by_default_returns_generate_report():
+    """ADR-085: on-demand by default — a high score alone does not route to interview prep."""
+    state = {"selected_jobs": [{"architecture_score": 90, "technical_score": 30, "leadership_score": 20}]}
+    assert interview_router(state) == "generate_report"
 
 
 def test_interview_router_low_score_returns_generate_report():
@@ -656,7 +675,7 @@ def test_interview_router_user_request_overrides_score():
 def test_interview_router_respects_custom_threshold():
     state = {
         "selected_jobs": [{"technical_score": 60}],
-        "effective_config": {"scoring": {"min_match_score": 50}},
+        "effective_config": {"scoring": {"min_match_score": 50, "auto_interview_prep": True}},
     }
     assert interview_router(state) == "interview_prep"
 

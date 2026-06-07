@@ -31,7 +31,7 @@ flowchart TB
         a3[ResumeCritic - Critique]
         a4[ReviewAuditor - Evaluator and reflection]
         a5[CareerAdvisor - Advisory]
-        a6[InterviewCoach - Conditional on threshold]
+        a6[InterviewCoach - on-demand by default, ADR-085]
     end
 
     subgraph Tailoring [On-demand tailoring - out-of-graph]
@@ -68,7 +68,7 @@ assignment) and `tests/model_pins.json` (build-time pin).
 | `ResumeCritic` | `resume_critic` | Critique | Only for jobs that pass the deep-review gate. |
 | `ReviewAuditor` | `review_auditor` | Evaluator / reflection | Always paired with `ResumeCritic` in a bounded loop (`MAX_REVIEW_ROUNDS=2`). |
 | `CareerAdvisor` | `career_advisor` | Advisory | After the reflection loop stops. |
-| `InterviewCoach` | `interview_coach` | Conditional | When `match_score ≥ interview_prep_threshold` OR on user request via `POST /workflows/{wf}/jobs/{job}/interview-prep`. |
+| `InterviewCoach` | `interview_coach` | On-demand (ADR-085) | On-demand by default via `POST /workflows/{wf}/jobs/{job}/interview-prep`. The in-graph coach auto-fires only when `scoring.auto_interview_prep` is on (default off) and a selected job clears `min_match_score`. |
 
 ### Out-of-graph operations — driven by REST endpoints
 
@@ -150,7 +150,7 @@ Per-node agent calls:
 | `await_job_selection` | (none) | Auto-selects up to `MAX_SELECTED_JOBS` qualifying jobs (no interrupt). |
 | `deep_review` | `ResumeCritic` ⇄ `ReviewAuditor` | Reflection loop bounded by `MAX_REVIEW_ROUNDS` + the auditor's `stop` signal. |
 | `career_advice` | `CareerAdvisor` | One call per selected job. |
-| `interview_prep` | `InterviewCoach` | Skipped when no selected job clears `interview_prep_threshold`. |
+| `interview_prep` | `InterviewCoach` | On-demand by default (ADR-085): auto-fires only when `scoring.auto_interview_prep` is on (or `user_requested_interview_prep`). |
 | `generate_report` | (none) | Aggregates everything written by the earlier nodes; terminal status. |
 
 ## The two out-of-graph operations

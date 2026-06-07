@@ -153,6 +153,7 @@ safety.
 | `search.max_discovered` | Wide discovery net for manual-selection (ADR-060) OR the relevance pre-filter (ADR-079). Ignored in plain auto mode. | 50 | 50 (`MAX_DISCOVERED_JOBS`) |
 | `search.relevance_filter` | Opt-in reasoning pre-filter (ADR-079): one cheap LLM pass drops seniority/relevance mismatches before scoring. Bool. | off | n/a (bool) |
 | `search.max_posting_age_days` | Opt-in staleness cap (ADR-080): drop postings older than N days at discovery. Int; 0 = off. Keeps postings with no parseable date. | off | n/a (days) |
+| `scoring.auto_interview_prep` | Auto-run the in-graph interview coach (ADR-085, cost). Off = on-demand only (`POST .../interview-prep`); on = fires when a selected job clears `min_match_score`. Read via `get_auto_interview_prep(state)`. Bool. | off | n/a (bool) |
 | `search.max_jobs` | Discovery-SERVICE backstop (how many postings the scraper layer returns). Not a user-facing knob; the precise per-run caps are applied in the nodes. | 50 | 50 (`_SYSTEM_MAX_JOBS`) |
 
 Clamping happens in two places: `ConfigService._enforce_limits` (the per-user

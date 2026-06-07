@@ -55,7 +55,10 @@ scoring:
     - management
   # career_track: all   # weighting emphasis among the active tracks (ic | architect
   #                     # | management | all). Distinct from `tracks` (inclusion).
-  # min_match_score: 75 # any active track >= this triggers deep review + prep.
+  # min_match_score: 75 # any active track >= this triggers deep review.
+  # auto_interview_prep: false  # ADR-085: interview prep is on-demand by default
+  #                     # (POST .../interview-prep). Set true to auto-run the
+  #                     # in-graph coach when a selected job clears min_match_score.
 
 # ─── Job Sources ──────────────────────────────────────────────────────────────
 # Adzuna (AdzunaConfig). Quota guard: len(search.titles) x len(locations)

@@ -582,13 +582,10 @@ Future versions may allow memory retrieval through orchestrator-provided context
 
 The Interview Coach produces targeted interview preparation for a selected role.
 
-It may run when:
-
-```text
-match_score >= configured threshold
-```
-
-or when the user explicitly requests interview preparation.
+**On-demand by default (ADR-085).** The user requests it via
+`POST /workflows/{wf}/jobs/{job}/interview-prep`. The in-graph coach auto-runs only
+when `scoring.auto_interview_prep` is on (default off) and a selected job clears
+`min_match_score` — read via `get_auto_interview_prep(state)`.
 
 ---
 

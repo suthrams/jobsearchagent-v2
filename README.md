@@ -12,7 +12,7 @@ Built as a real-world exploration of **production agentic AI patterns**: statefu
 4. **Scores** each job against your resume across the profile's active career tracks concurrently
 5. **Reviews** high-match jobs with a critic → auditor reflection loop
 6. **Advises** on career positioning after the scoring pass
-7. **Coaches** interview prep for roles above the match threshold
+7. **Coaches** interview prep on demand (ADR-085)
 8. **Tailors** your resume with evidence-bound generation + fidelity guardrail
 9. **Tracks** every decision, reasoning step, and cost in SQLite
 
@@ -39,7 +39,7 @@ flowchart TD
         CRITIC["Resume Critic\nhigh-match jobs only"]
         AUDIT["Review Auditor\nreflection loop"]
         ADVISOR["Career Advisor"]
-        COACH["Interview Coach\n≥ threshold only"]
+        COACH["Interview Coach\non-demand"]
         TAILOR["Tailoring Agent\nevidence-bound"]
         FIDELITY["Fidelity Reviewer\nguardrail"]
         CP[("SqliteSaver\ncheckpoints")]
@@ -199,7 +199,7 @@ notebooks/            Phase validation notebooks
 | Resume Critic | Sonnet | Critique | High-match jobs only |
 | Review Auditor | Haiku | Evaluator / Reflection | High-match jobs only |
 | Career Advisor | Sonnet | Advisory | After reflection loop |
-| Interview Coach | Sonnet | Conditional | match_score ≥ threshold, on demand |
+| Interview Coach | Sonnet | On-demand | on-demand by default (ADR-085); auto only if `scoring.auto_interview_prep` |
 | Tailoring Agent | Sonnet | Evidence-bound generation | On user request |
 | Fidelity Reviewer | Haiku | Validation / Guardrail | After every tailoring call AND every Resume Clinic rewrite |
 | Resume Reviewer | Sonnet | Structured output (job-agnostic) | Resume Clinic, on user request (ADR-066) |

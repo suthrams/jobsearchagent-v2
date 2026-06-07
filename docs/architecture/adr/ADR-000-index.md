@@ -90,3 +90,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-082 | [Idempotent Workflow Kickoff + In-Flight Execution Guard](ADR-082-idempotent-workflow-kickoff.md) | Accepted (implemented) |
 | ADR-083 | [Cooperative Workflow Run Cancellation](ADR-083-cooperative-run-cancellation.md) | Accepted (implemented) |
 | ADR-084 | [Liveness + Readiness Health Endpoints (/health, /readyz)](ADR-084-health-and-readiness-endpoints.md) | Accepted (implemented) |
+| ADR-085 | [Cost cut: interview prep on-demand by default + verbose-agent output conciseness](ADR-085-cost-cut-interview-prep-on-demand-and-output-conciseness.md) | Accepted (implemented) |

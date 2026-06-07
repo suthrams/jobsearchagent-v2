@@ -266,7 +266,7 @@ MAX_LLM_CALLS_PER_RUN  = 200  # global per-run budget backstop
 
 **v2:** Execution is gated at multiple points:
 - Deep review runs **only for jobs that meet `min_match_score`** on any **active** track (the profile's `scoring.tracks` subset — ADR-071; ≤ `MAX_SELECTED_JOBS`, auto-selected — ADR-054)
-- Interview Coach runs **only when match_score ≥ 75** or user requests it
+- Interview Coach is **on-demand by default** (ADR-085) — the in-graph coach auto-fires only when `scoring.auto_interview_prep` is on; otherwise the user triggers it via `POST .../interview-prep`
 - Tailoring runs **on user request only**, post-hoc via the out-of-graph tailoring router (ADR-055/059) — the in-graph tailoring node was retired
 - Fidelity Reviewer runs **only after a generation agent** — every tailoring call and every Resume Clinic rewrite
 - Relevance Filter runs **only when `search.relevance_filter` is on** (opt-in, ADR-079), as one cheap batched call before scoring

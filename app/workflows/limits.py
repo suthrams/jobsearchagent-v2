@@ -169,6 +169,20 @@ def get_manual_selection(state: dict) -> bool:
     return bool(scoring.get("manual_selection", False))
 
 
+def get_auto_interview_prep(state: dict) -> bool:
+    """Return whether the in-graph interview coach auto-fires (ADR-085).
+
+    Default False: interview prep is on-demand only (the top selected job always
+    clears min_match_score, so auto-firing meant the Sonnet coach ran nearly every
+    run). The user still gets it via POST /workflows/{wf}/jobs/{job}/interview-prep,
+    or a profile can opt back in with scoring.auto_interview_prep: true.
+    Read from effective_config['scoring']['auto_interview_prep']; default False.
+    """
+    cfg = state.get("effective_config") or {}
+    scoring = cfg.get("scoring") or {}
+    return bool(scoring.get("auto_interview_prep", False))
+
+
 def get_relevance_filter(state: dict) -> bool:
     """Return whether the reasoning relevance pre-filter is enabled (ADR-079).
 

@@ -22,7 +22,7 @@
       {"id": "critic", "x": 1170, "y": 150, "w": 300, "h": 110, "accent": "magenta", "icon": "pen", "title": "ResumeCritic", "sub": "critique"},
       {"id": "auditor", "x": 490, "y": 300, "w": 300, "h": 110, "accent": "magenta", "icon": "check", "title": "ReviewAuditor", "sub": "evaluator / reflection"},
       {"id": "advisor", "x": 830, "y": 300, "w": 300, "h": 110, "accent": "blue", "icon": "chart", "title": "CareerAdvisor", "sub": "advisory"},
-      {"id": "coach", "x": 1170, "y": 300, "w": 320, "h": 110, "accent": "blue", "icon": "target", "title": "InterviewCoach", "sub": "conditional on threshold"},
+      {"id": "coach", "x": 1170, "y": 300, "w": 320, "h": 110, "accent": "blue", "icon": "target", "title": "InterviewCoach", "sub": "on-demand by default (ADR-085)"},
 
       {"id": "tailoring", "x": 90, "y": 565, "w": 400, "h": 110, "accent": "amber", "focal": true, "icon": "edit", "title": "TailoringAgent", "sub": "evidence-bound generation"},
 

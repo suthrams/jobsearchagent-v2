@@ -6,6 +6,7 @@ Routers are pure functions — no side effects, no DB calls.
 from __future__ import annotations
 
 from app.workflows.limits import (
+    get_auto_interview_prep,
     active_track_keys,
     best_track_score,
     get_manual_selection,
@@ -56,9 +57,14 @@ def deep_review_gate(state: dict) -> str:
 def interview_router(state: dict) -> str:
     """Route after career_advice: run InterviewCoach if any selected job qualifies, else finish.
 
-    A job qualifies if any of its track scores (technical/architecture/leadership)
-    meets the per-run min_match_score, or if the user explicitly requested coaching.
+    On-demand by default (ADR-085): the in-graph coach runs only when the user
+    requested it, or when a profile has opted into auto interview prep
+    (scoring.auto_interview_prep) and a selected job clears min_match_score.
     """
+    if state.get("user_requested_interview_prep"):
+        return "interview_prep"
+    if not get_auto_interview_prep(state):
+        return "generate_report"
     threshold = get_min_match_score(state)
     active_keys = active_track_keys(state)
     selected = state.get("selected_jobs") or []
@@ -66,6 +72,4 @@ def interview_router(state: dict) -> str:
         (best_track_score(j, active_keys) for j in selected if isinstance(j, dict)),
         default=0,
     )
-    if top_track >= threshold or state.get("user_requested_interview_prep"):
-        return "interview_prep"
-    return "generate_report"
+    return "interview_prep" if top_track >= threshold else "generate_report"

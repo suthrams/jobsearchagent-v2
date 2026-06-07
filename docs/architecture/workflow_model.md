@@ -81,7 +81,7 @@ flowchart TD
         SCORE --> SEL["3 - AUTO-SELECT<br/>top-3 qualifying by best track score<br/>(MAX_SELECTED_JOBS = 3)"]
         SEL --> DEEP["4 - DEEP REVIEW<br/>critic + auditor reflection loop"]
         DEEP --> ADV["5 - CAREER ADVICE"]
-        ADV --> INT["6 - INTERVIEW PREP<br/>(if top track score &ge; threshold)"]
+        ADV --> INT["6 - INTERVIEW PREP<br/>(on-demand by default, ADR-085)"]
         INT --> REP["7 - REPORT"]
     end
 

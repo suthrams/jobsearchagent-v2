@@ -15,6 +15,7 @@ from app.workflows.limits import (
     add_llm_call,
     append_error,
     best_track_score,
+    get_auto_interview_prep,
     get_metrics,
     get_min_match_score,
     safe_agent_usage_typed,
@@ -47,9 +48,11 @@ def make_interview_prep_node(
         job_id = top_job.get("job_id", top_job.get("id", ""))
         threshold = get_min_match_score(state)
 
-        # Routing guard — this node only runs when the router decided to call it,
-        # but we keep the check here as a safety net.
-        if best_track_score(top_job, active_keys) < threshold and not state.get("user_requested_interview_prep"):
+        # Routing guard / safety net (ADR-085): on-demand by default — run only on
+        # an explicit request, or when a profile opted into auto interview prep and
+        # the top job clears the threshold.
+        auto_qualifies = get_auto_interview_prep(state) and best_track_score(top_job, active_keys) >= threshold
+        if not state.get("user_requested_interview_prep") and not auto_qualifies:
             return {"current_step": "interview_prep", "updated_at": utcnow_iso()}
 
         score_by_job = {sj.get("job_id", sj.get("id", "")): sj for sj in scored_jobs}

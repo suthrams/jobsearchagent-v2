@@ -115,6 +115,7 @@ Never use `--no-verify`, `--no-gpg-sign`, or amend a published commit unless the
 - A job qualifies for deep review when ANY **active** track score `>= threshold` — never just `overall_score`. Use `qualifies_for_deep_review()` / `best_track_score()` with `active_track_keys(state)`; don't inline the comparison (ADR-071)
 - `await_job_selection` auto-selects up to `MAX_SELECTED_JOBS` qualifying jobs (highest best-track score wins); no `interrupt()`
 - `deep_review_gate` skips straight to `generate_report` when `selected_jobs` is empty
+- **Interview prep is on-demand by default (ADR-085, cost):** the in-graph coach auto-fires ONLY when `scoring.auto_interview_prep` is on (default off) or `user_requested_interview_prep` is set — read via `get_auto_interview_prep(state)`, never inline. Otherwise users get it via `POST /workflows/{wf}/jobs/{job}/interview-prep` (the selected job always clears `min_match_score`, so auto meant the Sonnet coach ran nearly every run)
 
 **Scoring tracks — per-profile active subset (ADR-071)**
 - Tracks are fixed: `ic`->`technical_score`, `architect`->`architecture_score`, `management`->`leadership_score` (`TRACK_TO_SCORE_KEY`). A profile declares its subset via `effective_config.scoring.tracks`; default/absent/empty/all-invalid = all three
