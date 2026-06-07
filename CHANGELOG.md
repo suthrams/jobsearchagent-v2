@@ -737,7 +737,7 @@ asserts the regression scenario directly. Full suite at 738 (was 729;
 
 ### Fixed — Discovery dedup no longer collapses re-discovery + per-user dedup + funnel instrumentation
 
-Live run on the cyber-grad (Vishal) profile surfaced a discovery bug: three
+Live run on the cyber-grad profile surfaced a discovery bug: three
 back-to-back runs all returned the same single posting ("Digital Network
 Exploitation Analyst @ Booz Allen Hamilton") despite `max_discovered=50`,
 `max_scored=10`, `min_match_score=40`, no errors, no timeouts. Diagnosis
@@ -777,7 +777,7 @@ workflow_runs (for user_id) -> jobs (for URL match)`. When the node passes
 has already paid to score in a prior run — the cost saver. Different
 users (profiles) score independently, which is the correct semantic for
 ADR-062's multi-user model: a job scored by Primary may legitimately be
-re-scored by Vishal under different criteria.
+re-scored by a second profile under different criteria.
 
 Old `url_exists` is retained on the repository for backward compat but is
 no longer called by the dedup path.
@@ -790,9 +790,9 @@ invariant under test. `test_deduplicate_drops_urls_already_scored_by_this_user`
 and `test_deduplicate_per_user_does_not_drop_other_users_scores` cover the
 multi-profile semantics. Full suite at 729 (was 725; +4).
 
-**What this means for the cyber profile.** Next run on Vishal's profile
+**What this means for the cyber profile.** Next run on the cyber-grad profile
 should re-surface the 22 cyber-relevant URLs already in `jobs` (now that
-they're not blocked by global dedup), score whatever Vishal hasn't already
+they're not blocked by global dedup), score whatever that profile hasn't already
 scored this session (per-user dedup catches the cost concern), and write
 the funnel counts to state so the UI / DB can show what got dropped where.
 

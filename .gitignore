@@ -56,7 +56,7 @@ resume.pdf
 
 # ── data/ : default-deny, then allow the intentionally-tracked files ──────
 # `data/` holds SQLite databases, exports (resume_clinic_validation outputs,
-# vishal_export/, etc.), parsed profiles, and other PII. Default-deny means a
+# resume_export/, etc.), parsed profiles, and other PII. Default-deny means a
 # new file landing in data/ stays local unless we explicitly un-ignore it.
 data/*
 # Allow-list: these are the only data/ files that ARE meant to be committed.

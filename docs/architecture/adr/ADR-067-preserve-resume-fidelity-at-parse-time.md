@@ -13,7 +13,7 @@ feature). If a field is not in the schema, the parser cannot store it, and
 nothing downstream can recover it — `raw_text` is reserved for the Fidelity
 Reviewer per the prompt rule, and other agents see only the parsed profile.
 
-A Resume Clinic export of Vishal's resume on 2026-05-28 surfaced two concrete
+A Resume Clinic export of a test profile's resume on 2026-05-28 surfaced two concrete
 content-loss bugs caused by this:
 
 1. `EducationEntry` has no `gpa` or `honors` field. The source resume's

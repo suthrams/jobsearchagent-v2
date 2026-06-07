@@ -74,8 +74,8 @@ class JobRepository:
         Used by the discovery dedup path as the per-user cost saver: if a
         user has already paid to score this URL, don't pay again on
         re-runs. Different users (profiles) score independently - a job
-        scored by Primary may legitimately be re-scored by Vishal under
-        different criteria.
+        scored by Primary may legitimately be re-scored by another profile
+        under different criteria.
         """
         if not user_id:
             return False
