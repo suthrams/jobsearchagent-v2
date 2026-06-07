@@ -4,11 +4,12 @@ Plain-language reference for **what the system decides and why**. This is the
 explainability layer: if you (or a stakeholder) ask "why did the run do that?",
 the answer is here, with a pointer to the code constant or ADR that enforces it.
 
-**Source of truth.** Numeric limits live in `app/workflows/limits.py`; per-profile
-knobs live in `config/config.yaml` + the `user_config` table (read via
-`ConfigService.get_effective_config`). The values below are mirrored from those
-sources for readability — when a value changes, change it in code/config first,
-then update this line. Each rule cites where it is enforced.
+**No values by design.** This document carries **no numeric limits or thresholds**
+— every value lives in `app/workflows/limits.py` (constants) or
+`config/config.yaml` + the `user_config` table (per-profile knobs, read via
+`ConfigService.get_effective_config`). Each rule names the **constant or config
+key** and where it is enforced, so there is nothing here to drift. To see a
+current value, open the cited source.
 
 **Scope boundary (read first).** This system *informs a human's* career decision;
 it never *takes* the decision. There is deliberately **no Apply / Save / status
@@ -32,7 +33,7 @@ downstream. The rules for each gate follow.
 
 | Stage | What it decides | Rule refs |
 |---|---|---|
-| Discovery | Which postings enter the pool | D1-D6 |
+| Discovery | Which postings enter the pool | D1-D7 |
 | Relevance pre-filter | Drop clear mismatches before paid scoring | D5 |
 | Scoring | Fit score per active track | S1-S5 |
 | Auto-selection | Which scored jobs get deep review | Q1-Q4 |
@@ -54,8 +55,8 @@ downstream. The rules for each gate follow.
   postings outside the window; `search.exclude_senior` drops senior roles. Off by
   default. (ADR-065)
 - **D4 — Posting-age staleness (opt-in).** `search.max_posting_age_days` drops
-  postings older than N days at discovery; postings with no parseable date are
-  kept. Off by default. (ADR-080)
+  postings older than the configured age at discovery; postings with no parseable
+  date are kept. Off by default. (ADR-080)
 - **D5 — Relevance pre-filter (opt-in).** When `search.relevance_filter` is on, one
   cheap reasoning pass drops clear seniority/relevance mismatches
   (`too_senior` / `too_junior` / `unrelated`) **before** paid scoring. Profile-
@@ -63,9 +64,9 @@ downstream. The rules for each gate follow.
   verdict keeps ALL jobs. (ADR-079)
 - **D6 — De-duplication.** Repeat postings and already-excluded jobs are dropped
   before scoring.
-- **D7 — Discovery width.** The pool is capped at `MAX_DISCOVERED_JOBS = 50`
-  (configurable via `search.max_discovered` up to that ceiling; only relevant in
-  manual-selection / relevance-filter modes). (ADR-060/061)
+- **D7 — Discovery width.** The pool is capped at `MAX_DISCOVERED_JOBS`
+  (`limits.py`), configurable via `search.max_discovered` up to that ceiling; only
+  relevant in manual-selection / relevance-filter modes. (ADR-060/061)
 
 ---
 
@@ -81,9 +82,9 @@ downstream. The rules for each gate follow.
 - **S3 — Required dimensions.** `overall_score` and `domain_score` are always
   produced; `overall_score` is computed only from the **active** track scores,
   never inflated above them.
-- **S4 — Scored width.** At most `MAX_JOBS_PER_RUN = 10` jobs are scored by default
-  (per-run override `scoring.max_scored`, clamped to `MAX_SCORED_CEILING = 25`).
-  Read via `get_max_scored(state)`. (ADR-061)
+- **S4 — Scored width.** The number of jobs scored is capped by `MAX_JOBS_PER_RUN`
+  by default (per-run override `scoring.max_scored`, clamped to
+  `MAX_SCORED_CEILING`). Read via `get_max_scored(state)`. (ADR-061)
 - **S5 — Manual selection (opt-in).** When `scoring.manual_selection` is on,
   discovery casts the wide net and the run **parks** for the user to pick which
   jobs to score, instead of auto-scoring. Two phases, one workflow id. (ADR-060)
@@ -93,17 +94,16 @@ downstream. The rules for each gate follow.
 ## 4. Qualification & selection rules
 
 - **Q1 — Qualification is per-track, not overall.** A scored job qualifies for deep
-  review if **ANY active track score >= `min_match_score`** — *not* the overall
+  review if **ANY active track score meets `min_match_score`** — *not* the overall
   score. Use `qualifies_for_deep_review()` / `best_track_score()`. (ADR-071)
-  - *Consequence:* a job with overall 62 but technical 68 still qualifies when IC
-    is active and the threshold is 65. Raise `min_match_score` to require stronger
-    matches.
-- **Q2 — Default threshold.** `MIN_MATCH_SCORE_DEFAULT = 75`; override per profile
-  via `scoring.min_match_score`. Higher = fewer jobs reach the expensive
-  deep-review + advice stages = cheaper and stricter.
-- **Q3 — Selection cap.** At most `MAX_SELECTED_JOBS = 3` qualifying jobs are
-  auto-selected per run, highest best-track score first. (ADR-054, cap lowered to
-  3 for cost)
+  - *Consequence:* a job can qualify on a single strong track score even when its
+    overall score is below the threshold. Raise `min_match_score` to require
+    stronger matches.
+- **Q2 — Match threshold.** Defaults to `MIN_MATCH_SCORE_DEFAULT` (`limits.py`);
+  override per profile via `scoring.min_match_score`. Higher = fewer jobs reach the
+  expensive deep-review + advice stages = cheaper and stricter.
+- **Q3 — Selection cap.** At most `MAX_SELECTED_JOBS` (`limits.py`) qualifying jobs
+  are auto-selected per run, highest best-track score first. (ADR-054)
 - **Q4 — Empty selection short-circuits.** If no job qualifies, `deep_review_gate`
   skips straight to the report — no critic/auditor/advisor spend.
 
@@ -113,9 +113,9 @@ downstream. The rules for each gate follow.
 
 - **R1 — Critic then auditor, looping.** The Resume Critic critiques fit; the
   Review Auditor evaluates the critique; they loop to converge.
-- **R2 — Bounded loop.** At most `MAX_REVIEW_ROUNDS = 2` rounds. The loop also
-  stops early on `AUDIT_QUALITY_THRESHOLD = 75` or when an extra round improves the
-  verdict by less than `STAGNATION_MIN_IMPROVEMENT = 5`.
+- **R2 — Bounded loop.** Capped at `MAX_REVIEW_ROUNDS` (`limits.py`). The loop also
+  stops early once the audit clears `AUDIT_QUALITY_THRESHOLD`, or when an extra
+  round improves the verdict by less than `STAGNATION_MIN_IMPROVEMENT`.
 - **R3 — High-match jobs only.** Deep review runs only on the auto-selected
   qualifying jobs (Q1-Q3), never on the whole scored pool.
 
@@ -155,19 +155,20 @@ downstream. The rules for each gate follow.
 
 ## 8. Execution limits & cost controls
 
-Cost is a first-class rule, not an afterthought. Limits in `app/workflows/limits.py`:
+Cost is a first-class rule, not an afterthought. The limit constants live in
+`app/workflows/limits.py` (open it for current values):
 
-| Limit | Value | Meaning |
-|---|---|---|
-| `MAX_JOBS_PER_RUN` | 10 | Default scored cap (override `scoring.max_scored`) |
-| `MAX_SCORED_CEILING` | 25 | Hard ceiling for `scoring.max_scored` |
-| `MAX_DISCOVERED_JOBS` | 50 | Wide-net discovery cap |
-| `MAX_SELECTED_JOBS` | 3 | Qualifying jobs deep-reviewed per run |
-| `MAX_RESEARCH_STEPS` | 2 | Research ReAct steps per job |
-| `MAX_REVIEW_ROUNDS` | 2 | Critic/auditor reflection rounds |
-| `MAX_LLM_CALLS_PER_JOB` | 10 | Per-job call backstop |
-| `MAX_LLM_CALLS_PER_RUN` | 200 | Absolute per-run call backstop |
-| `MAX_CHAT_TURNS_PER_CLINIC` | 25 | Resume Clinic chat-turn cap (ADR-068) |
+| Constant | Governs |
+|---|---|
+| `MAX_JOBS_PER_RUN` | Default scored cap (override `scoring.max_scored`) |
+| `MAX_SCORED_CEILING` | Hard ceiling for `scoring.max_scored` |
+| `MAX_DISCOVERED_JOBS` | Wide-net discovery cap |
+| `MAX_SELECTED_JOBS` | Qualifying jobs deep-reviewed per run |
+| `MAX_RESEARCH_STEPS` | Research ReAct steps per job |
+| `MAX_REVIEW_ROUNDS` | Critic/auditor reflection rounds |
+| `MAX_LLM_CALLS_PER_JOB` | Per-job call backstop |
+| `MAX_LLM_CALLS_PER_RUN` | Absolute per-run call backstop |
+| `MAX_CHAT_TURNS_PER_CLINIC` | Resume Clinic chat-turn cap (ADR-068) |
 
 - **C1 — Budget cap is observable.** When a run hits the call backstop, jobs are
   skipped and a `budget_cap_reached` security event is emitted (counts only).
@@ -176,7 +177,7 @@ Cost is a first-class rule, not an afterthought. Limits in `app/workflows/limits
   a high-volume agent outside the `HIGH_VOLUME_SAFE_MODELS` allowlist; the override
   is rejected and a `cost_cap_violation` event is emitted. (in code; ADR-058)
 - **C3 — Per-agent model tiering.** High-volume agents run on the cheapest capable
-  model (Haiku); only nuanced advisory/generation agents use Sonnet. Pinned in
+  model; only nuanced advisory/generation agents use the premium tier. Pinned in
   `tests/model_pins.json`. (ADR-053/058)
 - **C4 — Send the resume lean.** Scoring receives a projected resume
   (`project_resume_for_scoring`) that drops fields scoring never reads. (ADR-086)
@@ -193,11 +194,12 @@ Cost is a first-class rule, not an afterthought. Limits in `app/workflows/limits
 - **CF2 — Profile-owned knobs (safe to change per profile):** `search.*`
   (titles, locations, filters, relevance_filter, max_discovered, age/experience),
   `scoring.*` (tracks, career_track, min_match_score, max_scored,
-  manual_selection, auto_interview_prep). See `docs/architecture/config_model.md`.
+  manual_selection, auto_interview_prep). See `docs/architecture/config_model.md`
+  for the full knob list, defaults, and ceilings.
 - **CF3 — Protected knobs (system-only, never per-profile):** models/providers,
-  hard execution limits, retention windows, the deep-review/interview thresholds
-  that gate cost. Listed in `_PROTECTED_KEYS`; silently ignored if a profile tries
-  to override them. (ADR-062)
+  hard execution limits, retention windows, and the cost-gating thresholds. Listed
+  in `_PROTECTED_KEYS`; silently ignored if a profile tries to override them.
+  (ADR-062)
 - **CF4 — Restart to apply model changes.** Per-agent model/provider overrides
   take effect on restart; search/scoring knobs apply on the next run. (ADR-053)
 
@@ -245,4 +247,5 @@ Cost is a first-class rule, not an afterthought. Limits in `app/workflows/limits
 - `docs/architecture/agent_model.md` — per-agent contracts
 - `docs/architecture/config_model.md` — every config knob + defaults/ceilings
 - `docs/architecture/adr/ADR-000-index.md` — the decisions behind each rule
+- `app/workflows/limits.py` — the limit constants (current values)
 - `docs/cost_troubleshooting.md` / `docs/model_recommendations.md` — cost levers
