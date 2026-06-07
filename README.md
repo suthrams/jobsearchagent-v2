@@ -29,20 +29,28 @@ flowchart TD
 
     subgraph SOURCES["Job Sources"]
         AZ["Adzuna API\n(concurrent, 5 workers)"]
-        LI["LinkedIn URLs\nmanual intake"]
+        LI["LinkedIn / custom URLs\nmanual intake"]
+        ATS["ATS-direct\nGreenhouse · Lever (opt-in)"]
     end
 
-    subgraph WORKFLOW["LangGraph Workflow"]
-        DISC["Discover Jobs"]
+    subgraph WORKFLOW["LangGraph Workflow - in-graph, no interrupt()"]
+        DISC["Discover + keyword filter"]
+        REL["Relevance Filter\nopt-in pre-scoring (ADR-079)"]
         RES["Research Agent\ncompany + role context"]
         SCORE["Scoring Agent\nactive tracks concurrently"]
-        CRITIC["Resume Critic\nhigh-match jobs only"]
-        AUDIT["Review Auditor\nreflection loop"]
+        GATE{"Deep-review gate\nhigh-match jobs only"}
+        CRITIC["Resume Critic"]
+        AUDIT["Review Auditor"]
         ADVISOR["Career Advisor"]
-        COACH["Interview Coach\non-demand"]
+        REPORT["Generate Report"]
+        CP[("SqliteSaver\ncheckpoints")]
+    end
+
+    subgraph ONDEMAND["On-Demand - out-of-graph (ADR-055/066/085)"]
+        COACH["Interview Coach"]
         TAILOR["Tailoring Agent\nevidence-bound"]
         FIDELITY["Fidelity Reviewer\nguardrail"]
-        CP[("SqliteSaver\ncheckpoints")]
+        CLINIC["Resume Clinic\nreview · chat · export"]
     end
 
     subgraph OUTPUTS["Results"]
@@ -55,16 +63,29 @@ flowchart TD
     PREFS --> DISC
     AZ --> DISC
     LI --> DISC
-    DISC --> RES --> SCORE --> CRITIC --> AUDIT --> ADVISOR --> COACH
-    COACH --> TAILOR --> FIDELITY
+    ATS --> DISC
+    DISC --> REL --> RES --> SCORE --> GATE
+    GATE -->|qualifies| CRITIC
+    CRITIC <-->|reflection loop| AUDIT
+    AUDIT --> ADVISOR --> REPORT
+    GATE -->|no match| REPORT
     WORKFLOW <--> CP
-    FIDELITY --> API --> UI
+    REPORT --> API --> UI
     WORKFLOW --> DB
+
+    REPORT -.user triggers.-> COACH
+    REPORT -.user triggers.-> TAILOR
+    REPORT -.user triggers.-> CLINIC
+    TAILOR --> FIDELITY
+    COACH --> API
+    FIDELITY --> API
+    CLINIC --> API
 
     style SCORE fill:#dbeafe,stroke:#3b82f6
     style TAILOR fill:#dbeafe,stroke:#3b82f6
     style CRITIC fill:#dbeafe,stroke:#3b82f6
     style FIDELITY fill:#fee2e2,stroke:#dc2626
+    style GATE fill:#f3e8ff,stroke:#9333ea
     style CP fill:#fef9c3,stroke:#eab308
     style DB fill:#fef9c3,stroke:#eab308
 ```
