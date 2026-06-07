@@ -307,6 +307,8 @@ The system tracks:
 * human decisions
 * errors and retries
 * security events
+* API requests (method/route/status/latency) and live health: `GET /health` +
+  `GET /readyz` probe the shared dependencies (ADR-084)
 
 Observability is required for debugging, cost control, and trust.
 

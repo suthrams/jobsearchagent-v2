@@ -33,6 +33,21 @@ def _user_params(extra: dict | None = None) -> dict:
     return params
 
 
+def get_readiness() -> dict:
+    """GET /readyz (ADR-084). Infra endpoint - no user scoping. Never raises:
+    on a connection error returns a 'down' fallback so the dashboard still
+    renders. A 503 body is valid JSON and is returned as-is."""
+    try:
+        r = httpx.get(f"{BASE_URL}/readyz", timeout=_TIMEOUT_GET)
+        return r.json()
+    except Exception as e:  # noqa: BLE001
+        return {
+            "status": "down",
+            "checks": {},
+            "detail": f"backend unreachable: {type(e).__name__}",
+        }
+
+
 def start_workflow(
     resume_id: str,
     search_criteria: dict,

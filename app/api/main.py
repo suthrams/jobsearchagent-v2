@@ -24,6 +24,7 @@ from app.api.dependencies import build_and_cache_graph, cleanup_graph, get_graph
 from app.api.routers.admin import router as admin_router
 from app.api.routers.config import router as config_router
 from app.api.routers.dashboard import router as dashboard_router
+from app.api.routers.health import router as health_router
 from app.api.routers.reads import router as reads_router
 from app.api.routers.jobs import exclusion_router as jobs_exclusion_router
 from app.api.routers.jobs import router as jobs_router
@@ -45,6 +46,9 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Job Search Agent v2", lifespan=lifespan)
+
+# ADR-084: route templates excluded from api_requests recording (health probes).
+_OBSERVABILITY_EXCLUDED = {"/health", "/readyz"}
 
 
 @app.exception_handler(RequestValidationError)
@@ -96,15 +100,20 @@ async def _observe_requests(request: Request, call_next):
         latency_ms = int((time.perf_counter() - start) * 1000)
         route = request.scope.get("route")
         template = getattr(route, "path", None) or "<unmatched>"
-        user_id = request.query_params.get("user_id") or "0"
-        record_api_request_safe(
-            user_id=user_id,
-            method=request.method,
-            route_template=template,
-            status_code=status_code,
-            latency_ms=latency_ms,
-        )
+        # ADR-084: health probes are excluded from api_requests - frequent polling
+        # would flood the table and a 503 from /readyz must not skew the dashboard's
+        # API error rate. Health is a separate signal from request observability.
+        if template not in _OBSERVABILITY_EXCLUDED:
+            user_id = request.query_params.get("user_id") or "0"
+            record_api_request_safe(
+                user_id=user_id,
+                method=request.method,
+                route_template=template,
+                status_code=status_code,
+                latency_ms=latency_ms,
+            )
 
+app.include_router(health_router)  # ADR-084: /health + /readyz (unauthenticated ops)
 app.include_router(reads_router)  # ADR-075: before workflows so /workflows/recent matches first
 app.include_router(workflows_router)
 app.include_router(jobs_router)

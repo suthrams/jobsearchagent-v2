@@ -739,6 +739,15 @@ api_requests      (HTTP-layer requests; wired ADR-074 Gap 5)
 > out-of-graph `run_metrics` (Gap 3) and the thread-local `last_call_usage` race
 > (Gap 4). See ADR-074.
 
+> **ADR-084 adds the active health layer** distinct from the passive `api_requests`
+> recording above: `GET /health` (liveness) and `GET /readyz` (readiness — probes
+> the shared dependencies database/agent_provider/adzuna/openai and returns
+> ready/degraded/down). These two routes are **excluded** from `api_requests`
+> (probes would flood the table and a 503 must not skew the API error rate) and are
+> surfaced live on the System Dashboard "System health" tile. `api_requests` answers
+> "what traffic happened and how did it fare"; `/readyz` answers "is the plumbing up
+> right now". See ADR-084 / `health_check_design.md`.
+
 > **ADR-077 closed the failure-path cost hole:** `log_llm_call` previously ran on
 > the success path only, so a billed-but-unparseable response (schema repair
 > exhausted) wrote no `llm_calls` row and every cost rollup undercounted it. The

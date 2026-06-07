@@ -16,11 +16,44 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 
+from app.ui import api_client
 from app.ui.data import _cached_system_dashboard
 from app.ui.formatting import _fmt_ts
 from app.ui.nav import ViewContext, _navigate
 
 _WINDOW_MAP = {"Last 7 days": 7, "Last 30 days": 30, "All time": None}
+
+_HEALTH_ICON = {"ready": "🟢", "degraded": "🟡", "down": "🔴"}
+
+
+def _render_system_health() -> None:
+    """Live readiness tile (ADR-084) - a `GET /readyz` probe, not a cached DB read.
+
+    Renders the overall ready/degraded/down status plus each shared-dependency
+    check. Degrades gracefully: api_client.get_readiness() returns a 'down'
+    fallback if the backend is unreachable, so the dashboard still paints.
+    """
+    snap = api_client.get_readiness()
+    status = snap.get("status", "down")
+    icon = _HEALTH_ICON.get(status, "⚪")
+    st.markdown(f"**System health: {icon} {status.upper()}**")
+    checks = snap.get("checks") or {}
+    if not checks:
+        st.caption(snap.get("detail") or "Readiness unavailable.")
+        return
+    cols = st.columns(len(checks))
+    for col, (name, c) in zip(cols, checks.items()):
+        if c.get("ok"):
+            mark = "🟢"
+        elif c.get("optional"):
+            mark = "⚪"
+        else:
+            mark = "🔴"
+        col.metric(name, c.get("mode") or ("ok" if c.get("ok") else "—"))
+        col.caption(f"{mark} {c.get('detail', '')}")
+    st.caption("Live readiness (`GET /readyz`, ADR-084): database is critical; "
+               "agent_provider / adzuna are capabilities (mock mode or missing "
+               "credentials -> degraded); openai is optional.")
 
 
 def render(ctx: ViewContext) -> None:
@@ -28,6 +61,10 @@ def render(ctx: ViewContext) -> None:
     st.caption("Spend, security posture, performance, and reliability across all "
                "runs. Stored per run (correlation id), viewed system-level - "
                "scoped to the active profile unless you switch to all profiles.")
+
+    # ── System health (ADR-084: live readiness probe, not windowed) ───────────
+    _render_system_health()
+    st.divider()
 
     # ── Shared controls ───────────────────────────────────────────────────────
     wc1, wc2 = st.columns([3, 2])

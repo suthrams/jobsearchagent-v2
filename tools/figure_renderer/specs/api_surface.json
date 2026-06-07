@@ -2,7 +2,7 @@
   "id": "api_surface",
   "outDir": "docs/architecture/images",
   "width": 1680,
-  "height": 1300,
+  "height": 1400,
   "layout": "table",
   "title": "REST API surface - by domain",
   "headSub": "Every endpoint the Streamlit UI calls, grouped by responsibility.",
@@ -16,7 +16,8 @@
     {"icon": "doc", "accent": "magenta", "label": "Tailoring drafts", "sub": "review + decide", "cells": [{"code": "GET /workflows/{wf}/tailorings   GET /tailorings/{id}   POST /tailorings/{id}/decisions"}]},
     {"icon": "filter", "accent": "red", "label": "Job exclusion", "sub": "filter input", "cells": [{"code": "GET /jobs/excluded   POST /jobs/{id}/exclude   DELETE /jobs/{id}/exclude"}]},
     {"icon": "pen", "accent": "amber", "label": "Resume Clinic", "sub": "out-of-graph", "cells": [{"code": "POST /users/{id}/resume-clinic   GET /users/{id}/resume-clinic   POST /resume-clinic/{id}/decisions   .../chat   .../discard-edits   .../export"}]},
-    {"icon": "gauge", "accent": "blue", "label": "Config", "sub": "settings", "cells": [{"code": "GET /config   PUT /config   GET /config/providers   POST /config/reload"}]}
+    {"icon": "gauge", "accent": "blue", "label": "Config", "sub": "settings", "cells": [{"code": "GET /config   PUT /config   GET /config/providers   POST /config/reload"}]},
+    {"icon": "shield", "accent": "green", "label": "Ops / health", "sub": "unauth (ADR-084)", "cells": [{"code": "GET /health   GET /readyz"}]}
   ],
-  "takeaway": {"icon": "globe", "accent": "amber", "text": "Eight domains, one rule: the UI is a {{blue:client}}. Every read and write is a REST call - the backend owns all state (ADR-075)."}
+  "takeaway": {"icon": "globe", "accent": "amber", "text": "Nine groups, one rule: the UI is a {{blue:client}}. Every read and write is a REST call - the backend owns all state (ADR-075); only the ops probes are unauthenticated."}
 }

@@ -396,6 +396,18 @@ ANTHROPIC_API_KEY → environment variable
 
 ---
 
+### Health endpoints are intentionally unauthenticated + secret-safe (ADR-084)
+
+`GET /health` and `GET /readyz` are the two deliberately **unauthenticated**
+infrastructure endpoints (they do not use the `?user_id=` seam). This is standard
+for health probes and is safe by construction: `/health` returns only a liveness
+flag, and `/readyz` reports dependency **presence/mode only** (`live`/`mock`,
+`configured`/`not configured`) - never the value of any API key, and never PII. The
+readiness checks therefore leak no secret and no user data. (Both are also excluded
+from `api_requests` recording - see `observability.md`.)
+
+---
+
 ### Security Events
 
 **Wired since ADR-073** (the table existed from ADR-026 but had zero emit

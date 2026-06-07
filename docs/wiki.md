@@ -167,6 +167,7 @@ merges a profile's `user_config` rows over the shared YAML defaults. The legacy
 |---|---|
 | [architecture/observability.md](architecture/observability.md) | The observability layer: `ObservabilityService` (one never-crash writer), correlation by `workflow_run_id` (including out-of-graph ops via a lightweight run row), per-call cost/token/latency tracking, the `agent_events` vs `llm_calls` split. WIRED since ADR-073/074: `security_events` (5 emit sites), `human_decisions`, `step_executions`, `api_requests`. Failed-call cost attribution (ADR-077) and the schema-repair drift proxy (ADR-078). All surfaced on the System Dashboard |
 | [architecture/security_observability_design.md](architecture/security_observability_design.md) | The System Dashboard design (ADR-073): security events + PSSR + cost in one pane, stored per-run, viewed system-level and profile-scoped; the 5 deterministic security-event emit sites and their PII-safe descriptions |
+| [architecture/health_check_design.md](architecture/health_check_design.md) | Implementation design for the liveness/readiness endpoints (ADR-084): `GET /health` + `GET /readyz`, the shared-dependency check registry (database/agent_provider/adzuna/openai), the ready/degraded/down taxonomy, the `api_requests` exclusion, and the System Dashboard health tile |
 | [architecture/security.model.md](architecture/security.model.md) | PII minimization — direct identifiers are redacted before any LLM call (ADR-069 seam); untrusted input handling (job descriptions); ethics guardrails (gap labeling, evidence requirement, no fabrication); the wired `security_events` table |
 | [architecture/pii_data_flow.md](architecture/pii_data_flow.md) | Where PII flows and where it is stopped (ADR-069): the send-side redaction seam, the at-rest surfaces, and the sanctioned `raw_text` paths |
 | [architecture/spike_data_at_rest_security.md](architecture/spike_data_at_rest_security.md) | Data-at-rest security spike (ADR-070): encryption options, the retention/purge cascade, and storing the redacted profile in workflow state |
@@ -317,8 +318,8 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
 | docs/ top-level | 8 |
-| docs/architecture/ | 31 |
-| docs/architecture/adr/ | 84 (index + 83 ADRs) |
+| docs/architecture/ | 32 |
+| docs/architecture/adr/ | 85 (index + 84 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/incidents/ (postmortem log: README + per-incident) | 2 |
 | docs/models/ | 3 |

@@ -78,6 +78,11 @@ flowchart TB
         f3[GET /config/providers]
         f4[POST /config/reload]
     end
+
+    subgraph Ops_health
+        o1[GET /health]
+        o2[GET /readyz]
+    end
 ```
 
 ## Reference table
@@ -160,6 +165,16 @@ same key + body replays the original run instead of starting a second; `retry` a
 | `PUT` | `/config` | Upsert one user-config override (rejects protected keys). |
 | `GET` | `/config/providers` | Available LLM provider catalog. |
 | `POST` | `/config/reload` | Rebuild the ModelRegistry after a config write. |
+
+### Ops / health (ADR-084)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/health` | Liveness — 200 if the process serves; no dependency I/O. |
+| `GET` | `/readyz` | Readiness — probes shared deps; `ready`/`degraded` (200) or `down` (503). |
+
+These two are **unauthenticated** (no `?user_id=`) and **excluded** from `api_requests`
+recording. See the [Identity model](#identity-model-adr-062) exemption below.
 
 ## Identity model (ADR-062)
 

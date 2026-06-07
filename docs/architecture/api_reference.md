@@ -11,6 +11,7 @@
 - [Overview](#overview)
 - [Common Patterns](#common-patterns)
 - [Error Codes](#error-codes)
+- [Health and readiness](#health-and-readiness-adr-084)
 - [Endpoints](#endpoints)
   - [POST /workflows](#post-workflows)
   - [GET /workflows/{workflow_id}](#get-workflowsworkflow_id)
@@ -173,6 +174,54 @@ All error responses share this structure:
 | 409 | `workflow_already_running` | A retry / scoring re-submit was refused because the run is already executing (ADR-082) |
 | 409 | `workflow_not_cancellable` | Cancel requested on a run with no pending steps (already terminal or parked) (ADR-083) |
 | 422 | `validation_error` | Request body / path / query fails schema validation. Pydantic field errors appear in `detail.details` (a list). Normalised by a global handler in `app/api/main.py` so the consumer reads errors uniformly across all endpoints. |
+
+---
+
+## Health and readiness (ADR-084)
+
+Two unauthenticated infrastructure endpoints. They do **not** take the `?user_id=`
+seam, and they are **excluded** from `api_requests` recording (probes would flood
+the table and a `503` from `/readyz` must not skew the dashboard's API error rate).
+
+### GET /health
+
+Liveness. No dependency I/O; returns `200` whenever the process is serving.
+
+```json
+{ "status": "ok", "service": "jobsearchagent-v2", "version": "2.0.0" }
+```
+
+### GET /readyz
+
+Readiness. Probes the shared dependencies (not the individual routes) and aggregates.
+**Secret-safe**: reports presence/mode only, never key values.
+
+Checks: `database` (critical), `agent_provider` (Anthropic `live`/`mock`), `adzuna`
+(configured?), `openai` (optional). Aggregate `status`:
+
+| status | HTTP | When |
+|---|---|---|
+| `ready` | 200 | all critical + capability checks green |
+| `degraded` | 200 | DB ok but a capability is unavailable (mock mode, or Adzuna unconfigured) |
+| `down` | 503 | the `database` check failed (the one critical dependency) |
+
+**Response (200, ready):**
+
+```json
+{
+  "status": "ready",
+  "checks": {
+    "database":       { "ok": true, "detail": "SELECT 1 ok", "latency_ms": 2 },
+    "agent_provider": { "ok": true, "mode": "live", "detail": "live" },
+    "adzuna":         { "ok": true, "detail": "configured" },
+    "openai":         { "ok": true, "detail": "configured", "optional": true }
+  },
+  "checked_at": "2026-06-06T12:00:00Z"
+}
+```
+
+A `degraded` body has the same shape with `status: "degraded"` and the offending
+checks `ok: false` (still HTTP 200). A `down` body returns HTTP `503`.
 
 ---
 

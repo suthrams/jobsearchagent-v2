@@ -89,3 +89,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-081 | [ATS-Direct Job Sources (Greenhouse + Lever)](ADR-081-ats-direct-sources.md) | Accepted (prototype) |
 | ADR-082 | [Idempotent Workflow Kickoff + In-Flight Execution Guard](ADR-082-idempotent-workflow-kickoff.md) | Accepted (implemented) |
 | ADR-083 | [Cooperative Workflow Run Cancellation](ADR-083-cooperative-run-cancellation.md) | Accepted (implemented) |
+| ADR-084 | [Liveness + Readiness Health Endpoints (/health, /readyz)](ADR-084-health-and-readiness-endpoints.md) | Accepted (implemented) |

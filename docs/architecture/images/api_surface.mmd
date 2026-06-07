@@ -56,3 +56,8 @@ flowchart TB
         f3[GET /config/providers]
         f4[POST /config/reload]
     end
+
+    subgraph Ops_health
+        o1[GET /health]
+        o2[GET /readyz]
+    end
