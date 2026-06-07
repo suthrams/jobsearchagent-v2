@@ -15,6 +15,7 @@ End-to-end walkthrough: setup, starting the system, running a workflow, and read
 7. [UI Navigation](#7-ui-navigation)
 7a. [Profiles (multi-user)](#7a-profiles-multi-user-adr-062)
 8. [Start a Workflow Run](#8-start-a-workflow-run)
+8a. [Advanced discovery & scoring options (opt-in)](#8a-advanced-discovery--scoring-options-opt-in)
 9. [Monitor Progress](#9-monitor-progress)
 10. [Read the Run Report](#10-read-the-run-report)
 11. [Browse Results](#11-browse-results)
@@ -328,6 +329,70 @@ If no jobs clear the threshold, deep review is skipped and the run goes straight
 
 ---
 
+## 8a. Advanced discovery & scoring options (opt-in)
+
+All of these are **off by default** and live in the **Start New Run** form (most
+are also under **Settings**). Tick **"Save these settings as my defaults for
+future runs"** to persist them per profile. They trade a little setup for tighter,
+cheaper results.
+
+### Pick which jobs to score (manual selection, ADR-060)
+
+- Tick **"Let me pick which jobs to score (review before scoring)"**. Discovery
+  casts a wider net (up to the **Discovery net width**, default 50) and the run
+  **parks before scoring** instead of auto-scoring everything.
+- Open **Workflow Detail** for that run — its status shows `awaiting_scoring_selection`
+  (🟡). Under **🧭 Select jobs to score**, tick the jobs worth the research +
+  scoring spend and submit. Only those are scored; the rest are skipped at no cost.
+- Use it when discovery is noisy and you'd rather eyeball titles/companies before
+  paying to score.
+
+### Reasoning relevance filter (ADR-079)
+
+- Tick **"Reasoning relevance filter (drop mismatches before scoring)"**. One
+  cheap LLM pass reasons over every discovered job and drops clear seniority/role
+  mismatches **before** scoring, so you don't pay to score the noise.
+- It is **profile-relative**: too-senior roles are dropped for an early-career
+  profile, too-junior roles for a senior one. It widens discovery to triage from,
+  and if the pass fails for any reason it **keeps every job** (it never silently
+  loses a run).
+- This is the automatic counterpart to manual selection — let the model triage
+  instead of doing it by hand. Don't enable both; manual selection takes
+  precedence.
+
+### Drop stale postings (posting age, ADR-080)
+
+- Set **"Max posting age in days"** (e.g. `30`). Postings older than that are
+  dropped at discovery, before the relevance filter and scoring — stale postings
+  often have dead apply links.
+- Deterministic, no extra API cost. Postings with no parseable date are kept;
+  `0` = off. The posting date is shown on each job's detail.
+
+### Experience window (ADR-065)
+
+- Covered in [section 8](#8-start-a-workflow-run): **Min / Max years of
+  experience** and **Exclude senior roles** narrow discovery to your career stage.
+
+### ATS-direct sources — Greenhouse & Lever (ADR-081)
+
+- Source-of-truth employer feeds: listings are live and the apply link is the
+  employer's own ATS page (no dead-link / rate-limit issues that aggregators can
+  have).
+- **Configured in `config/config.yaml`** (not the run form), per company:
+
+  ```yaml
+  scrapers:
+    greenhouse:
+      companies: [stripe, figma]   # board tokens from boards.greenhouse.io/<token>
+    lever:
+      companies: [leverdemo]       # slugs from jobs.lever.co/<slug>
+  ```
+
+- An empty list = off. Find a company's token/slug in its careers URL. These run
+  alongside Adzuna on every run; title relevance uses the run's roles.
+
+---
+
 ## 9. Monitor Progress
 
 Select **Live Run Monitor** in the sidebar. Click **Refresh** to poll the backend for the latest status.
@@ -342,6 +407,14 @@ Select **Live Run Monitor** in the sidebar. Click **Refresh** to poll the backen
 | 🔴 | `failed` | Unrecoverable error — check Errors section |
 
 The view shows the **current step**, a metrics row (LLM calls / 100, estimated cost, error count), and a per-agent activity feed. Custom URL extraction errors and 429 retry events appear here.
+
+### Cancelling a run
+
+While a run is `running`, **Live Run Monitor** shows a **Cancel** button.
+Cancellation is **cooperative** (ADR-083): the run stops at the next node
+boundary rather than halting instantly mid-step, so the status moves to
+`cancelling` and then `cancelled`. Work already finished (discovered jobs,
+scores) is preserved and visible in **Workflow Detail**.
 
 After completion, switch to **Workflow Detail** for the unified view of jobs, scores, deep review, advice, interview prep, the settings that were in effect for this run, and any execution-limit warnings.
 
