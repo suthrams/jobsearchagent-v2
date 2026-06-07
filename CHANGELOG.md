@@ -6,6 +6,69 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-06
 
+### Added — Liveness + readiness endpoints + dashboard health tile (ADR-084)
+
+The ~30-endpoint API had no health probe - only passive, traffic-driven
+`api_requests` observability (ADR-074). Added the active layer:
+
+- `GET /health` (liveness, no I/O) and `GET /readyz` (readiness). `/readyz` probes
+  the SHARED dependencies via `app/services/readiness.py` - `database` (critical ->
+  `down`/503), `agent_provider` (Anthropic live/mock) + `adzuna` (capabilities ->
+  `degraded`/200), `openai` (optional). We deliberately do NOT synthetically probe
+  the 30 routes (most mutate).
+- Both are unauthenticated (no `?user_id=`), excluded from `api_requests` recording,
+  and secret-safe (presence/mode only, never key values).
+- New live "System health" tile on the System Dashboard (`GET /readyz` via
+  `api_client.get_readiness()`).
+- `app/api/routers/health.py`, `app/services/readiness.py`,
+  `tests/v2/test_readiness.py` (14 tests). 931 passed; UI smoke 15/15.
+
+### Fixed — test suite was polluting the production observability tables (dashboard 20% API error rate)
+
+The System Dashboard showed a ~20% API error rate. RCA: the app-global "safe"
+recorders default to the real `data/v2.db` and are called from sites that bypass
+per-test db injection - `record_api_request_safe` (the ADR-074 HTTP middleware) and
+`emit_security_event_safe` (the cost-cap helper). So 30 `TestClient` files' worth of
+deliberate negative-path assertions (404/422/409/429) and every cost-cap emit were
+written to the production tables across many suite runs (all error rows `user_id='0'`,
+confined to the test window, counts in multiples of the run count).
+
+- Autouse fixture in `tests/v2/conftest.py` no-ops both helpers at the call-site
+  bindings; a full run now adds **0** rows (was ~233/run). The two tests that
+  intentionally exercise recording install their own overrides.
+- Purged the already-polluted dev-DB rows (`data/v2.db` is gitignored, not in git):
+  `api_requests` 6073 -> 0 (all test noise); `security_events` 97 -> 7 (deleted 90
+  test `cost_cap_violation` rows; the 7 kept are real `pii_redacted`). Dashboard API
+  error rate now 0%.
+
+### Changed — architecture-docs accuracy sweep to the current (post-ADR-059) model
+
+Swept every non-ADR doc under `docs/architecture/` (and the v1 shared-lib docs in
+`models/`, `scrapers/`) to match the shipped code:
+
+- Retired the in-graph `interrupt()` / `waiting_for_user` HITL language (ADR-059);
+  corrected stale limits (`MAX_REVIEW_ROUNDS` 3->2, `MAX_SELECTED_JOBS` 10->3,
+  `MAX_LLM_CALLS_PER_RUN` 100->200); de-brittled the agent count and added the
+  relevance-filter + Resume Clinic agents; removed references to deleted components
+  (`db_reader`, `skill_normalizer`, `status_manager`, `LaddersConfig`/`LaddersScraper`,
+  `glassdoor`/`ladders` sources); flagged unwired long-term memory; and removed
+  application-status / tracking content that contradicted the No-application-tracking
+  rule.
+- Rebuilt the `agent_graph` / `api_surface` / `ui_refactor` diagrams with the
+  deterministic figure renderer (now via a per-spec `outDir` that writes straight
+  into the committed `docs/architecture/images/`).
+- Files: agent_model, agent_graph_overview, patterns, performance_scalability, hitl,
+  workflow_model, architecture_overview, implementation_plan, observability,
+  state_and_memory_model, api_reference, data_model, ui_model, security.model,
+  prompt_and_guardrails_model + the shared-lib docs; `api_client` docstring corrected
+  to the ADR-075 single-data-path.
+
+### Changed — pin line-ending handling (.gitattributes)
+
+Added `.gitattributes` (`* text=auto`; `.sh` / git hooks forced LF; binaries marked
+`binary`) so EOL handling no longer depends on each clone's `core.autocrlf`. Resolves
+the spurious "modified with an empty diff" noise; the repo is LF-normalized.
+
 ### Added — Deterministic figure renderer for the article series
 
 - New `tools/render_figures.py` + `tools/figure_renderer/` (HTML/CSS + headless
