@@ -1,7 +1,11 @@
-"""Thin httpx wrapper for write actions against the FastAPI backend.
+"""Thin httpx wrapper for ALL backend calls from the Streamlit UI - reads and writes.
 
-All control-path actions (start workflow, submit HITL decisions, fetch report)
-go through this module. Read-only browse views go through db_reader.py instead.
+Since ADR-075 the UI never opens the database directly: every read (history,
+reports, dashboards) and every write (start/cancel a workflow, record a tailoring
+decision) goes through this module to the FastAPI backend. Reads are cached in
+`data.py` over these calls. The acting profile is attached via the `?user_id=` seam
+(ADR-062), set once per rerun by `set_user_id`; infra endpoints like `/readyz`
+(ADR-084) are unscoped.
 """
 from __future__ import annotations
 
