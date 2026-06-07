@@ -234,7 +234,7 @@ service), **C** = control path (`api_client`).
 | Resume Clinic | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews` |
 | Settings | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |
 | Profiles | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
-| System Dashboard | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (Cost section); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
+| System Dashboard | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (Cost section: day-by-day + week-by-week trends, per-agent and per-model spend); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
 | Top Matches | `views/analytics.py::render_top_matches` | R | `load_scored_jobs` + `render_track_table` |
 | IC / Architect / Management Track | `views/analytics.py::render_*_track` | R | `load_scored_jobs` + `render_track_table` |
 | Companies | `views/analytics.py::render_companies` | R | `load_scored_jobs` + plotly |

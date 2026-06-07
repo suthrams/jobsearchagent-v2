@@ -426,16 +426,30 @@ def _render_cost(window_choice: str, window_days: int | None, payload: dict) -> 
                        "prompts may be changing across calls, or runs are spaced "
                        "more than 5 minutes apart.")
 
-    # Daily spend trend
+    # Daily spend trend (day-by-day)
     if window_days:
         trend_rows = payload["daily_trend"]
         if trend_rows:
+            st.markdown("**Daily spend**")
             trend_df = pd.DataFrame(trend_rows)
             fig = px.line(trend_df, x="day", y="cost_usd", markers=True,
                           labels={"day": "Day", "cost_usd": "Cost ($)"})
             fig.update_traces(hovertemplate="<b>%{x}</b><br>$%{y:.4f}<extra></extra>")
             fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=240)
             st.plotly_chart(fig, use_container_width=True)
+
+    # Weekly spend trend (week-by-week) - shown regardless of the window toggle,
+    # since it is an inherently multi-week view (last ~13 weeks, or the window).
+    weekly_rows = payload.get("weekly_trend") or []
+    if weekly_rows:
+        st.markdown("**Weekly spend**")
+        wk_df = pd.DataFrame(weekly_rows)
+        fig = px.bar(wk_df, x="week", y="cost_usd", text="cost_usd",
+                     labels={"week": "Week", "cost_usd": "Cost ($)"})
+        fig.update_traces(texttemplate="$%{y:.2f}", textposition="outside",
+                          hovertemplate="<b>%{x}</b><br>$%{y:.4f}<extra></extra>")
+        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10), height=240)
+        st.plotly_chart(fig, use_container_width=True)
 
     # Per-agent
     if dash["by_agent"]:
@@ -447,6 +461,18 @@ def _render_cost(window_choice: str, window_days: int | None, payload: dict) -> 
         fig.update_traces(texttemplate="$%{x:.4f}", textposition="outside")
         fig.update_layout(margin=dict(l=10, r=10, t=10, b=10),
                           height=max(200, 34 * len(ag_df)), coloraxis_showscale=False)
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Per-model (group by model spend)
+    if dash.get("by_model"):
+        st.markdown("**Per-model cost**")
+        md_df = pd.DataFrame(dash["by_model"]).sort_values("cost_usd", ascending=True)
+        fig = px.bar(md_df, x="cost_usd", y="model", orientation="h", text="cost_usd",
+                     labels={"cost_usd": "Cost ($)", "model": "Model"},
+                     color="cost_usd", color_continuous_scale="blues")
+        fig.update_traces(texttemplate="$%{x:.4f}", textposition="outside")
+        fig.update_layout(margin=dict(l=10, r=10, t=10, b=10),
+                          height=max(160, 40 * len(md_df)), coloraxis_showscale=False)
         st.plotly_chart(fig, use_container_width=True)
 
     # Drill-through tables tucked into an expander to keep the unified page tidy

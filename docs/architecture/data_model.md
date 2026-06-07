@@ -952,7 +952,9 @@ CREATE TABLE llm_calls (
 - **Written by**: `BaseAgent._run` via `ObservabilityService.record_llm_call`
   using the typed `LLMUsage` returned by `provider.complete_with_usage`.
 - **Read by**: `cost_breakdown.compute_breakdown` (Workflow Detail cost
-  rollup); the "constraints hit" analyzer; analytics views that report
+  rollup); `cost_breakdown.{daily,weekly}_spend_trend` + `compute_dashboard_aggregate`
+  (System Dashboard Cost section: day-by-day, week-by-week, per-agent, and
+  per-model spend); the "constraints hit" analyzer; analytics views that report
   total spend per run / per agent.
 
 ---

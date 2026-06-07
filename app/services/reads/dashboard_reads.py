@@ -58,6 +58,7 @@ def system_dashboard_payload(
     return {
         "cost": cb.compute_dashboard_aggregate(days=days, db_path=db_path, user_id=user_id),
         "daily_trend": cb.daily_spend_trend(days=days or 30, db_path=db_path, user_id=user_id) if days else [],
+        "weekly_trend": cb.weekly_spend_trend(days=days or 90, db_path=db_path, user_id=user_id),
         "top_runs": cb.top_runs_by_cost(n=5, days=days, db_path=db_path, user_id=user_id),
         "all_runs": cb.all_runs_by_cost(days=days, db_path=db_path, user_id=user_id),
         "top_calls": cb.top_calls_by_cost(n=10, days=days, db_path=db_path, user_id=user_id),

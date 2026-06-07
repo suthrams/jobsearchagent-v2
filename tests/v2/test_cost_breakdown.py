@@ -12,6 +12,7 @@ from app.services.cost_breakdown import (
     compute_breakdown,
     compute_dashboard_aggregate,
     daily_spend_trend,
+    weekly_spend_trend,
     to_markdown,
     top_calls_by_cost,
     top_runs_by_cost,
@@ -356,6 +357,26 @@ def test_daily_spend_trend_groups_by_day(tmp_path):
     assert "2099-01-01" in days
     assert days["2099-01-01"]["calls"] == 2
     assert days["2099-01-01"]["cost_usd"] == pytest.approx(0.003)
+
+
+def test_weekly_spend_trend_groups_by_week(tmp_path):
+    db = tmp_path / "v2.db"
+    init_db(db)
+    # Two calls in the same ISO week -> one weekly row with summed cost.
+    _seed_calls_at(db, "wf-1", "2099-06-15T10:00:00Z", [
+        {"agent": "scoring_agent", "model": "claude-haiku-4-5-20251001",
+         "t_in": 100, "t_out": 50, "cost": 0.001, "latency": 100},
+    ])
+    _seed_calls_at(db, "wf-1", "2099-06-15T15:00:00Z", [
+        {"agent": "scoring_agent", "model": "claude-haiku-4-5-20251001",
+         "t_in": 100, "t_out": 50, "cost": 0.002, "latency": 100},
+    ])
+    trend = weekly_spend_trend(days=365 * 100, db_path=db)
+    assert len(trend) == 1
+    assert "week" in trend[0]
+    assert trend[0]["calls"] == 2
+    assert trend[0]["cost_usd"] == pytest.approx(0.003)
+    assert weekly_spend_trend(days=7, db_path=tmp_path / "missing.db") == []
 
 
 def test_dashboard_returns_zeros_when_db_missing(tmp_path):

@@ -341,6 +341,42 @@ def daily_spend_trend(
     ]
 
 
+def weekly_spend_trend(
+    days: int = 90,
+    db_path: Path = DEFAULT_DB_PATH,
+    user_id: str | None = None,
+) -> list[dict]:
+    """One row per ISO week (Monday-anchored via %Y-W%W) within the last N days.
+    Weeks with zero spend are omitted; the UI fills gaps if needed. Mirrors
+    daily_spend_trend but bucketed by week for the week-by-week trend."""
+    if not Path(db_path).exists():
+        return []
+    conn = sqlite3.connect(str(db_path))
+    where, sp = _scope_clause(days, user_id)
+    try:
+        rows = conn.execute(
+            f"""
+            SELECT strftime('%Y-W%W', created_at)   AS week,
+                   COUNT(*)                          AS calls,
+                   COALESCE(SUM(estimated_cost), 0)  AS cost
+            FROM llm_calls
+            {where}
+            GROUP BY week
+            ORDER BY week ASC
+            """,
+            sp,
+        ).fetchall()
+    except sqlite3.OperationalError:
+        conn.close()
+        return []
+    finally:
+        conn.close()
+    return [
+        {"week": w, "calls": int(c or 0), "cost_usd": float(cost or 0.0)}
+        for w, c, cost in rows
+    ]
+
+
 def top_runs_by_cost(
     n: int = 5,
     days: int | None = None,
