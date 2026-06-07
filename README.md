@@ -20,6 +20,18 @@ Serves **multiple profiles** from one install (ADR-062) — each with its own re
 
 ## Architecture
 
+![Job Search Agent end-to-end architecture: what you bring and the job sources feed an in-graph LangGraph funnel (discover, optional relevance filter, research, score, deep-review gate, critic-auditor reflection loop, advisor, report); tailoring, the Resume Clinic, and interview prep run out-of-graph on demand; the Fidelity Reviewer guards every generated draft; the Streamlit UI is a thin client of the FastAPI backend over SQLite](docs/architecture/images/architecture_overview.png)
+
+> Rendered deterministically from
+> [`tools/figure_renderer/specs/architecture_overview.json`](tools/figure_renderer/specs/architecture_overview.json)
+> (the same HTML/CSS engine as the article figures) — the JSON spec is the
+> render source of truth. Re-render after any flow change with
+> `python tools/render_figures.py architecture_overview`. The Mermaid block
+> below is a textual mirror kept in sync for diff-friendly review.
+
+<details>
+<summary>Text mirror (Mermaid)</summary>
+
 ```mermaid
 flowchart TD
     subgraph YOU["What You Bring"]
@@ -89,6 +101,8 @@ flowchart TD
     style CP fill:#fef9c3,stroke:#eab308
     style DB fill:#fef9c3,stroke:#eab308
 ```
+
+</details>
 
 The in-graph flow runs discover -> research -> score -> deep review (critic <-> auditor) -> advisor -> report with no `interrupt()` (ADR-059). Interview prep, resume tailoring + fidelity review, and the Resume Clinic are **out-of-graph** operations the user triggers on demand after a run (ADR-055/061/066). An optional relevance pre-filter (ADR-079) and ATS-direct sources (Greenhouse/Lever, ADR-081) are opt-in.
 
