@@ -122,8 +122,12 @@ resume — adding a resume to one profile never deactivates another's (ADR-062).
 LinkedIn does not allow automated scraping. To include LinkedIn roles:
 
 1. Browse LinkedIn and copy job posting URLs
-2. Paste them into `inbox/linkedin.txt`, one per line
-3. The agent processes and clears this file on the next run
+2. Paste them into `data/linkedin_inbox.txt`, one per line
+3. The built-in LinkedIn scraper processes and clears this file on the next run
+
+> Easier alternative: paste any job URLs (LinkedIn, company career pages, ATS
+> links) straight into the **Custom job URLs** box on **Start New Run** (see
+> [section 8](#8-start-a-workflow-run)) — no file editing required.
 
 ---
 
@@ -181,15 +185,15 @@ following views, top-down:
 - **Live Run Monitor** — activity feed for the currently running workflow
 - **Run Report** — generated markdown report
 - **Settings** — view and edit the active profile's config (search criteria,
-  threshold, **active scoring tracks** (ADR-071), salary, staleness, **per-agent
-  provider + model**). Each profile has its own overrides layered over the shared
+  threshold, **active scoring tracks** (ADR-071), salary, posting-age filter,
+  **per-agent provider + model**). Each profile has its own overrides layered over the shared
   YAML defaults; a new profile starts on pure defaults. Protected keys (hard
   limits, retention windows, prompt definitions) remain read-only and shared by
   every profile.
 - **Profiles** — manage profiles and run the **Add profile** onboarding wizard
   (ADR-062; see [section 7a](#7a-profiles-multi-user-adr-062)).
 
-**Cross-Run Analytics** *(read directly from `data/v2.db`, scoped to the active profile)*
+**Cross-Run Analytics** *(read through the API, scoped to the active profile; ADR-075)*
 - **Top Matches** — scored jobs across all runs
 - **IC / Architect / Management Track** — sorted by per-track score
 - **Companies** — top target companies by best match score
@@ -199,7 +203,7 @@ following views, top-down:
   the auto-selection of jobs for deep review (any **active** track score ≥ this
   qualifies; ADR-071).
 - **Search** — filter by title or company across browse views
-- **Refresh data** — clears the data cache and reloads from `data/v2.db`
+- **Refresh data** — clears the read cache and reloads from the API
 
 ---
 
@@ -291,12 +295,16 @@ The backend runs end-to-end with no required user input:
 2. **Research** each company (Research Agent — Haiku)
 3. **Scoring** across the profile's active career tracks (Scoring Agent — Haiku, concurrent; inactive tracks are scored `null`, ADR-071)
 4. **Auto-select** the top-scoring jobs where any **active** track ≥ your threshold — a job that clears the threshold only on an inactive track does not qualify (ADR-071)
-5. **Deep review** (Resume Critic + Review Auditor reflection loop)
+5. **Deep review** (Resume Critic + Review Auditor reflection loop — both Haiku)
 6. **Career advice** (Sonnet) per selected job
-7. **Interview prep** (Sonnet) if any selected job's best active-track score ≥ threshold
-8. **Report generation** as the final step
+7. **Report generation** as the final step
 
-If no jobs clear the threshold, deep review and prep are skipped and the run goes straight to report generation. The "Limits & Constraints" section in **Workflow Detail** will flag this so you can lower the threshold or broaden search.
+**Interview prep is on demand by default (ADR-085).** The in-graph coach
+auto-runs only when `scoring.auto_interview_prep` is enabled; otherwise you
+trigger it per job from **Workflow Detail** after the run (the Sonnet coach is
+the single most expensive agent, so it stays opt-in).
+
+If no jobs clear the threshold, deep review is skipped and the run goes straight to report generation. The "Limits & Constraints" section in **Workflow Detail** will flag this so you can lower the threshold or broaden search.
 
 > **Per-profile discovery + the entry-level caveat (ADR-064).** Each profile's roles
 > drive its own Adzuna search, and relevance is derived from those roles — so a
@@ -357,7 +365,7 @@ Click **Download Markdown** to save a copy locally.
 
 ## 11. Browse Results
 
-All Browse views read `data/v2.db` directly — they are available at any time, including during a run or between runs. Use the **Refresh data** button in the sidebar to reload after a run completes.
+All Browse views read through the FastAPI backend (ADR-075: the UI never opens the database directly) — they are available at any time, including during a run or between runs. Use the **Refresh data** button in the sidebar to reload after a run completes.
 
 The sidebar **Minimum score** slider and **Search** box apply to all track views.
 
@@ -398,7 +406,10 @@ For each deep-reviewed job, an expandable section shows:
 
 ### Interview Prep
 
-For each job where Interview Coach ran (match score ≥ 75), an expandable section shows:
+Interview prep is **on demand by default** (ADR-085) — trigger it per job from
+**Workflow Detail** (or enable `scoring.auto_interview_prep` to have the in-graph
+coach run automatically for selected jobs that clear the threshold). For each job
+where the Interview Coach ran, an expandable section shows:
 - **Likely Topics** — subject areas likely to appear in interviews
 - **7-Day Prep Plan** — day-by-day study and practice tasks
 - **Areas to Defend** — resume weak points the interviewer may probe
@@ -520,7 +531,10 @@ with no JD. Open **Resume Clinic** in the sidebar.
    scorecard, alignment, reorganization, rewrites, fidelity verdict.
 6. Decide: **Approve** locks the review as-is. **Revise** asks for another
    pass (the next clinic run is a fresh row). **Reject** discards.
-   (Inline edit with payload is a planned follow-up.)
+   To refine a draft interactively, use the **chat-revise loop** (ADR-068):
+   chat with the reviewer turn by turn (bounded to 25 turns with a running
+   cost meter); a human-edited draft is saved as the `edit` decision and is
+   trusted as-authored, not re-reviewed (ADR-059).
 
 ### Past runs
 
@@ -543,9 +557,8 @@ button you clicked:
 
 - **Approve** → applies the agent's overhaul (reorganization + rewrites)
   to your parsed resume and renders that.
-- **Edit** → uses the human-authored draft you saved (when the chat-edit
-  feature lands; until then, the API supports it but the UI doesn't yet
-  surface an inline editor).
+- **Edit** → uses the human-authored draft you saved via the chat-revise loop
+  (ADR-068); the edited draft is trusted as-authored and not re-reviewed (ADR-059).
 - **Reject** → renders your original parsed resume unchanged.
 - *No decision yet* → renders a preview of the agent's overhaul with a
   small italic note at the bottom saying so.
@@ -613,7 +626,7 @@ breakdown to drill into it (ADR-073).
 ## 14a. Picking a Provider and Model per Agent
 
 Open **Settings** → **Agent Models** to see the per-agent assignment. Each
-of the eight agents has a **Provider** dropdown (Claude / OpenAI) and a
+configurable agent has a **Provider** dropdown (Claude / OpenAI) and a
 **Model** dropdown filtered to the chosen provider. Indicative cost per
 1K input + 1K output tokens is shown next to each model so you can see the
 trade-off before saving.
@@ -650,7 +663,7 @@ worth re-routing next time.
 Once configured, a typical session looks like:
 
 ```
-1. (Optional) Add LinkedIn URLs to inbox/linkedin.txt
+1. (Optional) Add LinkedIn URLs to data/linkedin_inbox.txt (or paste into Custom job URLs on Start New Run)
 2. Start backend + Streamlit UI if not running
 3. Start New Run — fill form (optionally paste custom URLs), click Start Workflow
 4. Switch to Live Run Monitor — refresh until run completes (~5–15 min)
@@ -685,7 +698,7 @@ Once configured, a typical session looks like:
 
 **No jobs discovered**
 - Check `ADZUNA_APP_ID` and `ADZUNA_APP_KEY` in `.env`
-- Verify `config/config.yaml` has entries in `search.titles` and `scrapers.adzuna.location`
+- Verify `config/config.yaml` has entries in `search.titles` and `scrapers.adzuna.locations`
 
 **Workflow seems to hang mid-run**
 - The workflow runs end to end with no human-in-the-loop pause (ADR-059) — it does not stop and wait for input. A long run is usually research/scoring on many jobs or rate-limit backoff, not a HITL pause
