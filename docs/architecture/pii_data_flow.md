@@ -78,7 +78,8 @@ resume.
 ### 3.1 The redaction seam (post ADR-069)
 
 `app/services/context_trimmer.py::redact_pii_for_llm` (wrapped by the
-established `trim_resume_profile`) is the single chokepoint every agent context
+established `trim_resume_profile`, and by `project_resume_for_scoring` for the
+scoring context - ADR-086) is the single chokepoint every agent context
 routes through. It now:
 
 ```python

@@ -20,7 +20,7 @@ from app.agents.scoring_agent import ScoringAgent
 from app.providers.llm_client import LLMProviderError
 from app.repositories.database import utcnow_iso
 from app.repositories.score_repository import ScoreRepository
-from app.services.context_trimmer import trim_resume_profile
+from app.services.context_trimmer import project_resume_for_scoring
 from app.services.observability_service import (
     ObservabilityService,
     budget_cap_security_description,
@@ -121,10 +121,13 @@ def make_score_jobs_node(
                 # resume_profile is identical across every job in a run; pull it
                 # into the cached system block so calls 2..N within the 5-min
                 # window read it back at 10% rate instead of re-paying full
-                # input price. raw_text is dropped via trim_resume_profile.
+                # input price. ADR-086: project_resume_for_scoring wraps
+                # trim_resume_profile (raw_text dropped, PII redacted) and further
+                # drops fields the scoring prompt never reads, shrinking the
+                # per-job re-sent payload.
                 score = scoring_agent.run(workflow_id, {
                     "_cached": {
-                        "resume_profile": trim_resume_profile(resume_profile),
+                        "resume_profile": project_resume_for_scoring(resume_profile),
                     },
                     "job_id": job_id,
                     "resume_id": resume_id,

@@ -118,6 +118,44 @@ def trim_resume_profile(profile: dict | None) -> dict:
     return redact_pii_for_llm(profile)
 
 
+def project_resume_for_scoring(profile: dict | None) -> dict:
+    """Scoring-specific resume projection (ADR-086).
+
+    Builds on :func:`trim_resume_profile` (so the ADR-069 PII seam is preserved -
+    raw_text dropped, identifiers redacted) and then drops fields the Scoring
+    Agent's prompt provably does not read, to shrink the resume payload that is
+    re-sent on every per-job scoring call:
+
+      - ``name`` (already a placeholder): scoring never conditions on identity.
+      - ``resume_id`` / ``file_name``: metadata, not part of a fit judgment.
+      - ``skills``: redundant when ``skill_groups`` is populated - it is the
+        de-duped union of the groups (ADR-067), so sending both ships the skill
+        list twice. Kept when there are no groups (then it is the only source).
+      - ``education[].gpa`` / ``.honors`` (ADR-067): not part of a fit judgment.
+
+    Quality-neutral: the scoring prompt reasons over headline, summary,
+    experience[] (title/company/years/description/technologies), skill_groups
+    (or skills), education degree, and certifications - all retained. This is the
+    same "trace the consumer, drop only unread fields" rule as the other trimmers.
+    """
+    trimmed = trim_resume_profile(profile)
+    if not trimmed:
+        return {}
+    out = dict(trimmed)
+    for meta in ("name", "resume_id", "file_name"):
+        out.pop(meta, None)
+    if out.get("skill_groups"):
+        out.pop("skills", None)
+    edu = out.get("education")
+    if isinstance(edu, list):
+        out["education"] = [
+            {k: v for k, v in e.items() if k not in ("gpa", "honors")}
+            if isinstance(e, dict) else e
+            for e in edu
+        ]
+    return out
+
+
 def trim_review(review: dict | None) -> dict:
     """Keep only the fields downstream consumers (advisor / coach / tailoring) read.
 

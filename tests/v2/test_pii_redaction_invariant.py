@@ -38,7 +38,11 @@ _STATE_WRITE_ALLOWLIST = {
     "app/api/routers/workflows.py": ("None",),
 }
 
-_REDACTION_HELPERS = ("redact_pii_for_llm(", "trim_resume_profile(")
+# project_resume_for_scoring (ADR-086) is a sanctioned wrapper: it calls
+# trim_resume_profile internally, so the PII seam holds at sites that use it.
+_REDACTION_HELPERS = (
+    "redact_pii_for_llm(", "trim_resume_profile(", "project_resume_for_scoring(",
+)
 _RESUME_PROFILE_KEY = re.compile(r'"resume_profile"\s*:')
 
 

@@ -13,12 +13,58 @@ from app.services.context_trimmer import (
     PII_EMAIL_PLACEHOLDER,
     PII_NAME_PLACEHOLDER,
     PII_PHONE_PLACEHOLDER,
+    project_resume_for_scoring,
     redact_pii_for_llm,
     trim_career_advice,
     trim_resume_profile,
     trim_review,
     trim_score,
 )
+
+
+# -- project_resume_for_scoring (ADR-086) -------------------------------------
+
+def test_scoring_projection_preserves_pii_seam_and_reasoning_fields():
+    out = project_resume_for_scoring({
+        "resume_id": "r1", "file_name": "cv.pdf", "raw_text": "FULL BLOB",
+        "name": "Jane Doe", "email": "jane@example.com",
+        "summary": "Senior security architect.",
+        "experience": [{"company": "Acme", "title": "Principal Engineer",
+                        "start_year": 2019, "description": "Built SIEM",
+                        "technologies": ["Python"]}],
+        "skill_groups": [{"category": "Security", "skills": ["SIEM", "IR"]}],
+        "skills": ["SIEM", "IR"],
+        "education": [{"institution": "GT", "degree": "BS", "year": 2010,
+                       "gpa": "3.9", "honors": "cum laude"}],
+        "certifications": [{"name": "CISSP"}],
+    })
+    # PII seam (ADR-069): raw_text gone, email dropped
+    assert "raw_text" not in out
+    assert out.get("email") is None
+    # metadata + identity dropped (scoring never reads them)
+    for dropped in ("name", "resume_id", "file_name"):
+        assert dropped not in out
+    # skills is redundant when skill_groups is present -> dropped
+    assert "skills" not in out
+    assert out["skill_groups"][0]["skills"] == ["SIEM", "IR"]
+    # education degree kept; gpa/honors dropped
+    assert out["education"][0]["degree"] == "BS"
+    assert "gpa" not in out["education"][0] and "honors" not in out["education"][0]
+    # reasoning fields scoring uses are retained
+    assert out["summary"] and out["experience"][0]["description"] == "Built SIEM"
+    assert out["certifications"][0]["name"] == "CISSP"
+
+
+def test_scoring_projection_keeps_skills_when_no_groups():
+    out = project_resume_for_scoring({
+        "raw_text": "x", "skills": ["Python", "Go"], "skill_groups": [],
+    })
+    assert out["skills"] == ["Python", "Go"]  # only source -> kept
+
+
+def test_scoring_projection_handles_empty_or_none():
+    assert project_resume_for_scoring(None) == {}
+    assert project_resume_for_scoring({}) == {}
 
 
 # ── trim_resume_profile / redact_pii_for_llm (ADR-069) ───────────────────────
