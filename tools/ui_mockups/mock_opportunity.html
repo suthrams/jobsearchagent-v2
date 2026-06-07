@@ -1,0 +1,100 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  :root{
+    --bg:#0a0f1c; --panel:#111b2e; --panel2:#16223a; --line:#23314f;
+    --ink:#e9eefb; --mut:#9fb0cd; --blue:#38bdf8; --green:#34d399;
+    --amber:#f59e0b; --magenta:#e879f9; --red:#f87171;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{width:1480px;height:920px;background:var(--bg);
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);padding:24px 34px;overflow:hidden}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px}
+  .back{font-size:14px;color:#cdd9ef;border:1px solid var(--line);border-radius:9px;padding:8px 14px}
+  .excl{font-size:13px;color:var(--mut);border:1px solid var(--line);border-radius:9px;padding:8px 14px}
+  h1{font-size:28px;font-weight:800}
+  .meta{color:var(--mut);font-size:14px;margin-top:6px}
+  .prov{color:#6f7f9c;font-size:12px;margin-top:3px}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px}
+  .card h3{font-size:12px;letter-spacing:.08em;color:var(--mut);text-transform:uppercase;margin-bottom:10px}
+  .li{font-size:14px;margin:6px 0;color:#dbe6fa}
+  .li .b{color:var(--green)}
+  .gap{color:var(--mut);font-size:13px;margin:5px 0}
+  .gap .t{color:var(--amber);font-weight:700}
+  .scbar{display:flex;gap:18px;margin-top:8px;font-size:13px;color:var(--mut)}
+  .scbar b{color:var(--ink)}
+  .row{display:flex;align-items:center;justify-content:space-between;background:var(--panel);
+    border:1px solid var(--line);border-radius:12px;padding:14px 18px;margin-top:16px}
+  .row .t{font-size:14px}.row .s{font-size:12px;color:var(--mut);margin-top:2px}
+  .btn{padding:10px 18px;border-radius:9px;font-size:14px;font-weight:700;border:1px solid var(--line)}
+  .btn.pri{background:var(--blue);color:#06223a;border-color:var(--blue)}
+  .btn.amber{background:var(--amber);color:#3a2400;border-color:var(--amber)}
+  .btn.ghost{background:transparent;color:#cdd9ef}
+  .cost{font-size:12px;color:var(--mut);font-weight:600;margin-left:6px}
+  .steps{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;margin-top:16px}
+  .steps h3{font-size:12px;letter-spacing:.08em;color:var(--mut);text-transform:uppercase;margin-bottom:12px}
+  .warn{font-size:12px;color:var(--amber);margin:10px 0 14px}
+  .drafts{margin-top:6px;border-top:1px solid var(--line);padding-top:12px}
+  .draft{display:flex;align-items:center;gap:12px;font-size:13px;padding:8px 0;color:#cfe0fb}
+  .tag{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:700}
+  .tag.ok{background:rgba(52,211,153,.18);color:var(--green)}
+  .tag.no{background:rgba(248,113,113,.16);color:var(--red)}
+  .draftbtns{display:flex;gap:10px;margin-top:10px}
+  .note{margin-top:16px;font-size:12.5px;color:var(--mut);background:var(--panel);
+    border:1px solid var(--line);border-left:3px solid var(--green);border-radius:8px;padding:10px 14px}
+</style></head><body>
+  <div class="top">
+    <span class="back">&#9664; Back to Matches</span>
+    <span class="excl">Exclude &middot; hide from future searches</span>
+  </div>
+  <h1>Principal Architect &nbsp;&middot;&nbsp; Globex</h1>
+  <div class="meta">Best track: <b style="color:#e879f9">Architecture 82</b> &nbsp;&middot;&nbsp; posted 6d ago &nbsp;&middot;&nbsp; Atlanta, GA</div>
+  <div class="prov">found by search "Staff / Principal - Remote" on 2026-06-05</div>
+
+  <div class="cols">
+    <div class="card">
+      <h3>Why it fits</h3>
+      <div class="li"><span class="b">&#10003;</span> Strong platform + IaC depth maps to the JD core</div>
+      <div class="li"><span class="b">&#10003;</span> Cross-team leadership signal aligns with scope</div>
+      <div class="li"><span class="b">&#10003;</span> Domain (fintech infra) is a direct match</div>
+      <div class="scbar"><span>Overall <b>80</b></span><span>IC <b>74</b></span><span>Architecture <b>82</b></span></div>
+    </div>
+    <div class="card">
+      <h3>Gaps</h3>
+      <div class="gap"><span class="t">Resume gaps</span> (you have it, just not documented):</div>
+      <div class="gap">&bull; on-call ownership &nbsp; &bull; cost-optimization wins</div>
+      <div class="gap" style="margin-top:10px"><span class="t">Career gaps</span> (don't meet - labelled, never fabricated):</div>
+      <div class="gap">&bull; formal people management</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div><div class="t">Deep review</div><div class="s">critic + auditor analysis for this role</div></div>
+    <span class="btn ghost">Run review <span class="cost">~$0.04</span></span>
+  </div>
+
+  <div class="steps">
+    <h3>Next steps</h3>
+    <div style="display:flex;gap:14px">
+      <span class="btn amber">Tailor my resume <span class="cost" style="color:#3a2400">~$0.02</span></span>
+      <span class="btn pri">Prep for interview <span class="cost" style="color:#06223a">~$0.03</span></span>
+    </div>
+    <div class="warn">! Tailoring a job that was not auto-selected runs a deep-review pass first (extra cost).</div>
+
+    <div class="drafts">
+      <div style="font-size:12px;color:var(--mut);letter-spacing:.06em;text-transform:uppercase">Tailored drafts &middot; newest first</div>
+      <div class="draft"><span class="tag ok">approved</span> Draft 3 &nbsp; <span style="color:var(--mut)">strategy &middot; impact &middot; fidelity &middot; section diffs</span> <span style="margin-left:auto;color:var(--blue)">open</span></div>
+      <div class="draft"><span class="tag no">rejected</span> Draft 2 &nbsp; <span style="color:var(--mut)">headline + summary rewrite</span> <span style="margin-left:auto;color:var(--blue)">open</span></div>
+      <div class="draftbtns">
+        <span class="btn ghost">Generate new draft</span>
+        <span class="btn ghost">Live chat to refine + export</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">One page per job merges read (fit + gaps + deep review) with act
+    (tailor, interview prep) and the full tailoring drafts + decisions + live-chat region.
+    By design there is no Apply / Save / status and no "pursuing" list - preparation and the
+    exclude-filter only; the career decision stays human-owned.</div>
+</body></html>

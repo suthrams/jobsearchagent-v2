@@ -1,0 +1,125 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><style>
+  :root{
+    --bg:#0a0f1c; --panel:#111b2e; --panel2:#16223a; --line:#23314f;
+    --ink:#e9eefb; --mut:#9fb0cd; --blue:#38bdf8; --green:#34d399;
+    --amber:#f59e0b; --magenta:#e879f9; --red:#f87171;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{width:1480px;height:920px;background:var(--bg);
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);display:flex;overflow:hidden}
+  .side{width:330px;height:100%;background:var(--panel);border-right:1px solid var(--line);
+    padding:18px 16px;display:flex;flex-direction:column;gap:6px}
+  .brand{font-weight:800;font-size:18px;margin-bottom:8px}
+  .sel{background:var(--panel2);border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+  .addp{font-size:13px;color:var(--mut);border:1px dashed var(--line);border-radius:8px;
+    padding:7px;text-align:center;margin:8px 0}
+  .grp{font-size:11px;letter-spacing:.12em;color:var(--mut);font-weight:800;margin:12px 4px 4px}
+  .nav{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:9px;
+    font-size:14px;color:#cdd9ef}
+  .nav .i{width:16px;text-align:center;opacity:.8}
+  .nav.on{background:rgba(56,189,248,.16);color:#eaf6ff;font-weight:700;
+    box-shadow:inset 2px 0 0 var(--blue)}
+  .rule{height:1px;background:var(--line);margin:10px 2px}
+  .run{margin-top:auto;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:11px}
+  .run .h{font-size:13px;font-weight:700}.run .c{font-size:12px;color:var(--mut);margin-top:3px}
+  .pillrow{display:flex;gap:8px;margin-top:9px}
+  .pill{flex:1;text-align:center;font-size:12px;padding:6px;border-radius:8px;background:#1b2b48;color:#cfe0fb}
+  .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--blue);margin-right:6px}
+
+  .main{flex:1;height:100%;padding:26px 30px;overflow:hidden}
+  h1{font-size:27px;font-weight:800;letter-spacing:-.01em}
+  .sub{color:var(--mut);font-size:14px;margin-top:4px}
+  .stats{color:var(--blue);font-size:13px;margin-top:8px;font-weight:600}
+  .tabs{display:flex;gap:8px;margin:18px 0 12px}
+  .tab{padding:8px 18px;border-radius:9px 9px 0 0;font-size:14px;background:var(--panel);
+    border:1px solid var(--line);border-bottom:none;color:var(--mut)}
+  .tab.on{background:var(--panel2);color:#eaf6ff;font-weight:700;border-top:2px solid var(--blue)}
+  .ctl{display:flex;align-items:center;gap:10px;margin:6px 0 14px;font-size:13px;color:var(--mut)}
+  .seg{display:flex;border:1px solid var(--line);border-radius:9px;overflow:hidden}
+  .seg div{padding:7px 16px;font-size:13px;background:var(--panel)}
+  .seg div.on{background:var(--blue);color:#06223a;font-weight:800}
+  .filter{margin-left:auto;display:flex;align-items:center;gap:14px;background:var(--panel);
+    border:1px solid var(--line);border-radius:9px;padding:8px 14px}
+  .slider{width:120px;height:5px;background:#26344f;border-radius:3px;position:relative}
+  .slider::after{content:"";position:absolute;left:62%;top:-4px;width:13px;height:13px;border-radius:50%;background:var(--blue)}
+  .tbl{border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .tr{display:grid;grid-template-columns:74px 1.5fr 1fr .7fr .6fr 1.6fr;align-items:center;
+    padding:14px 16px;border-bottom:1px solid var(--line);font-size:14px}
+  .th{background:var(--panel);color:var(--mut);font-size:12px;letter-spacing:.04em;font-weight:700;text-transform:uppercase}
+  .tr.sel{background:rgba(56,189,248,.13);box-shadow:inset 3px 0 0 var(--blue)}
+  .score{font-weight:800;border-radius:8px;padding:4px 0;width:48px;text-align:center;font-size:14px}
+  .s-hi{background:rgba(52,211,153,.18);color:var(--green)}
+  .s-md{background:rgba(245,158,11,.18);color:var(--amber)}
+  .role{font-weight:700}.mut{color:var(--mut)}
+  .act{display:flex;align-items:center;gap:12px;margin-top:16px}
+  .act .lbl{font-size:13px;color:var(--mut)}
+  .btn{padding:10px 18px;border-radius:9px;font-size:14px;font-weight:700;border:1px solid var(--line)}
+  .btn.pri{background:var(--blue);color:#06223a;border-color:var(--blue)}
+  .btn.ghost{background:transparent;color:#cdd9ef}
+  .note{margin-top:18px;font-size:12.5px;color:var(--mut);background:var(--panel);
+    border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:8px;padding:10px 14px}
+</style></head><body>
+  <div class="side">
+    <div class="brand">Job Search Agent</div>
+    <div class="sel"><span>Priya&nbsp; (#1)</span><span class="mut">&#9662;</span></div>
+    <div class="addp">+ Add profile</div>
+    <div class="grp">FIND</div>
+    <div class="nav"><span class="i">&#9711;</span>New search</div>
+    <div class="nav"><span class="i">&#9711;</span>Searches</div>
+    <div class="grp">MY OPPORTUNITIES</div>
+    <div class="nav on"><span class="i">&#9733;</span>Matches</div>
+    <div class="grp">RESUME</div>
+    <div class="nav"><span class="i">&#9711;</span>Resume Clinic</div>
+    <div class="nav"><span class="i">&#9711;</span>Profiles &amp; Resumes</div>
+    <div class="rule"></div>
+    <div class="nav"><span class="i">&#9711;</span>Settings</div>
+    <div class="nav"><span class="i">&#9711;</span>Spend &amp; Health</div>
+    <div class="run">
+      <div class="h"><span class="dot"></span>Active Run &middot; running</div>
+      <div class="c">step: score_jobs &nbsp; 9b2f1c&hellip;</div>
+      <div class="c">6 calls &middot; $0.0123</div>
+      <div class="pillrow"><div class="pill">Detail</div><div class="pill">Live</div></div>
+    </div>
+  </div>
+
+  <div class="main">
+    <h1>Matches</h1>
+    <div class="sub">Your best opportunities across every search, newest scores first.</div>
+    <div class="stats">14 scored &nbsp;&middot;&nbsp; 8 above 75 &nbsp;&middot;&nbsp; 6 companies</div>
+
+    <div class="tabs">
+      <div class="tab on">Roles</div>
+      <div class="tab">Companies</div>
+    </div>
+    <div class="ctl">
+      <span>Sort</span>
+      <div class="seg"><div class="on">Best fit</div><div>IC</div><div>Architecture</div></div>
+      <div class="filter">
+        <span>min score 75</span><div class="slider"></div>
+        <span>search: Staff Engineer</span>
+        <span>&#9744; include excluded</span>
+      </div>
+    </div>
+
+    <div class="tbl">
+      <div class="tr th"><div>Score</div><div>Role</div><div>Company</div><div>Loc</div><div>Posted</div><div>Summary</div></div>
+      <div class="tr"><div><span class="score s-hi">86</span></div><div class="role">Staff Engineer</div><div>Acme</div><div class="mut">Remote</div><div class="mut">3d</div><div class="mut">strong platform + IaC match</div></div>
+      <div class="tr sel"><div><span class="score s-hi">82</span></div><div class="role">Principal Architect</div><div>Globex</div><div class="mut">ATL</div><div class="mut">6d</div><div class="mut">arch + leadership aligns</div></div>
+      <div class="tr"><div><span class="score s-md">78</span></div><div class="role">Platform Lead</div><div>Initech</div><div class="mut">Remote</div><div class="mut">1d</div><div class="mut">partial mgmt signal</div></div>
+      <div class="tr"><div><span class="score s-md">74</span></div><div class="role">Senior SRE</div><div>Hooli</div><div class="mut">Remote</div><div class="mut">9d</div><div class="mut">reliability focus</div></div>
+    </div>
+
+    <div class="act">
+      <span class="lbl">Selected: <b>Principal Architect &middot; Globex</b></span>
+      <span class="btn pri">Open opportunity &#9656;</span>
+      <span class="btn ghost">Exclude</span>
+    </div>
+
+    <div class="note">One Matches screen replaces Top Matches + IC/Architect/Management + Companies.
+      Only the profile's active tracks appear as sort segments (ADR-071). Rows are select-then-act
+      (Streamlit can't put a link in a table cell). Operator tools sit below the sidebar rule.</div>
+  </div>
+</body></html>
