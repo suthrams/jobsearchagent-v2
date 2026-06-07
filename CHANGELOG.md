@@ -6,6 +6,61 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-06
 
+### Added — Business-rules + settings explainability docs
+
+Two operator-facing reference docs, motivated by the run of funnel/threshold/cost
+tweaks making the effective rules hard to see in one place:
+
+- `docs/business_rules.md` - plain-language "what the system decides and why," by
+  stage (discover/filter/relevance/score/select/deep-review/advice/interview-prep/
+  tailor), plus execution limits, config layering, HITL + scope boundaries (no
+  application tracking), and privacy rules. 44 rules across 12 sections.
+- `docs/settings_reference.md` - catalog of every config setting
+  (search/scoring/scrapers/agents/models/retention): purpose + how each changes a
+  run (cost, breadth, strictness, results), how overrides layer, and a "which
+  setting do I change to..." map.
+
+Both are drift-free by design: they describe rules/effects and **cite** the
+enforcing constant/ADR/config key rather than mirroring numeric values (current
+values live in `limits.py` / `config.example.yaml` / `config_model.md`). Wired into
+`wiki.md` (top-level doc count 8 -> 10).
+
+### Added — Scoring resume projection (ADR-086) + async-batch design (ADR-087)
+
+- `project_resume_for_scoring()` wraps `trim_resume_profile` (PII seam preserved)
+  and drops fields the Scoring Agent never reads - name/metadata, education
+  gpa/honors, and the redundant flat `skills` list when `skill_groups` is populated
+  (it is the de-duped union). Used for the per-job `_cached` resume block, shrinking
+  the payload re-sent on every scoring call. Quality-neutral; savings are
+  input-only and modest (scoring is Haiku; output dominates). Added to the PII
+  invariant allowlist as a sanctioned wrapper.
+- ADR-087 (Proposed, deferred) documents an optional asynchronous Message Batches
+  API scoring mode (50% off input+output, no quality risk) and why it is deferred
+  (async breaks run-and-watch; needs a new run lifecycle + UI; output dominates
+  cost today).
+
+### Added — Week-by-week + per-model cost charts on the System Dashboard
+
+The Cost section gains a "Weekly spend" bar chart (shown in every window, including
+All time) and a "Per-model cost" bar chart (the `by_model` rollup was already
+computed, just not rendered). New `cost_breakdown.weekly_spend_trend(days)` mirrors
+the daily trend. The day-by-day chart already covered the 7- and 30-day windows.
+
+### Changed — Interview prep on-demand by default + verbose-agent conciseness (ADR-085)
+
+Cost cuts driven by a per-profile analysis (output tokens = ~56% of spend; the
+in-graph coach auto-fired on nearly every run):
+
+- New `scoring.auto_interview_prep` (bool, **default off**, read via
+  `get_auto_interview_prep(state)`): the in-graph interview coach auto-fires only
+  when it is on or `user_requested_interview_prep` is set. Otherwise interview prep
+  is on-demand via `POST .../interview-prep`. Removes an always-on Sonnet call from
+  every run; re-enablable per profile.
+- Brevity constraint added to the `resume_critic` / `career_advisor` /
+  `interview_coach` / `resume_reviewer` prompts (versions bumped). Output schemas
+  unchanged - trims prose only, never drops a required field. Rejected `max_tokens`
+  caps (truncate structured JSON) and Haiku downgrades (A/B-validated).
+
 ### Added — Liveness + readiness endpoints + dashboard health tile (ADR-084)
 
 The ~30-endpoint API had no health probe - only passive, traffic-driven
