@@ -44,9 +44,9 @@
 | 7 | Live agents — real Claude, SqliteSaver | ✓ complete |
 | 8 | Performance — concurrent scoring + scraping | ✓ complete |
 | 9 | Cost optimization — model tiering, volume caps | ✓ complete |
-| post-9 | Usability refactor, multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + impact (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062), shared v1 libs (ADR-063), per-run search criteria + experience targeting (ADR-064/065), Resume Clinic (ADR-066), resume schema v2 (ADR-067), chat cost caps (ADR-068), PII redaction at the LLM seam (ADR-069), retention + redacted state (ADR-070), per-profile active scoring tracks (ADR-071), tailoring live chat (ADR-072), wired security events + System Dashboard (ADR-073), closed observability gaps + `api_requests` (ADR-074), UI read funnel through the API (ADR-075), runtime budget-cap + failed-call cost + drift proxy (ADR-076/077/078) | ✓ complete |
+| post-9 | Usability refactor, multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + impact (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062), shared v1 libs (ADR-063), per-run search criteria + experience targeting (ADR-064/065), Resume Clinic (ADR-066), resume schema v2 (ADR-067), chat cost caps (ADR-068), PII redaction at the LLM seam (ADR-069), retention + redacted state (ADR-070), per-profile active scoring tracks (ADR-071), tailoring live chat (ADR-072), wired security events + System Dashboard (ADR-073), closed observability gaps + `api_requests` (ADR-074), UI read funnel through the API (ADR-075), runtime budget-cap + failed-call cost + drift proxy (ADR-076/077/078), relevance pre-filter (ADR-079), posting-age staleness (ADR-080), ATS-direct sources (ADR-081), idempotent kickoff (ADR-082), cooperative cancellation (ADR-083), liveness/readiness endpoints (ADR-084), on-demand interview prep (ADR-085), scoring resume projection (ADR-086), async-batch spike (ADR-087, deferred) | ✓ complete |
 
-**Test count:** 871 passing (mock mode, no real API calls in CI)
+**Test count:** ~937 passing (mock mode, no real API calls in CI). The ADR index and CI are the live source of truth as this drifts.
 
 ---
 
@@ -83,7 +83,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | Document | What it covers |
 |---|---|
 | [architecture/architecture_overview.md](architecture/architecture_overview.md) | System boundary, 7 system layers, 10 core design principles, input model, core workflows, agentic pattern strategy |
-| [architecture/data_model.md](architecture/data_model.md) | All 21 SQLite tables — core, observability (step_executions, agent_events, llm_calls, run_metrics, api_requests), security (security_events), human-decision audit (human_decisions), Resume Clinic (resume_clinic_reviews), memory (memory_items), identity (users, ADR-062); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
+| [architecture/data_model.md](architecture/data_model.md) | All 22 SQLite tables — core, observability (step_executions, agent_events, llm_calls, run_metrics, api_requests), security (security_events), human-decision audit (human_decisions), Resume Clinic (resume_clinic_reviews), lifecycle (idempotency_keys, ADR-082), memory (memory_items), identity (users, ADR-062); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState schema (22 fields, 9 sections), 6 workflow status values, 15+ step values, state ownership rules, and the long-term-memory DESIGN (the `memory_items` table + write/retrieve patterns are designed but NOT yet wired into the runtime — there is no `MemoryService`) |
 
 ---
@@ -101,19 +101,23 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 
 | Agent | Model | Pattern | Trigger |
 |---|---|---|---|
+| Relevance Filter | Haiku | Structured output (batch) | Opt-in, one call before scoring (ADR-079) |
 | Research Agent | Haiku | Bounded ReAct | Every job |
 | Scoring Agent | Haiku | Structured output | Every job (concurrent) |
-| Resume Critic | Sonnet | Critique | High-match only |
+| Resume Critic | Haiku | Critique | High-match only |
 | Review Auditor | Haiku | Evaluator / Reflection | High-match only |
 | Career Advisor | Sonnet | Advisory | Once per run |
-| Interview Coach | Sonnet | Conditional | score ≥ 75 or request |
+| Interview Coach | Sonnet | Conditional | On-demand by default; auto only if `scoring.auto_interview_prep` (ADR-085) |
 | Tailoring Agent | Sonnet | Evidence-bound generation | User request |
 | Fidelity Reviewer | Haiku | Validation / Guardrail | After every tailoring call |
 
-**Note:** the Resume Clinic adds a 9th agent, the Resume Reviewer (out-of-graph,
-job-agnostic, ADR-066). Per-agent model assignments are pinned in
-`tests/model_pins.json` (the authoritative source, ADR-058); the table above is the
-Phase-9 baseline and may drift from the live pins.
+**Note:** the full set is 13 LLM-using components (11 `BaseAgent` subclasses + 2
+utility helpers) — see [agent_graph_overview.md](architecture/agent_graph_overview.md).
+Beyond the funnel above, the Resume Clinic adds the Resume Reviewer and Resume Chat
+agents (out-of-graph, job-agnostic, ADR-066/068), and `resume_parser` +
+`custom_url_extractor` are LLM helpers. Per-agent model assignments are pinned in
+`tests/model_pins.json` (the authoritative source, ADR-058); the table above can
+drift from the live pins — current critic/auditor are Haiku (cost tuning).
 
 ---
 
@@ -121,16 +125,17 @@ Phase-9 baseline and may drift from the live pins.
 
 | Document | What it covers |
 |---|---|
-| [architecture/data_model.md](architecture/data_model.md) | 21-table SQLite schema with core, observability (incl. `api_requests`, ADR-074), security, memory, identity (`users`, ADR-062), and Resume Clinic (`resume_clinic_reviews`, ADR-066) tables. `ResumeProfile` (stored as JSON in `resumes.parsed_profile_json`) was extended in ADR-067 with `gpa`, `honors[]`, and `skill_groups[]`. |
+| [architecture/data_model.md](architecture/data_model.md) | 22-table SQLite schema with core, observability (incl. `api_requests`, ADR-074), security, lifecycle (`idempotency_keys`, ADR-082), memory, identity (`users`, ADR-062), and Resume Clinic (`resume_clinic_reviews`, ADR-066) tables. `ResumeProfile` (stored as JSON in `resumes.parsed_profile_json`) was extended in ADR-067 with `gpa`, `honors[]`, and `skill_groups[]`. |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState ownership, the long-term-memory design (not yet wired), state update rules, HITL state flow |
 
-**21 SQLite tables at a glance:**
+**22 SQLite tables at a glance:**
 
 | Category | Tables |
 |---|---|
 | Core | workflow_runs · jobs · resumes · job_scores · review_rounds · resume_reviews · career_advice · interview_prep · tailored_resumes · reports · human_decisions · user_config |
 | Observability | step_executions · agent_events · llm_calls · run_metrics · api_requests (ADR-074) |
 | Security | security_events (wired, ADR-073) |
+| Lifecycle (ADR-082) | idempotency_keys |
 | Resume Clinic (ADR-066) | resume_clinic_reviews |
 | Memory | memory_items |
 | Identity (ADR-062) | users |
@@ -264,7 +269,7 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 
 **Phase 1 — Foundation:** Defines WorkflowState, 8 agent output schemas, 17-table SQLite schema, ConfigService. The ER diagram shows all table relationships with cardinality.
 
-**Phase 2 — Services:** Builds 6 deterministic services (JobDiscoveryService, ResumeParser, SkillNormalizer, StatusManager, ObservabilityService, ReportGenerator) — no LLM calls.
+**Phase 2 — Services:** Builds the deterministic services (JobDiscoveryService, ResumeParser, ObservabilityService, ReportGenerator, ...) — no LLM calls. (The original `SkillNormalizer` and `StatusManager` were later retired in the 2026-06-01 dead-code audit.)
 
 **Phase 3 — LLM Provider:** Establishes ClaudeProvider abstraction (LLMClient interface), PromptLoader with guardrails injection and versioning, retry policy, schema repair loop, ephemeral prompt caching.
 

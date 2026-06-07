@@ -405,5 +405,5 @@ Every endpoint (except the health probes) accepts an optional `?user_id=` (defau
 | Hybrid configuration — YAML defaults + per-profile DB overrides | ✅ |
 | Multi-user profiles — sequential, no-auth, cooperative isolation (ADR-062) | ✅ |
 | FastAPI backend + Streamlit UI (UI reads through API, ADR-075) | ✅ |
-| SQLite persistence — 23 application tables | ✅ |
+| SQLite persistence — 22 application tables | ✅ |
 | Test suite — ~937 tests, mock mode, no real API calls in CI | ✅ |
