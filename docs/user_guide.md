@@ -17,7 +17,7 @@ End-to-end walkthrough: setup, starting the system, running a workflow, and read
 8. [Start a Workflow Run](#8-start-a-workflow-run)
 8a. [Advanced discovery & scoring options (opt-in)](#8a-advanced-discovery--scoring-options-opt-in)
 9. [Monitor Progress](#9-monitor-progress)
-10. [Read the Run Report](#10-read-the-run-report)
+10. [Read the Run report](#10-read-the-run-report)
 11. [Browse Results](#11-browse-results)
 12. [Deep Review Results and Interview Prep](#12-deep-review-results-and-interview-prep)
 13. [Tailored Resume Drafts](#13-tailored-resume-drafts)
@@ -108,11 +108,11 @@ There are two ways to give a profile a resume:
   See [section 7a](#7a-profiles-multi-user-adr-062).
 - **On disk:** place your resume PDF at `resume.pdf` in the project root. On the
   first run for a profile that has no stored resume, enter `resume.pdf` in the
-  **Start New Run** form and it will be parsed and stored under that profile.
+  **New search** form and it will be parsed and stored under that profile.
 
 Resumes are parsed once and cached by SHA-256 hash (per profile), so re-running
 with the same file incurs no additional API cost. Once a profile has at least
-one stored resume, **Start New Run** shows a resume **picker** instead of a text
+one stored resume, **New search** shows a resume **picker** instead of a text
 box (the active resume is listed first). Each profile keeps its own active
 resume — adding a resume to one profile never deactivates another's (ADR-062).
 
@@ -127,7 +127,7 @@ LinkedIn does not allow automated scraping. To include LinkedIn roles:
 3. The built-in LinkedIn scraper processes and clears this file on the next run
 
 > Easier alternative: paste any job URLs (LinkedIn, company career pages, ATS
-> links) straight into the **Custom job URLs** box on **Start New Run** (see
+> links) straight into the **Custom job URLs** box on **New search** (see
 > [section 8](#8-start-a-workflow-run)) — no file editing required.
 
 ---
@@ -175,9 +175,9 @@ system's tables, and opens to **Matches** (the default landing — your scored
 opportunities). It uses Streamlit native multipage, so each group is a real set of
 pages. The groups, top-down:
 
-> The journey reorg is shipping in phases. Shipped: the journey nav + the merged
-> **Matches** screen. Still landing: a single per-job **Opportunity** page (Tier 2),
-> at which point "Open opportunity" stops routing to the read-only Job detail.
+> The journey is organized into groups (FIND / MY OPPORTUNITIES / RESUME) with the
+> operator screens below a rule. A single per-job **Opportunity** page is the home
+> for acting on a role; "Open opportunity" on Matches routes straight to it.
 
 **FIND**
 - **New search** — settings inline (threshold, max jobs, custom URLs) plus a
@@ -247,8 +247,8 @@ else. There is no login.
 ### Switching profiles
 
 Pick a profile from the sidebar **Profile** dropdown. The whole UI re-scopes:
-Workflow History, the cross-run analytics, the System Dashboard, and the Start New
-Run resume picker all now show only that profile's data. The **Primary** profile
+Searches, Matches, Spend & Health, and New search
+resume picker all now show only that profile's data. The **Primary** profile
 (id 0) owns everything that existed before profiles were introduced.
 
 ### Adding a profile (onboarding wizard)
@@ -262,7 +262,7 @@ steps; only the first is required:
 2. **Resume** — upload a PDF. It is parsed and becomes the new profile's active
    resume. Skippable — you can add one later.
 3. **Default search criteria** — roles and locations, saved as the profile's
-   defaults so **Start New Run** pre-fills them. Skippable.
+   defaults so **New search** pre-fills them. Skippable.
 
 A profile created with just step 1 is fully valid; add a resume or criteria later
 through the normal screens.
@@ -295,7 +295,7 @@ expanders:
 
 ## 8. Start a Workflow Run
 
-Select **Start New Run** in the sidebar. The run is owned by the **active
+Select **New search** in the sidebar. The run is owned by the **active
 profile**, uses that profile's saved defaults, and writes to that profile's
 history. Fill in the form:
 
@@ -323,10 +323,10 @@ The backend runs end-to-end with no required user input:
 
 **Interview prep is on demand by default (ADR-085).** The in-graph coach
 auto-runs only when `scoring.auto_interview_prep` is enabled; otherwise you
-trigger it per job from **Workflow Detail** after the run (the Sonnet coach is
+trigger it per job from the **Opportunity** page after the run (the Sonnet coach is
 the single most expensive agent, so it stays opt-in).
 
-If no jobs clear the threshold, deep review is skipped and the run goes straight to report generation. The "Limits & Constraints" section in **Workflow Detail** will flag this so you can lower the threshold or broaden search.
+If no jobs clear the threshold, deep review is skipped and the run goes straight to report generation. The "Limits & Constraints" section in **Search detail** will flag this so you can lower the threshold or broaden search.
 
 > **Per-profile discovery + the entry-level caveat (ADR-064).** Each profile's roles
 > drive its own Adzuna search, and relevance is derived from those roles — so a
@@ -338,7 +338,7 @@ If no jobs clear the threshold, deep review is skipped and the run goes straight
 > (2) pasting specific postings as **Custom job URLs** still works and is a good way
 > to target exact entry-level roles regardless of what Adzuna surfaces.
 >
-> **Targeting years of experience (ADR-065).** Start New Run has a per-profile
+> **Targeting years of experience (ADR-065).** New search has a per-profile
 > experience window (saved when you tick "Save these settings as my defaults"):
 > **Max years of experience** (e.g. `2` keeps 0-2 yr roles, drops "5+ years"
 > postings) and **Min years of experience** (e.g. `5` excludes junior roles — for a
@@ -352,7 +352,7 @@ If no jobs clear the threshold, deep review is skipped and the run goes straight
 
 ## 8a. Advanced discovery & scoring options (opt-in)
 
-All of these are **off by default** and live in the **Start New Run** form (most
+All of these are **off by default** and live in the **New search** form (most
 are also under **Settings**). Tick **"Save these settings as my defaults for
 future runs"** to persist them per profile. They trade a little setup for tighter,
 cheaper results.
@@ -362,7 +362,7 @@ cheaper results.
 - Tick **"Let me pick which jobs to score (review before scoring)"**. Discovery
   casts a wider net (up to the **Discovery net width**, default 50) and the run
   **parks before scoring** instead of auto-scoring everything.
-- Open **Workflow Detail** for that run — its status shows `awaiting_scoring_selection`
+- Open **Search detail** for that run — its status shows `awaiting_scoring_selection`
   (🟡). Under **🧭 Select jobs to score**, tick the jobs worth the research +
   scoring spend and submit. Only those are scored; the rest are skipped at no cost.
 - Use it when discovery is noisy and you'd rather eyeball titles/companies before
@@ -425,7 +425,7 @@ click-through destination, not a sidebar entry, under ADR-088.)
 | Symbol | Status | Meaning |
 |---|---|---|
 | 🔵 | `running` | Workflow is executing |
-| 🟢 | `completed` | Finished — report is available, see **Workflow Detail** |
+| 🟢 | `completed` | Finished — report is available, see **Search detail** |
 | 🟠 | `completed_with_errors` | Finished but some agents failed — check Errors |
 | 🔴 | `failed` | Unrecoverable error — check Errors section |
 
@@ -433,17 +433,17 @@ The view shows the **current step**, a metrics row (LLM calls / 100, estimated c
 
 ### Cancelling a run
 
-While a run is `running`, **Live Run Monitor** shows a **Cancel** button.
+While a run is `running`, **Live monitor** shows a **Cancel** button.
 Cancellation is **cooperative** (ADR-083): the run stops at the next node
 boundary rather than halting instantly mid-step, so the status moves to
 `cancelling` and then `cancelled`. Work already finished (discovered jobs,
-scores) is preserved and visible in **Workflow Detail**.
+scores) is preserved and visible in **Search detail**.
 
-After completion, switch to **Workflow Detail** for the unified view of jobs, scores, deep review, advice, interview prep, the settings that were in effect for this run, and any execution-limit warnings.
+After completion, open **Search detail** for the run view — jobs, scores, the settings that were in effect, and any execution-limit warnings. Open any job (its **Open** button) to reach its deep review, advice, interview prep, and tailoring on the **Opportunity** page.
 
 ---
 
-## 10. Read the Run Report
+## 10. Read the Run report
 
 Open **Run report** from a completed run (it is a click-through destination under
 ADR-088, not a sidebar entry). It is only available when the run status is 🟢
@@ -455,7 +455,7 @@ The report renders as Markdown and includes:
 - Career advice across tracks
 - Interview prep highlights
 
-Tailored resume drafts are generated on demand from **Workflow Detail** (see [section 13](#13-tailored-resume-drafts)) and are not part of the auto-generated report.
+Tailored resume drafts are generated on demand from the **Opportunity** page (see [section 13](#13-tailored-resume-drafts)) and are not part of the auto-generated report.
 
 Click **Download Markdown** to save a copy locally.
 
@@ -512,7 +512,7 @@ For each deep-reviewed job, an expandable section shows:
 ### Interview Prep
 
 Interview prep is **on demand by default** (ADR-085) — trigger it per job from
-**Workflow Detail** (or enable `scoring.auto_interview_prep` to have the in-graph
+the **Opportunity** page (or enable `scoring.auto_interview_prep` to have the in-graph
 coach run automatically for selected jobs that clear the threshold). For each job
 where the Interview Coach ran, an expandable section shows:
 - **Likely Topics** — subject areas likely to appear in interviews
@@ -527,9 +527,9 @@ Tailoring runs **on demand**, per job, after the workflow finishes. There is no 
 
 ### Where to find it
 
-**Workflow History** → click any completed run → scroll to **✨ Prep — tailored resume drafts** at the bottom of the Workflow Detail page. There is one expandable section per deep-reviewed job (`selected_jobs`).
+**Matches** → select a row → **Open opportunity** (or **Searches** → open a run → a job's **Open**) → the **Opportunity** page. The **Next steps** section holds the tailoring controls.
 
-Inside each job's expander:
+In the **Next steps** section:
 
 - **✨ Generate new draft** — runs Tailoring Agent + Fidelity Reviewer. Takes 5-15s and ~6 LLM calls (~$0.01-0.02). Each click creates a brand-new draft; previous drafts stick around so you can compare.
 
@@ -651,7 +651,7 @@ profile, newest first. Click an expander to see its summary and tap
 
 The clinic is one reviewer call plus (when there are rewrites) one
 Fidelity Reviewer call. It writes a lightweight `resume_clinic`
-`workflow_runs` row so the **System Dashboard** attributes clinic spend
+`workflow_runs` row so **Spend & Health** attributes clinic spend
 to the active profile correctly.
 
 ### Export the final resume
@@ -720,7 +720,7 @@ Horizontal bar chart of the top 20 companies by best overall match score, filter
 
 Shows total workflow runs and cumulative estimated API cost across all runs. The full runs table below includes per-run status, job counts, LLM call counts, and cost.
 
-All of this is **scoped to the active profile** (ADR-062). The **System Dashboard**
+All of this is **scoped to the active profile** (ADR-062). **Spend & Health**
 (formerly Cost Dashboard) likewise defaults to the active profile; tick **All
 profiles (system-wide)** there to see spend, security events, latency, and
 reliability across every profile at once, and click a profile in the by-profile
@@ -746,7 +746,7 @@ Why you'd change one:
   the output quality is worth the cost in the report's Cost Breakdown
   section, then revert.
 * **You're cost-optimising.** Move every advisory agent to Haiku or
-  `gpt-4o-mini` and watch total cost drop in the Workflow Detail rollup.
+  `gpt-4o-mini` and watch total cost drop in the Search detail rollup.
 
 Two important constraints:
 
@@ -756,8 +756,8 @@ Two important constraints:
 * Saving a change **requires a backend restart** to take effect. In-flight
   workflows continue under whatever assignment they started with.
 
-The cost rollup in **Workflow Detail → Cost Breakdown** and at the bottom
-of the **Run Report** shows `provider · model · calls · in tokens · out
+The cost rollup in **Search detail → Diagnostics → Cost breakdown** and at the bottom
+of the **Run report** shows `provider · model · calls · in tokens · out
 tokens · cost · avg latency` per agent so you can decide which agent is
 worth re-routing next time.
 
@@ -768,21 +768,21 @@ worth re-routing next time.
 Once configured, a typical session looks like:
 
 ```
-1. (Optional) Add LinkedIn URLs to data/linkedin_inbox.txt (or paste into Custom job URLs on Start New Run)
+1. (Optional) Add LinkedIn URLs to data/linkedin_inbox.txt (or paste into Custom job URLs on New search)
 2. Start backend + Streamlit UI if not running
-3. Start New Run — fill form (optionally paste custom URLs), click Start Workflow
-4. Switch to Live Run Monitor — refresh until run completes (~5–15 min)
+3. New search — fill form (optionally paste custom URLs), click Start Workflow
+4. Switch to Live monitor — refresh until run completes (~5–15 min)
    (Job selection is auto: every job whose best track score >= threshold
    advances to deep review — no HITL pause.)
-5. Workflow History — click the row to open Workflow Detail
-6. Read deep-reviewed jobs + interview prep on the detail screen
-7. For jobs worth pursuing: scroll to Prep — tailored resume drafts,
-   expand the job, click Generate new draft (5–15s per draft).
+5. Matches — your scored jobs across all runs (or Searches -> open a run)
+6. Click a job (Open opportunity) -> the Opportunity page:
+   read fit, gaps, deep review, advice, interview prep
+7. On the Opportunity page, click Tailor my resume (5–15s per draft).
    Read the Strategy summary, scan the per-track Estimated impact,
    review section-grouped diffs, then Approve / Revise / Reject.
-   Iterate by clicking Generate new draft again — drafts accumulate.
-8. Switch to Run Report — read findings and download markdown
-9. Browse Results for history across all runs
+   Click Tailor my resume again — drafts accumulate.
+8. Run report — read findings and download markdown
+9. Matches for your scored jobs across all runs
 ```
 
 **Estimated cost per run (10 jobs):**
@@ -807,10 +807,10 @@ Once configured, a typical session looks like:
 
 **Workflow seems to hang mid-run**
 - The workflow runs end to end with no human-in-the-loop pause (ADR-059) — it does not stop and wait for input. A long run is usually research/scoring on many jobs or rate-limit backoff, not a HITL pause
-- Open **Live Run Monitor**, click **Refresh**, and watch the activity feed. If a run truly stalls, you can request cancellation (ADR-083); it stops at the next node boundary
+- Open **Live monitor**, click **Refresh**, and watch the activity feed. If a run truly stalls, you can request cancellation (ADR-083); it stops at the next node boundary
 - Tailoring, deep review, interview prep, and the Resume Clinic happen on demand AFTER the run, not as in-run pauses
 
-**Live Run Monitor shows "No active workflow"**
+**Live monitor shows "No active workflow"**
 - The session state is in-browser only; it resets on page reload or if Streamlit restarts
 - You can still use Browse views — all historical data is in `data/v2.db`
 
@@ -821,7 +821,7 @@ Once configured, a typical session looks like:
 
 **No deep review results or interview prep data**
 - These views require a workflow that completed a full deep review pass
-- Check that status reached `completed` in **Live Run Monitor**
+- Check that status reached `completed` in **Live monitor**
 
 **API error in the UI (red banner)**
 - Confirm the backend is running: `curl http://localhost:8000/docs`
