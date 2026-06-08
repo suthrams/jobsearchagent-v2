@@ -1,27 +1,35 @@
-"""v2 Streamlit UI - thin entrypoint.
+"""v2 Streamlit UI - thin entrypoint (ADR-088 native multipage).
 
-This file is the page shell only (UI refactor, docs/architecture/ui_refactor_plan.md):
-it sets page config, initializes session state, renders the sidebar (profile
-selector + view radio + filters), builds a ViewContext from the sidebar filters,
-and dispatches the selected view through `app/ui/views/REGISTRY`. It deliberately
-holds no screen-rendering logic.
+This file is the page shell only (UI refactor, docs/architecture/ui_refactor_plan.md
++ ADR-088 journey reorg): it sets page config, initializes session state, builds
+the journey navigation with Streamlit native multipage (``st.navigation`` /
+``st.Page``), renders the shared sidebar (profile selector + filters + Active Run),
+and runs the selected page. Each page wraps a view's ``render(ctx)`` through
+``app/ui/views/REGISTRY``. It deliberately holds no screen-rendering logic.
+
+Navigation model (ADR-088):
+  * Journey groups (FIND / MY OPPORTUNITIES / RESUME + an unlabeled operator rule)
+    come from ``nav.NAV_GROUPS``; the sidebar links are rendered by st.navigation.
+  * Detail screens (Search detail, Job detail, Live monitor, Run report) are
+    ``nav.DESTINATION_VIEWS`` - registered ``visibility="hidden"`` so they route by
+    click (via ``_navigate`` -> ``st.switch_page``) but never show in the sidebar.
+  * The user-facing labels live in ``nav.DISPLAY_TITLE``; internal view names (the
+    REGISTRY keys, the ``_navigate`` targets) stay stable so the rename is one map.
 
 Where everything lives:
-  * app/ui/nav.py          - NAV_ITEMS / NAV_VIEWS / SEPARATOR, ViewContext, _navigate
+  * app/ui/nav.py          - NAV_GROUPS / DESTINATION_VIEWS / DISPLAY_TITLE,
+                             ViewContext, register_pages, _navigate
   * app/ui/views/<name>.py - one render(ctx) per screen; REGISTRY maps name -> render
-  * app/ui/components/      - shared render helpers (bullets, tailoring card, tracks)
+  * app/ui/components/      - shared render helpers (bullets, tailoring card, ...)
   * app/ui/formatting.py    - pure formatters (no st.*); app/ui/data.py - cached reads
-  * app/ui/api_client.py    - ALL backend calls (reads + writes); app/ui/data.py - cached wrappers
-                              (ADR-075 funnelled reads through the API; db_reader is gone)
-
-The sidebar order (Workflow History default, then Detail / Start New Run / Live
-Monitor / Run Report / Settings / analytics) is defined by NAV_ITEMS in nav.py.
+  * app/ui/api_client.py    - ALL backend calls (reads + writes) (ADR-075)
 """
 # sys.path setup + load_dotenv() must run before the app.* imports below, so those
 # imports are intentionally not at the top of the file. E402 suppressed file-wide.
 # ruff: noqa: E402
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -35,10 +43,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-# The entrypoint is a thin control surface (UI refactor, ui_refactor_plan.md): it
-# wires page config + session state + the sidebar, then dispatches the selected
-# view through the registry. All screen rendering lives in app/ui/views/; shared
-# helpers in formatting.py / components/ / data.py. So it imports very little.
 import app.ui.api_client as api
 import app.ui.nav as nav
 from app.ui.nav import _navigate
@@ -64,7 +68,6 @@ for _key, _default in (
     ("detail_workflow_id", None),
     ("detail_job_id", None),
     ("config_cache", None),
-    ("sidebar_view", "Workflow History"),
     ("current_user_id", "0"),  # ADR-062: active profile; default = pre-existing data
     ("onboard_step", 1),       # onboarding wizard cursor
     ("onboard_new_user_id", None),
@@ -103,21 +106,82 @@ if "workflow_reconnect_attempted" not in st.session_state:
             )
 
 
-# ── Flush pending navigation before the radio widget is created ───────────────
-# _navigate() cannot write sidebar_view after the widget is instantiated, so it
-# stores the destination in _pending_nav and we apply it here on the next cycle.
-if st.session_state.get("_pending_nav"):
-    st.session_state.sidebar_view = st.session_state.pop("_pending_nav")
+# ── ViewContext from the sidebar filters ──────────────────────────────────────
+# Filters render in the sidebar below; each page reads their current values from
+# session_state when it runs (after the sidebar is built). Phase 0 keeps them
+# always-on; ADR-088 Phase 3 makes them contextual to Matches / Searches.
 
-# ── Sidebar ───────────────────────────────────────────────────────────────────
+def _build_ctx() -> nav.ViewContext:
+    return nav.ViewContext(
+        min_score=int(st.session_state.get("flt_min_score", 75)),
+        search=str(st.session_state.get("flt_search", "") or ""),
+        include_excluded=bool(st.session_state.get("flt_include_excluded", False)),
+    )
+
+
+# ── Native-multipage navigation (st.navigation / st.Page) ─────────────────────
+# Build one page per view. A page is a zero-arg callable that builds the ctx and
+# dispatches to the view's render(ctx) through the registry. Internal view names
+# stay stable; the user sees nav.DISPLAY_TITLE. Detail screens are hidden pages,
+# routed to by _navigate -> st.switch_page.
+
+def _slug(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-") or "page"
+
+
+def _page_factory(view_name: str):
+    def _page() -> None:
+        _render = VIEW_REGISTRY.get(view_name)
+        if _render is None:
+            st.error(f"No view registered for {view_name!r}. See app/ui/views/.")
+            return
+        _render(_build_ctx())
+    _page.__name__ = _slug(view_name).replace("-", "_")
+    return _page
+
+
+_pages_by_name: dict[str, st.Page] = {}
+_grouped: dict[str, list[st.Page]] = {}
+for _header, _names in nav.NAV_GROUPS.items():
+    _section: list[st.Page] = []
+    for _name in _names:
+        _pg = st.Page(
+            _page_factory(_name),
+            title=nav.DISPLAY_TITLE[_name],
+            url_path=_slug(nav.DISPLAY_TITLE[_name]),
+            default=(_name == nav.DEFAULT_VIEW),
+        )
+        _pages_by_name[_name] = _pg
+        _section.append(_pg)
+    _grouped[_header] = _section
+
+# Hidden destinations: registered so they route, but absent from the sidebar. Park
+# them in the unlabeled operator section - visibility="hidden" keeps them off-screen
+# regardless of section, so this placement is purely structural.
+for _name in nav.DESTINATION_VIEWS:
+    _pg = st.Page(
+        _page_factory(_name),
+        title=nav.DISPLAY_TITLE[_name],
+        url_path=_slug(nav.DISPLAY_TITLE[_name]),
+        visibility="hidden",
+    )
+    _pages_by_name[_name] = _pg
+    _grouped.setdefault(nav.OPERATOR_SECTION, []).append(_pg)
+
+_page = st.navigation(_grouped)
+# Let _navigate(...) switch to any view (including hidden destinations) by name.
+nav.register_pages(_pages_by_name)
+
+
+# ── Sidebar (rendered below the native nav) ───────────────────────────────────
 
 with st.sidebar:
     st.title("Job Search Agent v2")
 
     # ── Profile selector (ADR-062) ───────────────────────────────────────────
-    # Picks whose search this is. Re-scopes every history / analytics read and
-    # the resume picker, and tags new runs with this owner. No auth — this is a
-    # cooperative selector, not an access boundary (ADR-062 Decision E).
+    # Picks whose search this is. Re-scopes every history / analytics read and the
+    # resume picker, and tags new runs with this owner. No auth - a cooperative
+    # selector, not an access boundary (ADR-062 Decision E).
     _users = _cached_list_users()
     if _users:
         _id_to_label = {str(u["id"]): f"{u['name']}  (#{u['id']})" for u in _users}
@@ -151,25 +215,22 @@ with st.sidebar:
         _navigate("Profiles")
 
     st.markdown("---")
-    # View list + (later) dispatch live in app/ui/nav.py — the single source of
-    # truth for the UI refactor (docs/architecture/ui_refactor_plan.md, Phase 0).
-    view = st.radio(
-        "View",
-        nav.NAV_ITEMS,
-        key="sidebar_view",
-    )
-    st.markdown("---")
-    min_score = st.slider(
+    # Cross-run filters (Phase 0: always-on; Phase 3 makes them contextual). Read
+    # back from session_state by _build_ctx() when each page runs.
+    st.slider(
         "Minimum match score",
         min_value=0, max_value=100, value=75, step=5,
+        key="flt_min_score",
         help="Jobs with any track score (technical / architecture / leadership) at or above "
              "this value qualify for deep review and interview prep.",
     )
-    st.markdown("---")
-    search = st.text_input("Search title / company", placeholder="e.g. Staff Engineer")
-    include_excluded = st.checkbox(
+    st.text_input(
+        "Search title / company", placeholder="e.g. Staff Engineer", key="flt_search",
+    )
+    st.checkbox(
         "Include excluded jobs",
         value=False,
+        key="flt_include_excluded",
         help="ADR-057: jobs you've explicitly excluded are hidden from cross-run "
              "analytics by default. Tick to surface them.",
     )
@@ -202,19 +263,8 @@ with st.sidebar:
         if _b2.button("Live", key="sb_open_live", use_container_width=True):
             _navigate("Live Run Monitor")
 
-if view == nav.SEPARATOR:
-    st.info("Select a view from the sidebar.")
-    st.stop()
 
-# ── View dispatch ─────────────────────────────────────────────────────────────
-# Every nav view renders through the registry (app/ui/views/). ctx carries the
-# sidebar filter widgets; workflow_id / current_user_id stay on session_state.
-# The registry covers every nav view (enforced by test_ui_structure), so the
-# fallback only fires if NAV_ITEMS and the registry ever drift.
-ctx = nav.ViewContext(min_score=min_score, search=search, include_excluded=include_excluded)
-_render_view = VIEW_REGISTRY.get(view)
-if _render_view is not None:
-    _render_view(ctx)
-else:
-    st.error(f"No view registered for {view!r}. This is a bug — see app/ui/views/.")
-
+# ── Run the selected page ─────────────────────────────────────────────────────
+# st.navigation resolved the current page from the URL / nav click (or the default,
+# Matches). Running it dispatches to that view's render(_build_ctx()).
+_page.run()

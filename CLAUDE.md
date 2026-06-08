@@ -219,9 +219,11 @@ app/
   schemas/          Pydantic output schemas for all agents
   repositories/     SQLite data access (incl. memory_repository.py)
   prompts/          shared/guardrails.txt (every agent) + agents/<one per agent>
-  ui/               Streamlit: thin entrypoint + views package (see ui_architecture.md).
-                    Add a screen: views/<name>.py with render(ctx) -> register in
-                    views/__init__.py -> add to nav.NAV_ITEMS
+  ui/               Streamlit native multipage (st.navigation/st.Page; ADR-088).
+                    See ui_architecture.md. Add a screen: views/<name>.py with
+                    render(ctx) -> register in views/__init__.py -> place the name in
+                    nav.NAV_GROUPS (sidebar) or nav.DESTINATION_VIEWS (click-through)
+                    + add its nav.DISPLAY_TITLE
 
 docs/architecture/  design docs + adr/ (start at ADR-000-index.md)
 config/             config.example.yaml + config.yaml (gitignored)

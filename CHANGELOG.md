@@ -4,6 +4,42 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-07
+
+### Changed — UI journey reorg (ADR-088 Tier 1): native multipage + merged Matches
+
+Reorganize the Streamlit UI around the job-seeker journey instead of the system's
+tables. Two Tier-1 phases landed:
+
+- **Phase 0 - native multipage nav.** The UI moves to Streamlit native multipage
+  (`st.navigation` / `st.Page`). `nav.py` is the single source of truth for the
+  journey groups (`NAV_GROUPS`: FIND / MY OPPORTUNITIES / RESUME + an operator group
+  under a rule-glyph header, not a noun), the click-through `DESTINATION_VIEWS`
+  (Search detail / Job detail / Live monitor / Run report, registered
+  `visibility="hidden"`), and `DISPLAY_TITLE` (the user-facing rename: Workflow
+  History -> Searches, System Dashboard -> Spend & Health, Profiles -> Profiles &
+  Resumes, Start New Run -> New search). Internal view names (the REGISTRY keys, the
+  `_navigate` targets) stay stable, so the rename is one map, not call-site churn.
+  `_navigate` now switches via `st.switch_page` (the `_pending_nav` radio two-step is
+  gone); the app lands on Matches (`default=True`). The sidebar radio + Cross-Run
+  Analytics separator are retired. A `test_ui_structure` invariant asserts no
+  user-facing title says "Workflow".
+- **Phase 2 - merged Matches.** (prior commit) Top Matches + IC/Architect/Management
+  track views + Companies collapse into one `views/matches.py`: a Roles tab with an
+  active-track `segmented_control` sort (ADR-071) + a Companies tab, select-row ->
+  action buttons, and a branched first-run empty state. `analytics.py` +
+  `components/tracks.py` deleted.
+
+Docs swept: `ui_architecture.md` (nav model, package map, screen table, add-a-screen
+all brought current - also fixed pre-existing `db_reader` references retired by
+ADR-075), `CLAUDE.md` UI note, ADR-088 + `ui_journey_reorg_plan.md` phase status.
+The headless smoke harness (`.claude/skills/smoke-test-ui`) now runs the entrypoint
+shell once (native nav) then renders each view in isolation. 940 tests pass; smoke
+12/12. Tiers/phases still open: contextual filters (3), click-through Back polish
+(4), the Tier-2 Opportunity page (5-6).
+
+---
+
 ## 2026-06-06
 
 ### Added — Business-rules + settings explainability docs

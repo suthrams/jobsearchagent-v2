@@ -170,41 +170,58 @@ tagged with it. The **＋ Add profile** button opens the onboarding wizard. See
 [section 7a](#7a-profiles-multi-user-adr-062). On a fresh install there is one
 profile, **Primary** (#0), which owns all pre-existing data.
 
-The sidebar opens to **Workflow History** (the default landing) and gives you the
-following views, top-down:
+The sidebar is organized around the **job-seeker journey** (ADR-088), not the
+system's tables, and opens to **Matches** (the default landing — your scored
+opportunities). It uses Streamlit native multipage, so each group is a real set of
+pages. The groups, top-down:
 
-**Workflow-centric**
-- **Workflow History** — all runs, **click any row** to open its Workflow Detail.
-  The Run column shows the first role + first location (`+N` badges for the rest);
-  the ID column is truncated — full UUIDs and full criteria appear on the detail
-  screen.
-- **Workflow Detail** — unified per-run view: jobs, scores, deep review, advice,
-  interview prep, **the settings used for that run**, and a "Limits & Constraints"
-  section that flags where execution caps clipped results
-- **Start New Run** — settings inline (threshold, max jobs, custom URLs) plus a
-  textarea for line-by-line custom job URLs
-- **Live Run Monitor** — activity feed for the currently running workflow
-- **Run Report** — generated markdown report
+> The journey reorg is shipping in phases. Shipped: the journey nav + the merged
+> **Matches** screen. Still landing: a single per-job **Opportunity** page (Tier 2),
+> at which point "Open opportunity" stops routing to the read-only Job detail.
+
+**FIND**
+- **New search** — settings inline (threshold, max jobs, custom URLs) plus a
+  textarea for line-by-line custom job URLs. (Internally "Start New Run".)
+- **Searches** — all runs, **click any row** to open that run's detail. The Run
+  column shows the first role + first location (`+N` badges for the rest); the ID
+  column is truncated — full UUIDs and criteria appear on the detail screen.
+  (Was "Workflow History".)
+
+**MY OPPORTUNITIES**
+- **Matches** — your scored jobs across **every** run in one place (read through
+  the API, scoped to the active profile; ADR-075). A **Roles** tab sorts by a
+  segmented control showing only your **active** tracks (Best fit / IC /
+  Architecture / Management; ADR-071), and a **Companies** tab charts your top
+  target companies by best match score. Select a row to **Open opportunity** or
+  **Exclude** it. This merges the former Top Matches + per-track + Companies screens.
+
+**RESUME**
+- **Resume Clinic** — improve a resume itself, with no specific job in mind.
+- **Profiles & Resumes** — manage profiles and run the **Add profile** onboarding
+  wizard (ADR-062; see [section 7a](#7a-profiles-multi-user-adr-062)). (Was "Profiles".)
+
+**Operator** *(below a rule, out of the first glance)*
 - **Settings** — view and edit the active profile's config (search criteria,
   threshold, **active scoring tracks** (ADR-071), salary, posting-age filter,
-  **per-agent provider + model**). Each profile has its own overrides layered over the shared
-  YAML defaults; a new profile starts on pure defaults. Protected keys (hard
-  limits, retention windows, prompt definitions) remain read-only and shared by
-  every profile.
-- **Profiles** — manage profiles and run the **Add profile** onboarding wizard
-  (ADR-062; see [section 7a](#7a-profiles-multi-user-adr-062)).
+  **per-agent provider + model**). Each profile has its own overrides layered over the
+  shared YAML defaults; a new profile starts on pure defaults. Protected keys (hard
+  limits, retention windows, prompt definitions) remain read-only and shared.
+- **Spend & Health** — cost, security, latency, and reliability in one pane
+  (ADR-073). (Was "System Dashboard".)
 
-**Cross-Run Analytics** *(read through the API, scoped to the active profile; ADR-075)*
-- **Top Matches** — scored jobs across all runs
-- **IC / Architect / Management Track** — sorted by per-track score
-- **Companies** — top target companies by best match score
+**Click-through destinations** *(not in the sidebar; reached by clicking a row or
+button, each with an in-app Back)*: **Search detail** (the per-run view: jobs,
+scores, deep review, advice, interview prep, the settings used, and a "Limits &
+Constraints" section), **Job detail**, **Live monitor** (activity feed for a running
+run), and **Run report** (the generated markdown report).
 
-**Sidebar controls**
+**Sidebar controls** *(below the nav)*
 - **Minimum match score** slider — 0–100, default 75, step 5. Same value drives
   the auto-selection of jobs for deep review (any **active** track score ≥ this
   qualifies; ADR-071).
 - **Search** — filter by title or company across browse views
 - **Refresh data** — clears the read cache and reloads from the API
+- **Active Run** — status of the most recent run, with **Detail** / **Live** jumps
 
 ---
 
@@ -395,7 +412,9 @@ cheaper results.
 
 ## 9. Monitor Progress
 
-Select **Live Run Monitor** in the sidebar. Click **Refresh** to poll the backend for the latest status.
+Open **Live monitor** from the **Active Run** widget in the sidebar (the **Live**
+button), then click **Refresh** to poll the backend for the latest status. (It is a
+click-through destination, not a sidebar entry, under ADR-088.)
 
 ### Status indicators
 
@@ -422,7 +441,9 @@ After completion, switch to **Workflow Detail** for the unified view of jobs, sc
 
 ## 10. Read the Run Report
 
-Select **Run Report** in the sidebar. This view is only available when the workflow status is 🟢 `completed`.
+Open **Run report** from a completed run (it is a click-through destination under
+ADR-088, not a sidebar entry). It is only available when the run status is 🟢
+`completed`.
 
 The report renders as Markdown and includes:
 - Summary of all selected jobs
@@ -440,27 +461,34 @@ Click **Download Markdown** to save a copy locally.
 
 All Browse views read through the FastAPI backend (ADR-075: the UI never opens the database directly) — they are available at any time, including during a run or between runs. Use the **Refresh data** button in the sidebar to reload after a run completes.
 
-The sidebar **Minimum score** slider and **Search** box apply to all track views.
+The sidebar **Minimum score** slider and **Search** box apply to the Matches view.
 
-### Top Matches
+Browsing now lives on one screen, **Matches** (ADR-088) — the former Top Matches +
+per-track + Companies screens merged into it.
 
-Shows all scored jobs filtered by overall score ≥ minimum. Displays a summary row with total scored jobs, jobs above the threshold, and unique company count.
+### Matches → Roles tab
 
-### IC / Architect / Management Track
+Shows all scored jobs filtered by score ≥ minimum, with a summary row (total scored,
+jobs above the threshold, unique company count). A **Sort** segmented control picks
+the score column, showing only the profile's **active** tracks (ADR-071) plus
+"Best fit":
 
-Each track view shows jobs sorted by the track-specific score column:
-
-| View | Score column |
+| Sort segment | Score column |
 |---|---|
-| IC Track | `technical_score` |
-| Architect Track | `architecture_score` |
-| Management Track | `leadership_score` |
+| Best fit | `overall_score` |
+| IC | `technical_score` |
+| Architecture | `architecture_score` |
+| Management | `leadership_score` |
 
-All track tables include: Job ID, Title, Company, Location, Score (progress bar), Summary, Recommended Next Action, and a direct link to the job posting.
+The table includes Title, Company, Location, Posted, Score (progress bar), Summary,
+Agent recommendation, and a link to the posting. Inactive tracks (ADR-071) simply do
+not appear as a sort segment — enable them under **Settings → Scoring**. Select a row
+to **Open opportunity** or **Exclude** it.
 
-If a track is not active for the current profile (ADR-071), its view shows a "not
-active for this profile" notice instead of an empty table — enable it under
-**Settings → Scoring** if you want it.
+### Matches → Companies tab
+
+Your top target companies by best overall match score: a horizontal bar chart plus a
+per-company table (job count + best score per active track).
 
 ---
 

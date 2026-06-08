@@ -6,7 +6,9 @@ proposed screens (wireframes), how a user moves through them (engagement
 workflows), the phased build, the file-level changes, the test plan, and the
 recommendations with effort/impact.
 
-Status: Proposed - awaiting polished-mockup sign-off before code.
+Status: Accepted, in progress. **Done:** Phase 2 (merged Matches) + Phase 0 (native
+multipage nav, rename, hidden destinations, land on Matches). **Open:** Phases 3, 4
+(Tier 1) and 5, 6 (Tier 2).
 
 **Decisions locked (2026-06-07):** framework = Streamlit + native multipage
 (`st.navigation`/`st.Page`) + fragments (section 11); scope = both tiers (phases
@@ -324,9 +326,9 @@ that now live inside it.
 
 | Phase | Scope | Primary files | Tests |
 |---|---|---|---|
-| 0 | Adopt `st.navigation`/`st.Page` so the journey groups (FIND / MY OPPORTUNITIES / RESUME / rule) become real routable pages; rename + regroup; no merge yet. Pure relabel + the routing foundation, near-zero risk. Operator group is just a rule (no "MANAGE" noun). | `streamlit_app.py`, `nav.py`, `views/__init__.py`, `views/system_dashboard.py` (label) | update `test_ui_structure`; smoke |
-| 1 | Land on Matches + branched empty state (no resume -> add resume; resume, no runs -> start search). | `streamlit_app.py`, `views/matches.py` | empty-state test; smoke |
-| 2 | Merge Matches: one view, active-track `segmented_control` sort + Companies `st.tabs`; **select-row -> action-button** (reuse `workflow_detail.py` pattern). Retire the 4 analytics views. | new `views/matches.py` from `analytics.py`; `nav.py` | matches view + active-track + select-row tests; smoke |
+| 0 **(DONE)** | Adopt `st.navigation`/`st.Page` so the journey groups (FIND / MY OPPORTUNITIES / RESUME / rule) become real routable pages; rename + regroup; hidden click-through destinations; land on Matches. Internal view names kept stable; only `DISPLAY_TITLE` renames. Operator group is a rule-glyph header (no "MANAGE" noun). | `nav.py`, `streamlit_app.py`, `test_ui_structure`, `smoke_ui.py` | `test_ui_structure` rewritten; smoke 12/12 |
+| 1 (folded into 0) | Land on Matches via `default=True`; branched empty state already in `views/matches.py`. The "auto-refresh while a run is active" piece (R-7) is still open. | `streamlit_app.py`, `views/matches.py` | empty-state test; smoke |
+| 2 **(DONE)** | Merge Matches: one view, active-track `segmented_control` sort + Companies `st.tabs`; **select-row -> action-button**. Retired the 4 analytics views + `components/tracks.py`. | `views/matches.py` from `analytics.py`; `nav.py` | matches view + active-track + select-row tests; smoke |
 | 3 | Contextual filters: move min-score/search/excluded into Matches/Searches rendering only. | `streamlit_app.py`, `views/matches.py`, `views/history.py` | filter-scoping test; smoke |
 | 4 | Demote detail screens to click-through (the fragile `_navigate` surgery, done last when everything else is stable); explicit in-app Back on each. | `nav.py`, `streamlit_app.py`, the detail views | routing/back tests; smoke |
 | 5 (Tier 2) | Opportunity page: new `views/opportunity.py` merging Job Detail + the **full** per-job action region (deep-review, tailoring drafts + decisions + ADR-072 chat, interview prep, cost/"already-run" badges - ~2x the naive estimate); route every job selection to it. | new `views/opportunity.py`; `views/matches.py`, `workflow_detail.py`, `job_detail.py`, `components/` | opportunity + routing + no-tracking guardrail tests; smoke |

@@ -34,7 +34,7 @@ flowchart LR
     subgraph UI["Streamlit UI (app/ui/)"]
         E["streamlit_app.py<br/>(thin entrypoint)"]
         V["views/&lt;name&gt;.py<br/>(render ctx)"]
-        DB["db_reader.py"]
+        D["data.py<br/>(@st.cache_data)"]
         AC["api_client.py"]
     end
     BE["FastAPI backend<br/>app/api/main.py"]
@@ -42,10 +42,10 @@ flowchart LR
     SQL[("data/v2.db<br/>(SQLite)")]
 
     E --> V
-    V -- "READ: browse/history/analytics" --> DB
+    V -- "READ: history/matches/detail" --> D
     V -- "WRITE/CONTROL: start, decide, config" --> AC
-    DB -- "json_extract() direct read" --> SQL
-    AC -- "httpx -> REST" --> BE
+    D -- "cached GET" --> AC
+    AC -- "httpx -> REST (reads + writes)" --> BE
     BE --> GR
     GR -- "writes runs / scores / outputs" --> SQL
     BE -- "reads/writes" --> SQL
@@ -53,7 +53,7 @@ flowchart LR
     classDef ui fill:#1f3a5a,stroke:#2980b9,color:#fff
     classDef be fill:#1f5a2f,stroke:#27ae60,color:#fff
     classDef store fill:#5a4a1f,stroke:#c0a020,color:#fff
-    class E,V,DB,AC ui
+    class E,V,D,AC ui
     class BE,GR be
     class SQL store
 ```
@@ -69,22 +69,24 @@ something to happen* → control path.
 
 ```
 app/ui/
-  streamlit_app.py   thin entrypoint: page config + session state + sidebar + dispatch (~217 lines)
-  nav.py             NAV_ITEMS / NAV_VIEWS / SEPARATOR, ViewContext, _navigate (no st.* at import)
+  streamlit_app.py   thin entrypoint: page config + session state + native-multipage
+                     nav (st.navigation/st.Page) + shared sidebar + page.run()
+  nav.py             NAV_GROUPS / DESTINATION_VIEWS / DISPLAY_TITLE / NAV_VIEWS,
+                     ViewContext, register_pages, _navigate (no st.* at import)
   views/
-    __init__.py      REGISTRY: {view name -> render(ctx)}
-    <name>.py        one render(ctx) per screen (15 modules)
-  components/         shared st.* render helpers (bullets, tailoring card, tracks)
+    __init__.py      REGISTRY: {internal view name -> render(ctx)}
+    <name>.py        one render(ctx) per screen (11 modules)
+  components/         shared st.* render helpers (bullets, tailoring card, resume chat)
   formatting.py      pure formatters (no st.*, unit-tested)
   data.py            @st.cache_data wrappers over api_client + local YAML
-  db_reader.py       direct data/v2.db reads (the read path)
-  api_client.py      httpx calls to FastAPI (the control path)
+  api_client.py      httpx calls to FastAPI (ALL reads + writes, ADR-075)
 ```
 
 Dependency direction is strictly one-way (no cycles):
-`formatting` ← `components` ← `views` ← `nav`/`data`/`db_reader`/`api_client` ←
+`formatting` ← `components` ← `views` ← `nav`/`data`/`api_client` ←
 `streamlit_app`. The registry lives in `views/__init__.py` (not `nav.py`) so view
-modules can import `ViewContext` from the leaf `nav` without a cycle.
+modules can import `ViewContext` from the leaf `nav` without a cycle. (ADR-088 moved
+the UI to Streamlit native multipage; the journey nav model is Section 4.)
 
 ---
 
@@ -97,44 +99,46 @@ things every run:
 
 1. **Page config** — `st.set_page_config(...)` (must be the first Streamlit call).
 2. **Session-state init** — seed persistent keys with defaults if absent.
-3. **Identity** — `api.set_user_id(st.session_state.current_user_id)` so the
-   control path is scoped to the active profile (ADR-062).
+3. **Identity** — `api.set_user_id(st.session_state.current_user_id)` so every API
+   call is scoped to the active profile (ADR-062).
 4. **Auto-reconnect** (first load only) — adopt the most recent run so the sidebar
    "Active Run" panel is populated.
-5. **Sidebar + dispatch** — render the sidebar (profile selector, view radio,
-   filters), build a `ViewContext`, and call `REGISTRY[view](ctx)`.
+5. **Build navigation + dispatch** — build one `st.Page` per view from `nav.py`'s
+   journey structure, hand them to `st.navigation(...)`, `register_pages(...)` so
+   `_navigate` can switch, render the shared sidebar (profile selector, filters,
+   Active Run), then `page.run()` runs the selected page, which builds a
+   `ViewContext` and calls `REGISTRY[view](ctx)`.
 
 ```mermaid
 sequenceDiagram
     actor U as User (browser)
     participant E as streamlit_app.py
     participant SS as st.session_state
-    participant DB as db_reader
+    participant N as st.navigation
     participant AC as api_client -> FastAPI
     participant V as views/REGISTRY[view]
 
-    U->>E: interaction triggers a script run
+    U->>E: interaction / nav click triggers a script run
     E->>E: st.set_page_config(...)
-    E->>SS: init keys if absent (workflow_id, current_user_id="0", sidebar_view, ...)
+    E->>SS: init keys if absent (workflow_id, current_user_id="0", ...)
     E->>AC: api.set_user_id(current_user_id)
     opt first load only
-        E->>DB: load_recent_workflows()
-        DB-->>E: most-recent run
-        E->>AC: api.get_workflow_status(wf_id)
-        AC-->>E: status + metrics (errors are caught -> sidebar caption)
+        E->>AC: get recent workflows + get_workflow_status(wf_id)
+        AC-->>E: most-recent run status + metrics (errors -> sidebar caption)
         E->>SS: last_status / last_response
     end
-    E->>SS: flush _pending_nav into sidebar_view (before the radio widget)
-    E->>E: render sidebar, then view = st.radio(NAV_ITEMS, key=sidebar_view)
-    E->>E: ctx = ViewContext(min_score, search, include_excluded)
-    E->>V: REGISTRY[view](ctx)
+    E->>E: build st.Page per view (title=DISPLAY_TITLE, hidden destinations)
+    E->>N: page = st.navigation({group: [pages]})
+    E->>N: nav.register_pages({name: st.Page})
+    E->>E: render shared sidebar (profile / filters / Active Run)
+    E->>V: page.run() -> view fn builds ctx -> REGISTRY[view](ctx)
     V-->>U: rendered screen
 ```
 
 The view contract: every module in `views/` exposes exactly one
 `render(ctx: ViewContext) -> None`. All `st.*` calls happen **inside** `render()`,
 never at import — so importing a view module renders nothing, which is what lets
-the structure tests import all 15 without a Streamlit runtime.
+the structure tests import every view without a Streamlit runtime.
 
 `ViewContext` carries the sidebar filter widgets the cross-run views need:
 
@@ -151,21 +155,40 @@ selected `detail_workflow_id`/`detail_job_id`) it reads from `st.session_state`.
 
 ---
 
-## 4. Navigation model
+## 4. Navigation model (ADR-088: native multipage)
+
+The UI uses Streamlit **native multipage** (`st.navigation` / `st.Page`). `nav.py`
+is the single source of truth for the journey structure:
+
+- **`NAV_GROUPS`** — an ordered mapping of sidebar section header → the internal
+  view names under it. The four groups are `FIND` (New search, Searches),
+  `MY OPPORTUNITIES` (Matches), `RESUME` (Resume Clinic, Profiles & Resumes), and
+  the operator group under a rule. Dict order is render order. The operator section
+  header is a rule-glyph (`nav.OPERATOR_SECTION = "──────"`), not a noun: an
+  *unlabeled* (`""`) section would be pinned to the top of the nav by Streamlit, the
+  opposite of "operator screens out of the first glance" (ADR-088 G).
+- **`DESTINATION_VIEWS`** — Search detail, Job detail, Live monitor, Run report.
+  Registered with `st.Page(..., visibility="hidden")`, so they **route** (by click)
+  but never appear in the sidebar. Each renders its own in-app Back (ADR-088 F).
+- **`DISPLAY_TITLE`** — internal view name → the user-facing title. The internal
+  names (the `REGISTRY` keys, the `_navigate` targets) stay stable, so the ADR-088
+  rename ("Workflow History" → "Searches", "System Dashboard" → "Spend & Health", …)
+  is one map, not a churn across ~12 call sites. A `test_ui_structure` invariant
+  asserts no `DISPLAY_TITLE` value says "Workflow" — the chrome drops the system
+  vocabulary while the plumbing keeps its stable identifiers.
+- **`DEFAULT_VIEW = "Matches"`** — the page built with `default=True`, so the app
+  lands on Matches, the payoff (ADR-088 D).
 
 There are two ways the active view changes:
 
-1. **The sidebar radio** — the user clicks a view name. The radio is keyed
-   `sidebar_view`; its value *is* the active view for that run.
+1. **A sidebar nav click** — Streamlit routes to that `st.Page` and runs it. No app
+   code mediates it; there is no `sidebar_view` key any more.
 2. **Programmatic navigation** — a button inside a view jumps to another screen
-   (e.g. a Workflow History row → Workflow Detail; a System Dashboard row → the run's
-   Detail; Job Detail's "Back" buttons). This goes through `nav._navigate`.
-
-The subtlety `_navigate` exists to solve: **you cannot write a widget's value to
-`st.session_state` after the widget has been instantiated** in the same run. So
-`_navigate` does not set `sidebar_view` directly — it stages the destination in
-`_pending_nav` and reruns. The *next* run flushes `_pending_nav` into `sidebar_view`
-**before** the radio is created, so the radio comes up on the new view.
+   (e.g. a Searches row → Search detail; a Spend & Health row → that run's detail;
+   the Matches "Open opportunity" button; Back buttons). This goes through
+   `nav._navigate`, which sets any companion session state then calls
+   `st.switch_page(page)` on the registered `st.Page`. `st.switch_page` reruns
+   internally, so the old `_pending_nav` two-step is gone.
 
 ```mermaid
 sequenceDiagram
@@ -173,27 +196,22 @@ sequenceDiagram
     participant V as current view (render)
     participant N as nav._navigate
     participant SS as st.session_state
-    participant E as entrypoint (next run)
+    participant SW as st.switch_page
     participant V2 as destination view
 
-    U->>V: click "Open detail ->" (a row / button)
+    U->>V: click "Open opportunity" / "Detail" (a row / button)
     V->>N: _navigate("Workflow Detail", detail_workflow_id=id, detail_job_id=None)
-    N->>SS: set detail_workflow_id=id
-    N->>SS: _pending_nav = "Workflow Detail"
-    Note over N: also pops _detail_wf_synced so the Detail input re-syncs
-    N->>E: st.rerun()
-    Note over E: top of the next script run (Section 3, before the radio)
-    E->>SS: sidebar_view = pop(_pending_nav)
-    E->>E: view = st.radio(...) reads sidebar_view -> "Workflow Detail"
-    E->>V2: REGISTRY["Workflow Detail"](ctx)
-    V2-->>U: Workflow Detail for id
+    N->>SS: set detail_workflow_id=id (pops _detail_wf_synced so the input re-syncs)
+    N->>SW: st.switch_page(_PAGE_REGISTRY["Workflow Detail"])  (a hidden destination)
+    SW->>V2: next run -> page fn -> REGISTRY["Workflow Detail"](ctx)
+    V2-->>U: Search detail for id (with an in-app Back)
 ```
 
-`NAV_ITEMS` (in `nav.py`) is the ordered list the radio renders, including the
-non-selectable `"--- Cross-Run Analytics ---"` separator; selecting the separator
-shows a hint and `st.stop()`s. `NAV_VIEWS` is `NAV_ITEMS` minus the separator and is
-the canonical set the registry must cover (a test asserts
-`set(REGISTRY) == set(NAV_VIEWS)`).
+`NAV_VIEWS` (in `nav.py`) is the canonical set of every real view — the grouped
+sidebar views (in group order) plus the hidden destinations — that the registry
+must cover (a test asserts `set(REGISTRY) == set(NAV_VIEWS)`). The entrypoint passes
+the `st.Page` objects to `register_pages(...)` each run before `page.run()`, so
+`_navigate` can switch to any of them (including hidden destinations) by name.
 
 ---
 
@@ -204,9 +222,8 @@ keys (declared in the entrypoint's init loop):
 
 | Key | Role |
 |---|---|
-| `current_user_id` | Active profile (ADR-062). Drives `api.set_user_id` + every `db_reader` `user_id` filter. Default `"0"`. |
-| `sidebar_view` | The selected view (radio key). |
-| `_pending_nav` | Staged programmatic destination; flushed into `sidebar_view` next run. |
+| `current_user_id` | Active profile (ADR-062). Drives `api.set_user_id` + every API `user_id` scope. Default `"0"`. |
+| `flt_min_score`, `flt_search`, `flt_include_excluded` | The sidebar cross-run filter widgets; read by `_build_ctx()` into the `ViewContext`. |
 | `workflow_id` | The "active run" (sidebar panel, Run Report, Live Monitor). Set by Start New Run / auto-reconnect. |
 | `last_status`, `last_response` | Cached status + payload of the active run. |
 | `detail_workflow_id`, `detail_job_id` | Drill-in targets for Workflow Detail / Job Detail. |
@@ -218,37 +235,35 @@ keys (declared in the entrypoint's init loop):
 
 ---
 
-## 6. The 15 screens
+## 6. The screens
 
-Grouped by how they touch the system. **R** = read path (`db_reader` / aggregator
-service), **C** = control path (`api_client`).
+Eleven view modules: seven in the sidebar journey groups + four hidden destinations
+(reached by click). The **Title** column is what the user sees (`nav.DISPLAY_TITLE`);
+the **Module** keeps the stable internal name. **R** = reads (via `api_client` +
+`data.py`, ADR-075), **C** = control/writes (`api_client`). **D** = hidden
+destination (ADR-088 F).
 
-| Screen | Module | Path | Key reads / endpoints |
+| Title (sidebar group) | Module | Path | Key reads / endpoints |
 |---|---|---|---|
-| Workflow History | `views/history.py` | R | `load_persisted_workflow_runs`, `load_workflow_runs` |
-| Workflow Detail | `views/workflow_detail.py` | R + C | reads `load_workflow_run` / `load_workflow_jobs` / `load_deep_review_results` / `load_interview_prep`; controls `POST .../tailorings`, `.../deep-review`, `.../interview-prep`, `POST /tailorings/{id}/decisions`; `compute_breakdown` + `constraint_analyzer` |
-| Job Detail | `views/job_detail.py` | R | `load_job_pipeline`, `load_workflow_jobs`, `load_recent_workflows` |
-| Start New Run | `views/start_run.py` | C | `POST /workflows`, `PUT /config`; `load_user_resumes` |
-| Live Run Monitor | `views/live_monitor.py` | R + C | `GET /workflows/{id}`, `POST .../retry`; `load_step_executions` / `load_agent_events` / `load_llm_calls` |
-| Run Report | `views/run_report.py` | C | `GET /workflows/{id}/report` |
-| Resume Clinic | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews` |
-| Settings | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |
-| Profiles | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
-| System Dashboard | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (Cost section: day-by-day + week-by-week trends, per-agent and per-model spend); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
-| Top Matches | `views/analytics.py::render_top_matches` | R | `load_scored_jobs` + `render_track_table` |
-| IC / Architect / Management Track | `views/analytics.py::render_*_track` | R | `load_scored_jobs` + `render_track_table` |
-| Companies | `views/analytics.py::render_companies` | R | `load_scored_jobs` + plotly |
-
-The five tiny analytics screens share `views/analytics.py` because they all read the
-same scored-jobs source and differ only by score column.
+| New search (FIND) | `views/start_run.py` | C | `POST /workflows`, `PUT /config`; `load_user_resumes` |
+| Searches (FIND) | `views/history.py` | R | `load_persisted_workflow_runs`, `load_workflow_runs` |
+| Matches (MY OPPORTUNITIES) | `views/matches.py` | R | `load_scored_jobs` (Roles tab: active-track `segmented_control`; Companies tab: plotly); merges the former Top Matches + IC/Architect/Management + Companies (ADR-088 B) |
+| Resume Clinic (RESUME) | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews` |
+| Profiles & Resumes (RESUME) | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
+| Settings (operator) | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |
+| Spend & Health (operator) | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (day-by-day + week-by-week, per-agent and per-model spend); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
+| Search detail | `views/workflow_detail.py` | D, R + C | reads `load_workflow_run` / `load_workflow_jobs` / `load_deep_review_results` / `load_interview_prep`; controls `POST .../tailorings`, `.../deep-review`, `.../interview-prep`, `POST /tailorings/{id}/decisions`; `compute_breakdown` + `constraint_analyzer` |
+| Job detail | `views/job_detail.py` | D, R | `load_job_pipeline`, `load_workflow_jobs`, `load_recent_workflows`. Tier-2 target of the Matches "Open opportunity" button (becomes the full Opportunity page in ADR-088 Phase 5) |
+| Live monitor | `views/live_monitor.py` | D, R + C | `GET /workflows/{id}`, `POST .../retry`; `load_step_executions` / `load_agent_events` / `load_llm_calls` |
+| Run report | `views/run_report.py` | D, C | `GET /workflows/{id}/report` |
 
 **Active-track gating (ADR-071).** A profile is scored only on its active tracks
-(`effective_config.scoring.tracks`, default all three). The per-track analytics
-screens show a "not active for this profile" notice instead of an empty table when
-their track is inactive, and the Companies aggregation drops inactive-track columns.
-Workflow Detail renders only the active track columns (read from the run's stored
-`effective_config`), and Job Detail shows only the track metrics that were scored
-(inactive tracks are `null`). The active set is resolved via
+(`effective_config.scoring.tracks`, default all three). Matches' Roles-tab sort
+`segmented_control` shows only the active tracks (plus "Best fit"), so inactive
+tracks disappear rather than rendering dead screens; the Companies tab drops
+inactive-track columns. Search detail renders only the active track columns (from
+the run's stored `effective_config`), and Job detail shows only the scored track
+metrics (inactive tracks are `null`). The active set is resolved via
 `app/workflows/limits.py::get_active_tracks`.
 
 ---
@@ -452,9 +467,10 @@ crashing:
   `_offline_reason`; `_cached_list_users` / `_cached_get_providers` return empty /
   `None`). Settings and Profiles surface a "backend not reachable" caption.
 - The auto-reconnect block swallows errors into a sidebar caption.
-- Read-path views keep working without the backend entirely (they read SQLite
-  directly) — which is why the headless smoke test (`.claude/skills/smoke-test-ui`)
-  passes all 15 screens even with no backend running.
+- Read views degrade to an empty/placeholder render when the backend is down (the
+  cached wrappers catch and return a fallback rather than raising) — which is why
+  the headless smoke test (`.claude/skills/smoke-test-ui`) renders the shell + every
+  view with no unhandled exception even with no backend running.
 
 The Phase 7 gate (`app/api/dependencies.py`) decides whether the backend runs with
 real agents (`ANTHROPIC_API_KEY` set) or mocked ones; either way it serves the read
@@ -465,12 +481,15 @@ endpoints the UI needs, so the UI does not need real API keys to render.
 ## 11. How to add a screen
 
 1. Create `app/ui/views/<name>.py` exposing `def render(ctx: ViewContext) -> None:`
-   — all `st.*` inside `render()`. Read stored data via `db_reader` (or a
-   `services/` aggregator); cause actions via `api_client`.
-2. Register it in `app/ui/views/__init__.py::REGISTRY` under its nav name.
-3. Add the nav name to `nav.NAV_ITEMS` (in the position it should appear).
-4. `tests/v2/test_ui_structure.py` enforces `set(REGISTRY) == set(NAV_VIEWS)` and
-   import-smoke; add the new module to the import-smoke list.
+   — all `st.*` inside `render()`. Read stored data via `api_client` (cache it in
+   `data.py`); cause actions via `api_client`. Never open the DB (ADR-075).
+2. Register it in `app/ui/views/__init__.py::REGISTRY` under its internal name.
+3. Place the internal name in `nav.py`: under the right `NAV_GROUPS` group (a sidebar
+   screen) or in `DESTINATION_VIEWS` (a click-through destination), and add its
+   user-facing `DISPLAY_TITLE`.
+4. `tests/v2/test_ui_structure.py` enforces `set(REGISTRY) == set(NAV_VIEWS)`,
+   `DISPLAY_TITLE` coverage, and import-smoke; add the new module to the import-smoke
+   list.
 5. Smoke-test: `python .claude/skills/smoke-test-ui/smoke_ui.py` (or `/smoke-test-ui`).
 
 Shared render logic goes in `components/`; pure formatters in `formatting.py`
@@ -487,4 +506,6 @@ Shared render logic goes in `components/`; pure formatters in `formatting.py`
 - [`workflow_model.md`](workflow_model.md) — what the LangGraph run does once
   `POST /workflows` submits it.
 - [`hitl.md`](hitl.md) — the human-decision points (tailoring, clinic, manual scoring).
-- `.claude/skills/smoke-test-ui/` — the headless render check for all 15 screens.
+- `.claude/skills/smoke-test-ui/` — the headless render check for the shell + every view.
+- [`adr/ADR-088-reorganize-ui-around-job-seeker-journey.md`](adr/ADR-088-reorganize-ui-around-job-seeker-journey.md)
+  + [`ui_journey_reorg_plan.md`](ui_journey_reorg_plan.md) — the journey reorg this nav model implements.

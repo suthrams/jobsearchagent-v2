@@ -1,9 +1,9 @@
-"""Structural invariants for the Streamlit UI refactor (docs/architecture/ui_refactor_plan.md).
+"""Structural invariants for the Streamlit UI (ui_refactor_plan.md + ADR-088).
 
-Phase 0 harness. These are forcing functions (cf. the model-pin and PII-redaction
-invariants): they fail the build if the view registry drifts from the nav set, if
-a view module stops exposing a callable render(), or if importing a view module
-executes Streamlit at import time.
+Forcing functions (cf. the model-pin and PII-redaction invariants): they fail the
+build if the view registry drifts from the nav set, if a view module stops exposing
+a callable render(), if importing a view module executes Streamlit at import time,
+or if the entrypoint stops sourcing its journey navigation from nav.py.
 
 They deliberately do NOT import streamlit_app.py: the entrypoint runs st.* at
 module scope and only works inside a Streamlit runtime. The refactor's whole point
@@ -43,17 +43,48 @@ def test_refactor_packages_import_clean():
     importlib.import_module("app.ui.data")
 
 
-def test_nav_views_are_unique_and_exclude_separator():
-    assert nav.SEPARATOR in nav.NAV_ITEMS
-    assert nav.SEPARATOR not in nav.NAV_VIEWS
+def test_nav_views_are_grouped_plus_destinations_unique():
+    """NAV_VIEWS is exactly the grouped sidebar views (in group order) followed by
+    the hidden destinations, with no duplicates and no overlap (ADR-088)."""
+    grouped = [name for group in nav.NAV_GROUPS.values() for name in group]
+    assert nav.NAV_VIEWS == grouped + list(nav.DESTINATION_VIEWS)
     assert len(nav.NAV_VIEWS) == len(set(nav.NAV_VIEWS)), "duplicate view names"
-    assert nav.NAV_VIEWS == [i for i in nav.NAV_ITEMS if i != nav.SEPARATOR]
+    assert not (set(grouped) & set(nav.DESTINATION_VIEWS)), (
+        "a view cannot be both a sidebar view and a hidden destination"
+    )
+
+
+def test_default_landing_is_a_sidebar_view():
+    """ADR-088 D: the app lands on Matches, which must be a real grouped view (not a
+    hidden destination, which has no sidebar entry to default to)."""
+    grouped = [name for group in nav.NAV_GROUPS.values() for name in group]
+    assert nav.DEFAULT_VIEW in grouped
+    assert nav.DEFAULT_VIEW == "Matches"
+
+
+def test_display_titles_cover_every_view_and_are_unique():
+    """Every view has a user-facing title (st.Page title + url_path), and titles are
+    unique so the derived url_paths do not collide."""
+    assert set(nav.DISPLAY_TITLE) == set(nav.NAV_VIEWS), (
+        "DISPLAY_TITLE must name exactly the nav views; "
+        f"missing={set(nav.NAV_VIEWS) - set(nav.DISPLAY_TITLE)}, "
+        f"extra={set(nav.DISPLAY_TITLE) - set(nav.NAV_VIEWS)}"
+    )
+    titles = list(nav.DISPLAY_TITLE.values())
+    assert len(titles) == len(set(titles)), f"duplicate display titles: {titles}"
+
+
+def test_chrome_drops_workflow_vocabulary():
+    """ADR-088 goal: a job seeker never sees 'Workflow' in the chrome. The internal
+    route names may keep it (invisible plumbing), but no user-facing title may."""
+    offenders = [t for t in nav.DISPLAY_TITLE.values() if "workflow" in t.lower()]
+    assert not offenders, f"display titles still say 'Workflow': {offenders}"
 
 
 def test_view_registry_covers_every_nav_view_and_all_callable():
-    """Migration is complete: every nav view has a registered render(ctx), and the
-    registry names nothing that is not a real view. A new nav entry without a
-    render (or a typo'd key) fails here."""
+    """Every nav view (grouped + destination) has a registered render(ctx), and the
+    registry names nothing that is not a real view. A new view without a render (or
+    a typo'd key) fails here."""
     from app.ui.views import REGISTRY
     assert set(REGISTRY) == set(nav.NAV_VIEWS), (
         "REGISTRY must map exactly the nav views; "
@@ -65,19 +96,22 @@ def test_view_registry_covers_every_nav_view_and_all_callable():
 
 
 def test_registered_views_expose_render_without_running_streamlit():
-    """Every migrated view exposes a callable render(ctx); importing its module did
-    not execute Streamlit (else app.ui.views import above would have raised). The
-    set tightens toward full coverage as views migrate."""
+    """Every view exposes a callable render(ctx); importing its module did not
+    execute Streamlit (else the app.ui.views import above would have raised)."""
     from app.ui.views import REGISTRY
     for name, fn in REGISTRY.items():
         assert callable(fn), f"{name!r} render is not callable"
 
 
-def test_entrypoint_sources_its_radio_from_nav():
-    """Forcing function: the sidebar radio must source its options from
-    nav.NAV_ITEMS, not a re-hardcoded list, so nav.py stays the single source of
-    truth. Source-scan, because the entrypoint cannot be imported (runs st.* at
-    import)."""
+def test_entrypoint_uses_native_multipage_sourced_from_nav():
+    """Forcing function: the entrypoint builds native-multipage navigation
+    (st.navigation / st.Page) from nav.py's journey structure, registers the pages
+    so _navigate can switch, and no longer hardcodes a sidebar radio. Source-scan,
+    because the entrypoint cannot be imported (runs st.* at import)."""
     src = _ENTRYPOINT.read_text(encoding="utf-8")
-    assert "nav.NAV_ITEMS" in src, "entrypoint should pass nav.NAV_ITEMS to st.radio"
-    assert "nav.SEPARATOR" in src, "entrypoint should compare against nav.SEPARATOR"
+    assert "st.navigation" in src, "entrypoint should build native multipage navigation"
+    assert "st.Page" in src, "entrypoint should wrap each view in an st.Page"
+    assert "nav.NAV_GROUPS" in src, "journey groups must come from nav.NAV_GROUPS"
+    assert "nav.DESTINATION_VIEWS" in src, "hidden destinations must come from nav.py"
+    assert "nav.DISPLAY_TITLE" in src, "page titles must come from nav.DISPLAY_TITLE"
+    assert "register_pages" in src, "entrypoint must register pages for _navigate"

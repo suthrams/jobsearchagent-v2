@@ -3,7 +3,11 @@
 ## Status
 
 Accepted (2026-06-07). Mockups signed off; implementation in progress (phases 0-6,
-see `ui_journey_reorg_plan.md`).
+see `ui_journey_reorg_plan.md`). **Shipped so far:** Phase 2 (merged Matches) and
+Phase 0 (native multipage `st.navigation`/`st.Page` + journey groups + the
+Workflow*->user-word rename + hidden click-through destinations + land on Matches).
+Open: Phase 3 (contextual filters), Phase 4 (click-through Back polish), Phases 5-6
+(Tier-2 Opportunity page + Search-detail shrink).
 
 **Decisions locked (2026-06-07, owner):**
 - **Framework:** stay on Streamlit but adopt its **native multipage**

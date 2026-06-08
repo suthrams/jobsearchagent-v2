@@ -1,10 +1,20 @@
-"""Headless UI smoke test - drives every Streamlit view through the real dispatch.
+"""Headless UI smoke test - renders the shell + every Streamlit view.
 
-Loads app/ui/streamlit_app.py via Streamlit's AppTest harness and renders each
-view in app.ui.nav.NAV_VIEWS through the REGISTRY dispatch, asserting none raises
-an unhandled exception. This is the fast regression check for the UI refactor
-(docs/architecture/ui_refactor_plan.md): it executes each view's render(ctx) body,
-so a missing import, broken dispatch, or signature drift surfaces immediately.
+ADR-088 moved the UI to Streamlit native multipage (st.navigation / st.Page), so a
+single AppTest.from_file run only executes the *default* page (Matches). Hidden
+destination pages (Search detail, Job detail, Live monitor, Run report) have no
+sidebar entry to click. So this harness has two passes:
+
+  1. Shell pass: run app/ui/streamlit_app.py once via AppTest.from_file. This
+     exercises the entrypoint - session state, st.navigation wiring, the shared
+     sidebar (profile selector + filters + Active Run), and the default landing
+     (Matches). Asserts it renders with no unhandled exception.
+
+  2. Per-view pass: render every view in app.ui.nav.NAV_VIEWS in isolation through
+     a from_function harness that mirrors the entrypoint's page factory - build a
+     ViewContext and dispatch through REGISTRY[name](ctx). This executes each
+     view's render(ctx) body (including the hidden destinations), so a missing
+     import, broken dispatch, or signature drift surfaces immediately.
 
 Run from the project root:
 
@@ -15,12 +25,12 @@ Run from the project root:
 
     python .claude/skills/smoke-test-ui/smoke_ui.py
 
-Exit code 0 = all views rendered clean; 1 = at least one raised.
+Exit code 0 = shell + all views rendered clean; 1 = at least one raised.
 
-The two detail screens (Workflow Detail, Job Detail) are seeded with a real
+The detail screens (Workflow Detail / Job Detail) are seeded with a real
 workflow_id / job_id pulled from data/v2.db so their data-heavy paths render
-instead of the empty inline picker. If the DB has no runs, they fall back to the
-picker path (still a valid render).
+instead of the empty picker. If the DB has no runs, they fall back to the picker
+path (still a valid render).
 """
 from __future__ import annotations
 
@@ -64,10 +74,59 @@ def _sample_ids():
         return None, None
 
 
-def _run_view(view, extra):
-    at = AppTest.from_file(APP, default_timeout=90)
+def _view_harness() -> None:
+    """Script body for the per-view pass: render one view's render(ctx) in isolation,
+    mirroring the entrypoint's page factory. Inputs arrive on session_state."""
+    import streamlit as st  # noqa: PLC0415
+
+    from app.ui import nav as _nav  # noqa: PLC0415
+    from app.ui.views import REGISTRY  # noqa: PLC0415
+
+    # Mirror the entrypoint's session-state defaults so views that read them render
+    # (the isolated harness skips the entrypoint init block that normally sets these).
+    for _k, _default in (
+        ("workflow_id", None),
+        ("last_status", None),
+        ("last_response", None),
+        ("detail_workflow_id", None),
+        ("detail_job_id", None),
+        ("config_cache", None),
+        ("current_user_id", "0"),
+        ("onboard_step", 1),
+        ("onboard_new_user_id", None),
+    ):
+        if _k not in st.session_state:
+            st.session_state[_k] = _default
+
+    name = st.session_state["_smoke_view"]
+    ctx = _nav.ViewContext(
+        min_score=int(st.session_state.get("flt_min_score", 75)),
+        search=str(st.session_state.get("flt_search", "") or ""),
+        include_excluded=bool(st.session_state.get("flt_include_excluded", False)),
+    )
+    REGISTRY[name](ctx)
+
+
+def _run_shell() -> tuple[str, str]:
+    """Pass 1: run the entrypoint (default landing). Returns (status, detail)."""
+    try:
+        at = AppTest.from_file(APP, default_timeout=90)
+        at.session_state["current_user_id"] = "0"
+        at.run()
+        excs = list(at.exception)
+        if excs:
+            msgs = [str(getattr(e, "value", None) or getattr(e, "message", None)
+                        or e)[:300] for e in excs]
+            return "FAIL", " | ".join(msgs)
+        return "PASS", ""
+    except Exception as e:  # noqa: BLE001
+        return "ERROR", f"{type(e).__name__}: {e}"[:300]
+
+
+def _run_view(view, extra) -> list:
+    at = AppTest.from_function(_view_harness, default_timeout=90)
     at.session_state["current_user_id"] = "0"
-    at.session_state["sidebar_view"] = view
+    at.session_state["_smoke_view"] = view
     for k, v in extra.get(view, {}).items():
         at.session_state[k] = v
     at.run()
@@ -82,6 +141,10 @@ def main() -> int:
     }
 
     results = []
+
+    shell_status, shell_detail = _run_shell()
+    results.append(("(entrypoint shell)", shell_status, shell_detail))
+
     for view in nav.NAV_VIEWS:
         try:
             excs = _run_view(view, extra)
@@ -93,7 +156,7 @@ def main() -> int:
                 results.append((view, "FAIL", " | ".join(msgs)))
             else:
                 results.append((view, "PASS", ""))
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             results.append((view, "ERROR", f"{type(e).__name__}: {e}"[:300]))
 
     npass = sum(1 for _, s, _ in results if s == "PASS")

@@ -1,20 +1,26 @@
-"""Sidebar navigation set + view dispatch registry for the Streamlit UI.
+"""Sidebar navigation model + programmatic view dispatch for the Streamlit UI.
 
-Phase 0 of the UI refactor (docs/architecture/ui_refactor_plan.md). This module is
-the single source of truth for the set of views and the dispatch registry. It
-deliberately does NOT import streamlit, so it stays importable in tests without a
-Streamlit runtime.
+ADR-088 (journey reorg, Phase 0): the UI uses Streamlit **native multipage**
+(``st.navigation`` / ``st.Page``). This module is the single source of truth for:
 
-Migration state: views are dispatched by the legacy ``if/elif`` chain in
-streamlit_app.py and cut over to the registry (``app/ui/views/__init__.py::REGISTRY``)
-one at a time as they are extracted into ``app/ui/views/`` (Phases 3-4). The
-registry is therefore a SUBSET of ``NAV_VIEWS`` during migration; the entrypoint
-dispatches through it when a view is present and falls back to its inline block
-otherwise. When migration completes, ``set(REGISTRY) == set(NAV_VIEWS)``.
+  * ``NAV_GROUPS``       - ordered journey groups -> the views shown in the sidebar
+  * ``DESTINATION_VIEWS``- views reachable only by a click (hidden from the sidebar)
+  * ``DISPLAY_TITLE``    - internal view name -> the user-facing title
+  * ``DEFAULT_VIEW``     - the landing page (Matches, the payoff)
+  * ``ViewContext``      - the sidebar filter inputs handed to every ``render(ctx)``
+  * ``_navigate``        - programmatic page switch (now via ``st.switch_page``)
 
-The registry lives in ``views/__init__.py`` (not here) so that view modules can
-import ``ViewContext`` from this leaf module without a cycle (views -> nav, never
-nav -> views).
+Internal view names (e.g. ``"Workflow History"``) are invisible route identifiers.
+The user only ever sees ``DISPLAY_TITLE`` (e.g. ``"Searches"``). Keeping the
+internal names stable means the ADR-088 rename touches only ``DISPLAY_TITLE`` -
+not the ~12 ``_navigate`` call sites, the ``views/REGISTRY`` keys, or the per-view
+detail-target logic. The "stop saying Workflow in the chrome" goal is fully met
+because the chrome renders titles, never the internal names.
+
+The entrypoint builds the ``st.Page`` objects (one per view, wrapping
+``REGISTRY[name](ctx)``) and calls ``register_pages`` so ``_navigate`` can switch
+to a view by name. This module deliberately calls no ``st.*`` at import time, so
+it stays importable in tests without a Streamlit runtime.
 """
 from __future__ import annotations
 
@@ -22,59 +28,110 @@ from dataclasses import dataclass
 
 import streamlit as st
 
-# The non-selectable group header shown in the sidebar radio. Selecting it shows a
-# hint and stops; it is not a view. (Box-drawing glyphs are fine here - this string
-# is rendered in the browser, and Streamlit UI files may use non-ASCII.)
-SEPARATOR = "─── Cross-Run Analytics ───"
+# ── Journey groups (the sidebar) ──────────────────────────────────────────────
+# The operator group's section header. ADR-088 wants "a rule, no operator noun":
+# st.navigation pins an *unlabeled* ("") section to the TOP of the nav, the opposite
+# of what we want, so the operator group carries a rule-glyph header instead. It
+# renders as a faint divider caption beneath the job-seeker groups - a rule, not a
+# noun like "MANAGE" (we removed "Workflow" vocabulary; don't add operator-speak).
+OPERATOR_SECTION = "──────"
 
-# Ordered sidebar radio entries, including the separator at its display position.
-# This is the exact list the entrypoint passes to st.radio.
-NAV_ITEMS: list[str] = [
-    "Workflow History",
+# Ordered mapping of sidebar SECTION HEADER -> the internal view names under it.
+# Dict order is render order, so the operator section (the rule) sits last.
+NAV_GROUPS: dict[str, list[str]] = {
+    "FIND": ["Start New Run", "Workflow History"],
+    "MY OPPORTUNITIES": ["Matches"],
+    "RESUME": ["Resume Clinic", "Profiles"],
+    OPERATOR_SECTION: ["Settings", "System Dashboard"],
+}
+
+# Views reached only by clicking a row/button (each renders an in-app Back to its
+# origin). Registered with st.navigation as ``visibility="hidden"`` so they route
+# but never appear in the sidebar (ADR-088 section F).
+DESTINATION_VIEWS: list[str] = [
     "Workflow Detail",
     "Job Detail",
-    "Start New Run",
     "Live Run Monitor",
     "Run Report",
-    "Resume Clinic",
-    "Settings",
-    "Profiles",
-    SEPARATOR,
-    "System Dashboard",
-    "Matches",
 ]
 
-# The real, selectable view names (NAV_ITEMS minus the separator).
-NAV_VIEWS: list[str] = [item for item in NAV_ITEMS if item != SEPARATOR]
+# The user-facing title for each internal view name (the ADR-088 journey rename).
+# Every NAV_VIEW must have an entry (asserted by test_ui_structure).
+DISPLAY_TITLE: dict[str, str] = {
+    # FIND
+    "Start New Run": "New search",
+    "Workflow History": "Searches",
+    # MY OPPORTUNITIES
+    "Matches": "Matches",
+    # RESUME
+    "Resume Clinic": "Resume Clinic",
+    "Profiles": "Profiles & Resumes",
+    # operator group (below the rule)
+    "Settings": "Settings",
+    "System Dashboard": "Spend & Health",
+    # destinations (hidden from the sidebar)
+    "Workflow Detail": "Search detail",
+    "Job Detail": "Job detail",
+    "Live Run Monitor": "Live monitor",
+    "Run Report": "Run report",
+}
+
+# The default landing page (ADR-088 D: land on Matches, the payoff).
+DEFAULT_VIEW: str = "Matches"
+
+# All real view names: the grouped sidebar views (in group order) + the hidden
+# destinations. This is the set the REGISTRY must cover (test_ui_structure).
+NAV_VIEWS: list[str] = [
+    name for group in NAV_GROUPS.values() for name in group
+] + list(DESTINATION_VIEWS)
 
 
 @dataclass(frozen=True)
 class ViewContext:
     """The sidebar-derived inputs a view needs, passed to every ``render(ctx)``.
 
-    The entrypoint builds one of these after the sidebar widgets are read and
-    hands it to the dispatched view. Widget-independent inputs (the active
-    workflow id, the current user id) stay on ``st.session_state`` and are read
-    there; only the cross-run filter widgets travel through here.
+    The entrypoint builds one of these from the sidebar filter widgets and hands
+    it to the dispatched view. Widget-independent inputs (the active workflow id,
+    the current user id) stay on ``st.session_state`` and are read there; only the
+    cross-run filter widgets travel through here.
     """
     min_score: int
     search: str
     include_excluded: bool
 
 
-def _navigate(view_name: str, **state_updates) -> None:
-    """Programmatic sidebar navigation.
+# ── Programmatic navigation ───────────────────────────────────────────────────
+# The entrypoint records the StreamlitPage objects here each run (before pg.run()),
+# so _navigate can switch to a view by its internal name. Empty in tests (no
+# runtime) - _navigate is only ever called from inside a rendering view.
+_PAGE_REGISTRY: dict[str, object] = {}
 
-    Cannot write directly to sidebar_view after the radio widget is instantiated.
-    Store the destination in _pending_nav instead; the pre-sidebar block picks it
-    up on the next render cycle before the radio widget is created.
+
+def register_pages(pages: dict[str, object]) -> None:
+    """Entrypoint hook: record ``{internal view name: st.Page}`` so ``_navigate``
+    can switch programmatically. Called once per run, before ``pg.run()``."""
+    _PAGE_REGISTRY.clear()
+    _PAGE_REGISTRY.update(pages)
+
+
+def _navigate(view_name: str, **state_updates) -> None:
+    """Switch to a view by its internal name, carrying any companion session state.
+
+    Under native multipage this is a real ``st.switch_page`` (which reruns); the
+    old ``_pending_nav`` radio workaround is gone. ``state_updates`` set the
+    destination's inputs (e.g. ``detail_workflow_id``) before the switch.
     """
     for k, v in state_updates.items():
         st.session_state[k] = v
-    # When navigation explicitly changes the detail target, force the Detail
-    # view's text_input to re-sync. Without this, a user-typed value in that
-    # input would survive the next history row click and override the new target.
+    # When navigation explicitly changes the detail target, force the Detail view's
+    # text_input to re-sync; without this a user-typed value would survive the next
+    # row click and override the new target.
     if "detail_workflow_id" in state_updates:
         st.session_state.pop("_detail_wf_synced", None)
-    st.session_state._pending_nav = view_name
-    st.rerun()
+    page = _PAGE_REGISTRY.get(view_name)
+    if page is None:
+        # Should not happen in normal operation (the registry is built before any
+        # view renders). Surface loudly rather than silently no-op.
+        st.error(f"Cannot navigate to {view_name!r}: no page registered.")
+        return
+    st.switch_page(page)
