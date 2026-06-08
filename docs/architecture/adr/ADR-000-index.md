@@ -95,3 +95,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-087 | [Asynchronous Message Batches API scoring mode](ADR-087-async-batches-api-scoring-mode.md) | Proposed (deferred) |
 | ADR-088 | [Reorganize the UI Around the Job-Seeker Journey](ADR-088-reorganize-ui-around-job-seeker-journey.md) | Accepted (implemented) |
 | ADR-089 | [Matches as the Live Home Base](ADR-089-matches-as-live-home-base.md) | Accepted (implemented) |
+| ADR-090 | [My Favorite Jobs + Job-Focused Resume Clinic](ADR-090-favorites-and-job-focused-clinic.md) | Accepted (implementing) |
