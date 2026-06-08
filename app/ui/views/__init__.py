@@ -18,10 +18,10 @@ from typing import Callable
 
 from app.ui.nav import ViewContext
 from app.ui.views import (
-    analytics,
     history,
     job_detail,
     live_monitor,
+    matches,
     profiles,
     resume_clinic,
     run_report,
@@ -40,11 +40,7 @@ REGISTRY: dict[str, Callable[[ViewContext], None]] = {
     "Settings": settings.render,
     "Resume Clinic": resume_clinic.render,
     "Run Report": run_report.render,
-    "Top Matches": analytics.render_top_matches,
-    "IC Track": analytics.render_ic_track,
-    "Architect Track": analytics.render_architect_track,
-    "Management Track": analytics.render_management_track,
-    "Companies": analytics.render_companies,
+    "Matches": matches.render,
     "Live Run Monitor": live_monitor.render,
     "Job Detail": job_detail.render,
     "Start New Run": start_run.render,

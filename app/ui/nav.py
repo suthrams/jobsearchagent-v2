@@ -41,11 +41,7 @@ NAV_ITEMS: list[str] = [
     "Profiles",
     SEPARATOR,
     "System Dashboard",
-    "Top Matches",
-    "IC Track",
-    "Architect Track",
-    "Management Track",
-    "Companies",
+    "Matches",
 ]
 
 # The real, selectable view names (NAV_ITEMS minus the separator).
