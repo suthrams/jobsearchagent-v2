@@ -34,12 +34,13 @@ from app.ui.formatting import (
     format_posting_age,
     format_posting_age_short,
 )
-from app.ui.nav import ViewContext, _navigate
+from app.ui.nav import ViewContext, _navigate, back_button
 from app.workflows.limits import TRACK_TO_SCORE_KEY, get_active_tracks
 
 
 def render(ctx: ViewContext) -> None:
-    st.header("Workflow Detail")
+    back_button("Workflow History")  # in-app Back to Searches (ADR-088 F)
+    st.header("Search detail")
 
     # Sync the input widget to the navigation target on actual nav changes (row
     # click in History or sidebar button) but preserve user typing across reruns.
@@ -52,7 +53,7 @@ def render(ctx: ViewContext) -> None:
         st.session_state._detail_wf_synced = nav_target
 
     wf_id = st.text_input("Workflow ID", key="detail_wf_input",
-                          help="Pick a run from Workflow History or paste an ID.")
+                          help="Pick a run from Searches or paste an ID.")
     if not wf_id:
         st.info("No workflow selected.")
         st.stop()

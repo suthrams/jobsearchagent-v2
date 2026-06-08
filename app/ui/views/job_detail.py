@@ -14,11 +14,11 @@ from app.ui.data import (
     _cached_workflow_jobs,
 )
 from app.ui.formatting import _fmt_ts, format_posting_age
-from app.ui.nav import ViewContext, _navigate
+from app.ui.nav import ViewContext, _navigate, back_button
 
 
 def render(ctx: ViewContext) -> None:
-    st.header("Job Detail")
+    st.header("Job detail")
 
     wf_id = st.session_state.detail_workflow_id
     job_id = st.session_state.detail_job_id
@@ -28,7 +28,7 @@ def render(ctx: ViewContext) -> None:
         st.caption("Pick a workflow run and job to drill into.")
         _all_runs = _cached_recent_workflows()
         if _all_runs.empty:
-            st.info("No workflow runs found. Start one from **Start New Run**.")
+            st.info("No searches found. Start one from **New search**.")
             st.stop()
 
         _run_options = {
@@ -54,12 +54,13 @@ def render(ctx: ViewContext) -> None:
                       detail_job_id=_job_options[_job_label])
         st.stop()
 
-    # Top breadcrumb / back nav
+    # In-app Back (ADR-088 F): Job detail is reached from Matches ("Open opportunity")
+    # and from a Search detail job row, so offer both origins.
     nav1, nav2 = st.columns([1, 1])
-    if nav1.button("← Back to Workflow Detail"):
-        _navigate("Workflow Detail")
-    if nav2.button("Back to Workflow History"):
-        _navigate("Workflow History")
+    with nav1:
+        back_button("Matches")
+    with nav2:
+        back_button("Workflow Detail")
 
     pipeline = _cached_job_pipeline(wf_id, job_id)
     job = pipeline["job"] or {}

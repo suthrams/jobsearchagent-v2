@@ -6,9 +6,10 @@ Accepted (2026-06-07). Mockups signed off; implementation in progress (phases 0-
 see `ui_journey_reorg_plan.md`). **Shipped so far:** Phase 2 (merged Matches),
 Phase 0 (native multipage `st.navigation`/`st.Page` + journey groups + the
 Workflow*->user-word rename + hidden click-through destinations + land on Matches),
-and Phase 3 (cross-run filters moved out of the global sidebar into the Matches view
-that consumes them). Open: Phase 4 (click-through Back polish), Phases 5-6 (Tier-2
-Opportunity page + Search-detail shrink).
+Phase 3 (cross-run filters moved out of the global sidebar into the Matches view
+that consumes them), and Phase 4 (explicit in-app Back on every hidden destination
+via `nav.back_button`). Open: Phases 5-6 (Tier-2 Opportunity page + Search-detail
+shrink).
 
 **Decisions locked (2026-06-07, owner):**
 - **Framework:** stay on Streamlit but adopt its **native multipage**

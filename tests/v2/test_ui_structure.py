@@ -103,6 +103,21 @@ def test_registered_views_expose_render_without_running_streamlit():
         assert callable(fn), f"{name!r} render is not callable"
 
 
+def test_destination_views_render_an_in_app_back():
+    """ADR-088 F / UX-review R-1: every hidden destination needs an explicit in-app
+    Back, because under native multipage the browser Back button misleads. Source-scan
+    each destination's module for a back_button() call."""
+    import inspect
+
+    from app.ui.views import REGISTRY
+    for name in nav.DESTINATION_VIEWS:
+        mod = inspect.getmodule(REGISTRY[name])
+        src = Path(mod.__file__).read_text(encoding="utf-8")
+        assert "back_button(" in src, (
+            f"destination {name!r} must render an in-app Back (nav.back_button)"
+        )
+
+
 def test_cross_run_filters_are_contextual_to_matches():
     """ADR-088 Phase 3: the min-score / search / include-excluded controls render on
     Matches (the one screen that consumes them), not as always-on sidebar widgets.

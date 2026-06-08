@@ -135,3 +135,19 @@ def _navigate(view_name: str, **state_updates) -> None:
         st.error(f"Cannot navigate to {view_name!r}: no page registered.")
         return
     st.switch_page(page)
+
+
+def back_button(target_view: str, *, label: str | None = None, **state_updates) -> bool:
+    """Render an in-app Back control that returns to ``target_view``.
+
+    Click-through destinations have no sidebar entry, and under native multipage the
+    browser Back button misleads (ADR-088 F / UX-review R-1), so every destination
+    needs an explicit in-app Back. The label defaults to the destination's
+    user-facing title ("Back to Searches", etc.), so it tracks ``DISPLAY_TITLE``
+    automatically. Returns True if it was clicked (it navigates before returning).
+    """
+    text = label or f"← Back to {DISPLAY_TITLE.get(target_view, target_view)}"
+    if st.button(text, key=f"_back_{target_view.replace(' ', '_')}"):
+        _navigate(target_view, **state_updates)
+        return True
+    return False

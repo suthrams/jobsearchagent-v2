@@ -493,7 +493,8 @@ endpoints the UI needs, so the UI does not need real API keys to render.
 2. Register it in `app/ui/views/__init__.py::REGISTRY` under its internal name.
 3. Place the internal name in `nav.py`: under the right `NAV_GROUPS` group (a sidebar
    screen) or in `DESTINATION_VIEWS` (a click-through destination), and add its
-   user-facing `DISPLAY_TITLE`.
+   user-facing `DISPLAY_TITLE`. A destination must render `nav.back_button(<origin>)`
+   at the top (a `test_ui_structure` invariant enforces this; ADR-088 F).
 4. `tests/v2/test_ui_structure.py` enforces `set(REGISTRY) == set(NAV_VIEWS)`,
    `DISPLAY_TITLE` coverage, and import-smoke; add the new module to the import-smoke
    list.

@@ -9,11 +9,12 @@ from __future__ import annotations
 import streamlit as st
 
 import app.ui.api_client as api
-from app.ui.nav import ViewContext
+from app.ui.nav import ViewContext, back_button
 
 
 def render(ctx: ViewContext) -> None:
-    st.header("Run Report")
+    back_button("Workflow History")  # in-app Back to Searches (ADR-088 F)
+    st.header("Run report")
     wf_id = st.session_state.workflow_id
     if not wf_id:
         st.warning("No active workflow.")

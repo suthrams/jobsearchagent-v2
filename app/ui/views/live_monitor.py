@@ -15,12 +15,13 @@ from app.ui.data import (
     _cached_recent_workflows,
     _cached_step_executions,
 )
-from app.ui.nav import ViewContext
+from app.ui.nav import ViewContext, back_button
 from app.workflows.limits import MAX_LLM_CALLS_PER_RUN
 
 
 def render(ctx: ViewContext) -> None:
-    st.header("Live Run Monitor")
+    back_button("Matches")  # in-app Back (ADR-088 F); reached from the Active Run widget
+    st.header("Live monitor")
 
     wf_id = st.session_state.workflow_id
     if not wf_id:

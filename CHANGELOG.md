@@ -35,6 +35,12 @@ tables. Two Tier-1 phases landed:
   screen that consumes them. Values persist on the `flt_*` session keys (seeded by
   the entrypoint, written by Matches) so they survive navigation and still feed New
   search's threshold default.
+- **Phase 4 - in-app Back on every destination.** The four hidden destinations
+  (Search detail / Job detail / Live monitor / Run report) now render an explicit
+  in-app Back via a shared `nav.back_button(<origin>)` helper - under native
+  multipage the browser Back misleads (UX-review R-1). Labels track `DISPLAY_TITLE`
+  automatically. A `test_ui_structure` invariant asserts every destination renders
+  one. **Tier 1 is now complete; only the Tier-2 Opportunity page remains.**
 
 Docs swept: `ui_architecture.md` (nav model, package map, screen table, add-a-screen
 all brought current - also fixed pre-existing `db_reader` references retired by
