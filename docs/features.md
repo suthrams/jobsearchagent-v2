@@ -189,7 +189,10 @@ A scored job's tailored draft can open a chat session (`POST /tailorings/{tid}/c
 
 ## 9. Resume Clinic
 
-A standalone, job-agnostic resume review surface (ADR-066), out-of-graph like tailoring.
+A standalone resume-improvement surface (ADR-066), out-of-graph like tailoring. By
+default it is a **job-agnostic** review; **ADR-090** adds an optional "Focus a job
+(from My favorite jobs)" dropdown that routes the session to the evidence-bound
+tailoring engine, producing a resume tailored to that specific role.
 
 - **Review:** `POST /users/{id}/resume-clinic` runs the `ResumeReviewerAgent` (Sonnet, structured output) + `FidelityReviewer` on its `rewrites`. The runner writes a lightweight `workflow_runs` row (`workflow_type="resume_clinic"`) purely as the cost-attribution correlation id
 - **Chat-revise loop (ADR-068):** `POST /resume-clinic/{id}/chat` runs the `ResumeChatAgent` (Sonnet) one call per turn, each followed by Fidelity on any rewrites; bounded to `MAX_CHAT_TURNS_PER_CLINIC = 25` turns with a session-cost meter
@@ -211,7 +214,12 @@ The workflow runs end to end with **no in-graph pause** — ADR-059 retired the 
 | Resume Clinic decision (ADR-066) | The user reviews job-agnostic resume rewrites and records approve / revise / reject / edit |
 | Run cancellation (ADR-083) | The user can request cooperative cancellation of a running workflow; it stops at the next node boundary |
 
-There is no Apply / Save / application-status feature by design — the career decision point stays human-owned (see the "No application tracking" rule in `CLAUDE.md`).
+There is no Apply / application-status feature by design — the career decision point
+stays human-owned (see the "No application tracking" rule in `CLAUDE.md`). **My
+favorite jobs** (ADR-090) is not an exception: it is a bounded, status-free
+*filter-input* (the positive twin of job exclusion) used to pick a tailoring target
+for the Resume Clinic — it carries no apply/applied/status/pursuing/stage field, by
+design and enforced by a schema test.
 
 ---
 

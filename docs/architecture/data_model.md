@@ -17,7 +17,8 @@ this document.
 
 This document defines:
 
-* the 19 SQLite tables (18 original + `users`, ADR-062), their columns and types
+* the 23 SQLite tables (core domain + observability + security + identity/`users`
+  (ADR-062) + `favorite_jobs` (ADR-090)), their columns and types
 * per-column descriptions (the data dictionary)
 * who writes each table and when (workflow usage)
 * who reads each table and how (UI / endpoint / report)

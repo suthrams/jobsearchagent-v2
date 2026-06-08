@@ -83,7 +83,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | Document | What it covers |
 |---|---|
 | [architecture/architecture_overview.md](architecture/architecture_overview.md) | System boundary, 7 system layers, 10 core design principles, input model, core workflows, agentic pattern strategy |
-| [architecture/data_model.md](architecture/data_model.md) | All 22 SQLite tables — core, observability (step_executions, agent_events, llm_calls, run_metrics, api_requests), security (security_events), human-decision audit (human_decisions), Resume Clinic (resume_clinic_reviews), lifecycle (idempotency_keys, ADR-082), memory (memory_items), identity (users, ADR-062); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
+| [architecture/data_model.md](architecture/data_model.md) | All 23 SQLite tables — core, observability (step_executions, agent_events, llm_calls, run_metrics, api_requests), security (security_events), human-decision audit (human_decisions), Resume Clinic (resume_clinic_reviews), lifecycle (idempotency_keys, ADR-082), memory (memory_items), identity (users, ADR-062), favorites (favorite_jobs, ADR-090); per-column data dictionary, per-table workflow usage (who writes / who reads / when), indexing strategy, JSON column conventions, anti-patterns |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState schema (22 fields, 9 sections), 6 workflow status values, 15+ step values, state ownership rules, and the long-term-memory DESIGN (the `memory_items` table + write/retrieve patterns are designed but NOT yet wired into the runtime — there is no `MemoryService`) |
 
 ---
@@ -128,7 +128,7 @@ drift from the live pins — current critic/auditor are Haiku (cost tuning).
 | [architecture/data_model.md](architecture/data_model.md) | 22-table SQLite schema with core, observability (incl. `api_requests`, ADR-074), security, lifecycle (`idempotency_keys`, ADR-082), memory, identity (`users`, ADR-062), and Resume Clinic (`resume_clinic_reviews`, ADR-066) tables. `ResumeProfile` (stored as JSON in `resumes.parsed_profile_json`) was extended in ADR-067 with `gpa`, `honors[]`, and `skill_groups[]`. |
 | [architecture/state_and_memory_model.md](architecture/state_and_memory_model.md) | WorkflowState ownership, the long-term-memory design (not yet wired), state update rules, HITL state flow |
 
-**22 SQLite tables at a glance:**
+**23 SQLite tables at a glance:**
 
 | Category | Tables |
 |---|---|
@@ -139,6 +139,7 @@ drift from the live pins — current critic/auditor are Haiku (cost tuning).
 | Resume Clinic (ADR-066) | resume_clinic_reviews |
 | Memory | memory_items |
 | Identity (ADR-062) | users |
+| Favorites (ADR-090) | favorite_jobs |
 
 Profiles (ADR-062): `users` is the identity anchor (id 0 = pre-existing data, new
 profiles auto-increment from 1). `resumes`, `memory_items`, `workflow_runs`, and
