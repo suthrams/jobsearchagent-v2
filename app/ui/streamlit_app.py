@@ -246,11 +246,16 @@ with st.sidebar:
         _wm = _wresp.get("run_metrics") or {}
         if _wm.get("llm_calls"):
             st.caption(f"{_wm['llm_calls']} calls · ${_wm.get('estimated_cost_usd', 0):.4f}")
-        _b1, _b2 = st.columns(2)
+        # The Active Run panel is the hub for the per-run destinations (they are
+        # click-through, not sidebar entries, under ADR-088). Report is the entry
+        # point for the generated report (available once the run completes).
+        _b1, _b2, _b3 = st.columns(3)
         if _b1.button("Detail", key="sb_open_detail", use_container_width=True):
             _navigate("Workflow Detail", detail_workflow_id=st.session_state.workflow_id)
         if _b2.button("Live", key="sb_open_live", use_container_width=True):
             _navigate("Live Run Monitor")
+        if _b3.button("Report", key="sb_open_report", use_container_width=True):
+            _navigate("Run Report")
 
 
 # ── Run the selected page ─────────────────────────────────────────────────────

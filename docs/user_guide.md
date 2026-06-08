@@ -219,7 +219,10 @@ section), **Live monitor** (activity feed for a running run), and **Run report**
 
 **Sidebar controls** *(below the nav)*
 - **Refresh data** — clears the read cache and reloads from the API
-- **Active Run** — status of the most recent run, with **Detail** / **Live** jumps
+- **Active Run** — status of the most recent run, and the hub for its click-through
+  destinations: **Detail** (Search detail), **Live** (Live monitor), and **Report**
+  (the generated report, once the run completes). After you submit a **New search**,
+  this is where the run is tracked
 
 The cross-run filters — **Minimum match score** (0–100, default 75), **Search** by
 title/company, and **Include excluded jobs** — render on **Matches** itself (ADR-088

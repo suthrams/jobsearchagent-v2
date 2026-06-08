@@ -6,6 +6,20 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-07
 
+### Fixed — destination reachability after the ADR-088 reorg
+
+Follow-up to the reorg below: the click-through destinations need real entry points
+now that they are not sidebar items.
+
+- **Run report was orphaned** - nothing navigated to it (reachable only by URL). Added
+  a **Report** button to the Active Run sidebar panel (Detail / Live / Report) and a
+  "View run report" button on Search detail for any completed run.
+- **New search post-submit guidance was stale** - it pointed at "Live Run Monitor" /
+  "Workflow Detail" as sidebar screens. It now explains the Active Run panel tracks
+  the run and offers a "Watch live" button straight to Live monitor.
+- New `test_ui_structure` invariant: every `DESTINATION_VIEWS` entry must be a
+  `_navigate(...)` target somewhere in the UI (would have caught the orphaned report).
+
 ### Changed — UI journey reorg (ADR-088 Tier 1): native multipage + merged Matches
 
 Reorganize the Streamlit UI around the job-seeker journey instead of the system's

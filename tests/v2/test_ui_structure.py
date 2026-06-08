@@ -137,6 +137,24 @@ def test_opportunity_page_has_no_application_tracking():
     assert not hits, f"Opportunity page UI text must not imply application tracking: {hits}"
 
 
+def test_every_destination_has_a_navigation_entry_point():
+    """ADR-088: hidden destinations have no sidebar entry, so each MUST be a
+    _navigate(...) target somewhere in the UI - otherwise it is reachable only by
+    typing its URL (the regression that left Run report orphaned after the reorg).
+    Source-scan every app/ui module for a _navigate("<dest>") call."""
+    ui_dir = _ENTRYPOINT.parent
+    srcs = "\n".join(
+        p.read_text(encoding="utf-8")
+        for p in ui_dir.rglob("*.py")
+        if p.name != "nav.py"  # nav.py defines _navigate; callers live elsewhere
+    )
+    for name in nav.DESTINATION_VIEWS:
+        assert f'_navigate("{name}"' in srcs, (
+            f"destination {name!r} has no _navigate entry point - it would be "
+            "reachable only by URL. Wire a button/row that navigates to it."
+        )
+
+
 def test_destination_views_render_an_in_app_back():
     """ADR-088 F / UX-review R-1: every hidden destination needs an explicit in-app
     Back, because under native multipage the browser Back button misleads. Source-scan

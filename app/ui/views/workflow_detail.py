@@ -64,6 +64,13 @@ def render(ctx: ViewContext) -> None:
     h1.markdown(f"### {icon} `{status}`")
     h2.caption(f"Started: {(record or {}).get('started_at', '—')}")
 
+    # Report is a click-through destination (ADR-088); surface its entry here on the
+    # run page so any run's report is reachable, not just the active one. Run report
+    # reads st.session_state.workflow_id, so adopt this run before navigating.
+    if status in ("completed", "completed_with_errors"):
+        if st.button("📄 View run report", key=f"open_report_{wf_id}"):
+            _navigate("Run Report", workflow_id=wf_id, last_status=status)
+
     metrics = summary_metrics(state)
     g1, g2, g3, g4 = st.columns(4)
     g1.metric("Discovered", metrics["jobs_discovered"])
