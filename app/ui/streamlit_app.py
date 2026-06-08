@@ -45,7 +45,7 @@ load_dotenv()
 
 import app.ui.api_client as api
 import app.ui.nav as nav
-from app.ui.nav import _navigate
+from app.ui.components.run_status import render_run_status
 from app.ui.data import _cached_list_users, _cached_recent_workflows
 from app.ui.views import REGISTRY as VIEW_REGISTRY
 
@@ -238,32 +238,9 @@ with st.sidebar:
         st.rerun()
     if st.session_state.get("workflow_reconnect_error"):
         st.caption(f"⚠ {st.session_state.workflow_reconnect_error}")
-    if st.session_state.workflow_id:
-        _wst = st.session_state.last_status or "unknown"
-        _wicon = {
-            "running": "🔵", "waiting_for_user": "🟡",
-            "completed": "🟢", "failed": "🔴",
-        }.get(_wst, "⚪")
-        st.markdown("---")
-        st.markdown(f"**Active Run** {_wicon} `{_wst}`")
-        st.caption(f"`{st.session_state.workflow_id[:12]}…`")
-        _wresp = st.session_state.last_response or {}
-        _wstep = _wresp.get("current_step")
-        if _wstep:
-            st.caption(f"Step: `{_wstep}`")
-        _wm = _wresp.get("run_metrics") or {}
-        if _wm.get("llm_calls"):
-            st.caption(f"{_wm['llm_calls']} calls · ${_wm.get('estimated_cost_usd', 0):.4f}")
-        # The Active Run panel is the hub for the per-run destinations (they are
-        # click-through, not sidebar entries, under ADR-088). Report is the entry
-        # point for the generated report (available once the run completes).
-        _b1, _b2, _b3 = st.columns(3)
-        if _b1.button("Detail", key="sb_open_detail", use_container_width=True):
-            _navigate("Workflow Detail", detail_workflow_id=st.session_state.workflow_id)
-        if _b2.button("Live", key="sb_open_live", use_container_width=True):
-            _navigate("Live Run Monitor")
-        if _b3.button("Report", key="sb_open_report", use_container_width=True):
-            _navigate("Run Report")
+    # Slim run-status chip (ADR-089): shows the run state from any screen with a
+    # contextual jump. The rich, state-aware panel lives inline on Matches.
+    render_run_status("sidebar")
 
 
 # ── Run the selected page ─────────────────────────────────────────────────────

@@ -224,14 +224,9 @@ def render(ctx: ViewContext) -> None:
             st.session_state.last_status = "running"
             st.session_state.last_response = resp
             st.session_state.detail_workflow_id = resp["workflow_id"]
-            st.success(f"Search started: `{resp['workflow_id']}`")
-            st.info(
-                "The **Active Run** panel in the sidebar now tracks this run "
-                "(**Live** for the activity feed, **Detail** for the run page, "
-                "**Report** when it finishes). New scores land on **Matches** when "
-                "the run completes."
-            )
-            if st.button("🔴 Watch live ▶", type="primary", key="sr_watch_live"):
-                _navigate("Live Run Monitor")
+            # ADR-089: hand the flow back to Matches, where the live status strip
+            # takes over (running -> results appear inline, no manual refresh).
+            st.toast("Search started — watching it on Matches.")
+            _navigate("Matches")
         except Exception as exc:
             st.error(f"Failed to start workflow: {exc}")

@@ -6,6 +6,28 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-07
 
+### Added — Matches as the live home base (ADR-089)
+
+Closes the run-lifecycle friction ADR-088 surfaced: the core loop no longer bounces
+between screens. Matches becomes the live home base.
+
+- **State-aware run-status strip on Matches** (new `components/run_status.py`),
+  rendered full on Matches and as a slim chip in the sidebar. It branches on the run
+  state in job-seeker words: **idle** -> `+ New search`; **running** -> step + elapsed
+  + calls + cost with **Watch** / **Cancel** (ADR-083); **awaiting picks** (ADR-060)
+  -> **Choose jobs to score**; **done** -> **Report** + new matches flagged **NEW**;
+  **failed** -> **What happened**.
+- **Auto-refresh while running** via `st.fragment(run_every=5s)` - the strip updates
+  live and the app reruns on completion so results appear with no manual Refresh
+  (closes the deferred ADR-088 UX-review R-7). Polls the local API only, only while
+  running.
+- **New search lands back on Matches** after Start (was a static "Watch live"
+  message), so the strip drives the rest.
+- The sidebar **Active Run** 3-button panel is replaced by the slim chip; the
+  run-centric screens (Searches / Live monitor / Search detail / Run report) stay as
+  optional drill-downs. No backend change; the no-application-tracking guardrail
+  extends to the strip (enforced by `test_ui_structure`). 945 tests; smoke 12/12.
+
 ### Fixed — destination reachability after the ADR-088 reorg
 
 Follow-up to the reorg below: the click-through destinations need real entry points

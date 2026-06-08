@@ -22,6 +22,7 @@ import plotly.express as px
 import streamlit as st
 
 import app.ui.api_client as api
+from app.ui.components.run_status import render_run_status
 from app.ui.data import _cached_scored_jobs, _cached_user_resumes, _get_config_cached
 from app.ui.nav import ViewContext, _navigate
 
@@ -115,6 +116,10 @@ def render(ctx: ViewContext) -> None:
     st.header("Matches")
     st.caption("Your best opportunities across every search, newest scores first.")
 
+    # The live run-status strip (ADR-089): start/watch/results happen here, so the
+    # core loop never leaves Matches. Auto-refreshes while a search is running.
+    render_run_status("matches")
+
     # Contextual filters live here now, not in the global sidebar (ADR-088 Phase 3).
     eff = _filters(ctx)
 
@@ -167,6 +172,17 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
             "recommended_next_action", "url"]
     if "posted_at" in shown.columns:
         cols.insert(3, "posted_at")
+    # NEW badge on rows scored by the latest finished run (ADR-089): the payoff of a
+    # just-completed search is obvious without leaving Matches.
+    _latest = (st.session_state.get("workflow_id")
+               if st.session_state.get("last_status") in ("completed", "completed_with_errors")
+               else None)
+    if _latest and "workflow_id" in shown.columns:
+        shown = shown.copy()
+        shown["New"] = shown["workflow_id"].apply(
+            lambda w: "🆕" if str(w) == str(_latest) else "")
+        if shown["New"].str.len().sum():
+            cols.insert(0, "New")
     display = shown[[c for c in cols if c in shown.columns]].rename(columns={
         score_col: "Score",
         "match_summary": "Summary",
@@ -182,6 +198,8 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
         on_select="rerun",
         selection_mode="single-row",
         column_config={
+            "New": st.column_config.TextColumn("New", width="small",
+                                               help="Scored by your most recent search"),
             "title": st.column_config.TextColumn("Title", width="large"),
             "company": st.column_config.TextColumn("Company", width="medium"),
             "location": st.column_config.TextColumn("Location", width="small"),

@@ -76,7 +76,8 @@ app/ui/
   views/
     __init__.py      REGISTRY: {internal view name -> render(ctx)}
     <name>.py        one render(ctx) per screen (11 modules)
-  components/         shared st.* render helpers (bullets, tailoring card, resume chat)
+  components/         shared st.* render helpers (bullets, tailoring card, resume
+                     chat, run_status - the ADR-089 live run strip/chip)
   formatting.py      pure formatters (no st.*, unit-tested)
   data.py            @st.cache_data wrappers over api_client + local YAML
   api_client.py      httpx calls to FastAPI (ALL reads + writes, ADR-075)
@@ -256,7 +257,7 @@ destination (ADR-088 F).
 |---|---|---|---|
 | New search (FIND) | `views/start_run.py` | C | `POST /workflows`, `PUT /config`; `load_user_resumes` |
 | Searches (FIND) | `views/history.py` | R | `load_persisted_workflow_runs`, `load_workflow_runs` |
-| Matches (MY OPPORTUNITIES) | `views/matches.py` | R | `load_scored_jobs` (Roles tab: active-track `segmented_control`; Companies tab: plotly); merges the former Top Matches + IC/Architect/Management + Companies (ADR-088 B). "Open opportunity" routes to the Opportunity page |
+| Matches (MY OPPORTUNITIES) | `views/matches.py` | R + C | The live home base (ADR-089). Tops with the state-aware **run-status strip** (`components/run_status.py`); then `load_scored_jobs` (Roles tab: active-track `segmented_control` + NEW badges on the latest run's rows; Companies tab: plotly). Merges the former Top Matches + IC/Architect/Management + Companies (ADR-088 B). While a search runs, the strip auto-refreshes via `st.fragment(run_every=5s)` and reruns the app on completion. "Open opportunity" routes to the Opportunity page |
 | Resume Clinic (RESUME) | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews` |
 | Profiles & Resumes (RESUME) | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
 | Settings (operator) | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |

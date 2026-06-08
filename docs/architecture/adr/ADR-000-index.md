@@ -93,4 +93,5 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-085 | [Cost cut: interview prep on-demand by default + verbose-agent output conciseness](ADR-085-cost-cut-interview-prep-on-demand-and-output-conciseness.md) | Accepted (implemented) |
 | ADR-086 | [Scoring-specific resume projection](ADR-086-scoring-resume-projection.md) | Accepted (implemented) |
 | ADR-087 | [Asynchronous Message Batches API scoring mode](ADR-087-async-batches-api-scoring-mode.md) | Proposed (deferred) |
-| ADR-088 | [Reorganize the UI Around the Job-Seeker Journey](ADR-088-reorganize-ui-around-job-seeker-journey.md) | Accepted (mockups signed off; implementing) |
+| ADR-088 | [Reorganize the UI Around the Job-Seeker Journey](ADR-088-reorganize-ui-around-job-seeker-journey.md) | Accepted (implemented) |
+| ADR-089 | [Matches as the Live Home Base](ADR-089-matches-as-live-home-base.md) | Accepted (implemented) |

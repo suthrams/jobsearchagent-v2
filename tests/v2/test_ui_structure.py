@@ -39,6 +39,7 @@ def test_refactor_packages_import_clean():
     importlib.import_module("app.ui.components")
     importlib.import_module("app.ui.components.bullets")
     importlib.import_module("app.ui.components.tailoring")
+    importlib.import_module("app.ui.components.run_status")
     importlib.import_module("app.ui.formatting")
     importlib.import_module("app.ui.data")
 
@@ -103,20 +104,13 @@ def test_registered_views_expose_render_without_running_streamlit():
         assert callable(fn), f"{name!r} render is not callable"
 
 
-def test_opportunity_page_has_no_application_tracking():
-    """ADR-088 section E + CLAUDE.md 'no application tracking': the Opportunity page
-    offers preparation (tailor, interview) + filtering (exclude/hide) only. It must
-    not introduce Apply / Save / application-status controls, nor a complementary
-    pursuing / shortlist / saved set (back-door application tracking). Scan the
-    module's string literals EXCEPT the module/function docstrings, so the design
-    rationale can still name the forbidden concepts while the UI must not use them."""
+def _ui_string_blob(path) -> str:
+    """Lowercased join of a module's string literals EXCEPT module/function/class
+    docstrings (identified by identity), so design rationale in docstrings can name
+    concepts the rendered UI strings must not."""
     import ast
 
-    opp = _ENTRYPOINT.parent / "views" / "opportunity.py"
-    tree = ast.parse(opp.read_text(encoding="utf-8"))
-    # Identify docstring Constant nodes by identity (the first statement of a
-    # module/function/class body), so the design rationale can name the forbidden
-    # concepts while the rendered UI strings must not.
+    tree = ast.parse(path.read_text(encoding="utf-8"))
     doc_node_ids = set()
     for n in ast.walk(tree):
         body = getattr(n, "body", None)
@@ -125,16 +119,35 @@ def test_opportunity_page_has_no_application_tracking():
             if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
                     and isinstance(first.value.value, str):
                 doc_node_ids.add(id(first.value))
-    blob = " ".join(
+    return " ".join(
         node.value for node in ast.walk(tree)
         if isinstance(node, ast.Constant)
         and isinstance(node.value, str)
         and id(node) not in doc_node_ids
     ).lower()
+
+
+def test_job_surfaces_have_no_application_tracking():
+    """ADR-088 section E / ADR-089 / CLAUDE.md 'no application tracking': the per-job
+    surface (Opportunity) and the run-status strip offer preparation (tailor,
+    interview) + filtering/navigation only. They must not introduce Apply / Save /
+    application-status controls, nor a pursuing / shortlist / saved set (back-door
+    application tracking). Scan the rendered UI strings, not docstrings."""
     forbidden = ["pursuing", "shortlist", "applied", "application status",
                  "mark as applied", " save ", " apply "]
-    hits = [w for w in forbidden if w in blob]
-    assert not hits, f"Opportunity page UI text must not imply application tracking: {hits}"
+    for rel in ("views/opportunity.py", "components/run_status.py"):
+        blob = _ui_string_blob(_ENTRYPOINT.parent / rel)
+        hits = [w for w in forbidden if w in blob]
+        assert not hits, f"{rel} UI text must not imply application tracking: {hits}"
+
+
+def test_matches_is_the_live_home_base():
+    """ADR-089: Matches renders the run-status strip, and New search hands the flow
+    back to Matches after Start (so the core loop never leaves Matches)."""
+    matches = (_ENTRYPOINT.parent / "views" / "matches.py").read_text(encoding="utf-8")
+    start = (_ENTRYPOINT.parent / "views" / "start_run.py").read_text(encoding="utf-8")
+    assert "render_run_status(" in matches, "Matches must render the run-status strip"
+    assert '_navigate("Matches")' in start, "New search must land on Matches after Start"
 
 
 def test_every_destination_has_a_navigation_entry_point():

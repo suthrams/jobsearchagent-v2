@@ -219,10 +219,10 @@ section), **Live monitor** (activity feed for a running run), and **Run report**
 
 **Sidebar controls** *(below the nav)*
 - **Refresh data** — clears the read cache and reloads from the API
-- **Active Run** — status of the most recent run, and the hub for its click-through
-  destinations: **Detail** (Search detail), **Live** (Live monitor), and **Report**
-  (the generated report, once the run completes). After you submit a **New search**,
-  this is where the run is tracked
+- **Run status chip** — a slim indicator of your latest search's state (running /
+  done / failed) with a contextual jump (Watch live while running, otherwise Open
+  Matches). The full, state-aware run panel lives on **Matches** itself (ADR-089) —
+  see [section 9](#9-monitor-progress)
 
 The cross-run filters — **Minimum match score** (0–100, default 75), **Search** by
 title/company, and **Include excluded jobs** — render on **Matches** itself (ADR-088
@@ -419,9 +419,22 @@ cheaper results.
 
 ## 9. Monitor Progress
 
-Open **Live monitor** from the **Active Run** widget in the sidebar (the **Live**
-button), then click **Refresh** to poll the backend for the latest status. (It is a
-click-through destination, not a sidebar entry, under ADR-088.)
+After you submit a **New search**, you land back on **Matches** (ADR-089), where a
+**live status strip** at the top tracks the run: while it is running it shows the
+current step, elapsed time, calls, and cost, and **auto-refreshes every few seconds**
+— so progress and then results appear without you clicking anything. The strip's
+buttons adapt to the run's state:
+
+- **Running** — **Watch** (opens the full Live monitor feed) and **Cancel** (a
+  cooperative stop, ADR-083).
+- **Needs your picks** (manual selection, ADR-060) — **Choose jobs to score**.
+- **Done** — **Report**, plus **+ New search**; new matches appear in the table below,
+  flagged **NEW**.
+- **Failed** — **What happened** (the activity feed).
+
+For the full per-agent activity feed, open **Live monitor** via the strip's **Watch**
+button (or the sidebar run chip). Streamlit cannot push, so on screens *other* than
+Matches you may still need **Refresh data** to see the latest.
 
 ### Status indicators
 
@@ -773,11 +786,12 @@ Once configured, a typical session looks like:
 ```
 1. (Optional) Add LinkedIn URLs to data/linkedin_inbox.txt (or paste into Custom job URLs on New search)
 2. Start backend + Streamlit UI if not running
-3. New search — fill form (optionally paste custom URLs), click Start Workflow
-4. Switch to Live monitor — refresh until run completes (~5–15 min)
-   (Job selection is auto: every job whose best track score >= threshold
-   advances to deep review — no HITL pause.)
-5. Matches — your scored jobs across all runs (or Searches -> open a run)
+3. New search — fill form (optionally paste custom URLs), click Start
+4. Land back on Matches — the live strip tracks the run and auto-refreshes;
+   new matches appear (flagged NEW) when it finishes (~5–15 min). [Watch] for
+   the full feed. (Job selection is auto: every job whose best track score >=
+   threshold advances to deep review — no HITL pause.)
+5. Scan your matches (sort by Best fit / IC / Architecture)
 6. Click a job (Open opportunity) -> the Opportunity page:
    read fit, gaps, deep review, advice, interview prep
 7. On the Opportunity page, click Tailor my resume (5–15s per draft).
