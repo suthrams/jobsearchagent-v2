@@ -20,6 +20,16 @@ now that they are not sidebar items.
 - New `test_ui_structure` invariant: every `DESTINATION_VIEWS` entry must be a
   `_navigate(...)` target somewhere in the UI (would have caught the orphaned report).
 
+### Changed — profile switcher moved to the top-right header
+
+Layout fix from live job-seeker feedback: Streamlit native multipage pins the nav to
+the top of the sidebar, which had pushed the profile selector and the Active Run hub
+far down the sidebar (out of first glance). The **profile switcher now lives in a
+top-right app header** (brand on the left) - the standard "who am I" spot - and with
+it gone from the sidebar, the **Active Run** panel (Detail / Live / Report) sits
+directly under the nav, visible without scrolling. No behaviour change; profile
+switching still re-scopes the UI and reruns (ADR-062).
+
 ### Changed — UI journey reorg (ADR-088 Tier 1): native multipage + merged Matches
 
 Reorganize the Streamlit UI around the job-seeker journey instead of the system's

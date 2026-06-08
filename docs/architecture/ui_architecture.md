@@ -105,8 +105,9 @@ things every run:
    "Active Run" panel is populated.
 5. **Build navigation + dispatch** — build one `st.Page` per view from `nav.py`'s
    journey structure, hand them to `st.navigation(...)`, `register_pages(...)` so
-   `_navigate` can switch, render the shared sidebar (profile selector, Active Run),
-   then `page.run()` runs the selected page, which builds a `ViewContext` and calls
+   `_navigate` can switch, render the top-right header (brand + the ADR-062 profile
+   switcher) and the sidebar Active Run hub, then `page.run()` runs the selected
+   page, which builds a `ViewContext` and calls
    `REGISTRY[view](ctx)`. (Cross-run filters render inside Matches, not the sidebar —
    ADR-088 Phase 3.)
 
@@ -131,7 +132,7 @@ sequenceDiagram
     E->>E: build st.Page per view (title=DISPLAY_TITLE, hidden destinations)
     E->>N: page = st.navigation({group: [pages]})
     E->>N: nav.register_pages({name: st.Page})
-    E->>E: render shared sidebar (profile / Active Run; filters live in Matches)
+    E->>E: render top-right header (brand + profile) + sidebar Active Run hub
     E->>V: page.run() -> view fn builds ctx -> REGISTRY[view](ctx)
     V-->>U: rendered screen
 ```
@@ -437,7 +438,7 @@ side of the wire:
 - **Frontend:** `api_client.set_user_id(...)` attaches `?user_id=` to control-path
   calls; `db_reader` functions take a `user_id` argument and filter on it. The
   entrypoint calls `set_user_id` every run from `st.session_state.current_user_id`,
-  and the sidebar profile selector updates it (clearing caches + reruning on change).
+  and the top-right profile switcher updates it (clearing caches + reruning on change).
 - **Backend:** `app/api/identity.py::get_current_user_id` reads the same query param.
 
 Scoping is **cooperative, not enforced** (ADR-062 Decision E): it filters which rows

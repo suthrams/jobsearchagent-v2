@@ -163,10 +163,10 @@ Open `http://localhost:8501` in your browser.
 
 ## 7. UI Navigation
 
-At the **top of the sidebar** is the **Profile** selector (ADR-062) — the
-dropdown that picks whose search this is. Everything below (history, analytics,
-cost, the resume picker) is scoped to the selected profile, and new runs are
-tagged with it. The **＋ Add profile** button opens the onboarding wizard. See
+At the **top-right of the screen** is the **Profile** switcher (ADR-062) — the
+dropdown that picks whose search this is, with a **＋ Add** button beside it that
+opens the onboarding wizard. Everything (matches, history, cost, the resume picker)
+is scoped to the selected profile, and new runs are tagged with it. See
 [section 7a](#7a-profiles-multi-user-adr-062). On a fresh install there is one
 profile, **Primary** (#0), which owns all pre-existing data.
 
@@ -249,7 +249,7 @@ else. There is no login.
 
 ### Switching profiles
 
-Pick a profile from the sidebar **Profile** dropdown. The whole UI re-scopes:
+Pick a profile from the **Profile** dropdown in the top-right header. The whole UI re-scopes:
 Searches, Matches, Spend & Health, and New search
 resume picker all now show only that profile's data. The **Primary** profile
 (id 0) owns everything that existed before profiles were introduced.
@@ -820,7 +820,7 @@ Once configured, a typical session looks like:
 **Resume parse error or wrong resume being used**
 - Confirm `resume.pdf` is in the project root (for the on-disk path), or upload via **Profiles → Add profile**
 - Resumes are scoped per profile (ADR-062). To force a re-parse, open **Profiles → Manage an existing profile → Delete a resume from a profile**, pick the resume, tick the cascade-confirm checkbox, click Delete. Then re-upload via **Add a resume to a profile**. The parser cache is keyed by the PDF's text hash, so the delete is what forces a fresh parse under the latest parser prompt
-- Confirm the right **Profile** is selected in the sidebar — the resume picker only lists the active profile's resumes
+- Confirm the right **Profile** is selected in the top-right header — the resume picker only lists the active profile's resumes
 
 **No deep review results or interview prep data**
 - These views require a workflow that completed a full deep review pass

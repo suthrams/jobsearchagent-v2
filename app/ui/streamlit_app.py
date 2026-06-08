@@ -125,6 +125,51 @@ def _build_ctx() -> nav.ViewContext:
     )
 
 
+def _render_topbar() -> None:
+    """App header in the MAIN area: brand on the left, the profile switcher on the
+    top-right (a standard account-switcher spot). The profile selector lived in the
+    sidebar, but native multipage pins the nav to the sidebar top and pushed it down
+    out of first glance; the top-right is where users look for "who am I" (ADR-062).
+    Rendered before page.run() so a profile change reruns before any page reads."""
+    brand, _spacer, prof = st.columns([3, 4, 2], vertical_alignment="center")
+    brand.markdown("#### 🔍 Job Search Agent")
+    with prof:
+        _users = _cached_list_users()
+        if not _users:
+            st.caption("No profiles (backend offline?)")
+            return
+        _id_to_label = {str(u["id"]): f"{u['name']}  (#{u['id']})" for u in _users}
+        _ids = list(_id_to_label.keys())
+        _cur = st.session_state.current_user_id
+        if _cur not in _ids:
+            _cur = _ids[0]
+        _chosen = st.selectbox(
+            "Profile",
+            _ids,
+            index=_ids.index(_cur),
+            format_func=lambda i: _id_to_label.get(i, i),
+            key="_profile_select",
+            label_visibility="collapsed",
+            help="Whose search this is (ADR-062). Switching re-scopes history, "
+                 "matches, and the resume picker to that profile.",
+        )
+        if _chosen != st.session_state.current_user_id:
+            st.session_state.current_user_id = _chosen
+            api.set_user_id(_chosen)
+            st.cache_data.clear()
+            st.session_state.config_cache = None
+            st.rerun()
+        _pc1, _pc2 = st.columns([1, 1])
+        if _pc1.button("＋ Add", key="topbar_add_profile", use_container_width=True,
+                       help="Add a new profile (onboarding wizard)."):
+            st.session_state.onboard_step = 1
+            st.session_state.onboard_new_user_id = None
+            _navigate("Profiles")
+        _note = next((u.get("note") for u in _users if str(u["id"]) == _chosen), None)
+        if _note:
+            _pc2.caption(_note)
+
+
 # ── Native-multipage navigation (st.navigation / st.Page) ─────────────────────
 # Build one page per view. A page is a zero-arg callable that builds the ctx and
 # dispatches to the view's render(ctx) through the registry. Internal view names
@@ -178,53 +223,19 @@ _page = st.navigation(_grouped)
 # Let _navigate(...) switch to any view (including hidden destinations) by name.
 nav.register_pages(_pages_by_name)
 
+# App header in the main area: brand left, profile switcher top-right (ADR-062).
+_render_topbar()
 
-# ── Sidebar (rendered below the native nav) ───────────────────────────────────
+
+# ── Sidebar (below the native nav) — run tracking + refresh ───────────────────
+# The profile selector moved to the top-right header (above); the sidebar now holds
+# the journey nav (rendered natively at the top) plus the Active Run hub and Refresh.
 
 with st.sidebar:
-    st.title("Job Search Agent v2")
-
-    # ── Profile selector (ADR-062) ───────────────────────────────────────────
-    # Picks whose search this is. Re-scopes every history / analytics read and the
-    # resume picker, and tags new runs with this owner. No auth - a cooperative
-    # selector, not an access boundary (ADR-062 Decision E).
-    _users = _cached_list_users()
-    if _users:
-        _id_to_label = {str(u["id"]): f"{u['name']}  (#{u['id']})" for u in _users}
-        _ids = list(_id_to_label.keys())
-        _cur = st.session_state.current_user_id
-        if _cur not in _ids:
-            _cur = _ids[0]
-        _chosen = st.selectbox(
-            "Profile",
-            _ids,
-            index=_ids.index(_cur),
-            format_func=lambda i: _id_to_label.get(i, i),
-            key="_profile_select",
-            help="Whose search this is. Switching re-scopes history, analytics, "
-                 "and the resume picker to that profile.",
-        )
-        if _chosen != st.session_state.current_user_id:
-            st.session_state.current_user_id = _chosen
-            api.set_user_id(_chosen)
-            st.cache_data.clear()
-            st.session_state.config_cache = None
-            st.rerun()
-        _note = next((u.get("note") for u in _users if str(u["id"]) == _chosen), None)
-        if _note:
-            st.caption(_note)
-    else:
-        st.caption("No profiles found (backend offline?).")
-    if st.button("＋ Add profile", use_container_width=True):
-        st.session_state.onboard_step = 1
-        st.session_state.onboard_new_user_id = None
-        _navigate("Profiles")
-
     # Cross-run filters render in the Matches view now (ADR-088 Phase 3), not here -
     # they acted only on Matches, so an always-on sidebar copy was inert noise. Their
     # values persist on the flt_* session keys (seeded above) for _build_ctx().
-    st.markdown("---")
-    if st.button("Refresh data"):
+    if st.button("Refresh data", use_container_width=True):
         st.cache_data.clear()
         st.session_state.config_cache = None
         st.rerun()
