@@ -7,9 +7,12 @@ see `ui_journey_reorg_plan.md`). **Shipped so far:** Phase 2 (merged Matches),
 Phase 0 (native multipage `st.navigation`/`st.Page` + journey groups + the
 Workflow*->user-word rename + hidden click-through destinations + land on Matches),
 Phase 3 (cross-run filters moved out of the global sidebar into the Matches view
-that consumes them), and Phase 4 (explicit in-app Back on every hidden destination
-via `nav.back_button`). Open: Phases 5-6 (Tier-2 Opportunity page + Search-detail
-shrink).
+that consumes them), Phase 4 (explicit in-app Back on every hidden destination via
+`nav.back_button`), and Phase 5 (the Tier-2 Opportunity page: one per-job surface
+merging the read-only Job Detail with the full per-job action region — deep review /
+tailoring drafts+decisions+ADR-072 chat / interview prep on demand + exclude — routed
+to from every job click; the no-app-tracking guardrail holds, enforced by a test).
+Open: Phase 6 (shrink Workflow Detail to a run summary).
 
 **Decisions locked (2026-06-07, owner):**
 - **Framework:** stay on Streamlit but adopt its **native multipage**

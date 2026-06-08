@@ -318,15 +318,15 @@ def render(ctx: ViewContext) -> None:
             sel_job = jobs_df.iloc[sel_rows[0]].to_dict()
 
         # Selected-job actions — one consistent cluster driven by the row click:
-        # View details (quick modal), Drill in (full Job Detail), Exclude. No
+        # View details (quick modal), Open (the Opportunity page), Exclude. No
         # separate job picker; the table IS the picker.
         b_view, b_drill, b_excl, b_cap = st.columns([1, 1, 1, 2])
         if sel_job:
             is_excluded = bool(sel_job.get("excluded") or 0)
             if b_view.button("📄 View details", key=f"jd_btn_{wf_id}", use_container_width=True):
                 _show_job(sel_job, _desc_by_id.get(sel_job.get("job_id")))
-            if b_drill.button("Drill in ▶", key=f"drill_in_job_{wf_id}", use_container_width=True):
-                _navigate("Job Detail", detail_workflow_id=wf_id, detail_job_id=sel_job["job_id"])
+            if b_drill.button("Open ▶", key=f"drill_in_job_{wf_id}", use_container_width=True):
+                _navigate("Opportunity", detail_workflow_id=wf_id, detail_job_id=sel_job["job_id"])
             excl_label = "♻ Un-exclude" if is_excluded else "🚫 Exclude"
             if b_excl.button(excl_label, key=f"excl_btn_{wf_id}", use_container_width=True):
                 try:
@@ -347,14 +347,14 @@ def render(ctx: ViewContext) -> None:
         else:
             b_view.button("📄 View details", disabled=True, use_container_width=True,
                           key=f"jd_btn_disabled_{wf_id}")
-            b_drill.button("Drill in ▶", disabled=True, use_container_width=True,
+            b_drill.button("Open ▶", disabled=True, use_container_width=True,
                            key=f"drill_disabled_{wf_id}")
             b_excl.button("🚫 Exclude", disabled=True, use_container_width=True,
                           key=f"excl_btn_disabled_{wf_id}")
-            b_cap.caption("Select a job row above to view details, drill in, or exclude.")
+            b_cap.caption("Select a job row above to view details, open it, or exclude.")
 
         st.caption("Tip: click a job row above, then use **View details** (quick look) "
-                   "or **Drill in** (full scoring, reviews, advice, prep).")
+                   "or **Open** (the Opportunity page: fit, gaps, deep review, tailor, prep).")
 
         # Discovered jobs (incl. not scored) — surfaced for every run below.
         _render_discovered()

@@ -34,7 +34,7 @@ def test_refactor_packages_import_clean():
     importlib.import_module("app.ui.views.resume_clinic")
     importlib.import_module("app.ui.views.matches")
     importlib.import_module("app.ui.views.live_monitor")
-    importlib.import_module("app.ui.views.job_detail")
+    importlib.import_module("app.ui.views.opportunity")
     importlib.import_module("app.ui.views.start_run")
     importlib.import_module("app.ui.components")
     importlib.import_module("app.ui.components.bullets")
@@ -101,6 +101,40 @@ def test_registered_views_expose_render_without_running_streamlit():
     from app.ui.views import REGISTRY
     for name, fn in REGISTRY.items():
         assert callable(fn), f"{name!r} render is not callable"
+
+
+def test_opportunity_page_has_no_application_tracking():
+    """ADR-088 section E + CLAUDE.md 'no application tracking': the Opportunity page
+    offers preparation (tailor, interview) + filtering (exclude/hide) only. It must
+    not introduce Apply / Save / application-status controls, nor a complementary
+    pursuing / shortlist / saved set (back-door application tracking). Scan the
+    module's string literals EXCEPT the module/function docstrings, so the design
+    rationale can still name the forbidden concepts while the UI must not use them."""
+    import ast
+
+    opp = _ENTRYPOINT.parent / "views" / "opportunity.py"
+    tree = ast.parse(opp.read_text(encoding="utf-8"))
+    # Identify docstring Constant nodes by identity (the first statement of a
+    # module/function/class body), so the design rationale can name the forbidden
+    # concepts while the rendered UI strings must not.
+    doc_node_ids = set()
+    for n in ast.walk(tree):
+        body = getattr(n, "body", None)
+        if isinstance(n, (ast.Module, ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)) and body:
+            first = body[0]
+            if isinstance(first, ast.Expr) and isinstance(first.value, ast.Constant) \
+                    and isinstance(first.value.value, str):
+                doc_node_ids.add(id(first.value))
+    blob = " ".join(
+        node.value for node in ast.walk(tree)
+        if isinstance(node, ast.Constant)
+        and isinstance(node.value, str)
+        and id(node) not in doc_node_ids
+    ).lower()
+    forbidden = ["pursuing", "shortlist", "applied", "application status",
+                 "mark as applied", " save ", " apply "]
+    hits = [w for w in forbidden if w in blob]
+    assert not hits, f"Opportunity page UI text must not imply application tracking: {hits}"
 
 
 def test_destination_views_render_an_in_app_back():

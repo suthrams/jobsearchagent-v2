@@ -8,8 +8,9 @@ recommendations with effort/impact.
 
 Status: Accepted, in progress. **Done:** Phase 2 (merged Matches) + Phase 0 (native
 multipage nav, rename, hidden destinations, land on Matches) + Phase 3 (contextual
-filters - moved into Matches) + Phase 4 (in-app Back on every destination). **Tier 1
-complete. Open:** Phases 5, 6 (Tier 2).
+filters - moved into Matches) + Phase 4 (in-app Back on every destination) + Phase 5
+(the Tier-2 Opportunity page; Job Detail subsumed). **Open:** Phase 6 (shrink Workflow
+Detail to a run summary).
 
 **Decisions locked (2026-06-07):** framework = Streamlit + native multipage
 (`st.navigation`/`st.Page`) + fragments (section 11); scope = both tiers (phases
@@ -332,7 +333,7 @@ that now live inside it.
 | 2 **(DONE)**      | Merge Matches: one view, active-track `segmented_control` sort + Companies `st.tabs`; **select-row -> action-button**. Retired the 4 analytics views + `components/tracks.py`.                                                                                                                                             | `views/matches.py` from `analytics.py`; `nav.py`                                                     | matches view + active-track + select-row tests; smoke      |
 | 3                 | **(DONE)** Contextual filters: min-score/search/excluded moved out of the global sidebar into the Matches view (the only consumer; Searches never used them). Values persist on the `flt_*` mirror keys.                                                                                                                                                                                                                                   | `streamlit_app.py`, `views/matches.py`                                           | `test_cross_run_filters_are_contextual_to_matches`; smoke                                 |
 | 4                 | **(DONE)** Detail screens are click-through (demoted to hidden destinations in Phase 0); Phase 4 added an explicit in-app Back on each via the shared `nav.back_button` helper (labels track `DISPLAY_TITLE`).                                                                                                                                                                          | `nav.py`, `streamlit_app.py`, the detail views                                                       | routing/back tests; smoke                                  |
-| 5 (Tier 2)        | Opportunity page: new `views/opportunity.py` merging Job Detail + the **full** per-job action region (deep-review, tailoring drafts + decisions + ADR-072 chat, interview prep, cost/"already-run" badges - ~2x the naive estimate); route every job selection to it.                                                      | new `views/opportunity.py`; `views/matches.py`, `workflow_detail.py`, `job_detail.py`, `components/` | opportunity + routing + no-tracking guardrail tests; smoke |
+| 5 (Tier 2)        | **(DONE)** Opportunity page: new `views/opportunity.py` merging Job Detail + the **full** per-job action region (deep-review on demand, tailoring drafts + decisions + ADR-072 chat, interview prep, cost hints + on-demand "extra cost" note, exclude-as-filter); every job selection routes to it; Job Detail deleted; no-app-tracking guardrail test.                                                      | new `views/opportunity.py`; `views/matches.py`, `workflow_detail.py`, `job_detail.py`, `components/` | opportunity + routing + no-tracking guardrail tests; smoke |
 | 6 (Tier 2)        | Shrink Workflow Detail -> "Search detail" run summary + job list (+ the manual-selection picker variant); Job Detail subsumed.                                                                                                                                                                                             | `views/workflow_detail.py`, `nav.py`                                                                 | detail view test; smoke                                    |
 
 Operator-drawer reordering is folded into Phase 0 (just the rule); it is not its own

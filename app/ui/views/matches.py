@@ -12,8 +12,8 @@ because Streamlit cannot render an in-app link or button inside a table cell
 (ADR-088 / UX-review R-2). The cross-run filters (min score / search /
 include-excluded) arrive on ``ctx`` as today.
 
-Phase: ADR-088 Tier-1 merge. "Open opportunity" routes to Job Detail until the
-Tier-2 Opportunity page lands, at which point it is repointed there.
+Phase: ADR-088 merge (Tier 1) + "Open opportunity" routes to the Opportunity page
+(Tier 2).
 """
 from __future__ import annotations
 
@@ -204,9 +204,8 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
     st.markdown(f"**Selected:** {job.get('title', '?')} - {job.get('company', '?')}")
     b1, b2, _ = st.columns([1, 1, 3])
     if b1.button("Open opportunity", type="primary", key="matches_open"):
-        # Interim target until the Tier-2 Opportunity page lands (ADR-088).
         _navigate(
-            "Job Detail",
+            "Opportunity",
             detail_workflow_id=job.get("workflow_id"),
             detail_job_id=job.get("job_id"),
         )

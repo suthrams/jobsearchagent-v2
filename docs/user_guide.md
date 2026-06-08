@@ -210,10 +210,12 @@ pages. The groups, top-down:
   (ADR-073). (Was "System Dashboard".)
 
 **Click-through destinations** *(not in the sidebar; reached by clicking a row or
-button, each with an in-app Back)*: **Search detail** (the per-run view: jobs,
-scores, deep review, advice, interview prep, the settings used, and a "Limits &
-Constraints" section), **Job detail**, **Live monitor** (activity feed for a running
-run), and **Run report** (the generated markdown report).
+button, each with an in-app Back)*: **Opportunity** (the single per-job page — fit,
+gaps, deep review, and the actions: tailor, interview prep, hide; reached from a
+Matches row's "Open opportunity" or a Search-detail job's "Open"), **Search detail**
+(the per-run view: jobs, scores, the settings used, and a "Limits & Constraints"
+section), **Live monitor** (activity feed for a running run), and **Run report**
+(the generated markdown report).
 
 **Sidebar controls** *(below the nav)*
 - **Refresh data** — clears the read cache and reloads from the API

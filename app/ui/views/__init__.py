@@ -19,9 +19,9 @@ from typing import Callable
 from app.ui.nav import ViewContext
 from app.ui.views import (
     history,
-    job_detail,
     live_monitor,
     matches,
+    opportunity,
     profiles,
     resume_clinic,
     run_report,
@@ -42,6 +42,6 @@ REGISTRY: dict[str, Callable[[ViewContext], None]] = {
     "Run Report": run_report.render,
     "Matches": matches.render,
     "Live Run Monitor": live_monitor.render,
-    "Job Detail": job_detail.render,
+    "Opportunity": opportunity.render,
     "Start New Run": start_run.render,
 }

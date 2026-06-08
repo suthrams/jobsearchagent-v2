@@ -174,9 +174,10 @@ is the single source of truth for the journey structure:
   header is a rule-glyph (`nav.OPERATOR_SECTION = "──────"`), not a noun: an
   *unlabeled* (`""`) section would be pinned to the top of the nav by Streamlit, the
   opposite of "operator screens out of the first glance" (ADR-088 G).
-- **`DESTINATION_VIEWS`** — Search detail, Job detail, Live monitor, Run report.
-  Registered with `st.Page(..., visibility="hidden")`, so they **route** (by click)
-  but never appear in the sidebar. Each renders its own in-app Back (ADR-088 F).
+- **`DESTINATION_VIEWS`** — Opportunity (the per-job page), Search detail, Live
+  monitor, Run report. Registered with `st.Page(..., visibility="hidden")`, so they
+  **route** (by click) but never appear in the sidebar. Each renders its own in-app
+  Back (ADR-088 F).
 - **`DISPLAY_TITLE`** — internal view name → the user-facing title. The internal
   names (the `REGISTRY` keys, the `_navigate` targets) stay stable, so the ADR-088
   rename ("Workflow History" → "Searches", "System Dashboard" → "Spend & Health", …)
@@ -233,7 +234,7 @@ keys (declared in the entrypoint's init loop):
 | `flt_min_score`, `flt_search`, `flt_include_excluded` | Persistent cross-run filter values. Rendered (and written) by the Matches view (ADR-088 Phase 3); read by `_build_ctx()` into the `ViewContext`. Seeded with defaults in the init loop so they survive navigation away from Matches. |
 | `workflow_id` | The "active run" (sidebar panel, Run Report, Live Monitor). Set by Start New Run / auto-reconnect. |
 | `last_status`, `last_response` | Cached status + payload of the active run. |
-| `detail_workflow_id`, `detail_job_id` | Drill-in targets for Workflow Detail / Job Detail. |
+| `detail_workflow_id`, `detail_job_id` | Drill-in targets for Search detail (run) / Opportunity (job). |
 | `_detail_wf_synced` | Guards the Detail screen's text input from overriding a fresh navigation. |
 | `config_cache` | Per-run cache of `GET /config` (cleared after any write that invalidates it). |
 | `rc_last_review` | The last Resume Clinic review row (results pane). |
@@ -254,13 +255,13 @@ destination (ADR-088 F).
 |---|---|---|---|
 | New search (FIND) | `views/start_run.py` | C | `POST /workflows`, `PUT /config`; `load_user_resumes` |
 | Searches (FIND) | `views/history.py` | R | `load_persisted_workflow_runs`, `load_workflow_runs` |
-| Matches (MY OPPORTUNITIES) | `views/matches.py` | R | `load_scored_jobs` (Roles tab: active-track `segmented_control`; Companies tab: plotly); merges the former Top Matches + IC/Architect/Management + Companies (ADR-088 B) |
+| Matches (MY OPPORTUNITIES) | `views/matches.py` | R | `load_scored_jobs` (Roles tab: active-track `segmented_control`; Companies tab: plotly); merges the former Top Matches + IC/Architect/Management + Companies (ADR-088 B). "Open opportunity" routes to the Opportunity page |
 | Resume Clinic (RESUME) | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews` |
 | Profiles & Resumes (RESUME) | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
 | Settings (operator) | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |
 | Spend & Health (operator) | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (day-by-day + week-by-week, per-agent and per-model spend); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
 | Search detail | `views/workflow_detail.py` | D, R + C | reads `load_workflow_run` / `load_workflow_jobs` / `load_deep_review_results` / `load_interview_prep`; controls `POST .../tailorings`, `.../deep-review`, `.../interview-prep`, `POST /tailorings/{id}/decisions`; `compute_breakdown` + `constraint_analyzer` |
-| Job detail | `views/job_detail.py` | D, R | `load_job_pipeline`, `load_workflow_jobs`, `load_recent_workflows`. Tier-2 target of the Matches "Open opportunity" button (becomes the full Opportunity page in ADR-088 Phase 5) |
+| Opportunity | `views/opportunity.py` | D, R + C | The single per-job surface (ADR-088 Tier 2). Reads `load_job_pipeline` + the run state (fit, score, resume-gap vs career-gap, deep-review rounds, advice, prep); controls deep-review / tailoring (drafts + decisions + ADR-072 chat) / interview-prep on demand + exclude. Subsumes the former read-only Job Detail. Target of every job click (Matches "Open opportunity", Search-detail "Open"). No app-tracking (ADR-088 E; guardrail test) |
 | Live monitor | `views/live_monitor.py` | D, R + C | `GET /workflows/{id}`, `POST .../retry`; `load_step_executions` / `load_agent_events` / `load_llm_calls` |
 | Run report | `views/run_report.py` | D, C | `GET /workflows/{id}/report` |
 

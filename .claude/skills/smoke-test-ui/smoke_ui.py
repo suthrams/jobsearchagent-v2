@@ -27,7 +27,7 @@ Run from the project root:
 
 Exit code 0 = shell + all views rendered clean; 1 = at least one raised.
 
-The detail screens (Workflow Detail / Job Detail) are seeded with a real
+The detail screens (Workflow Detail / Opportunity) are seeded with a real
 workflow_id / job_id pulled from data/v2.db so their data-heavy paths render
 instead of the empty picker. If the DB has no runs, they fall back to the picker
 path (still a valid render).
@@ -137,7 +137,7 @@ def main() -> int:
     wf_id, job_id = _sample_ids()
     extra = {
         "Workflow Detail": {"detail_workflow_id": wf_id, "detail_job_id": None},
-        "Job Detail": {"detail_workflow_id": wf_id, "detail_job_id": job_id},
+        "Opportunity": {"detail_workflow_id": wf_id, "detail_job_id": job_id},
     }
 
     results = []

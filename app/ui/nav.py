@@ -50,7 +50,7 @@ NAV_GROUPS: dict[str, list[str]] = {
 # but never appear in the sidebar (ADR-088 section F).
 DESTINATION_VIEWS: list[str] = [
     "Workflow Detail",
-    "Job Detail",
+    "Opportunity",
     "Live Run Monitor",
     "Run Report",
 ]
@@ -71,7 +71,7 @@ DISPLAY_TITLE: dict[str, str] = {
     "System Dashboard": "Spend & Health",
     # destinations (hidden from the sidebar)
     "Workflow Detail": "Search detail",
-    "Job Detail": "Job detail",
+    "Opportunity": "Opportunity",
     "Live Run Monitor": "Live monitor",
     "Run Report": "Run report",
 }

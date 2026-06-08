@@ -40,15 +40,28 @@ tables. Two Tier-1 phases landed:
   in-app Back via a shared `nav.back_button(<origin>)` helper - under native
   multipage the browser Back misleads (UX-review R-1). Labels track `DISPLAY_TITLE`
   automatically. A `test_ui_structure` invariant asserts every destination renders
-  one. **Tier 1 is now complete; only the Tier-2 Opportunity page remains.**
+  one. **Tier 1 complete.**
+- **Phase 5 (Tier 2) - the Opportunity page.** A new `views/opportunity.py` is the
+  single per-job surface: it merges the read-only Job Detail (fit summary, score,
+  resume-gap vs career-gap, deep-review rounds, advice, interview prep) with the full
+  per-job action region that used to live on Workflow Detail - deep review on demand,
+  the complete tailoring flow (generate draft -> drafts picker -> approve/revise/
+  reject/edit decisions -> ADR-072 live chat + export), interview prep on demand, and
+  cost hints + the "not auto-selected -> runs deep review first (extra cost)" note.
+  Every job click (Matches "Open opportunity", a Search-detail row's "Open") routes
+  here; the old read-only Job Detail is deleted. The no-application-tracking guardrail
+  (ADR-088 E) holds: the page offers preparation (tailor, interview) + filtering
+  (exclude = "hide from future searches") only, with no Apply/Save/status or
+  pursuing/shortlist/saved set - enforced by a new `test_ui_structure` scan. **Only
+  Phase 6 (shrink Workflow Detail to a run summary) remains.**
 
 Docs swept: `ui_architecture.md` (nav model, package map, screen table, add-a-screen
 all brought current - also fixed pre-existing `db_reader` references retired by
 ADR-075), `CLAUDE.md` UI note, ADR-088 + `ui_journey_reorg_plan.md` phase status.
 The headless smoke harness (`.claude/skills/smoke-test-ui`) now runs the entrypoint
 shell once (native nav) then renders each view in isolation. 940 tests pass; smoke
-12/12. Tiers/phases still open: click-through Back polish (4), the Tier-2
-Opportunity page + Search-detail shrink (5-6).
+12/12. The only phase still open is Phase 6 (shrink Workflow Detail to a run
+summary now that the per-job actions live on the Opportunity page).
 
 ---
 
