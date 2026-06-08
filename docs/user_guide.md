@@ -216,12 +216,14 @@ Constraints" section), **Job detail**, **Live monitor** (activity feed for a run
 run), and **Run report** (the generated markdown report).
 
 **Sidebar controls** *(below the nav)*
-- **Minimum match score** slider — 0–100, default 75, step 5. Same value drives
-  the auto-selection of jobs for deep review (any **active** track score ≥ this
-  qualifies; ADR-071).
-- **Search** — filter by title or company across browse views
 - **Refresh data** — clears the read cache and reloads from the API
 - **Active Run** — status of the most recent run, with **Detail** / **Live** jumps
+
+The cross-run filters — **Minimum match score** (0–100, default 75), **Search** by
+title/company, and **Include excluded jobs** — render on **Matches** itself (ADR-088
+Phase 3), not the sidebar, since that is the screen they act on. The min-score also
+seeds the deep-review auto-selection threshold (any **active** track score ≥ it
+qualifies; ADR-071) and New search's threshold default.
 
 ---
 
@@ -461,10 +463,10 @@ Click **Download Markdown** to save a copy locally.
 
 All Browse views read through the FastAPI backend (ADR-075: the UI never opens the database directly) — they are available at any time, including during a run or between runs. Use the **Refresh data** button in the sidebar to reload after a run completes.
 
-The sidebar **Minimum score** slider and **Search** box apply to the Matches view.
-
 Browsing now lives on one screen, **Matches** (ADR-088) — the former Top Matches +
-per-track + Companies screens merged into it.
+per-track + Companies screens merged into it. Its **Minimum match score**, **Search**,
+and **Include excluded jobs** filters render on the screen itself (Phase 3), not the
+sidebar.
 
 ### Matches → Roles tab
 

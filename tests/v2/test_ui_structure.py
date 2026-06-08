@@ -103,6 +103,20 @@ def test_registered_views_expose_render_without_running_streamlit():
         assert callable(fn), f"{name!r} render is not callable"
 
 
+def test_cross_run_filters_are_contextual_to_matches():
+    """ADR-088 Phase 3: the min-score / search / include-excluded controls render on
+    Matches (the one screen that consumes them), not as always-on sidebar widgets.
+    Source-scan both files."""
+    entry = _ENTRYPOINT.read_text(encoding="utf-8")
+    matches = (_ENTRYPOINT.parent / "views" / "matches.py").read_text(encoding="utf-8")
+    assert "Minimum match score" not in entry, (
+        "the global sidebar must not render the min-score filter (it moved to Matches)"
+    )
+    assert "Minimum match score" in matches, "Matches must render the min-score filter"
+    # The persistent mirror keys survive navigation for _build_ctx / New search.
+    assert "flt_min_score" in entry, "entrypoint must seed/read the flt_* mirror keys"
+
+
 def test_entrypoint_uses_native_multipage_sourced_from_nav():
     """Forcing function: the entrypoint builds native-multipage navigation
     (st.navigation / st.Page) from nav.py's journey structure, registers the pages

@@ -76,20 +76,58 @@ def _empty_state() -> None:
             _navigate("Start New Run")
 
 
+def _filters(ctx: ViewContext) -> ViewContext:
+    """Render the cross-run filter controls in-screen and return them as a
+    ViewContext (ADR-088 Phase 3 - contextual filters).
+
+    These used to be always-on sidebar widgets that acted only here; they now live
+    on the one screen that consumes them. Widget keys (``m_*``) are screen-local and
+    get cleaned up on navigation away; the chosen values are mirrored onto the
+    persistent ``flt_*`` session keys, which survive navigation (the entrypoint
+    seeds them and New search reads ``flt_min_score`` for its threshold default).
+    The incoming ``ctx`` is ignored - this screen owns its filters.
+    """
+    c1, c2, c3 = st.columns([2, 3, 2])
+    min_score = c1.slider(
+        "Minimum match score", 0, 100,
+        value=int(st.session_state.get("flt_min_score", 75)), step=5,
+        key="m_min_score",
+        help="Show roles whose selected-track score is at or above this value.",
+    )
+    search = c2.text_input(
+        "Search title / company",
+        value=str(st.session_state.get("flt_search", "") or ""),
+        placeholder="e.g. Staff Engineer", key="m_search",
+    )
+    include_excluded = c3.checkbox(
+        "Include excluded jobs",
+        value=bool(st.session_state.get("flt_include_excluded", False)),
+        key="m_include_excluded",
+        help="ADR-057: jobs you've excluded are hidden by default. Tick to surface them.",
+    )
+    st.session_state.flt_min_score = min_score
+    st.session_state.flt_search = search
+    st.session_state.flt_include_excluded = include_excluded
+    return ViewContext(min_score=min_score, search=search, include_excluded=include_excluded)
+
+
 def render(ctx: ViewContext) -> None:
     st.header("Matches")
     st.caption("Your best opportunities across every search, newest scores first.")
 
-    df = _scored(ctx)
+    # Contextual filters live here now, not in the global sidebar (ADR-088 Phase 3).
+    eff = _filters(ctx)
+
+    df = _scored(eff)
     if df.empty:
         _empty_state()
         return
 
     roles_tab, companies_tab = st.tabs(["Roles", "Companies"])
     with roles_tab:
-        _render_roles(ctx, df)
+        _render_roles(eff, df)
     with companies_tab:
-        _render_companies(ctx, df)
+        _render_companies(eff, df)
 
 
 def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:

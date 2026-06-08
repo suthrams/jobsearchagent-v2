@@ -71,6 +71,12 @@ for _key, _default in (
     ("current_user_id", "0"),  # ADR-062: active profile; default = pre-existing data
     ("onboard_step", 1),       # onboarding wizard cursor
     ("onboard_new_user_id", None),
+    # Cross-run filter values (ADR-088 Phase 3): the controls render in the Matches
+    # view, but the values persist here so _build_ctx() (and New search's threshold
+    # default) can read them even when Matches is not the current page.
+    ("flt_min_score", 75),
+    ("flt_search", ""),
+    ("flt_include_excluded", False),
 ):
     if _key not in st.session_state:
         st.session_state[_key] = _default
@@ -214,26 +220,9 @@ with st.sidebar:
         st.session_state.onboard_new_user_id = None
         _navigate("Profiles")
 
-    st.markdown("---")
-    # Cross-run filters (Phase 0: always-on; Phase 3 makes them contextual). Read
-    # back from session_state by _build_ctx() when each page runs.
-    st.slider(
-        "Minimum match score",
-        min_value=0, max_value=100, value=75, step=5,
-        key="flt_min_score",
-        help="Jobs with any track score (technical / architecture / leadership) at or above "
-             "this value qualify for deep review and interview prep.",
-    )
-    st.text_input(
-        "Search title / company", placeholder="e.g. Staff Engineer", key="flt_search",
-    )
-    st.checkbox(
-        "Include excluded jobs",
-        value=False,
-        key="flt_include_excluded",
-        help="ADR-057: jobs you've explicitly excluded are hidden from cross-run "
-             "analytics by default. Tick to surface them.",
-    )
+    # Cross-run filters render in the Matches view now (ADR-088 Phase 3), not here -
+    # they acted only on Matches, so an always-on sidebar copy was inert noise. Their
+    # values persist on the flt_* session keys (seeded above) for _build_ctx().
     st.markdown("---")
     if st.button("Refresh data"):
         st.cache_data.clear()

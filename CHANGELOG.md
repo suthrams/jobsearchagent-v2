@@ -29,14 +29,20 @@ tables. Two Tier-1 phases landed:
   active-track `segmented_control` sort (ADR-071) + a Companies tab, select-row ->
   action buttons, and a branched first-run empty state. `analytics.py` +
   `components/tracks.py` deleted.
+- **Phase 3 - contextual filters.** The min-score / search / include-excluded
+  controls move out of the always-on global sidebar (where they were inert on every
+  screen but Matches - friction #7 in ADR-088) into the Matches view itself, the one
+  screen that consumes them. Values persist on the `flt_*` session keys (seeded by
+  the entrypoint, written by Matches) so they survive navigation and still feed New
+  search's threshold default.
 
 Docs swept: `ui_architecture.md` (nav model, package map, screen table, add-a-screen
 all brought current - also fixed pre-existing `db_reader` references retired by
 ADR-075), `CLAUDE.md` UI note, ADR-088 + `ui_journey_reorg_plan.md` phase status.
 The headless smoke harness (`.claude/skills/smoke-test-ui`) now runs the entrypoint
 shell once (native nav) then renders each view in isolation. 940 tests pass; smoke
-12/12. Tiers/phases still open: contextual filters (3), click-through Back polish
-(4), the Tier-2 Opportunity page (5-6).
+12/12. Tiers/phases still open: click-through Back polish (4), the Tier-2
+Opportunity page + Search-detail shrink (5-6).
 
 ---
 

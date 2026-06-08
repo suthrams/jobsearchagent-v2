@@ -105,9 +105,10 @@ things every run:
    "Active Run" panel is populated.
 5. **Build navigation + dispatch** — build one `st.Page` per view from `nav.py`'s
    journey structure, hand them to `st.navigation(...)`, `register_pages(...)` so
-   `_navigate` can switch, render the shared sidebar (profile selector, filters,
-   Active Run), then `page.run()` runs the selected page, which builds a
-   `ViewContext` and calls `REGISTRY[view](ctx)`.
+   `_navigate` can switch, render the shared sidebar (profile selector, Active Run),
+   then `page.run()` runs the selected page, which builds a `ViewContext` and calls
+   `REGISTRY[view](ctx)`. (Cross-run filters render inside Matches, not the sidebar —
+   ADR-088 Phase 3.)
 
 ```mermaid
 sequenceDiagram
@@ -130,7 +131,7 @@ sequenceDiagram
     E->>E: build st.Page per view (title=DISPLAY_TITLE, hidden destinations)
     E->>N: page = st.navigation({group: [pages]})
     E->>N: nav.register_pages({name: st.Page})
-    E->>E: render shared sidebar (profile / filters / Active Run)
+    E->>E: render shared sidebar (profile / Active Run; filters live in Matches)
     E->>V: page.run() -> view fn builds ctx -> REGISTRY[view](ctx)
     V-->>U: rendered screen
 ```
@@ -140,15 +141,21 @@ The view contract: every module in `views/` exposes exactly one
 never at import — so importing a view module renders nothing, which is what lets
 the structure tests import every view without a Streamlit runtime.
 
-`ViewContext` carries the sidebar filter widgets the cross-run views need:
+`ViewContext` carries the cross-run filter values:
 
 ```python
 @dataclass(frozen=True)
 class ViewContext:
-    min_score: int          # sidebar "Minimum match score" slider
-    search: str             # sidebar "Search title / company" box
-    include_excluded: bool  # sidebar "Include excluded jobs" checkbox
+    min_score: int          # "Minimum match score" slider
+    search: str             # "Search title / company" box
+    include_excluded: bool  # "Include excluded jobs" checkbox
 ```
+
+The entrypoint builds the `ViewContext` from the persistent `flt_*` session keys.
+Since ADR-088 Phase 3 those controls render **inside Matches** (the only consumer),
+which writes the chosen values back to `flt_*`; the entrypoint seeds defaults so a
+`ViewContext` is always well-formed even before Matches is visited (e.g. New search
+reads `min_score` for its threshold default).
 
 Everything else a view needs (the active `workflow_id`, `current_user_id`, the
 selected `detail_workflow_id`/`detail_job_id`) it reads from `st.session_state`.
@@ -223,7 +230,7 @@ keys (declared in the entrypoint's init loop):
 | Key | Role |
 |---|---|
 | `current_user_id` | Active profile (ADR-062). Drives `api.set_user_id` + every API `user_id` scope. Default `"0"`. |
-| `flt_min_score`, `flt_search`, `flt_include_excluded` | The sidebar cross-run filter widgets; read by `_build_ctx()` into the `ViewContext`. |
+| `flt_min_score`, `flt_search`, `flt_include_excluded` | Persistent cross-run filter values. Rendered (and written) by the Matches view (ADR-088 Phase 3); read by `_build_ctx()` into the `ViewContext`. Seeded with defaults in the init loop so they survive navigation away from Matches. |
 | `workflow_id` | The "active run" (sidebar panel, Run Report, Live Monitor). Set by Start New Run / auto-reconnect. |
 | `last_status`, `last_response` | Cached status + payload of the active run. |
 | `detail_workflow_id`, `detail_job_id` | Drill-in targets for Workflow Detail / Job Detail. |
