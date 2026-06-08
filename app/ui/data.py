@@ -80,6 +80,16 @@ def _cached_user_resumes(user_id: str | None) -> dict:
         return {"items": [], "total": 0, "limit": 0, "offset": 0}
 
 
+@st.cache_data(ttl=10)
+def _cached_favorites(user_id: str | None) -> list[dict]:
+    """A profile's favorite jobs via the API (ADR-090). Degrades to an empty list
+    when the backend is unavailable so the star toggles / clinic picker never crash."""
+    try:
+        return api.list_favorites(user_id)
+    except Exception:
+        return []
+
+
 @st.cache_data(ttl=15)
 def _cached_scored_jobs(user_id: str | None, include_excluded: bool = False) -> dict:
     """Scored-jobs analytics via the API (ADR-075 Phase 3). `user_id` is a cache

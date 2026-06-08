@@ -10,7 +10,8 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.ui.components.resume_chat_panel import render_chat_panel
-from app.ui.data import _cached_user_resumes, _get_config_cached
+from app.ui.components.tailoring_panel import render_job_tailoring
+from app.ui.data import _cached_favorites, _cached_user_resumes, _get_config_cached
 from app.ui.formatting import _fmt_ts
 from app.ui.nav import ViewContext
 
@@ -18,11 +19,47 @@ from app.ui.nav import ViewContext
 def render(ctx: ViewContext) -> None:
     st.header("Resume Clinic")
     st.caption(
-        "A job-agnostic resume review. Runs on the resume alone — no discovery, "
-        "no scoring, no tailoring. Optional target role / track add the alignment axis."
+        "Improve your resume. With no job focus it is a job-agnostic review; pick one "
+        "of My favorite jobs to focus the session and produce a resume tailored to "
+        "that role (ADR-090)."
     )
 
     user_id = st.session_state.current_user_id
+
+    # ── ADR-090: optional job focus (from My favorite jobs) ───────────────────
+    # A focus turns the session into a job-specific tailoring (the existing
+    # evidence-bound engine), output = a tailored resume. No focus -> the standard
+    # job-agnostic clinic below.
+    _favs = _cached_favorites(user_id)
+    if _favs:
+        _focus_opts: dict[str, dict | None] = {"— No focus (improve my resume generally) —": None}
+        for _f in _favs:
+            _focus_opts[f"{_f.get('title') or 'Untitled'} @ {_f.get('company') or '?'}"] = _f
+        _focus_label = st.selectbox(
+            "Focus a job (optional — from My favorite jobs)",
+            list(_focus_opts.keys()), key="rc_focus_job",
+            help="Pick a favorite to tailor your resume for that specific role and export it.",
+        )
+        _focused = _focus_opts.get(_focus_label)
+        if _focused:
+            st.subheader(
+                f"Tailoring for {_focused.get('title') or 'this role'} "
+                f"@ {_focused.get('company') or '?'}"
+            )
+            st.caption(
+                "Output is a resume tailored to this job. Generate a draft, refine it "
+                "in live chat, then export — same evidence-bound flow as the "
+                "Opportunity page."
+            )
+            render_job_tailoring(
+                str(_focused.get("workflow_id")), str(_focused.get("job_id")),
+                resume_profile=None, key_prefix="clinic_focus",
+                trigger_label="✨ Tailor my resume for this job",
+                on_demand_note=True,
+            )
+            return
+    else:
+        st.caption("Tip: favorite a job from Matches to tailor your resume for it here.")
 
     # ── Resume picker (active resume preselected) ────────────────────────────
     # ADR-075 Phase 2: resumes via the API (GET /users/{id}/resumes) as a list of

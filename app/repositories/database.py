@@ -288,6 +288,24 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
     created_at          TEXT NOT NULL
 );
 
+-- ADR-090: "My favorite jobs" - a bounded, per-profile working set of jobs the user
+-- flags to tailor toward. A FILTER-INPUT, not application tracking: it stores ONLY a
+-- job reference + a display snapshot + a timestamp. It MUST NOT grow any status /
+-- applied / pursuing / stage / outcome column (a schema forcing-function test asserts
+-- the column set). Deliberately NOT in _RUN_CHILD_TABLES: favorites are user-owned
+-- working data that survive a run purge (the snapshot persists); they are removed
+-- when their owning profile is deleted.
+CREATE TABLE IF NOT EXISTS favorite_jobs (
+    id INTEGER PRIMARY KEY,                 -- rowid alias; no AUTOINCREMENT (avoids sqlite_sequence)
+    user_id TEXT NOT NULL,                 -- owning profile (decimal-string users.id)
+    workflow_id TEXT NOT NULL,             -- run that surfaced the job (for JD resolution)
+    job_id TEXT NOT NULL,                  -- the scored job
+    title TEXT,                            -- display snapshot (survives run purge)
+    company TEXT,                          -- display snapshot
+    created_at TEXT NOT NULL,
+    UNIQUE(user_id, job_id)                -- favorited at most once per profile
+);
+
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_status     ON workflow_runs(status);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_started_at ON workflow_runs(started_at);
 CREATE INDEX IF NOT EXISTS idx_jobs_company             ON jobs(company);
@@ -308,6 +326,7 @@ CREATE INDEX IF NOT EXISTS idx_api_requests_created_at  ON api_requests(created_
 CREATE INDEX IF NOT EXISTS idx_api_requests_user        ON api_requests(user_id);
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_user       ON workflow_runs(user_id);
 CREATE INDEX IF NOT EXISTS idx_resume_clinic_user        ON resume_clinic_reviews(user_id);
+CREATE INDEX IF NOT EXISTS idx_favorite_jobs_user        ON favorite_jobs(user_id);
 """
 # Indexes on user_id columns that are added by ALTER in init_db (resumes,
 # memory_items) cannot live in _SCHEMA_SQL: executescript runs before the ALTERs,

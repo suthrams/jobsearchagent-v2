@@ -69,6 +69,9 @@ POST /users/{id}/resume-clinic                 → run a Resume Clinic review on
 GET  /users/{id}/resume-clinic                 → list past clinic runs for a profile
 POST /resume-clinic/{id}/decisions             → record approve / revise / reject / edit for a clinic review
 GET  /resume-clinic/{id}/export                → render the clinic resume in md/txt/html/json/docx/pdf (200)
+GET  /users/{id}/favorites                     → list My favorite jobs for a profile (ADR-090)
+POST /users/{id}/favorites                     → favorite a job {workflow_id, job_id}; 201; 409 favorites_cap_reached; 404 job_not_found
+DELETE /users/{id}/favorites/{job_id}          → un-favorite a job (idempotent, 204)
 POST /admin/purge                              → run the data-retention purge (ADR-070; contract, impl pending, 200)
 ```
 

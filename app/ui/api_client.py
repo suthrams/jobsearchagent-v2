@@ -590,6 +590,38 @@ def unexclude_job(job_id: str) -> dict:
     return r.json()
 
 
+# ── ADR-090: My favorite jobs ────────────────────────────────────────────────
+
+class FavoritesCapError(Exception):
+    """Raised by add_favorite when the profile is at the favorites cap (HTTP 409)."""
+
+
+def list_favorites(user_id: str) -> list[dict]:
+    """GET /users/{user_id}/favorites - the profile's favorites, newest first."""
+    r = httpx.get(f"{BASE_URL}/users/{user_id}/favorites", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json().get("favorites", [])
+
+
+def add_favorite(user_id: str, workflow_id: str, job_id: str) -> dict:
+    """POST /users/{user_id}/favorites. Raises FavoritesCapError on 409 (cap)."""
+    r = httpx.post(
+        f"{BASE_URL}/users/{user_id}/favorites",
+        json={"workflow_id": workflow_id, "job_id": job_id},
+        timeout=_TIMEOUT_POST,
+    )
+    if r.status_code == 409:
+        raise FavoritesCapError()
+    r.raise_for_status()
+    return r.json().get("favorite", {})
+
+
+def remove_favorite(user_id: str, job_id: str) -> None:
+    """DELETE /users/{user_id}/favorites/{job_id} (idempotent)."""
+    r = httpx.delete(f"{BASE_URL}/users/{user_id}/favorites/{job_id}", timeout=_TIMEOUT_POST)
+    r.raise_for_status()
+
+
 # ── ADR-070: data-retention purge ────────────────────────────────────────────
 
 def purge_data() -> dict:

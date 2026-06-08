@@ -26,11 +26,10 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.ui.components.bullets import _bullets, _para
-from app.ui.components.resume_chat_panel import render_chat_panel
-from app.ui.components.tailoring import _render_tailoring_card
+from app.ui.components.favorites import render_favorite_toggle
+from app.ui.components.tailoring_panel import render_job_tailoring
 from app.ui.data import (
     _cached_job_pipeline,
-    _cached_list_tailorings,
     _cached_recent_workflows,
     _cached_workflow_detail,
     _cached_workflow_jobs,
@@ -74,9 +73,12 @@ def render(ctx: ViewContext) -> None:
 # ── Header: back / exclude / title / best-track context ───────────────────────
 
 def _header(wf_id: str, job_id: str, job: dict, state: dict) -> None:
-    top_l, top_r = st.columns([4, 1])
+    top_l, top_fav, top_r = st.columns([3, 1, 1])
     with top_l:
         back_button("Matches")
+    with top_fav:
+        # ADR-090: favorite this job for the Resume Clinic (a tailoring target).
+        render_favorite_toggle(job_id=job_id, workflow_id=wf_id, key="opp_favorite")
     with top_r:
         _exclude_control(wf_id, job_id, job)
 
@@ -205,97 +207,17 @@ def _next_steps(wf_id: str, job_id: str, state: dict) -> None:
     }
     auto_selected = job_id in selected_ids
 
-    b_tail, b_prep, _ = st.columns([1, 1, 2])
-    if b_tail.button(f"✨ Tailor my resume  {_COST_HINT['tailor']}", type="primary",
-                     key="opp_tailor", use_container_width=True):
-        _run(lambda: api.trigger_tailoring(wf_id, job_id),
-             "Tailoring + fidelity review (~60-90s, longer if deep-reviewing first)…",
-             clears=[_cached_list_tailorings, _cached_job_pipeline], timeout_ok=True)
-    if b_prep.button(f"🎤 Prep for interview  {_COST_HINT['interview']}",
-                     key="opp_prep", use_container_width=True):
+    if st.button(f"🎤 Prep for interview  {_COST_HINT['interview']}",
+                 key="opp_prep", use_container_width=True):
         _run(lambda: api.trigger_interview_prep(wf_id, job_id),
              "Interview coach (~10-20s)…", clears=[_cached_job_pipeline], timeout_ok=True)
-    if not auto_selected:
-        st.caption(
-            "⚠ This job was not auto-selected for deep review, so tailoring it runs a "
-            "deep-review pass first (extra cost)."
-        )
 
-    _drafts(wf_id, job_id, state)
-
-
-def _drafts(wf_id: str, job_id: str, state: dict) -> None:
-    """Tailored drafts for THIS job: a newest-first picker (cards carry their own
-    expanders, so we render one selected card at top level, never nested) with the
-    approve/revise/reject/edit decisions and the ADR-072 live-chat entry."""
-    try:
-        with st.spinner("Loading tailored drafts…"):
-            all_tailorings = _cached_list_tailorings(wf_id)
-    except Exception as exc:  # noqa: BLE001
-        st.error(f"Could not load drafts: {exc}")
-        return
-
-    drafts = [t for t in all_tailorings if (t.get("job_id") or "") == job_id]
-    if not drafts:
-        st.caption("No tailored drafts yet. Click **Tailor my resume** to create one.")
-        return
-
-    drafts.sort(key=lambda t: t.get("created_at") or "", reverse=True)
-
-    def _label(t: dict) -> str:
-        tid = (t.get("tailoring_id") or t.get("id") or "")[:8]
-        dec = t.get("decision")
-        badge = f" · {dec}" if dec else ""
-        return f"Draft `{tid}…`{badge}  ·  {_fmt_ts(t.get('created_at'))}"
-
-    st.markdown(f"**Tailored drafts** ({len(drafts)}, newest first)")
-    idx = 0
-    if len(drafts) > 1:
-        idx = st.selectbox(
-            "Draft", range(len(drafts)), format_func=lambda i: _label(drafts[i]),
-            key=f"opp_draft_pick_{job_id}",
-        )
-    chosen = drafts[idx]
-
-    def _decide(tid: str, choice: str, edited: dict | None = None) -> None:
-        _run(lambda: api.submit_tailoring_decision(tid, choice, edited=edited),
-             f"Saving decision: {choice}…", clears=[_cached_list_tailorings])
-
-    _render_tailoring_card(chosen, _decide, resume_profile=state.get("resume_profile") or None)
-
-    # ADR-072 live chat. The card may contain expanders, so the open-button and the
-    # panel both live OUTSIDE any expander (here, at page top level).
-    ctid = chosen.get("tailoring_id") or chosen.get("id") or ""
-    if ctid and st.button("💬 Open live chat", key=f"opp_chat_open_{ctid}",
-                          help="Refine this draft in live chat, then export it (ADR-072)."):
-        try:
-            with st.spinner("Opening chat session…"):
-                sess = api.open_tailoring_chat_session(ctid)
-            st.session_state["tail_chat_active_tid"] = ctid
-            st.session_state[f"tail_chat_review_{ctid}"] = sess
-            st.rerun()
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not open live chat: {exc}")
-
-    _live_chat_panel()
-
-
-def _live_chat_panel() -> None:
-    active_tid = st.session_state.get("tail_chat_active_tid")
-    key = f"tail_chat_review_{active_tid}" if active_tid else None
-    if not (active_tid and key and st.session_state.get(key)):
-        return
-    st.markdown("---")
-    st.subheader("💬 Live chat — refine & export the tailored resume")
-    st.caption(f"Refining draft `{active_tid[:8]}…`. Chat to enhance the resume inline, "
-               "then export. Close to return to the drafts.")
-    if st.button("Close live chat", key="opp_chat_close"):
-        st.session_state["tail_chat_active_tid"] = None
-        st.rerun()
-    render_chat_panel(
-        st.session_state[key],
-        user_id=st.session_state.current_user_id,
-        state_key=key,
+    # Tailoring: the shared per-job panel (ADR-090 extraction), reused by the Resume
+    # Clinic's job focus so the flow lives in one place.
+    render_job_tailoring(
+        wf_id, job_id, resume_profile=state.get("resume_profile") or None,
+        key_prefix="opp", trigger_label=f"✨ Tailor my resume  {_COST_HINT['tailor']}",
+        on_demand_note=not auto_selected,
     )
 
 

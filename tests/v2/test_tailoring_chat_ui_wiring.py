@@ -7,7 +7,9 @@ fail the build if the extraction regresses: if the panel stops being shared, if 
 view inlines it again, or if the component loses its render entry point.
 
 ADR-088 Tier 2: the tailoring chat moved from Workflow Detail to the Opportunity
-page (the single per-job surface), so the second consumer is now opportunity.py.
+page. ADR-090: the per-job tailoring flow (trigger + drafts + decisions + chat) was
+extracted into the shared components/tailoring_panel.py, reused by the Opportunity
+page AND the job-focused Resume Clinic - so the chat wiring now lives there.
 """
 from __future__ import annotations
 
@@ -16,7 +18,7 @@ from pathlib import Path
 _UI = Path(__file__).resolve().parents[2] / "app" / "ui"
 _COMPONENT = _UI / "components" / "resume_chat_panel.py"
 _CLINIC = _UI / "views" / "resume_clinic.py"
-_OPPORTUNITY = _UI / "views" / "opportunity.py"
+_TAILORING_PANEL = _UI / "components" / "tailoring_panel.py"
 
 
 def test_component_exposes_render_chat_panel():
@@ -34,7 +36,7 @@ def test_component_imports_clean():
 
 
 def test_both_views_use_the_shared_panel():
-    for view in (_CLINIC, _OPPORTUNITY):
+    for view in (_CLINIC, _TAILORING_PANEL):
         src = view.read_text(encoding="utf-8")
         assert "render_chat_panel(" in src, f"{view.name} must call the shared panel"
 
@@ -49,11 +51,11 @@ def test_clinic_view_no_longer_inlines_the_chat_block():
 
 
 def test_tailoring_card_opens_chat_outside_expander():
-    # The "Open live chat" entry point lives next to the tailoring card on the
-    # Opportunity page, and the panel renders via the active-session key (outside any
+    # The "Open live chat" entry point lives next to the tailoring card in the shared
+    # tailoring panel, and the panel renders via the active-session key (outside any
     # expander, since the card itself contains expanders and Streamlit forbids
     # nesting them).
-    src = _OPPORTUNITY.read_text(encoding="utf-8")
+    src = _TAILORING_PANEL.read_text(encoding="utf-8")
     assert "Open live chat" in src
     assert "tail_chat_active_tid" in src
     assert "open_tailoring_chat_session" in src

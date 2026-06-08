@@ -192,8 +192,9 @@ pages. The groups, top-down:
   the API, scoped to the active profile; ADR-075). A **Roles** tab sorts by a
   segmented control showing only your **active** tracks (Best fit / IC /
   Architecture / Management; ADR-071), and a **Companies** tab charts your top
-  target companies by best match score. Select a row to **Open opportunity** or
-  **Exclude** it. This merges the former Top Matches + per-track + Companies screens.
+  target companies by best match score. Select a row to **Open opportunity**,
+  **⭐ Favorite** it (add to My favorite jobs, up to 25 — a tailoring target, ADR-090),
+  or **Exclude** it. This merges the former Top Matches + per-track + Companies screens.
 
 **RESUME**
 - **Resume Clinic** — improve a resume itself, with no specific job in mind.
@@ -615,6 +616,13 @@ the funnel.
 
 The **Resume Clinic** is a second surface that runs on your **resume alone**,
 with no JD. Open **Resume Clinic** in the sidebar.
+
+**Focus a job (ADR-090).** At the top of the clinic is an optional **"Focus a job
+(from My favorite jobs)"** dropdown. Leave it on "No focus" for the job-agnostic
+review described below. Pick one of your favorites (flagged with ⭐ from Matches or
+the Opportunity page) and the session instead **tailors your resume to that specific
+job** — the same evidence-bound Generate-draft -> approve/revise/reject/edit -> live
+chat -> export flow as the Opportunity page, with the tailored resume as the output.
 
 ### What it gives you
 

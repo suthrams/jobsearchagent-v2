@@ -22,6 +22,7 @@ import plotly.express as px
 import streamlit as st
 
 import app.ui.api_client as api
+from app.ui.components.favorites import favorited_ids, render_favorite_toggle
 from app.ui.components.run_status import render_run_status
 from app.ui.data import _cached_scored_jobs, _cached_user_resumes, _get_config_cached
 from app.ui.nav import ViewContext, _navigate
@@ -183,6 +184,13 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
             lambda w: "🆕" if str(w) == str(_latest) else "")
         if shown["New"].str.len().sum():
             cols.insert(0, "New")
+    # ADR-090: a ★ marker on already-favorited rows so the set is visible at a glance.
+    _fav_ids = favorited_ids(st.session_state.current_user_id)
+    if _fav_ids and "job_id" in shown.columns:
+        shown = shown.copy()
+        shown["★"] = shown["job_id"].apply(lambda j: "★" if str(j) in _fav_ids else "")
+        if shown["★"].str.len().sum():
+            cols.insert(0, "★")
     display = shown[[c for c in cols if c in shown.columns]].rename(columns={
         score_col: "Score",
         "match_summary": "Summary",
@@ -198,6 +206,8 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
         on_select="rerun",
         selection_mode="single-row",
         column_config={
+            "★": st.column_config.TextColumn("★", width="small",
+                                             help="In My favorite jobs"),
             "New": st.column_config.TextColumn("New", width="small",
                                                help="Scored by your most recent search"),
             "title": st.column_config.TextColumn("Title", width="large"),
@@ -220,14 +230,20 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
         return
     job = shown.iloc[rows[0]]
     st.markdown(f"**Selected:** {job.get('title', '?')} - {job.get('company', '?')}")
-    b1, b2, _ = st.columns([1, 1, 3])
+    b1, b2, b3, _ = st.columns([1, 1, 1, 2])
     if b1.button("Open opportunity", type="primary", key="matches_open"):
         _navigate(
             "Opportunity",
             detail_workflow_id=job.get("workflow_id"),
             detail_job_id=job.get("job_id"),
         )
-    if b2.button("Exclude", key="matches_exclude"):
+    with b2:
+        # ADR-090: flag this job for the Resume Clinic (a tailoring target, not a status).
+        render_favorite_toggle(
+            job_id=str(job.get("job_id")), workflow_id=str(job.get("workflow_id")),
+            key="matches_favorite",
+        )
+    if b3.button("Exclude", key="matches_exclude"):
         try:
             api.exclude_job(str(job.get("job_id")))
             st.cache_data.clear()

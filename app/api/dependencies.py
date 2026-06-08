@@ -634,6 +634,22 @@ def get_user_repo() -> UserRepository:
     return UserRepository(project_root / "data" / "v2.db")
 
 
+def get_favorite_repo() -> "FavoriteRepository":
+    """FavoriteRepository for the favorites endpoints (ADR-090). Same DB anchor as
+    get_user_repo; tests override it to a temp DB."""
+    from app.repositories.favorite_repository import FavoriteRepository
+    project_root = Path(__file__).resolve().parents[2]
+    return FavoriteRepository(project_root / "data" / "v2.db")
+
+
+def get_job_repo() -> "JobRepository":
+    """JobRepository for resolving a job's title/company snapshot (ADR-090 favorites
+    POST). Same DB anchor; tests override it to a temp DB."""
+    from app.repositories.job_repository import JobRepository
+    project_root = Path(__file__).resolve().parents[2]
+    return JobRepository(project_root / "data" / "v2.db")
+
+
 def get_deps() -> WorkflowDependencies:
     """FastAPI dependency that returns the cached WorkflowDependencies bundle.
 

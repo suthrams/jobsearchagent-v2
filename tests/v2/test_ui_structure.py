@@ -40,6 +40,8 @@ def test_refactor_packages_import_clean():
     importlib.import_module("app.ui.components.bullets")
     importlib.import_module("app.ui.components.tailoring")
     importlib.import_module("app.ui.components.run_status")
+    importlib.import_module("app.ui.components.favorites")
+    importlib.import_module("app.ui.components.tailoring_panel")
     importlib.import_module("app.ui.formatting")
     importlib.import_module("app.ui.data")
 
@@ -135,7 +137,10 @@ def test_job_surfaces_have_no_application_tracking():
     application tracking). Scan the rendered UI strings, not docstrings."""
     forbidden = ["pursuing", "shortlist", "applied", "application status",
                  "mark as applied", " save ", " apply "]
-    for rel in ("views/opportunity.py", "components/run_status.py"):
+    # ADR-090: the favorites surface joins the scan. "favorite" is the sanctioned
+    # positive filter-input word; status/outcome words remain forbidden.
+    for rel in ("views/opportunity.py", "components/run_status.py",
+                "components/favorites.py"):
         blob = _ui_string_blob(_ENTRYPOINT.parent / rel)
         hits = [w for w in forbidden if w in blob]
         assert not hits, f"{rel} UI text must not imply application tracking: {hits}"

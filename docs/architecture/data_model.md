@@ -1209,6 +1209,56 @@ CREATE TABLE memory_items (
 
 ---
 
+## 7.2 favorite_jobs (ADR-090)
+
+### Purpose
+
+"My favorite jobs" — a bounded, per-profile set of jobs the user flags to tailor
+toward. It is a **filter-input** (a signal the user gives the system), the positive
+counterpart of the ADR-057 `jobs.excluded` flag — **not application tracking**. It
+stores only a job reference + a display snapshot + a timestamp; there is **no**
+status / applied / pursuing / stage / outcome column, by design.
+
+### Schema
+
+```sql
+CREATE TABLE favorite_jobs (
+    id INTEGER PRIMARY KEY,         -- rowid alias; no AUTOINCREMENT
+    user_id TEXT NOT NULL,          -- owning profile (decimal-string users.id, ADR-062)
+    workflow_id TEXT NOT NULL,      -- run that surfaced the job (JD resolution)
+    job_id TEXT NOT NULL,           -- the scored job
+    title TEXT,                     -- display snapshot (survives a run purge)
+    company TEXT,                   -- display snapshot
+    created_at TEXT NOT NULL,
+    UNIQUE(user_id, job_id)         -- favorited at most once per profile
+);
+```
+
+### Column dictionary
+
+| Column | Type | Notes |
+|---|---|---|
+| `id` | INTEGER PK | rowid alias (plain `INTEGER PRIMARY KEY`, so no `sqlite_sequence`). |
+| `user_id` | TEXT | Owning profile; favorites are per-profile and isolated. |
+| `workflow_id` | TEXT | The run whose state holds the job's JD (used by the clinic focus). |
+| `job_id` | TEXT | The favorited scored job. `UNIQUE(user_id, job_id)` dedupes. |
+| `title` / `company` | TEXT | Snapshot at favorite time, so the dropdown still shows the role after a run purge. |
+| `created_at` | TEXT | ISO-8601 UTC. |
+
+### Invariants
+
+- **Cap:** `MAX_FAVORITES = 25` per profile (`favorite_repository.py`), enforced on
+  insert (`FavoritesCapReached` -> API `409`). A working set, not a board.
+- **Boundary (forcing function):** a test asserts the column set is *exactly* the
+  above — adding a status/outcome column fails the build (the no-application-tracking
+  rule, enforced in schema). The Matches/Opportunity/favorites UI scan reinforces it.
+- **Retention (ADR-090):** favorites are user-owned working data, **deliberately not
+  in `_RUN_CHILD_TABLES`** — a run purge does not remove them (the snapshot persists);
+  deleting a profile removes its favorites (`remove_all_for_user`, hook ready for a
+  future profile-delete flow).
+
+---
+
 ## 8. Indexing Strategy
 
 Indexes created in `init_db()`:

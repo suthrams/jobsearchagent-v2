@@ -77,7 +77,9 @@ app/ui/
     __init__.py      REGISTRY: {internal view name -> render(ctx)}
     <name>.py        one render(ctx) per screen (11 modules)
   components/         shared st.* render helpers (bullets, tailoring card, resume
-                     chat, run_status - the ADR-089 live run strip/chip)
+                     chat, run_status - the ADR-089 live run strip/chip, favorites -
+                     the ADR-090 star toggle, tailoring_panel - the ADR-090 shared
+                     per-job tailoring flow used by Opportunity + the focused Clinic)
   formatting.py      pure formatters (no st.*, unit-tested)
   data.py            @st.cache_data wrappers over api_client + local YAML
   api_client.py      httpx calls to FastAPI (ALL reads + writes, ADR-075)
@@ -257,13 +259,13 @@ destination (ADR-088 F).
 |---|---|---|---|
 | New search (FIND) | `views/start_run.py` | C | `POST /workflows`, `PUT /config`; `load_user_resumes` |
 | Searches (FIND) | `views/history.py` | R | `load_persisted_workflow_runs`, `load_workflow_runs` |
-| Matches (MY OPPORTUNITIES) | `views/matches.py` | R + C | The live home base (ADR-089). Tops with the state-aware **run-status strip** (`components/run_status.py`); then `load_scored_jobs` (Roles tab: active-track `segmented_control` + NEW badges on the latest run's rows; Companies tab: plotly). Merges the former Top Matches + IC/Architect/Management + Companies (ADR-088 B). While a search runs, the strip auto-refreshes via `st.fragment(run_every=5s)` and reruns the app on completion. "Open opportunity" routes to the Opportunity page |
-| Resume Clinic (RESUME) | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews` |
+| Matches (MY OPPORTUNITIES) | `views/matches.py` | R + C | The live home base (ADR-089). Tops with the state-aware **run-status strip** (`components/run_status.py`); then `load_scored_jobs` (Roles tab: active-track `segmented_control` + NEW badges on the latest run's rows; Companies tab: plotly). Merges the former Top Matches + IC/Architect/Management + Companies (ADR-088 B). While a search runs, the strip auto-refreshes via `st.fragment(run_every=5s)` and reruns the app on completion. "Open opportunity" routes to the Opportunity page. The selected-row cluster carries the ADR-090 ★ favorite toggle (+ a ★ marker column) |
+| Resume Clinic (RESUME) | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews`. **ADR-090:** an optional "Focus a job (from My favorite jobs)" dropdown; a focus routes the session to the shared `tailoring_panel` (a tailored resume), else the job-agnostic review |
 | Profiles & Resumes (RESUME) | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
 | Settings (operator) | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |
 | Spend & Health (operator) | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (day-by-day + week-by-week, per-agent and per-model spend); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
 | Search detail | `views/workflow_detail.py` | D, R + C | The per-RUN summary (ADR-088 Phase 6 shrank it): status + metrics, the manual-selection picker (ADR-060), the Find & Score jobs table (each row opens Opportunity), the discovered-jobs table, and collapsed Diagnostics (`compute_breakdown` + `constraint_analyzer`). The per-job Review / interview-Prep / Tailoring action region moved to Opportunity |
-| Opportunity | `views/opportunity.py` | D, R + C | The single per-job surface (ADR-088 Tier 2). Reads `load_job_pipeline` + the run state (fit, score, resume-gap vs career-gap, deep-review rounds, advice, prep); controls deep-review / tailoring (drafts + decisions + ADR-072 chat) / interview-prep on demand + exclude. Subsumes the former read-only Job Detail. Target of every job click (Matches "Open opportunity", Search-detail "Open"). No app-tracking (ADR-088 E; guardrail test) |
+| Opportunity | `views/opportunity.py` | D, R + C | The single per-job surface (ADR-088 Tier 2). Reads `load_job_pipeline` + the run state (fit, score, resume-gap vs career-gap, deep-review rounds, advice, prep); controls deep-review / tailoring (drafts + decisions + ADR-072 chat) / interview-prep on demand + exclude. Subsumes the former read-only Job Detail. Target of every job click (Matches "Open opportunity", Search-detail "Open"). Header carries the ADR-090 ★ favorite toggle; tailoring uses the shared `tailoring_panel`. No app-tracking (ADR-088 E / ADR-090; guardrail test) |
 | Live monitor | `views/live_monitor.py` | D, R + C | `GET /workflows/{id}`, `POST .../retry`; `load_step_executions` / `load_agent_events` / `load_llm_calls` |
 | Run report | `views/run_report.py` | D, C | `GET /workflows/{id}/report` |
 

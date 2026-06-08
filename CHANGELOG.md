@@ -6,6 +6,29 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-07
 
+### Added — My favorite jobs + job-focused Resume Clinic (ADR-090)
+
+A resume-first loop: flag a few jobs, then tailor your resume toward one of them in
+the Resume Clinic and export it.
+
+- **My favorite jobs:** a new `favorite_jobs` table + `FavoriteRepository` + three
+  endpoints (`GET/POST/DELETE /users/{id}/favorites`). A bounded (25/profile),
+  per-profile, **status-free** working set - a filter-input (the positive twin of the
+  ADR-057 exclude), NOT application tracking: it stores only a job reference + a
+  title/company snapshot + a timestamp. Flag/un-flag with a ⭐ from the **Matches**
+  selected-row cluster (+ a ★ marker column) and the **Opportunity** header.
+- **Job-focused Resume Clinic:** an optional "Focus a job (from My favorite jobs)"
+  dropdown. No focus -> today's job-agnostic review; a focus -> the existing
+  evidence-bound tailoring flow (Tailoring Agent + Fidelity + ADR-072 chat + export),
+  output a resume tailored to that role. The per-job tailoring flow was extracted into
+  a shared `components/tailoring_panel.py` reused by Opportunity and the focused
+  Clinic - net-new backend is the favorites CRUD only.
+- **No-tracking boundary, enforced twice:** a schema forcing-function test (the
+  favorite_jobs column set must stay exactly {job ref + snapshot + timestamp} - a
+  status column fails the build) + the extended UI no-tracking scan. Favorites
+  deliberately survive a run purge (snapshot persists); they are removed with their
+  profile. 963 tests pass; UI smoke 12/12; browser-verified the API + clinic focus.
+
 ### Added — Matches as the live home base (ADR-089)
 
 Closes the run-lifecycle friction ADR-088 surfaced: the core loop no longer bounces

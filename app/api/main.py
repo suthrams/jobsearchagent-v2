@@ -23,6 +23,7 @@ load_dotenv()  # load .env before any os.environ reads (e.g. ANTHROPIC_API_KEY)
 from app.api.dependencies import build_and_cache_graph, cleanup_graph, get_graph
 from app.api.routers.admin import router as admin_router
 from app.api.routers.config import router as config_router
+from app.api.routers.favorites import router as favorites_router
 from app.api.routers.dashboard import router as dashboard_router
 from app.api.routers.health import router as health_router
 from app.api.routers.reads import router as reads_router
@@ -122,6 +123,7 @@ app.include_router(reports_router)
 app.include_router(config_router)
 app.include_router(tailoring_router)
 app.include_router(users_router)  # ADR-062: profile management
+app.include_router(favorites_router)  # ADR-090: My favorite jobs
 app.include_router(resume_clinic_router)  # ADR-066: standalone Resume Clinic
 app.include_router(admin_router)  # ADR-070: data-retention purge
 app.include_router(dashboard_router)  # ADR-075: cross-run read endpoints
