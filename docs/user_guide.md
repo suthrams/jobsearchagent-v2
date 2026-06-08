@@ -1,4 +1,4 @@
-# Job Search Agent v2 — User Guide
+# My Career Intelligence — User Guide
 
 End-to-end walkthrough: setup, starting the system, running a workflow, and reading results.
 

@@ -53,8 +53,8 @@ from app.ui.views import REGISTRY as VIEW_REGISTRY
 # ── Page config ───────────────────────────────────────────────────────────────
 
 st.set_page_config(
-    page_title="Job Search Agent v2",
-    page_icon="🔍",
+    page_title="My Career Intelligence",
+    page_icon="🧭",
     layout="wide",
     initial_sidebar_state="expanded",
 )
@@ -126,14 +126,20 @@ def _build_ctx() -> nav.ViewContext:
 
 
 def _render_topbar() -> None:
-    """App header in the MAIN area: brand on the left, the profile switcher on the
-    top-right (a standard account-switcher spot). The profile selector lived in the
-    sidebar, but native multipage pins the nav to the sidebar top and pushed it down
-    out of first glance; the top-right is where users look for "who am I" (ADR-062).
-    Rendered before page.run() so a profile change reruns before any page reads."""
-    brand, _spacer, prof = st.columns([3, 4, 2], vertical_alignment="center")
-    brand.markdown("#### 🔍 Job Search Agent")
-    with prof:
+    """App header in the MAIN area: the app title on the left (bigger), the profile
+    switcher on the top-right (the standard account-switcher spot). Rendered before
+    page.run() so a profile change reruns before any page reads. There is no "Add
+    profile" here by design - adding a profile lives on the Profiles & Resumes screen
+    (its onboarding wizard); the header stays a clean title + who-am-I switcher.
+    """
+    # Raise the header toward the very top (trim Streamlit's default top padding).
+    st.markdown(
+        "<style>div.block-container{padding-top:1.6rem;}</style>",
+        unsafe_allow_html=True,
+    )
+    title_col, prof_col = st.columns([5, 2], vertical_alignment="center")
+    title_col.markdown("## 🧭 My Career Intelligence")
+    with prof_col:
         _users = _cached_list_users()
         if not _users:
             st.caption("No profiles (backend offline?)")
@@ -150,8 +156,8 @@ def _render_topbar() -> None:
             format_func=lambda i: _id_to_label.get(i, i),
             key="_profile_select",
             label_visibility="collapsed",
-            help="Whose search this is (ADR-062). Switching re-scopes history, "
-                 "matches, and the resume picker to that profile.",
+            help="Whose career this is (ADR-062). Switching re-scopes matches, "
+                 "history, and the resume picker. Add a profile on Profiles & Resumes.",
         )
         if _chosen != st.session_state.current_user_id:
             st.session_state.current_user_id = _chosen
@@ -159,15 +165,6 @@ def _render_topbar() -> None:
             st.cache_data.clear()
             st.session_state.config_cache = None
             st.rerun()
-        _pc1, _pc2 = st.columns([1, 1])
-        if _pc1.button("＋ Add", key="topbar_add_profile", use_container_width=True,
-                       help="Add a new profile (onboarding wizard)."):
-            st.session_state.onboard_step = 1
-            st.session_state.onboard_new_user_id = None
-            _navigate("Profiles")
-        _note = next((u.get("note") for u in _users if str(u["id"]) == _chosen), None)
-        if _note:
-            _pc2.caption(_note)
 
 
 # ── Native-multipage navigation (st.navigation / st.Page) ─────────────────────
