@@ -99,6 +99,37 @@ def render_chat_panel(review: dict, *, user_id: str,
                 "Consider locking in your edit soon."
             )
 
+    # ── Fidelity verdict (ADR-091) ──────────────────────────────────────────
+    # Surface the reviewer's latest verdict so the user sees WHY a draft is
+    # flagged. The next chat turn feeds these claims back to the agent, which
+    # tries to fix them automatically (the user can also direct it).
+    _rc_fid = _rc_preview_review.get("fidelity_review") or {}
+    if _rc_fid:
+        _fid_status = (_rc_fid.get("overall_fidelity_status") or "").lower()
+        _fid_claims = _rc_fid.get("unsupported_claims") or []
+        if _fid_status == "pass" and not _fid_claims:
+            st.success("Fidelity check passed - every rewrite is backed by your resume.")
+        else:
+            _fid_label = {"fail": "failed",
+                          "needs_revision": "needs revision"}.get(
+                              _fid_status, _fid_status or "flagged")
+            with st.expander(
+                f"Fidelity check: {_fid_label} "
+                f"({len(_fid_claims)} unsupported claim(s))",
+                expanded=True,
+            ):
+                if _fid_claims:
+                    st.caption(
+                        "The reviewer flagged these as not backed by your "
+                        "resume. Your next chat turn will automatically try to "
+                        "ground or remove them - or tell it how you'd like them "
+                        "handled."
+                    )
+                    for _c in _fid_claims:
+                        st.markdown(f"- {_c}")
+                else:
+                    st.caption("The reviewer recommends another revision pass.")
+
     # ── Chat input ──────────────────────────────────────────────────────────
     _rc_section_options = {
         "whole": "Whole resume",
@@ -155,17 +186,22 @@ def render_chat_panel(review: dict, *, user_id: str,
                 "max_turns":       _chat_resp.get("max_turns", 0),
                 "session_cost_usd": _chat_resp.get("session_cost_usd", 0.0),
             }
-            # Refresh the row so the preview re-renders.
-            try:
-                _rows = api.list_resume_clinic_runs(user_id).get("reviews") or []
-                _updated = next(
-                    (r for r in _rows if r.get("clinic_id") == _clinic_id),
-                    None,
-                )
-                if _updated:
-                    st.session_state[state_key] = _updated
-            except Exception:
-                pass
+            # Refresh the row so the preview re-renders. Build the updated state
+            # FROM THE CHAT RESPONSE (which carries the new overhaul + fidelity
+            # verdict) rather than re-fetching via list_resume_clinic_runs:
+            # that list endpoint excludes job-anchored sessions (WHERE job_id IS
+            # NULL, ADR-072), so for a job-focused chat the re-fetch was a silent
+            # no-op - the preview never updated and "Save final edit" later
+            # clobbered the accumulated chat edits with the original overhaul.
+            # The chat turn writes edited_json server-side, so mirror that here:
+            # the response overhaul IS the new edited state; decision is unchanged
+            # (chat never decides).
+            _base_review = st.session_state.get(state_key) or review or {}
+            _merged = dict(_base_review)
+            _merged["edited"] = _chat_resp.get("overhaul")
+            _merged["fidelity_review"] = _chat_resp.get("fidelity_review")
+            _merged["decision"] = None
+            st.session_state[state_key] = _merged
             st.rerun()
         except httpx.HTTPStatusError as exc:
             # Surface the cap-reached reason directly on 429.
@@ -206,14 +242,17 @@ def render_chat_panel(review: dict, *, user_id: str,
                    help="Clear chat edits and decision; revert to the agent's original overhaul."):
         try:
             api.discard_resume_clinic_edits(_clinic_id)
-            # Refresh from server.
-            _rows = api.list_resume_clinic_runs(user_id).get("reviews") or []
-            _updated = next(
-                (r for r in _rows if r.get("clinic_id") == _clinic_id),
-                None,
-            )
-            if _updated:
-                st.session_state[state_key] = _updated
+            # Mirror the server-side clear locally. discard_edits nulls
+            # edited_json/decision so the renderer falls back to the agent's
+            # original overhaul; reflect that in the held state directly rather
+            # than re-fetching via list_resume_clinic_runs (which excludes
+            # job-anchored sessions, ADR-072, and would leave stale edits shown).
+            _base_review = st.session_state.get(state_key) or review or {}
+            _merged = dict(_base_review)
+            _merged["edited"] = None
+            _merged["fidelity_review"] = None
+            _merged["decision"] = None
+            st.session_state[state_key] = _merged
             st.session_state[_rc_chat_history_key] = []
             # Discard only clears edits on the server; the chat-turn spend on the
             # workflow_run_id is permanent (already billed in llm_calls). Leave

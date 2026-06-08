@@ -29,6 +29,7 @@ import html
 import io
 import json
 import re
+import unicodedata
 from dataclasses import dataclass, field
 from typing import Iterable, Literal
 
@@ -404,21 +405,83 @@ def _replace_or_append_summary(base: RenderedResume, original: str, suggested: s
         base.summary = suggested
 
 
+_WORD_RE = re.compile(r"[a-z0-9]+")
+# A bullet must be at least this long to be treated as "subsumed" by a longer
+# rewrite original_text (case 3 below). Stops a trivial fragment like "Python."
+# from being swallowed because it happens to appear inside a longer string.
+_SUBSUME_MIN_LEN = 15
+# Token-overlap floor + margin for the fuzzy fallback (case 4). A match must
+# clear the floor AND beat the runner-up by the margin, so an ambiguous tie
+# appends rather than risks replacing the wrong bullet.
+_OVERLAP_FLOOR = 0.6
+_OVERLAP_MARGIN = 0.15
+
+
+def _word_tokens(s: str) -> set[str]:
+    return set(_WORD_RE.findall(s.casefold()))
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
 def _replace_or_append_bullet(bullets: list[str], original: str, suggested: str) -> None:
+    """Substitute the bullet a rewrite points at; append only if nothing matches.
+
+    Matching is layered so that common shapes of `original_text` all REPLACE
+    rather than duplicate (the "never silently drop" rule degrades to
+    appending only for genuinely new content):
+
+      1. exact bullet text;
+      2. original_text is a substring of a bullet (clean version of a noisy
+         bullet);
+      3. one or more bullets are substrings of original_text (the rewrite
+         MERGES several source bullets into one) - replace the first and drop
+         the others so the merged-away bullets don't linger as duplicates;
+      4. strong, unambiguous token overlap (handles light rewording of
+         original_text across chat turns).
+    """
     if not original:
         bullets.append(suggested)
         return
-    # Exact match first.
+    o = original.strip()
+    of = o.casefold()
+    # 1. Exact match.
     for i, b in enumerate(bullets):
-        if b.strip() == original:
+        if b.strip() == o:
             bullets[i] = suggested
             return
-    # Substring fallback - many real rewrites pull a clean version of a noisy bullet.
-    o = original.casefold()
+    # 2. original_text is a substring of a bullet.
     for i, b in enumerate(bullets):
-        if o and o in b.casefold():
+        if of and of in b.casefold():
             bullets[i] = suggested
             return
+    # 3. Bullet(s) are substrings of original_text -> the rewrite merged them.
+    #    Replace the first subsumed bullet, delete the rest.
+    subsumed = [
+        i for i, b in enumerate(bullets)
+        if len(b.strip()) >= _SUBSUME_MIN_LEN and b.strip().casefold() in of
+    ]
+    if subsumed:
+        bullets[subsumed[0]] = suggested
+        for i in reversed(subsumed[1:]):
+            del bullets[i]
+        return
+    # 4. Fuzzy: replace the single best-matching bullet when the overlap is
+    #    strong and clearly beats the runner-up.
+    o_tokens = _word_tokens(o)
+    scored = sorted(
+        ((_jaccard(o_tokens, _word_tokens(b)), i) for i, b in enumerate(bullets)),
+        reverse=True,
+    )
+    if scored and scored[0][0] >= _OVERLAP_FLOOR:
+        runner_up = scored[1][0] if len(scored) > 1 else 0.0
+        if scored[0][0] - runner_up >= _OVERLAP_MARGIN:
+            bullets[scored[0][1]] = suggested
+            return
+    # 5. Genuinely new content: append (preserve the no-drop contract).
     bullets.append(suggested)
 
 
@@ -1142,7 +1205,10 @@ def render_pdf(rendered: RenderedResume) -> bytes:
         story.append(P(rendered.headline, headline_style))
     contact_bits = [b for b in (rendered.email, rendered.location) if b]
     if contact_bits:
-        story.append(P(" &middot; ".join(_esc(b) for b in contact_bits), contact_style))
+        # Join with a literal middle-dot (WinAnsi-safe) and pass RAW text to P,
+        # which escapes once. Pre-building a "&middot;" entity here would be
+        # double-escaped by P and render as the literal text "&middot;".
+        story.append(P(" · ".join(contact_bits), contact_style))
     if rendered.name or rendered.headline or contact_bits:
         story.append(_hr())
 
@@ -1186,7 +1252,7 @@ def render_pdf(rendered: RenderedResume) -> bytes:
                 if it.bullets:
                     block.append(ListFlowable(
                         [ListItem(P(b, bullet_style), leftIndent=10,
-                                  value="bullet", bulletColor="#444444")
+                                  bulletColor="#444444")
                          for b in it.bullets],
                         bulletType="bullet", start="•",
                         leftIndent=10, bulletFontSize=8,
@@ -1205,8 +1271,7 @@ def render_pdf(rendered: RenderedResume) -> bytes:
                     )
                     story.append(Paragraph(line, body_style))
             else:
-                story.append(P(" &middot; ".join(_esc(s) for s in rendered.skills),
-                               body_style))
+                story.append(P(" · ".join(rendered.skills), body_style))
         elif section == "certifications" and rendered.certifications:
             story.append(P(section_h_label[section].upper(), section_style))
             story.append(_section_hr())
@@ -1215,7 +1280,7 @@ def render_pdf(rendered: RenderedResume) -> bytes:
                 meta = ", ".join(b for b in (c.issuer, c.year) if b)
                 line = c.name + (f" ({meta})" if meta else "")
                 items.append(ListItem(P(line, bullet_style),
-                                      leftIndent=10, value="bullet"))
+                                      leftIndent=10))
             story.append(ListFlowable(items, bulletType="bullet",
                                       start="•", leftIndent=10,
                                       bulletFontSize=8))
@@ -1232,18 +1297,18 @@ def render_pdf(rendered: RenderedResume) -> bytes:
                 if ed.honors:
                     sub = ListFlowable(
                         [ListItem(P(h, bullet_style), leftIndent=10,
-                                  value="bullet", bulletColor="#888888")
+                                  bulletColor="#888888")
                          for h in ed.honors],
                         bulletType="bullet", start="·",
                         leftIndent=20, bulletFontSize=7,
                     )
                     items.append(ListItem(
                         KeepTogether([P(head, bullet_style), sub]),
-                        leftIndent=10, value="bullet",
+                        leftIndent=10,
                     ))
                 else:
                     items.append(ListItem(P(head, bullet_style),
-                                          leftIndent=10, value="bullet"))
+                                          leftIndent=10))
             story.append(ListFlowable(items, bulletType="bullet",
                                       start="•", leftIndent=10,
                                       bulletFontSize=8))
@@ -1256,9 +1321,46 @@ def render_pdf(rendered: RenderedResume) -> bytes:
     return buf.getvalue()
 
 
+# ReportLab's standard Type-1 fonts (Helvetica) are limited to WinAnsi (CP1252).
+# Any codepoint outside it renders as a "notdef" black box. LLM-authored resume
+# text routinely contains a few such characters (non-breaking hyphen, minus sign,
+# arrows, zero-width/narrow spaces). Map the common offenders to ASCII first; the
+# CP1252 fallback in _pdf_safe catches anything else so the PDF never shows a box.
+_PDF_CHAR_MAP = {
+    "‐": "-", "‑": "-", "‒": "-", "−": "-",  # hyphens / minus
+    "→": "->", "←": "<-", "↔": "<->",             # arrows
+    "•": "-", "●": "-", "▪": "-", "‣": "-",  # stray bullets in text
+    "​": "", "﻿": "",                                   # zero-width
+    " ": " ", " ": " ", " ": " ", " ": " ", " ": " ",
+}
+
+
+def _pdf_safe(s: str) -> str:
+    """Make a string safe for ReportLab's WinAnsi Type-1 fonts: map common
+    non-CP1252 punctuation to ASCII, then drop/decompose anything still outside
+    CP1252 so it never renders as a notdef black box. CP1252 covers the smart
+    quotes, en/em dashes, middle dot, and accented Latin used in real resumes,
+    so those are preserved."""
+    s = "".join(_PDF_CHAR_MAP.get(ch, ch) for ch in str(s))
+    out: list[str] = []
+    for ch in s:
+        try:
+            ch.encode("cp1252")
+            out.append(ch)
+        except UnicodeEncodeError:
+            # Best-effort ASCII fold (e.g. a stray decomposable glyph); drop if
+            # it has no ASCII form rather than emit a black box.
+            out.append(unicodedata.normalize("NFKD", ch).encode("ascii", "ignore").decode())
+    return "".join(out)
+
+
 def _esc(s: str) -> str:
-    """ReportLab Paragraph uses minimal HTML; escape the same five entities."""
-    return (str(s)
+    """Normalise for the WinAnsi font, then escape the minimal HTML entities
+    ReportLab's Paragraph markup recognises. Note: callers must pass RAW text,
+    never a string that already contains entities like `&middot;` - this
+    escapes `&`, so a pre-built entity would double-escape and render literally
+    (the contact/skills `&middot;` bug, ADR-091)."""
+    return (_pdf_safe(s)
             .replace("&", "&amp;")
             .replace("<", "&lt;")
             .replace(">", "&gt;"))

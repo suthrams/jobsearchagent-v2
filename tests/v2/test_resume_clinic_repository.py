@@ -238,6 +238,37 @@ def test_set_decision_reject_does_not_persist_edited_json(repo):
     assert row["edited"] is None
 
 
+def test_set_decision_without_payload_preserves_chat_edits(repo):
+    """Regression (ADR-091): a decision with edited=None must NOT wipe a
+    chat-revise session's accumulated edits. Previously set_decision nulled
+    edited_json on every decision, so a Save/approve after chatting silently
+    clobbered the chat-edited overhaul (the c352756b bug)."""
+    repo.create(
+        clinic_id="cl-6", user_id="0", resume_id="r-1",
+        workflow_run_id=None, target_role=None, target_track=None,
+        seniority_aware=False,
+        review=_sample_review(), alignment=None,
+        overhaul=_sample_overhaul(), fidelity_review=None,
+    )
+    chat_state = {
+        "reorganization": {"section_order": [], "moves": []},
+        "rewrites": [{
+            "section_label": "summary",
+            "original_text": "old summary",
+            "suggested_text": "chat-refined summary the user worked on",
+            "claim_type": "restate",
+            "supporting_evidence": "resume summary",
+        }],
+    }
+    repo.set_edited("cl-6", chat_state)
+    # An approve decision carries no edited payload, but compose_resume applies
+    # edited_json on approve - so it must survive.
+    repo.set_decision("cl-6", "approve")
+    row = repo.get_by_id("cl-6")
+    assert row["decision"] == "approve"
+    assert row["edited"] == chat_state, "chat edits must survive a payload-less decision"
+
+
 # ── delete_by_resume (cascade) ──────────────────────────────────────────────
 
 def test_delete_by_resume_removes_only_matching_rows(repo):

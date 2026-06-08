@@ -660,7 +660,10 @@ CREATE INDEX idx_resume_clinic_user ON resume_clinic_reviews(user_id);
   dashboard).
 - **Decision written by**: `POST /resume-clinic/{id}/decisions` ->
   `ResumeClinicRepository.set_decision` (reuses the shared `DecisionRequest`
-  validator with the tailoring router).
+  validator with the tailoring router). ADR-091: `set_decision` only overwrites
+  `edited_json` when an explicit payload is supplied; a payload-less decision
+  leaves `edited_json` untouched so a `Save`/`approve` after a chat-revise session
+  cannot clobber the accumulated chat edits.
 - **Read by**: `GET /users/{id}/resume-clinic`; the Streamlit "Resume Clinic"
   view's past-runs panel via `db_reader.load_user_clinic_reviews`.
 

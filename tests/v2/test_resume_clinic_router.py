@@ -616,6 +616,48 @@ def test_chat_always_runs_fidelity_when_rewrites_exist(client):
     assert resp.json()["fidelity_review"] is not None
 
 
+def test_chat_feeds_prior_fidelity_into_agent_context(client):
+    """ADR-091: the prior turn's fidelity verdict is fed back into the agent
+    context so it can self-correct flagged claims instead of re-asserting them."""
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic", json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    # Turn 1 persists a fidelity verdict on the row.
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "first"})
+    deps.resume_chat.run.reset_mock()
+    # Turn 2's context should carry the prior verdict.
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "second"})
+    ctx = deps.resume_chat.run.call_args.args[1]
+    assert "prior_fidelity" in ctx
+    assert ctx["prior_fidelity"] is not None
+    assert ctx["prior_fidelity"]["status"] == "pass"
+
+
+def test_chat_reviews_full_draft_every_turn(client):
+    """ADR-091: fidelity reviews the WHOLE draft every turn, not just the
+    changed bullets - a claim flagged earlier must stay policed until fixed,
+    and the persisted verdict must describe the full resume the user exports.
+    The cost lever is fewer turns (prior_fidelity feedback), not narrowing
+    this review."""
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic", json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "first"})
+    calls_after_first = deps.fidelity_reviewer.run.call_count
+    # A second turn still runs fidelity on the full rewrite set.
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "second"})
+    assert deps.fidelity_reviewer.run.call_count == calls_after_first + 1
+    # The fidelity context carries the full rewrite set, not a delta.
+    fid_ctx = deps.fidelity_reviewer.run.call_args.args[1]
+    bullets = (fid_ctx.get("tailored_draft") or {}).get(
+        "experience_bullet_suggestions") or []
+    assert len(bullets) >= 1
+
+
 def test_chat_persists_null_fidelity_when_reviewer_raises(client):
     from app.providers.llm_client import LLMProviderError
 

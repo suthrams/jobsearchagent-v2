@@ -292,6 +292,56 @@ def test_rewrite_substring_fallback_matches_noisy_bullets():
     assert "Mentored two junior engineers." not in acme.bullets
 
 
+def test_rewrite_merging_two_bullets_collapses_without_duplication():
+    """ADR-091: a rewrite whose original_text concatenates two source bullets
+    must REPLACE the first and DROP the second, not append a third copy. This
+    was the c352756b duplication bug (a 3-bullet role rendered with 5 bullets).
+    """
+    overhaul = {
+        "reorganization": {"section_order": ["summary", "experience"], "moves": []},
+        "rewrites": [
+            {
+                "section_label": "experience:Beta Inc:Software Engineer",
+                # original_text merges Beta's two bullets into one string.
+                "original_text": ("Built internal tooling for the data team. "
+                                  "Worked on the API gateway."),
+                "suggested_text": ("Built internal tooling and the API gateway "
+                                   "for the data team."),
+                "claim_type": "restate",
+                "supporting_evidence": "Resume lists both as Beta work.",
+            },
+        ],
+    }
+    rendered = compose_resume(_profile(), overhaul, None, decision="approve")
+    beta = next(i for i in rendered.experience if i.company == "Beta Inc")
+    assert beta.bullets == [
+        "Built internal tooling and the API gateway for the data team.",
+    ], "merged rewrite should collapse both source bullets into one, no duplicates"
+
+
+def test_rewrite_token_overlap_replaces_lightly_reworded_original():
+    """ADR-091: across chat turns original_text can drift from the exact
+    profile bullet. Strong, unambiguous token overlap should still replace
+    (not append a near-duplicate)."""
+    overhaul = {
+        "reorganization": {"section_order": ["summary", "experience"], "moves": []},
+        "rewrites": [
+            {
+                "section_label": "experience:Acme Corp:Senior Engineer",
+                # Reworded vs "Led migration of monolith to microservices on AWS ECS."
+                "original_text": "Led the monolith to microservices migration on AWS ECS",
+                "suggested_text": "Drove the monolith-to-microservices migration on AWS ECS.",
+                "claim_type": "restate",
+                "supporting_evidence": "Resume confirms the migration.",
+            },
+        ],
+    }
+    rendered = compose_resume(_profile(), overhaul, None, decision="approve")
+    acme = next(i for i in rendered.experience if i.company == "Acme Corp")
+    assert "Drove the monolith-to-microservices migration on AWS ECS." in acme.bullets
+    assert "Led migration of monolith to microservices on AWS ECS." not in acme.bullets
+
+
 def test_rewrite_replaces_headline_when_section_label_is_headline():
     """ADR-068 follow-up: section_label="headline" rewrites the one-line
     positioning statement under the candidate's name. Exact-match path."""
@@ -493,6 +543,47 @@ def test_render_pdf_starts_with_pdf_magic_and_includes_name():
     assert payload[:5] == b"%PDF-"
     # The candidate's name should appear somewhere in the raw stream.
     assert b"Jamie Lee" in payload
+
+
+# ── ADR-091: PDF text fidelity (no garbled output) ──────────────────────────
+
+def test_esc_single_escapes_and_does_not_double_escape():
+    from app.services.resume_text_renderer import _esc
+    assert _esc("Smith & Co") == "Smith &amp; Co"
+    assert _esc("a < b > c") == "a &lt; b &gt; c"
+    # A literal middle-dot is preserved (WinAnsi-safe) - it must NOT become an
+    # entity, and an already-escaped entity must not be double-escaped here
+    # (callers pass RAW text).
+    assert _esc("a · b") == "a · b"
+
+
+def test_pdf_safe_maps_non_winansi_punctuation_to_ascii():
+    from app.services.resume_text_renderer import _pdf_safe
+    assert _pdf_safe("non‑breaking") == "non-breaking"   # U+2011 -> -
+    assert _pdf_safe("a→b") == "a->b"                     # arrow
+    assert _pdf_safe("5−(−3)") == "5-(-3)"            # minus sign
+    # Smart quotes / em-dash / accents are in CP1252 and survive unchanged.
+    assert _pdf_safe("“q” — café") == "“q” — café"
+    # Anything with no ASCII form is dropped, never left as a notdef box.
+    assert "☃" not in _pdf_safe("snow☃man")
+
+
+def test_render_pdf_text_has_no_literal_entities_or_bullet_word():
+    """Extract the rendered PDF text and assert the contact/skills separator is
+    a real middle-dot (not the literal '&middot;') and list bullets are not the
+    literal word 'bullet' - the two garble bugs fixed in ADR-091."""
+    fitz = pytest.importorskip("fitz")
+    rendered = compose_resume(_profile(), _overhaul(), None, decision="approve")
+    payload = render_pdf(rendered)
+    doc = fitz.open(stream=payload, filetype="pdf")
+    text = "\n".join(page.get_text() for page in doc)
+    assert "&middot;" not in text, "contact/skills separator double-escaped"
+    assert "&amp;" not in text, "raw HTML entity leaked into rendered text"
+    # The email and a flush middle-dot separator are present.
+    assert "jamie@example.com" in text
+    assert "·" in text
+    # No list item rendered the literal marker word 'bullet'.
+    assert "bullet" not in text.lower()
 
 
 # ── Public dispatch ─────────────────────────────────────────────────────────

@@ -40,3 +40,6 @@ ASCII only (repo convention).
 | ID | Title | Severity | Status | Forcing function |
 |----|-------|----------|--------|------------------|
 | [BUG-001](BUG-001-ui-missing-httpx-import.md) | UI view crashes: `httpx` referenced but not imported | High | Fixed | `tests/v2/test_ui_undefined_names.py` |
+| [BUG-002](BUG-002-job-focused-clinic-chat-clobbered.md) | Job-focused clinic chat edits frozen + clobbered on save | Critical | Fixed | `tests/v2/test_resume_clinic_repository.py::test_set_decision_without_payload_preserves_chat_edits` |
+| [BUG-003](BUG-003-renderer-duplicates-merged-bullets.md) | Resume export duplicates bullets on a bullet-merging rewrite | High | Fixed | `tests/v2/test_resume_text_renderer.py::test_rewrite_merging_two_bullets_collapses_without_duplication` |
+| [BUG-004](BUG-004-pdf-export-garbled-text.md) | PDF export garbled (literal `&middot;`, `bullet` markers, notdef boxes) | High | Fixed | `tests/v2/test_resume_text_renderer.py::test_render_pdf_text_has_no_literal_entities_or_bullet_word` |

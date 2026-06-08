@@ -146,17 +146,31 @@ class ResumeClinicRepository:
         For `edit`, the human-authored draft is stored in `edited_json`; the
         agent's original `overhaul_json` is left intact for the audit trail.
         `reject` and `revise` never carry an edited payload.
+
+        edited_json is only overwritten when an explicit `edited` payload is
+        supplied. A decision with `edited=None` LEAVES edited_json untouched -
+        it must not wipe a chat-revise session's accumulated edits. (Previously
+        this nulled edited_json on every decision, so a `Save final edit` whose
+        caller passed a stale/empty payload, or an `approve` after chatting,
+        silently clobbered the chat-edited overhaul. compose_resume already
+        ignores edited_json for `reject`, so there is no need to clear it here.)
         """
         now = utcnow_iso()
         with get_connection(self.db_path) as conn:
-            conn.execute(
-                """UPDATE resume_clinic_reviews
-                   SET decision = ?, decided_at = ?, edited_json = ?
-                   WHERE id = ?""",
-                (decision, now,
-                 json.dumps(edited) if edited is not None else None,
-                 clinic_id),
-            )
+            if edited is not None:
+                conn.execute(
+                    """UPDATE resume_clinic_reviews
+                       SET decision = ?, decided_at = ?, edited_json = ?
+                       WHERE id = ?""",
+                    (decision, now, json.dumps(edited), clinic_id),
+                )
+            else:
+                conn.execute(
+                    """UPDATE resume_clinic_reviews
+                       SET decision = ?, decided_at = ?
+                       WHERE id = ?""",
+                    (decision, now, clinic_id),
+                )
 
     @staticmethod
     def _row_to_dict(row) -> dict | None:

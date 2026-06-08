@@ -107,6 +107,30 @@ def _session_cost_usd_for_clinic(observability, workflow_run_id: str) -> float:
             continue
     return round(total, 6)
 
+def _compact_fidelity(fidelity: dict | None) -> dict | None:
+    """ADR-091: reduce a persisted FidelityReview to the few fields the chat
+    agent needs to self-correct - the verdict, the recommendation, and the
+    list of unsupported claims (capped). Returns None when there is no prior
+    verdict, so the agent prompt's "prior fidelity" block stays absent on the
+    first turn."""
+    if not isinstance(fidelity, dict) or not fidelity:
+        return None
+    claims = fidelity.get("unsupported_claims")
+    claims = (
+        [str(c) for c in claims if str(c).strip()][:10]
+        if isinstance(claims, list) else []
+    )
+    status = fidelity.get("overall_fidelity_status")
+    recommendation = fidelity.get("approval_recommendation")
+    if not (claims or status or recommendation):
+        return None
+    return {
+        "status": status,
+        "recommendation": recommendation,
+        "unsupported_claims": claims,
+    }
+
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["resume_clinic"])
@@ -560,6 +584,13 @@ def chat_resume_clinic(
     # revised in this session); otherwise the agent's original overhaul.
     current_overhaul: dict = row.get("edited") or row.get("overhaul") or {}
 
+    # ADR-091: feed the PRIOR fidelity verdict back into the agent so it can
+    # self-correct. Without this the reviewer flagged the same unsupported
+    # claims every turn and the agent never saw them - the loop never
+    # converged. Compact (status + recommendation + unsupported claims) so it
+    # adds little to the prompt budget.
+    prior_fidelity = _compact_fidelity(row.get("fidelity_review"))
+
     # Build the agent context. The parsed profile is cached so subsequent
     # turns hit the second cached prompt block at the 10% rate.
     # redact_pii_for_llm drops raw_text AND direct identifiers (ADR-069): the
@@ -569,6 +600,7 @@ def chat_resume_clinic(
         "_cached": {"resume_profile": redact_pii_for_llm(parsed_profile)},
         "resume_id": resume.get("id"),
         "current_overhaul": current_overhaul,
+        "prior_fidelity": prior_fidelity,
         "history": [
             {"role": h.get("role"), "message": h.get("message")}
             for h in (body.history or [])
@@ -595,9 +627,16 @@ def chat_resume_clinic(
     new_overhaul = result.overhaul.model_dump()
     rewrites = new_overhaul.get("rewrites") or []
 
-    # Fidelity invariant (ADR-066 carried into ADR-068): always run on
-    # rewrites. A reviewer LLM failure persists the turn with null fidelity
-    # rather than failing the chat - the user still gets the revision.
+    # Fidelity invariant (ADR-066 carried into ADR-068): always run on the FULL
+    # set of rewrites every clinic call, skipped only when there are no
+    # rewrites. Reviewing the whole draft each turn (not just the changed
+    # bullets) is deliberate: a fabricated claim authored two turns ago must
+    # stay flagged until it is actually fixed, and the persisted verdict must
+    # describe the WHOLE resume the user is about to export - not just the last
+    # delta. Fidelity is the cheap (Haiku) leg; the cost lever for the chat
+    # loop is fewer turns via the prior_fidelity self-correction feedback
+    # (ADR-091), not narrowing this review. A reviewer LLM failure persists the
+    # turn with null fidelity rather than failing the chat.
     fidelity_dict: dict | None = None
     if rewrites:
         try:

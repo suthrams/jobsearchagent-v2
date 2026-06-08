@@ -96,3 +96,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-088 | [Reorganize the UI Around the Job-Seeker Journey](ADR-088-reorganize-ui-around-job-seeker-journey.md) | Accepted (implemented) |
 | ADR-089 | [Matches as the Live Home Base](ADR-089-matches-as-live-home-base.md) | Accepted (implemented) |
 | ADR-090 | [My Favorite Jobs + Job-Focused Resume Clinic](ADR-090-favorites-and-job-focused-clinic.md) | Accepted (implementing) |
+| ADR-091 | [Resume Clinic Chat Reliability, Fidelity Feedback, and Export Fidelity](ADR-091-resume-clinic-chat-reliability-and-fidelity-feedback.md) | Accepted (implemented) |

@@ -213,6 +213,18 @@ def discard_resume_clinic_edits(
    `ResumeClinicRepository.set_edited` method (decision unchanged).
 7. Return `{reply, overhaul, fidelity_review, changed_sections}`.
 
+> **ADR-091 update.** The step-3 context now also carries `prior_fidelity` (the
+> previous turn's compact verdict: `{status, recommendation, unsupported_claims}`)
+> so the agent self-corrects flagged claims instead of re-asserting them - this is
+> the convergence/cost lever. The step-5 review runs on the FULL rewrite set every
+> turn (never narrowed to the changed bullets), so a claim flagged earlier stays
+> policed and the persisted verdict describes the whole draft the user exports. The
+> shared chat panel refreshes `rc_last_review` from the chat **response** (not
+> `list_resume_clinic_runs`, which excludes job-anchored ADR-072 sessions and so
+> silently froze the job-focused preview), and `ResumeClinicRepository.set_decision`
+> only overwrites `edited_json` when an explicit payload is supplied - a payload-less
+> decision (e.g. `approve` after chatting) no longer clobbers the accumulated edits.
+
 `discard_resume_clinic_edits` flow:
 
 1. Load the clinic review row.
