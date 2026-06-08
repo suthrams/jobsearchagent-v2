@@ -1,34 +1,28 @@
-"""Workflow Detail view - unified per-run drill-down.
+"""Search detail view - the per-run summary (internal name "Workflow Detail").
 
-Phase 4 of the UI refactor (docs/architecture/ui_refactor_plan.md). The last view
-extracted; the entrypoint's legacy if/elif chain is now empty. Body lifted verbatim
-into render(ctx); all st.* calls run inside render().
+ADR-088 Tier 2 (Phase 6) shrank this to a RUN-level view: status + metrics, the
+manual-selection picker (ADR-060), the Find & Score jobs table (each row opens the
+Opportunity page), the discovered-jobs table, and collapsed Diagnostics. The per-job
+Review / interview Prep / Tailoring action region moved to views/opportunity.py, so
+the per-job work lives on one surface instead of being split across two screens.
+All st.* calls run inside render().
 """
 from __future__ import annotations
 
-import json
-
-import httpx
 import pandas as pd
 import plotly.express as px
 import streamlit as st
 
 import app.ui.api_client as api
 from app.services.constraint_analyzer import analyze, summary_metrics
-from app.ui.components.resume_chat_panel import render_chat_panel
-from app.ui.components.tailoring import _render_tailoring_card
 from app.ui.data import (
     _cached_cost_breakdown,
-    _cached_deep_review_results,
-    _cached_interview_prep,
-    _cached_list_tailorings,
     _cached_run_metrics,
     _cached_workflow_detail,
     _cached_workflow_jobs,
 )
 from app.ui.formatting import (
     _checked,
-    _fmt_ts,
     build_discovered_rows,
     discovery_funnel_summary,
     format_posting_age,
@@ -359,263 +353,9 @@ def render(ctx: ViewContext) -> None:
         # Discovered jobs (incl. not scored) — surfaced for every run below.
         _render_discovered()
 
-    # ── Review — deep critic + career advice (per job) ────────────────────────
-    rev_df = _cached_deep_review_results(wf_id)
-    if not rev_df.empty:
-        st.markdown("---")
-        st.subheader("📋 Review — deep analysis & career guidance")
-        st.caption("Per-job critic + auditor output and the career advisor's positioning summary. "
-                   "Resume gaps can be addressed via tailoring; career gaps must not be fabricated.")
-        # Look up title/company/location and review/advice timestamps from jobs_df
-        # so each expander header is human-readable (UUIDs are useless to the user).
-        meta_by_job = {
-            r["job_id"]: {
-                "title":    r.get("title") or "(untitled)",
-                "company":  r.get("company") or "",
-                "location": r.get("location") or "",
-                "reviewed": r.get("reviewed_at"),
-                "advised":  r.get("advised_at"),
-            }
-            for _, r in (jobs_df.iterrows() if not jobs_df.empty else [])
-        } if not jobs_df.empty else {}
-        for _, row in rev_df.iterrows():
-            jid = row["job_id"]
-            meta = meta_by_job.get(jid, {})
-            title = meta.get("title") or "(untitled)"
-            company = meta.get("company") or ""
-            location = meta.get("location") or ""
-            ts_caption = []
-            if meta.get("reviewed"):
-                ts_caption.append(f"reviewed `{_fmt_ts(meta['reviewed'])}`")
-            if meta.get("advised"):
-                ts_caption.append(f"advised `{_fmt_ts(meta['advised'])}`")
-            ts_str = "  ·  ".join(ts_caption)
-            header = title
-            if company:
-                header += f" @ {company}"
-            if location:
-                header += f"  ·  {location}"
-            summary = (row.get("overall_fit_summary") or "").strip()
-            if summary:
-                header += f" — {summary[:80]}"
-            if ts_str:
-                header += f"  ·  {ts_str}"
-            with st.expander(header):
-                c1, c2 = st.columns(2)
-                c1.markdown("**Resume Gaps** *(can tailor)*")
-                try:
-                    for g in (json.loads(row.get("resume_only_gaps_json") or "[]") or []):
-                        c1.markdown(f"- {g}")
-                except Exception:
-                    pass
-                c2.markdown("**Career Gaps** *(must not fabricate)*")
-                try:
-                    for g in (json.loads(row.get("career_gaps_observed_json") or "[]") or []):
-                        c2.markdown(f"- {g}")
-                except Exception:
-                    pass
-                if row.get("positioning_summary"):
-                    st.markdown(f"**Positioning:** {row['positioning_summary']}")
-                if row.get("recommended_next_action"):
-                    st.markdown(f"**Recommended:** {row['recommended_next_action']}")
-
-    # ── Prep — interview readiness ────────────────────────────────────────────
-    prep_df = _cached_interview_prep(wf_id)
-    if not prep_df.empty:
-        st.markdown("---")
-        st.subheader("✨ Prep — interview readiness")
-        st.caption("Likely topics, technical areas to brush up on, and a 7-day prep plan per qualifying job.")
-        prep_meta = {
-            r["job_id"]: {
-                "title":    r.get("title") or "(untitled)",
-                "company":  r.get("company") or "",
-                "location": r.get("location") or "",
-                "prep":     r.get("prep_at"),
-            }
-            for _, r in (jobs_df.iterrows() if not jobs_df.empty else [])
-        } if not jobs_df.empty else {}
-        for _, row in prep_df.iterrows():
-            jid = row["job_id"]
-            meta = prep_meta.get(jid, {})
-            title = meta.get("title") or "(untitled)"
-            company = meta.get("company") or ""
-            location = meta.get("location") or ""
-            header = title
-            if company:
-                header += f" @ {company}"
-            if location:
-                header += f"  ·  {location}"
-            if meta.get("prep"):
-                header += f"  ·  prep `{_fmt_ts(meta['prep'])}`"
-            with st.expander(header):
-                # Render every section the InterviewCoach produces. The previous
-                # version only rendered topics + plan and dropped 4 sections
-                # entirely; combined with the field-name bug below it, the user
-                # never saw any prep output at all.
-                def _render_list_section(label: str, json_key: str, *, bullets: bool = True) -> None:
-                    try:
-                        items = json.loads(row.get(json_key) or "[]")
-                    except Exception:
-                        return
-                    if not items:
-                        return
-                    st.markdown(f"**{label}**")
-                    if bullets:
-                        for item in items:
-                            st.markdown(f"- {item}")
-                    else:
-                        st.markdown(", ".join(items))
-
-                _render_list_section("Likely interview topics", "likely_topics_json")
-                _render_list_section("Technical topics to review", "technical_topics_json")
-                _render_list_section("Leadership stories to prepare", "leadership_stories_json")
-                _render_list_section("Weak areas to defend", "weak_areas_json")
-                _render_list_section("Questions to ask the interviewer", "questions_to_ask_json")
-                _render_list_section("7-day prep plan", "seven_day_plan_json")
-                conf = row.get("confidence")
-                if conf is not None:
-                    try:
-                        st.caption(f"Coach confidence: {int(conf)}%")
-                    except (TypeError, ValueError):
-                        pass
-
-    # ── Prep — resume tailoring (on-demand per job, the action surface) ───────
-    st.markdown("---")
-    st.subheader("✨ Prep — tailored resume drafts + interview")
-    st.caption(
-        "Pick ANY scored job (ADR-061) and generate evidence-bound section "
-        "suggestions, or prep for the interview. Every suggestion cites the "
-        "original line in your resume; missing experience is labelled as a gap, "
-        "never rewritten as if present. A job that was not auto-selected for deep "
-        "review is deep-reviewed on demand first, so the cost includes a critic "
-        "pass. Approve, edit, revise, or reject each draft to record your decision."
-    )
-
-    # ADR-061: tailoring + interview prep are available for any scored job, not
-    # only the auto-selected top-3. Fall back to selected_jobs for older runs
-    # whose state predates scored_jobs being carried through.
-    scored_jobs_state = [
-        j for j in (state.get("scored_jobs") or [])
-        if j.get("status") == "scored"
-    ] or (state.get("selected_jobs") or [])
-    if not scored_jobs_state:
-        st.info("No scored jobs in this run yet — tailoring and interview prep "
-                "need at least one scored job.")
-    else:
-        try:
-            with st.spinner("Loading tailoring drafts…"):
-                tail_index = _cached_list_tailorings(wf_id)
-        except Exception as exc:
-            st.error(f"Could not load existing tailorings: {exc}")
-            tail_index = []
-
-        by_job: dict[str, list[dict]] = {}
-        for t in tail_index:
-            by_job.setdefault(t.get("job_id", ""), []).append(t)
-
-        def _decide(tid: str, choice: str, edited: dict | None = None) -> None:
-            try:
-                api.submit_tailoring_decision(tid, choice, edited=edited)
-                _cached_list_tailorings.clear()
-                st.success(f"Decision saved: {choice}")
-                st.rerun()
-            except Exception as exc:
-                st.error(f"Decision failed: {exc}")
-
-        selected_ids = {
-            (sj.get("job_id") or sj.get("id"))
-            for sj in (state.get("selected_jobs") or [])
-        }
-        for sj in scored_jobs_state:
-            jid = sj.get("job_id") or sj.get("id") or ""
-            if not jid:
-                continue
-            jtitle = sj.get("title") or "(untitled)"
-            jcompany = sj.get("company") or ""
-            existing = by_job.get(jid, [])
-            label = f"**{jtitle}** @ {jcompany}  ·  job `{jid[:8]}…`"
-            if jid in selected_ids:
-                label += "  ·  auto-selected"
-            if existing:
-                label += f"  ·  {len(existing)} draft(s)"
-            with st.expander(label, expanded=False):
-                if jid not in selected_ids:
-                    st.caption(
-                        "Not auto-selected for deep review — generating a draft "
-                        "will run a deep-review pass on demand first (extra cost)."
-                    )
-                trig_col, prep_col, _ = st.columns([1, 1, 3])
-                if trig_col.button("✨ Generate new draft", key=f"trig_tail_{jid}"):
-                    with st.spinner("Tailoring + fidelity review (~60-90s, longer if deep-reviewing first)…"):
-                        try:
-                            api.trigger_tailoring(wf_id, jid)
-                            _cached_list_tailorings.clear()
-                            st.rerun()
-                        except httpx.ReadTimeout:
-                            # The synchronous server path can outlast the socket
-                            # timeout (180s). The draft typically lands in
-                            # tailored_resumes anyway -- check the list.
-                            _cached_list_tailorings.clear()
-                            st.warning(
-                                "Client timed out, but the server may have completed the draft anyway. "
-                                "Click the section header to collapse and reopen — the new draft should appear."
-                            )
-                        except Exception as exc:
-                            st.error(f"Tailoring failed: {exc}")
-                if prep_col.button("🎤 Prep for interview", key=f"trig_prep_{jid}"):
-                    with st.spinner("Interview coach (~10-20s)…"):
-                        try:
-                            api.trigger_interview_prep(wf_id, jid)
-                            st.success("Interview prep generated — see the readiness section above.")
-                            st.rerun()
-                        except httpx.ReadTimeout:
-                            st.warning("Client timed out, but the prep may have completed. Reload to check.")
-                        except Exception as exc:
-                            st.error(f"Interview prep failed: {exc}")
-                if not existing:
-                    st.caption("No drafts yet for this job. Click **Generate new draft** to create one.")
-                else:
-                    rp_for_render = state.get("resume_profile") or None
-                    for t in existing:
-                        st.markdown("---")
-                        _render_tailoring_card(t, _decide, resume_profile=rp_for_render)
-                        # ADR-072: open the shared live-chat + export panel seeded
-                        # from this draft. The button lives here (in the per-job
-                        # expander); the panel itself renders BELOW the expanders
-                        # (Streamlit forbids nested expanders, and the panel uses
-                        # its own).
-                        _ctid = t.get("tailoring_id") or t.get("id") or ""
-                        if _ctid and st.button(
-                            "💬 Open live chat", key=f"tail_chat_open_{_ctid}",
-                            help="Refine this draft in live chat, then export it (ADR-072).",
-                        ):
-                            try:
-                                with st.spinner("Opening chat session…"):
-                                    _sess = api.open_tailoring_chat_session(_ctid)
-                                st.session_state["tail_chat_active_tid"] = _ctid
-                                st.session_state[f"tail_chat_review_{_ctid}"] = _sess
-                                st.rerun()
-                            except Exception as exc:
-                                st.error(f"Could not open live chat: {exc}")
-
-        # ADR-072: render the active live-chat panel OUTSIDE the per-job expanders.
-        _active_tid = st.session_state.get("tail_chat_active_tid")
-        _active_key = f"tail_chat_review_{_active_tid}" if _active_tid else None
-        if _active_tid and _active_key and st.session_state.get(_active_key):
-            st.markdown("---")
-            st.subheader("💬 Live chat — refine & export the tailored resume")
-            st.caption(
-                f"Refining draft `{_active_tid[:8]}…`. Chat to enhance the resume "
-                "inline, then export. Click Close to return to the drafts."
-            )
-            if st.button("Close live chat", key="tail_chat_close"):
-                st.session_state["tail_chat_active_tid"] = None
-                st.rerun()
-            render_chat_panel(
-                st.session_state[_active_key],
-                user_id=st.session_state.current_user_id,
-                state_key=_active_key,
-            )
+    # The per-job Review / interview Prep / Tailoring action region moved to the
+    # Opportunity page (ADR-088 Tier 2). Open a job from the table above to reach
+    # its fit, gaps, deep review, tailoring drafts, and interview prep.
 
     # ── Diagnostics — collapsed by default to keep the action surfaces above ──
     st.markdown("---")

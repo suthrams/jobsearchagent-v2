@@ -52,16 +52,28 @@ tables. Two Tier-1 phases landed:
   here; the old read-only Job Detail is deleted. The no-application-tracking guardrail
   (ADR-088 E) holds: the page offers preparation (tailor, interview) + filtering
   (exclude = "hide from future searches") only, with no Apply/Save/status or
-  pursuing/shortlist/saved set - enforced by a new `test_ui_structure` scan. **Only
-  Phase 6 (shrink Workflow Detail to a run summary) remains.**
+  pursuing/shortlist/saved set - enforced by a new `test_ui_structure` scan.
+- **Phase 6 (Tier 2) - Workflow Detail shrunk to "Search detail".** Now that the
+  per-job actions live on the Opportunity page, the run page drops the per-job
+  Review / interview-Prep / Tailoring sections (~258 lines) and keeps the RUN-level
+  view: status + metrics, the manual-selection picker (ADR-060), the Find & Score
+  jobs table (each row's "Open" routes to Opportunity), the discovered-jobs table,
+  and collapsed Diagnostics. No capability lost - the per-job work is on one surface
+  instead of split across two. The ADR-072 chat-wiring test now points at
+  opportunity.py as the second shared-panel consumer.
+
+**ADR-088 is fully implemented** (both tiers, phases 0-6). Net: ~15 flat nav items ->
+7 journey entries + 4 hidden destinations; five redundant analytics screens -> one
+track-aware Matches; the per-job payoff is one click from anywhere via the
+Opportunity page. 943 tests pass; UI smoke 12/12. Deferred (separate, evidence-gated):
+auto-refresh while a run is active (R-7) and the framework-migration evaluation.
 
 Docs swept: `ui_architecture.md` (nav model, package map, screen table, add-a-screen
 all brought current - also fixed pre-existing `db_reader` references retired by
 ADR-075), `CLAUDE.md` UI note, ADR-088 + `ui_journey_reorg_plan.md` phase status.
 The headless smoke harness (`.claude/skills/smoke-test-ui`) now runs the entrypoint
 shell once (native nav) then renders each view in isolation. 940 tests pass; smoke
-12/12. The only phase still open is Phase 6 (shrink Workflow Detail to a run
-summary now that the per-job actions live on the Opportunity page).
+12/12. (Phase 6 below completes the effort.)
 
 ---
 

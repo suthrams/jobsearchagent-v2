@@ -2,17 +2,26 @@
 
 ## Status
 
-Accepted (2026-06-07). Mockups signed off; implementation in progress (phases 0-6,
-see `ui_journey_reorg_plan.md`). **Shipped so far:** Phase 2 (merged Matches),
-Phase 0 (native multipage `st.navigation`/`st.Page` + journey groups + the
-Workflow*->user-word rename + hidden click-through destinations + land on Matches),
-Phase 3 (cross-run filters moved out of the global sidebar into the Matches view
-that consumes them), Phase 4 (explicit in-app Back on every hidden destination via
-`nav.back_button`), and Phase 5 (the Tier-2 Opportunity page: one per-job surface
-merging the read-only Job Detail with the full per-job action region — deep review /
-tailoring drafts+decisions+ADR-072 chat / interview prep on demand + exclude — routed
-to from every job click; the no-app-tracking guardrail holds, enforced by a test).
-Open: Phase 6 (shrink Workflow Detail to a run summary).
+**Implemented (2026-06-07).** Accepted; mockups signed off; all phases 0-6 shipped
+(see `ui_journey_reorg_plan.md`):
+
+- **Phase 0** - native multipage (`st.navigation`/`st.Page`) + journey groups + the
+  Workflow*->user-word rename + hidden click-through destinations + land on Matches.
+- **Phase 2** - merged Matches (Top Matches + IC/Architect/Management + Companies).
+- **Phase 3** - cross-run filters moved out of the global sidebar into Matches.
+- **Phase 4** - explicit in-app Back on every hidden destination (`nav.back_button`).
+- **Phase 5** - the Tier-2 Opportunity page: one per-job surface merging the
+  read-only Job Detail with the full per-job action region (deep review / tailoring
+  drafts+decisions+ADR-072 chat / interview prep on demand + exclude), routed to from
+  every job click; no-app-tracking guardrail holds (enforced by a test).
+- **Phase 6** - Workflow Detail shrunk to "Search detail": a run summary + jobs
+  table (each row opens the Opportunity page) + discovered table + manual-selection
+  picker + diagnostics; the per-job action region was relocated to the Opportunity
+  page, not duplicated.
+
+Both tiers are complete. The deferred follow-ups (auto-refresh while a run is active,
+UX-review R-7; the framework-migration evaluation in plan section 11) remain
+separate, evidence-gated decisions.
 
 **Decisions locked (2026-06-07, owner):**
 - **Framework:** stay on Streamlit but adopt its **native multipage**

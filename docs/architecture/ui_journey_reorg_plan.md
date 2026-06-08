@@ -6,11 +6,13 @@ proposed screens (wireframes), how a user moves through them (engagement
 workflows), the phased build, the file-level changes, the test plan, and the
 recommendations with effort/impact.
 
-Status: Accepted, in progress. **Done:** Phase 2 (merged Matches) + Phase 0 (native
-multipage nav, rename, hidden destinations, land on Matches) + Phase 3 (contextual
-filters - moved into Matches) + Phase 4 (in-app Back on every destination) + Phase 5
-(the Tier-2 Opportunity page; Job Detail subsumed). **Open:** Phase 6 (shrink Workflow
-Detail to a run summary).
+Status: **Implemented (2026-06-07).** All phases shipped: Phase 0 (native multipage
+nav, rename, hidden destinations, land on Matches), Phase 2 (merged Matches), Phase 3
+(contextual filters moved into Matches), Phase 4 (in-app Back on every destination),
+Phase 5 (the Tier-2 Opportunity page; Job Detail subsumed), Phase 6 (Workflow Detail
+shrunk to a run summary; the per-job action region relocated to Opportunity).
+Deferred follow-ups: auto-refresh while a run is active (R-7) and the framework
+evaluation (section 11).
 
 **Decisions locked (2026-06-07):** framework = Streamlit + native multipage
 (`st.navigation`/`st.Page`) + fragments (section 11); scope = both tiers (phases
@@ -334,7 +336,7 @@ that now live inside it.
 | 3                 | **(DONE)** Contextual filters: min-score/search/excluded moved out of the global sidebar into the Matches view (the only consumer; Searches never used them). Values persist on the `flt_*` mirror keys.                                                                                                                                                                                                                                   | `streamlit_app.py`, `views/matches.py`                                           | `test_cross_run_filters_are_contextual_to_matches`; smoke                                 |
 | 4                 | **(DONE)** Detail screens are click-through (demoted to hidden destinations in Phase 0); Phase 4 added an explicit in-app Back on each via the shared `nav.back_button` helper (labels track `DISPLAY_TITLE`).                                                                                                                                                                          | `nav.py`, `streamlit_app.py`, the detail views                                                       | routing/back tests; smoke                                  |
 | 5 (Tier 2)        | **(DONE)** Opportunity page: new `views/opportunity.py` merging Job Detail + the **full** per-job action region (deep-review on demand, tailoring drafts + decisions + ADR-072 chat, interview prep, cost hints + on-demand "extra cost" note, exclude-as-filter); every job selection routes to it; Job Detail deleted; no-app-tracking guardrail test.                                                      | new `views/opportunity.py`; `views/matches.py`, `workflow_detail.py`, `job_detail.py`, `components/` | opportunity + routing + no-tracking guardrail tests; smoke |
-| 6 (Tier 2)        | Shrink Workflow Detail -> "Search detail" run summary + job list (+ the manual-selection picker variant); Job Detail subsumed.                                                                                                                                                                                             | `views/workflow_detail.py`, `nav.py`                                                                 | detail view test; smoke                                    |
+| 6 (Tier 2)        | **(DONE)** Shrink Workflow Detail -> "Search detail" run summary + jobs table (each row opens Opportunity) + discovered table + manual-selection picker + diagnostics; the per-job Review/Prep/Tailoring region was relocated to Opportunity (Phase 5), not duplicated.                                                                                                                                                                                             | `views/workflow_detail.py`, `nav.py`                                                                 | detail view test; smoke                                    |
 
 Operator-drawer reordering is folded into Phase 0 (just the rule); it is not its own
 phase (UX-review: near-zero user value, pure churn for a single operator).
