@@ -247,22 +247,18 @@ nav.register_pages(_pages_by_name)
 _render_topbar()
 
 
-# ── Sidebar (below the native nav) — run tracking + refresh ───────────────────
-# The profile selector moved to the top-right header (above); the sidebar now holds
-# the journey nav (rendered natively at the top) plus the Active Run hub and Refresh.
+# ── Sidebar (below the native nav) — run-state chip only ──────────────────────
+# The profile selector moved to the top-right header; cross-run filters live in the
+# Matches view. The old global "Refresh data" button was removed (2026-06-08): it is
+# redundant now that the live run auto-refreshes, profile-switch clears caches, and
+# each detail view has its own Refresh. The sidebar now carries only the slim
+# run-state chip (status text; navigation is via the native nav + the Matches strip).
 
 with st.sidebar:
-    # Cross-run filters render in the Matches view now (ADR-088 Phase 3), not here -
-    # they acted only on Matches, so an always-on sidebar copy was inert noise. Their
-    # values persist on the flt_* session keys (seeded above) for _build_ctx().
-    if st.button("Refresh data", use_container_width=True):
-        st.cache_data.clear()
-        st.session_state.config_cache = None
-        st.rerun()
     if st.session_state.get("workflow_reconnect_error"):
         st.caption(f"⚠ {st.session_state.workflow_reconnect_error}")
-    # Slim run-status chip (ADR-089): shows the run state from any screen with a
-    # contextual jump. The rich, state-aware panel lives inline on Matches.
+    # Slim run-status chip (ADR-089): shows the run state from any screen. Text only -
+    # navigation lives in the native nav (Matches) and the inline Matches strip.
     render_run_status("sidebar")
 
 
