@@ -12,8 +12,15 @@ specifically for code-level runtime defects and their static/dynamic guards.
 
 Add an RCA when a bug:
 - reached runtime (was not caught by the test suite or a review), AND
-- is critical: it crashes a screen/flow, corrupts data, leaks something, or
-  produces a materially wrong result.
+- **the user reported it** during a session, OR it is critical (crashes a
+  screen/flow, corrupts data, leaks something, or produces a materially wrong
+  result).
+
+Owner directive (2026-06-08): **write an RCA for every bug the user finds**, not
+only the critical ones — a user-found bug is by definition one that slipped past
+testing, so the "why it was not caught" section is always worth recording. Lower-
+severity friction bugs still get an entry (e.g. BUG-005); note when no automated
+forcing function is feasible and why.
 
 Skip trivial typos fixed in the same breath with no test gap to explain.
 
@@ -43,3 +50,5 @@ ASCII only (repo convention).
 | [BUG-002](BUG-002-job-focused-clinic-chat-clobbered.md) | Job-focused clinic chat edits frozen + clobbered on save | Critical | Fixed | `tests/v2/test_resume_clinic_repository.py::test_set_decision_without_payload_preserves_chat_edits` |
 | [BUG-003](BUG-003-renderer-duplicates-merged-bullets.md) | Resume export duplicates bullets on a bullet-merging rewrite | High | Fixed | `tests/v2/test_resume_text_renderer.py::test_rewrite_merging_two_bullets_collapses_without_duplication` |
 | [BUG-004](BUG-004-pdf-export-garbled-text.md) | PDF export garbled (literal `&middot;`, `bullet` markers, notdef boxes) | High | Fixed | `tests/v2/test_resume_text_renderer.py::test_render_pdf_text_has_no_literal_entities_or_bullet_word` |
+| [BUG-005](BUG-005-chat-input-send-disabled-and-not-cleared.md) | Chat input: Send stays disabled while typing; box not cleared after send | Medium | Fixed | none feasible (Streamlit interaction; structural fix) |
+| [BUG-006](BUG-006-profile-resets-on-navigation.md) | Selected profile resets on page navigation | High | Fixed | `tests/v2/test_ui_structure.py::test_profile_switcher_is_single_source_of_truth` |

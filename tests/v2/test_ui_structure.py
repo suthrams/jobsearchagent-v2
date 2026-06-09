@@ -158,6 +158,27 @@ def test_matches_hosts_status_strip_and_start_routes_to_live_monitor():
     )
 
 
+def test_profile_switcher_is_single_source_of_truth():
+    """BUG-006: the active profile must survive page navigation. The profile
+    selectbox must be driven by `current_user_id` (the single source of truth)
+    via an `on_change` callback, NOT by the old reverting sync
+    (`if _chosen != ... current_user_id`) which let a cross-page widget-state
+    reset clobber the active profile. Source-scan the entrypoint."""
+    src = _ENTRYPOINT.read_text(encoding="utf-8")
+    assert "on_change=_on_profile_change" in src, (
+        "profile selectbox must update current_user_id via the on_change callback"
+    )
+    assert "def _on_profile_change" in src, "the on_change callback must exist"
+    # The reverting read-back that caused the clobber must not return.
+    assert "_chosen != st.session_state.current_user_id" not in src, (
+        "the reverting profile sync (BUG-006) must not be reintroduced"
+    )
+    # The widget is mirrored to the source of truth each run so it survives nav.
+    assert 'st.session_state["_profile_select"] = _cur' in src, (
+        "the profile widget must be mirrored to current_user_id each run"
+    )
+
+
 def test_every_destination_has_a_navigation_entry_point():
     """ADR-088: hidden destinations have no sidebar entry, so each MUST be a
     _navigate(...) target somewhere in the UI - otherwise it is reachable only by
