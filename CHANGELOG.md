@@ -76,6 +76,18 @@ running. ADR-096 makes a restart **pause** a run instead of **kill** it:
   process). Docs swept: ADR-096 + index, `workflow_model.md`, CLAUDE.md. 1031 tests
   pass (7 new); UI smoke 12/12.
 
+### Docs — colorful UI/flow diagram set for ui_architecture.md
+
+Six rendered figures (deterministic `figure_renderer`: JSON spec -> HTML/CSS ->
+Chromium PNG, every label literal + exact), embedded across `ui_architecture.md`:
+the jobseeker-journey navigation map (S4), the one-data-path diagram (S1), the
+screen-to-API table (S6), and three flow figures in S7 - a run's lifecycle +
+ADR-096 recovery, the discovery funnel + filtered-out surfacing, and the
+out-of-graph on-demand (curate-after) ops. Specs in
+`tools/figure_renderer/specs/ui_*.json`; re-render with
+`python tools/render_figures.py <id>`. Also fixed a stale `db_reader` read-path
+sentence in S1 (retired by ADR-075).
+
 ---
 
 ## 2026-06-07

@@ -58,10 +58,17 @@ flowchart LR
     class SQL store
 ```
 
-A view may use **both** paths (e.g. Workflow Detail reads stored review rows via
-`db_reader` *and* triggers an on-demand tailoring via `api_client`). The rule is
-per-operation, not per-screen: *displaying* stored data → read path; *causing
-something to happen* → control path.
+![The one data path: every read and write leaves the UI through api_client.py to FastAPI; reads hit services/reads, writes hit repositories, and db_reader is retired (ADR-075).](images/ui_data_path.png)
+
+*Source spec: `tools/figure_renderer/specs/ui_data_path.json` (re-render:
+`python tools/render_figures.py ui_data_path`).*
+
+A view may use **both** paths (e.g. Search detail reads stored review rows via the
+cached read path *and* triggers an on-demand tailoring via `api_client`). The rule is
+per-operation, not per-screen: *displaying* stored data → read path (`data.py` →
+`api_client` → `services/reads`); *causing something to happen* → control path
+(`api_client` → a write router). Both paths are `api_client` — since ADR-075 there is
+no direct-DB read path.
 
 ---
 
@@ -259,6 +266,12 @@ keys (declared in the entrypoint's init loop):
 
 ## 6. The screens
 
+![Each screen and the API it calls: a color-coded table of all eleven screens, their group, and the backend reads + writes they make through api_client.](images/ui_screen_backend.png)
+
+*Source spec: `tools/figure_renderer/specs/ui_screen_backend.json` (re-render:
+`python tools/render_figures.py ui_screen_backend`). The text table below is the
+detailed companion.*
+
 Eleven view modules: seven in the sidebar journey groups + four hidden destinations
 (reached by click). The **Title** column is what the user sees (`nav.DISPLAY_TITLE`);
 the **Module** keeps the stable internal name. **R** = reads (via `api_client` +
@@ -291,6 +304,28 @@ metrics (inactive tracks are `null`). The active set is resolved via
 ---
 
 ## 7. Backend interaction — the key flows
+
+Three figures summarize the flows the screens drive. They are UI-facing views of
+mechanisms whose canonical docs are linked under each.
+
+**A run's lifecycle + durable recovery** (canonical: [`workflow_model.md`](workflow_model.md),
+ADR-082/083/096) — what the Live monitor and Search detail reflect:
+
+![A run's lifecycle: initialized -> running -> completed/failed, with the manual-scoring park, cooperative cancel, and the ADR-096 drain + auto-resume recovery band.](images/ui_run_lifecycle.png)
+
+**The discovery funnel** (canonical: [`relevance_filter_design.md`](relevance_filter_design.md),
+ADR-079/094 + the deterministic filters) — what feeds Matches and the filtered-out panel:
+
+![The discovery funnel: Discovery -> deterministic filters -> relevance pre-filter -> score_jobs -> Matches, with every drop surfaced in the why-filtered-out panel.](images/ui_discovery_funnel.png)
+
+**Out-of-graph on-demand work** (canonical: [`hitl.md`](hitl.md), ADR-055/059/061/066) —
+what the Opportunity page and Resume Clinic trigger:
+
+![Out-of-graph on-demand work: a scored job branches to deep-review, tailorings (+ fidelity), interview-prep, and the Resume Clinic, each persisting via repos, with the human decision as the only HITL.](images/ui_ondemand_ops.png)
+
+*Source specs: `tools/figure_renderer/specs/ui_run_lifecycle.json`,
+`ui_discovery_funnel.json`, `ui_ondemand_ops.json` (re-render with
+`python tools/render_figures.py <id>`).*
 
 ### 7.1 Start a run, then watch it
 

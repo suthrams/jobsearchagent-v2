@@ -1,0 +1,41 @@
+{
+  "id": "ui_ondemand_ops",
+  "outDir": "docs/architecture/images",
+  "width": 1760,
+  "height": 1120,
+  "layout": "scene",
+  "title": "Out-of-graph on-demand work (the curate-after pattern)",
+  "headSub": "The graph runs end to end with no interrupt(). Per-job work the user triggers later - deep review, tailoring, interview prep, the Resume Clinic - runs OUTSIDE the graph, reads state from the checkpoint, and persists via repos.",
+  "scene": {
+    "viewBox": [0, 0, 1760, 820],
+    "zones": [
+      {"x": 430, "y": 70, "w": 720, "h": 690, "accent": "amber", "dashed": true, "fill": false, "label": "out-of-graph operations - run agents directly, no interrupt() (ADR-055/059/061/066)"}
+    ],
+    "nodes": [
+      {"id": "job",     "x": 60,   "y": 350, "w": 320, "h": 120, "accent": "blue",    "icon": "target", "title": "a scored job", "sub": "(or a favorite job) - reached from the Opportunity page"},
+
+      {"id": "deep",    "x": 470,  "y": 110, "w": 640, "h": 92,  "accent": "amber",   "icon": "eye",    "title": "POST .../deep-review", "sub": "shared deep_review_runner.review_one_job"},
+      {"id": "tailor",  "x": 470,  "y": 248, "w": 640, "h": 96,  "accent": "amber",   "icon": "doc",    "title": "POST .../tailorings", "sub": "Tailoring Agent -> Fidelity Reviewer (always)"},
+      {"id": "prep",    "x": 470,  "y": 390, "w": 640, "h": 92,  "accent": "amber",   "icon": "steps",  "title": "POST .../interview-prep", "sub": "single-job Interview Coach (on demand)"},
+      {"id": "clinic",  "x": 470,  "y": 528, "w": 640, "h": 96,  "accent": "magenta", "icon": "doc",    "title": "Resume Clinic", "sub": "review / tailor (job-focused) / live chat / export"},
+      {"id": "decide",  "x": 470,  "y": 668, "w": 640, "h": 80,  "accent": "gray",    "icon": "check",  "title": "decision: approve / revise / reject / edit", "sub": "backend validates before persisting; UI never auto-approves"},
+
+      {"id": "repos",   "x": 1230, "y": 350, "w": 330, "h": 120, "accent": "gray",    "icon": "database","title": "repositories", "sub": "persist; lightweight workflow_runs row = cost correlation id"}
+    ],
+    "edges": [
+      {"from": "job:right",    "to": "deep:left",    "accent": "amber", "label": "review"},
+      {"from": "job:right",    "to": "tailor:left",  "accent": "amber", "style": "thick", "label": "tailor"},
+      {"from": "job:right",    "to": "prep:left",    "accent": "amber", "label": "prep"},
+      {"from": "job:right",    "to": "clinic:left",  "accent": "magenta", "label": "tailor resume"},
+      {"from": "tailor:bottom","to": "decide:top",   "accent": "gray",  "label": "human decides"},
+      {"from": "deep:right",   "to": "repos:left",   "accent": "gray",  "label": "persist"},
+      {"from": "tailor:right", "to": "repos:left",   "accent": "gray"},
+      {"from": "prep:right",   "to": "repos:left",   "accent": "gray"},
+      {"from": "clinic:right", "to": "repos:left",   "accent": "gray"}
+    ],
+    "labels": [
+      {"x": 60, "y": 328, "text": "from Matches / Opportunity", "accent": "blue", "tag": true, "size": 16}
+    ]
+  },
+  "takeaway": {"icon": "target", "accent": "amber", "text": "Gate the irreversible, not everything. These ops are repeatable and post-hoc, so they run {{amber:out of graph}} with no interrupt(); the only HITL is the human {{gray:decision}} on a tailored draft, validated server-side before it persists."}
+}

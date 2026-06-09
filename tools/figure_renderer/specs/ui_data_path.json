@@ -1,0 +1,48 @@
+{
+  "id": "ui_data_path",
+  "outDir": "docs/architecture/images",
+  "width": 1760,
+  "height": 1080,
+  "layout": "scene",
+  "title": "One data path: the UI never opens the database (ADR-075)",
+  "headSub": "Every read and write leaves the Streamlit UI through a single channel - api_client.py -> FastAPI. A forcing-function test fails the build if a view imports sqlite3 or db_reader.",
+  "scene": {
+    "viewBox": [0, 0, 1760, 760],
+    "zones": [
+      {"x": 40, "y": 95, "w": 770, "h": 470, "accent": "blue", "dashed": false, "fill": false, "label": "Streamlit UI (app/ui/)"}
+    ],
+    "nodes": [
+      {"id": "entry",  "x": 70,   "y": 135, "w": 320, "h": 92,  "accent": "blue",  "icon": "code",     "title": "streamlit_app.py", "sub": "thin entrypoint: page config + sidebar + dispatch"},
+      {"id": "views",  "x": 70,   "y": 275, "w": 320, "h": 92,  "accent": "blue",  "icon": "eye",      "title": "views/<name>.py", "sub": "one render(ctx) per screen"},
+      {"id": "data",   "x": 70,   "y": 415, "w": 320, "h": 92,  "accent": "blue",  "icon": "database", "title": "data.py", "sub": "@st.cache_data read cache"},
+      {"id": "apicl",  "x": 470,  "y": 275, "w": 300, "h": 110, "accent": "blue",  "icon": "arrow",    "title": "api_client.py", "sub": "the ONLY way out (httpx)"},
+
+      {"id": "fastapi","x": 880,  "y": 280, "w": 300, "h": 110, "accent": "green", "icon": "code",     "title": "FastAPI backend", "sub": "main.py + routers: validation, observability"},
+
+      {"id": "reads",  "x": 1250, "y": 150, "w": 300, "h": 96,  "accent": "amber", "icon": "table",    "title": "services/reads + aggregators", "sub": "server-side SQL; cost / health"},
+      {"id": "repos",  "x": 1250, "y": 300, "w": 300, "h": 96,  "accent": "amber", "icon": "database", "title": "repositories", "sub": "raw sqlite3 (writes)"},
+
+      {"id": "db",     "x": 1600, "y": 225, "w": 130, "h": 150, "accent": "gray",  "icon": "database", "title": "data/v2.db", "sub": "SQLite"},
+
+      {"id": "dbreader","x": 470, "y": 470, "w": 300, "h": 84,  "accent": "red",   "icon": "eyeoff",   "title": "db_reader.py", "sub": "RETIRED (ADR-075)"}
+    ],
+    "edges": [
+      {"from": "entry:bottom",  "to": "views:top",    "accent": "blue",  "label": "dispatch"},
+      {"from": "views:bottom",  "to": "data:top",     "accent": "blue",  "label": "needs data"},
+      {"from": "views:right",   "to": "apicl:left",   "accent": "blue",  "style": "thick", "label": "writes / actions"},
+      {"from": "data:right",    "to": "apicl:left",   "accent": "blue",  "label": "cached GET"},
+      {"from": "apicl:right",   "to": "fastapi:left", "accent": "green", "style": "thick", "label": "httpx - one channel"},
+      {"from": "fastapi:right", "to": "reads:left",   "accent": "amber", "label": "read services"},
+      {"from": "fastapi:right", "to": "repos:left",   "accent": "amber", "label": "writes"},
+      {"from": "reads:right",   "to": "db:left",      "accent": "gray",  "label": "SELECT"},
+      {"from": "repos:right",   "to": "db:left",      "accent": "gray",  "label": "write"},
+      {"from": "dbreader:right","to": "db:bottom",    "accent": "red",   "dashed": true, "label": "no longer opens the DB"}
+    ],
+    "labels": [
+      {"x": 70,   "y": 113, "text": "UI", "accent": "blue", "tag": true, "size": 17},
+      {"x": 880,  "y": 258, "text": "Backend (server-owned)", "accent": "green", "tag": true, "size": 17},
+      {"x": 1250, "y": 128, "text": "Persistence", "accent": "amber", "tag": true, "size": 17}
+    ]
+  },
+  "takeaway": {"icon": "shield", "accent": "blue", "text": "{{blue:No UI code opens the DB.}} Reads go through {{amber:services/reads}}, writes through repositories, all behind {{green:api_client -> FastAPI}} - so validation, observability and persistence stay server-owned, and the UI can move behind auth / another host."}
+}

@@ -1,0 +1,25 @@
+{
+  "id": "ui_screen_backend",
+  "outDir": "docs/architecture/images",
+  "width": 1760,
+  "height": 1480,
+  "layout": "table",
+  "title": "Each screen and the API it calls",
+  "headSub": "Every screen reaches the backend only through api_client.py (ADR-075). Sidebar screens are color-coded by group; the amber rows are click-through destinations.",
+  "gridCols": "minmax(300px,1.1fr) 0.5fr 2fr",
+  "head": ["Screen", "Group", "Backend calls (reads + writes, via api_client)"],
+  "rows": [
+    {"icon": "target",   "accent": "blue",    "label": "Matches", "sub": "home base", "cells": [{"text": "MY OPPS"}, {"text": "GET /dashboard/scored-jobs - /users/{id}/favorites - /workflows/recent"}]},
+    {"icon": "steps",    "accent": "green",   "label": "New search", "sub": "start_run.py", "cells": [{"text": "FIND"}, {"text": "POST /workflows (Idempotency-Key) - PUT /config - load_user_resumes"}]},
+    {"icon": "table",    "accent": "green",   "label": "Searches", "sub": "history.py", "cells": [{"text": "FIND"}, {"text": "GET /workflows (list, paged) - exclude / un-exclude"}]},
+    {"icon": "eye",      "accent": "amber",   "label": "Search detail", "sub": "workflow_detail.py", "cells": [{"text": "click-thru"}, {"text": "GET /workflows/{id}/detail - /cost-breakdown - /run-metrics; POST /scoring (manual)"}]},
+    {"icon": "gauge",    "accent": "amber",   "label": "Opportunity", "sub": "opportunity.py", "cells": [{"text": "click-thru"}, {"text": "load_job_pipeline + run state; deep-review / tailorings / interview-prep; exclude / favorite"}]},
+    {"icon": "activity", "accent": "amber",   "label": "Live monitor", "sub": "live_monitor.py", "cells": [{"text": "click-thru"}, {"text": "GET /workflows/{id} - /steps - /agent-events - /llm-calls; POST /retry - /cancel"}]},
+    {"icon": "doc",      "accent": "amber",   "label": "Run report", "sub": "run_report.py", "cells": [{"text": "click-thru"}, {"text": "GET /workflows/{id}/report"}]},
+    {"icon": "doc",      "accent": "magenta", "label": "Resume Clinic", "sub": "resume_clinic.py", "cells": [{"text": "RESUME"}, {"text": "POST /users/{id}/resume-clinic - /decisions - /export - chat-session"}]},
+    {"icon": "user",     "accent": "magenta", "label": "Profiles & Resumes", "sub": "profiles.py", "cells": [{"text": "RESUME"}, {"text": "POST/PUT /users - POST/DELETE /users/{id}/resume - list_resume_clinic_runs"}]},
+    {"icon": "shield",   "accent": "gray",    "label": "Settings", "sub": "settings.py", "cells": [{"text": "SYSTEM"}, {"text": "GET/PUT /config - /config/providers - POST /config/reload - /admin/purge"}]},
+    {"icon": "gauge",    "accent": "gray",    "label": "Spend & Health", "sub": "system_dashboard.py", "cells": [{"text": "SYSTEM"}, {"text": "system_health (PSSR) - cost_breakdown - get_readiness - SecurityRepository.list_for_user"}]}
+  ],
+  "takeaway": {"icon": "shield", "accent": "blue", "text": "11 screens, one client. A {{blue:test_ui_no_direct_db}} invariant fails the build if any view imports sqlite3 / db_reader - so this table is the {{green:complete}} list of how the UI touches the system."}
+}

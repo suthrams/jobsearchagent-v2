@@ -1,0 +1,36 @@
+{
+  "id": "ui_discovery_funnel",
+  "outDir": "docs/architecture/images",
+  "width": 1760,
+  "height": 1020,
+  "layout": "scene",
+  "title": "From a wide net to scored: the discovery funnel",
+  "headSub": "Discovery casts the net, deterministic filters and the opt-in relevance pre-filter narrow it before the paid scoring step, and every drop is surfaced with its reason on Search detail.",
+  "scene": {
+    "viewBox": [0, 0, 1760, 700],
+    "zones": [
+      {"x": 40, "y": 110, "w": 1680, "h": 250, "accent": "blue", "dashed": true, "fill": false, "label": "the funnel narrows left to right - only the survivors reach the paid scoring step"}
+    ],
+    "nodes": [
+      {"id": "discover", "x": 70,   "y": 170, "w": 300, "h": 120, "accent": "blue",    "icon": "globe",  "title": "Discovery", "sub": "Adzuna - Greenhouse - Lever - custom URL (wide net <=50)"},
+      {"id": "detf",     "x": 450,  "y": 175, "w": 300, "h": 110, "accent": "gray",     "icon": "filter", "title": "Deterministic filters", "sub": "title - experience (065) - age (080) - dead-link (095)"},
+      {"id": "relev",    "x": 830,  "y": 172, "w": 320, "h": 116, "accent": "amber",    "icon": "robot",  "title": "Relevance pre-filter", "sub": "1 cheap LLM call (079) + clearance (094), opt-in"},
+      {"id": "score",    "x": 1230, "y": 175, "w": 300, "h": 110, "accent": "green",    "icon": "target", "title": "score_jobs", "sub": "research + score; caps at max_scored"},
+      {"id": "matches",  "x": 1230, "y": 360, "w": 300, "h": 96,  "accent": "green",    "icon": "check",  "title": "Matches", "sub": "ranked, qualifying jobs advance"},
+
+      {"id": "filtered", "x": 450,  "y": 470, "w": 700, "h": 110, "accent": "amber",    "icon": "eye",    "title": "Why-filtered-out panel", "sub": "per-job mismatch + reason on Search detail (discovery_stats.relevance_drops)"}
+    ],
+    "edges": [
+      {"from": "discover:right", "to": "detf:left",   "accent": "blue",  "style": "thick", "label": "all discovered"},
+      {"from": "detf:right",     "to": "relev:left",  "accent": "gray",  "label": "survivors"},
+      {"from": "relev:right",    "to": "score:left",  "accent": "green", "style": "thick", "label": "kept"},
+      {"from": "score:bottom",   "to": "matches:top", "accent": "green", "label": "scored"},
+      {"from": "detf:bottom",    "to": "filtered:top","accent": "gray",  "dashed": true, "label": "dropped"},
+      {"from": "relev:bottom",   "to": "filtered:top","accent": "amber", "label": "dropped + reason"}
+    ],
+    "labels": [
+      {"x": 450, "y": 448, "text": "every drop is recoverable + surfaced", "accent": "amber", "tag": true, "size": 16}
+    ]
+  },
+  "takeaway": {"icon": "filter", "accent": "amber", "text": "The cheap filters shed seniority / relevance mismatches before the {{green:paid scoring}} step, so you don't pay to score noise - and the {{amber:filtered-out panel}} shows exactly which job was dropped and why, instead of a silent count."}
+}

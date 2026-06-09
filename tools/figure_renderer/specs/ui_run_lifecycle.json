@@ -1,0 +1,46 @@
+{
+  "id": "ui_run_lifecycle",
+  "outDir": "docs/architecture/images",
+  "width": 1760,
+  "height": 1180,
+  "layout": "scene",
+  "title": "A run's lifecycle: controls and durable recovery",
+  "headSub": "register_run writes the row, generate_report writes the terminal status; in between the run lives on a pool thread + the SqliteSaver checkpoint. Idempotent kickoff (082), cooperative cancel (083), and restart recovery (096) are the controls.",
+  "scene": {
+    "viewBox": [0, 0, 1760, 880],
+    "zones": [
+      {"x": 40, "y": 560, "w": 1680, "h": 300, "accent": "amber", "dashed": true, "fill": false, "label": "ADR-096 - durable recovery: a restart PAUSES a run instead of killing it"}
+    ],
+    "nodes": [
+      {"id": "init",      "x": 60,   "y": 150, "w": 270, "h": 96,  "accent": "gray",  "icon": "steps",    "title": "initialized", "sub": "register_run writes the row"},
+      {"id": "running",   "x": 430,  "y": 148, "w": 300, "h": 110, "accent": "blue",  "icon": "activity", "title": "running", "sub": "graph.invoke on a pool thread"},
+      {"id": "parked",    "x": 430,  "y": 360, "w": 300, "h": 96,  "accent": "amber", "icon": "eye",      "title": "awaiting_scoring_selection", "sub": "manual mode parks - no interrupt (ADR-060)"},
+      {"id": "cancelling","x": 830,  "y": 360, "w": 280, "h": 96,  "accent": "amber", "icon": "filter",   "title": "cancelling", "sub": "cooperative, at next node boundary"},
+
+      {"id": "completed", "x": 1250, "y": 92,  "w": 280, "h": 96,  "accent": "green", "icon": "check",    "title": "completed", "sub": "generate_report writes terminal"},
+      {"id": "failed",    "x": 1250, "y": 240, "w": 280, "h": 96,  "accent": "red",   "icon": "shield",   "title": "failed", "sub": "unhandled error / cap"},
+      {"id": "cancelled", "x": 1250, "y": 388, "w": 280, "h": 96,  "accent": "gray",  "icon": "eyeoff",   "title": "cancelled"},
+
+      {"id": "drain",     "x": 90,   "y": 620, "w": 470, "h": 110, "accent": "amber", "icon": "activity", "title": "Layer 1 - graceful drain", "sub": "shutdown waits (bounded) for runs to checkpoint"},
+      {"id": "resume",    "x": 640,  "y": 620, "w": 470, "h": 110, "accent": "amber", "icon": "steps",    "title": "Layer 2 - auto-resume", "sub": "graph.invoke(None, cfg) from checkpoint, attempt-capped"},
+      {"id": "reconcile", "x": 1190, "y": 620, "w": 480, "h": 110, "accent": "gray",  "icon": "shield",   "title": "Layer 3 - reconcile", "sub": "fail only the unrecoverable; UI stays honest"}
+    ],
+    "edges": [
+      {"from": "init:right",     "to": "running:left",    "accent": "green", "style": "thick", "label": "kickoff (idempotent, ADR-082)"},
+      {"from": "running:right",  "to": "completed:left",  "accent": "green", "style": "thick", "label": "report"},
+      {"from": "running:right",  "to": "failed:left",     "accent": "red",   "label": "error"},
+      {"from": "running:bottom", "to": "parked:top",      "accent": "amber", "dashed": true, "label": "manual_selection"},
+      {"from": "parked:right",   "to": "cancelling:left", "accent": "gray",  "dashed": true, "label": "or cancel"},
+      {"from": "running:bottom", "to": "cancelling:top",  "accent": "amber", "label": "POST /cancel (ADR-083)"},
+      {"from": "cancelling:right","to": "cancelled:left", "accent": "gray",  "label": "at boundary"},
+      {"from": "parked:bottom",  "to": "running:bottom",  "accent": "amber", "dashed": true, "label": "POST /scoring (phase 2)", "labelDx": -40},
+      {"from": "running:bottom", "to": "drain:top",       "accent": "amber", "dashed": true, "label": "process dies mid-run"},
+      {"from": "drain:right",    "to": "resume:left",     "accent": "amber", "label": "if not finished -> next boot"},
+      {"from": "resume:right",   "to": "reconcile:left",  "accent": "gray",  "label": "if attempts exhausted"}
+    ],
+    "labels": [
+      {"x": 1250, "y": 70, "text": "terminal", "accent": "green", "tag": true, "size": 16}
+    ]
+  },
+  "takeaway": {"icon": "check", "accent": "amber", "text": "Only {{green:register_run}} + {{green:generate_report}} write the row, so a process death freezes it at running. ADR-096 makes a restart {{amber:pause}} the run: drain on shutdown, resume from the checkpoint on boot, and fail only what truly can't continue."}
+}
