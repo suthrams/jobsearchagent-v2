@@ -472,7 +472,7 @@ Searches (Workflow History) is representative:
 sequenceDiagram
     participant E as entrypoint
     participant H as history.render
-    participant D as data.py (@st.cache_data)
+    participant D as data.py cache
     participant AC as api_client
     participant API as FastAPI
     participant RS as services/reads
@@ -486,7 +486,7 @@ sequenceDiagram
     RS->>SQL: SELECT ... json_extract(state_json, ...) WHERE user_id=?
     SQL-->>RS: rows
     RS-->>API: rows
-    API-->>D: JSON -> DataFrame (cached)
+    API-->>D: JSON rows (cached)
     D-->>H: DataFrame
     H->>H: build table + metrics, wire row-click to _navigate
     Note over H,SQL: one API read path (ADR-075); cooperative-scoped by user_id; cached in data.py
