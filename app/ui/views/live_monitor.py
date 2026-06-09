@@ -80,9 +80,23 @@ def render(ctx: ViewContext) -> None:
     # (Retry/Cancel disappear) and the completion banner update.
     if status in ("running", "cancelling"):
         st.caption("🔄 Live — auto-refreshing every 5s while the run is active.")
-        st.fragment(lambda: _activity_body(wf_id, auto=True), run_every=5)()
+        # IMPORTANT: pass a STABLE module-level function, not a lambda. st.fragment
+        # keys the run_every timer by the function's identity; a lambda is a new
+        # object every script run, so the timer is never re-attached and the
+        # fragment never auto-refreshes (the bug). _auto_refresh_body reads wf_id
+        # from session_state, mirroring the working run_status pattern.
+        st.fragment(_auto_refresh_body, run_every=5)()
     else:
         _activity_body(wf_id, auto=False)
+
+
+def _auto_refresh_body() -> None:
+    """Stable st.fragment target for the live auto-refresh (a lambda would get a
+    fresh identity each run and break run_every scheduling). Reads the active
+    workflow from session_state."""
+    wf_id = st.session_state.get("workflow_id")
+    if wf_id:
+        _activity_body(wf_id, auto=True)
 
 
 def _activity_body(wf_id: str, *, auto: bool) -> None:

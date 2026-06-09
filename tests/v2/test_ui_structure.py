@@ -179,6 +179,20 @@ def test_profile_switcher_is_single_source_of_truth():
     )
 
 
+def test_live_monitor_autorefresh_uses_stable_fragment():
+    """BUG-007: the Live Run Monitor auto-refresh must pass a STABLE module-level
+    function to st.fragment(run_every=...), never a lambda. st.fragment keys its
+    run_every timer by the function identity; a lambda is recreated each run, so
+    the timer never re-fires and the 'live' monitor sits static."""
+    src = (_ENTRYPOINT.parent / "views" / "live_monitor.py").read_text(encoding="utf-8")
+    assert "st.fragment(_auto_refresh_body, run_every=" in src, (
+        "live monitor must drive run_every with a stable module-level function"
+    )
+    assert "st.fragment(lambda" not in src, (
+        "a lambda fragment target breaks run_every (BUG-007) - use a module-level fn"
+    )
+
+
 def test_every_destination_has_a_navigation_entry_point():
     """ADR-088: hidden destinations have no sidebar entry, so each MUST be a
     _navigate(...) target somewhere in the UI - otherwise it is reachable only by
