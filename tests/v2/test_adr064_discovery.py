@@ -82,10 +82,11 @@ def _node_with(capture: dict, factory):
     def _discover_with_stats(workflow_id, search_criteria, extra_scrapers=None,
                              skip_builtin_adzuna=False, max_years_experience=None,
                              min_years_experience=None, max_posting_age_days=None,
-                             user_id=None):
+                             drop_dead_links=False, user_id=None):
         capture["extra"] = list(extra_scrapers or [])
         capture["skip"] = skip_builtin_adzuna
         capture["max_years"] = max_years_experience
+        capture["drop_dead_links"] = drop_dead_links
         capture["user_id"] = user_id
         return [], {}
     svc.discover_with_stats.side_effect = _discover_with_stats

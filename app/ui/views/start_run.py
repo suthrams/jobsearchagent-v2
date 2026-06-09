@@ -131,6 +131,16 @@ def render(ctx: ViewContext) -> None:
                      "(before the relevance filter and scoring). Stale postings often "
                      "have dead apply links. Postings with no date are kept. 0 = off.",
             )
+            # ADR-095: best-effort dead-link check. Network I/O (adds latency), so opt-in.
+            drop_dead_links = st.checkbox(
+                "Drop jobs whose apply link is dead",
+                value=bool(search_cfg.get("drop_dead_links", False)),
+                help="ADR-095: at discovery, check each apply link and drop the ones "
+                     "that are verifiably dead (404/410 or a 'no longer available' page) "
+                     "so a match never points at a broken link. Conservative - keeps the "
+                     "job on any timeout / rate-limit / ambiguous response. Adds some "
+                     "latency (one bounded web request per job). Off by default.",
+            )
             relevance_filter = st.checkbox(
                 "Reasoning relevance filter (drop mismatches before scoring)",
                 value=bool(search_cfg.get("relevance_filter", False)),
@@ -206,6 +216,8 @@ def render(ctx: ViewContext) -> None:
                 # ADR-080: 0 = off (omit so discovery leaves the age bound off).
                 **({"max_posting_age_days": int(max_posting_age_days)}
                    if int(max_posting_age_days) > 0 else {}),
+                # ADR-095: best-effort dead-link drop at discovery (opt-in).
+                "drop_dead_links": bool(drop_dead_links),
             },
         }
 
@@ -223,6 +235,7 @@ def render(ctx: ViewContext) -> None:
                 api.put_config("search.relevance_filter", bool(relevance_filter))
                 api.put_config("search.exclude_clearance", bool(exclude_clearance))
                 api.put_config("search.max_posting_age_days", int(max_posting_age_days))
+                api.put_config("search.drop_dead_links", bool(drop_dead_links))
                 st.session_state.config_cache = None  # invalidate
             except Exception as exc:
                 st.warning(f"Settings save failed (run will still start): {exc}")

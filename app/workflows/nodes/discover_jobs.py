@@ -47,6 +47,7 @@ def make_discover_jobs_node(
         min_years = _years("min_years_experience")
         max_posting_age_days = _years("max_posting_age_days")  # ADR-080; 0/None = off
         exclude_senior = bool(_search_cfg.get("exclude_senior", False))
+        drop_dead_links = bool(_search_cfg.get("drop_dead_links", False))  # ADR-095
 
         # Per-run scrapers: build one CustomUrlScraper if URLs were provided.
         extra_scrapers: list[Any] = []
@@ -93,6 +94,7 @@ def make_discover_jobs_node(
                 max_years_experience=max_years,
                 min_years_experience=min_years,
                 max_posting_age_days=max_posting_age_days,
+                drop_dead_links=drop_dead_links,
                 user_id=user_id,
             )
             # ADR-060: manual-selection mode casts a wider net (the user triages

@@ -70,6 +70,7 @@ class JobDiscoveryService:
         max_years_experience: int | None = None,
         min_years_experience: int | None = None,
         max_posting_age_days: int | None = None,
+        drop_dead_links: bool = False,
         user_id: str | None = None,
     ) -> list[JobPosting]:
         """Backward-compat wrapper. Returns postings only; discards stats.
@@ -87,6 +88,7 @@ class JobDiscoveryService:
             max_years_experience=max_years_experience,
             min_years_experience=min_years_experience,
             max_posting_age_days=max_posting_age_days,
+            drop_dead_links=drop_dead_links,
             user_id=user_id,
         )
         return postings
@@ -100,6 +102,7 @@ class JobDiscoveryService:
         max_years_experience: int | None = None,
         min_years_experience: int | None = None,
         max_posting_age_days: int | None = None,
+        drop_dead_links: bool = False,
         user_id: str | None = None,
     ) -> tuple[list[JobPosting], dict]:
         """Run all scrapers, normalise, filter, dedupe, cap. Returns
@@ -190,6 +193,20 @@ class JobDiscoveryService:
         postings, dedup_stats = self._dedup_with_stats(postings, user_id=user_id)
         dedup_total_dropped = before_dedup - len(postings)
 
+        # ADR-095: opt-in best-effort dead-link filter. Drops postings whose apply
+        # link is VERIFIABLY dead (404/410 or a closed-job marker); keeps anything
+        # ambiguous (timeout/429/DNS) so a transient fault never loses a job. Network
+        # I/O, so it runs after dedup (fewer URLs) and only when the profile opts in.
+        dead_link_dropped = 0
+        dead_link_samples: list[dict] = []
+        if drop_dead_links and postings:
+            from app.services.dead_link_filter import filter_dead_links
+            before_dead = len(postings)
+            postings, dead_link_dropped, dead_link_samples = filter_dead_links(postings)
+            if dead_link_dropped:
+                logger.info("Dead-link filter dropped %d of %d postings",
+                            dead_link_dropped, before_dead)
+
         before_cap = len(postings)
         max_jobs_truncated = 0
         if len(postings) > self._max_jobs:
@@ -207,6 +224,8 @@ class JobDiscoveryService:
             "dedup_batch_dropped":       dedup_stats["batch"],
             "dedup_excluded_dropped":    dedup_stats["excluded"],
             "dedup_user_scored_dropped": dedup_stats["user_scored"],
+            "dead_link_dropped":         dead_link_dropped,
+            "dead_link_samples":         dead_link_samples,
             "max_jobs_truncated":        max_jobs_truncated,
             "returned":                  len(postings),
             "user_id":                   user_id,

@@ -116,7 +116,7 @@ def test_node_passes_cap_and_exclude_senior_from_effective_config():
     def _discover_with_stats(workflow_id, search_criteria, extra_scrapers=None,
                              skip_builtin_adzuna=False, max_years_experience=None,
                              min_years_experience=None, max_posting_age_days=None,
-                             user_id=None):
+                             drop_dead_links=False, user_id=None):
         cap["max_years"] = max_years_experience
         return [], {}
     svc.discover_with_stats.side_effect = _discover_with_stats

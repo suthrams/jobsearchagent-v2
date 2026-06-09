@@ -48,6 +48,13 @@ search:
   # kept. 0/absent = off. Deterministic, no network fetch.
   # max_posting_age_days: 30
 
+  # ADR-095: opt-in best-effort dead-link filter. When true, discovery checks each
+  # apply link and drops postings that are VERIFIABLY dead (HTTP 404/410 or a 200 page
+  # with a "no longer available" marker). Conservative: keeps the job on any timeout /
+  # 429 / connection error / DNS failure (never lose a job to a transient signal).
+  # Network I/O - adds a bounded web request per job - so off by default.
+  # drop_dead_links: true
+
 # ─── Scoring ────────────────────────────────────────────────────────────────
 # Usually set per profile via the Settings UI (writes to user_config), not here.
 scoring:

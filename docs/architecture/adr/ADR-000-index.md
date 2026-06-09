@@ -100,3 +100,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-092 | [Clinic Chat Cost — Haiku Chat + On-Demand / At-Accept Fidelity](ADR-092-clinic-chat-cost-haiku-and-on-demand-fidelity.md) | Accepted (implemented) |
 | ADR-093 | [Apply-Link Reliability + "Where to Focus" Triage Strip](ADR-093-apply-link-reliability-and-focus-triage.md) | Accepted (implemented) |
 | ADR-094 | [Security-Clearance Exclusion (Folded into the Relevance Filter)](ADR-094-clearance-exclusion-in-relevance-filter.md) | Accepted (implemented) |
+| ADR-095 | [Best-Effort Dead-Link Filter (Opt-in Discovery Step)](ADR-095-best-effort-dead-link-filter.md) | Accepted (implemented) |
