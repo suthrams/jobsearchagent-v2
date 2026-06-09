@@ -168,6 +168,14 @@ selected `detail_workflow_id`/`detail_job_id`) it reads from `st.session_state`.
 
 ## 4. Navigation model (ADR-088: native multipage)
 
+![The jobseeker journey: the four sidebar groups (FIND, MY OPPORTUNITIES, RESUME, SYSTEM), the four click-through destinations, and how they connect. Matches is the home base; a finished run auto-opens its Search detail; any scored job opens an Opportunity.](images/ui_jobseeker_flow.png)
+
+*The jobseeker flows at a glance — sidebar groups are color-coded (green FIND, blue
+MY OPPORTUNITIES, magenta RESUME, gray SYSTEM); the amber band holds the
+click-through destinations that route by a click but never show in the sidebar.
+Source spec: `tools/figure_renderer/specs/ui_jobseeker_flow.json` (re-render with
+`python tools/render_figures.py ui_jobseeker_flow`).*
+
 The UI uses Streamlit **native multipage** (`st.navigation` / `st.Page`). `nav.py`
 is the single source of truth for the journey structure:
 

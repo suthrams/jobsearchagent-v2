@@ -1,0 +1,51 @@
+{
+  "id": "ui_jobseeker_flow",
+  "outDir": "docs/architecture/images",
+  "width": 1760,
+  "height": 1340,
+  "layout": "scene",
+  "title": "The jobseeker journey - how the screens connect",
+  "headSub": "Four sidebar groups (FIND - MY OPPORTUNITIES - RESUME - SYSTEM) plus four click-through destinations. Matches is the home base; a finished run auto-opens its Search detail.",
+  "scene": {
+    "viewBox": [0, 0, 1760, 980],
+    "zones": [
+      {"x": 40, "y": 470, "w": 1300, "h": 430, "accent": "amber", "dashed": true, "fill": false, "label": "Click-through destinations - reached by a click, hidden from the sidebar"}
+    ],
+    "nodes": [
+      {"id": "newsearch", "x": 70,   "y": 130, "w": 280, "h": 96,  "accent": "green",   "icon": "steps",    "title": "New search", "sub": "roles - filters - resume -> start a run"},
+      {"id": "searches",  "x": 372,  "y": 130, "w": 280, "h": 96,  "accent": "green",   "icon": "table",    "title": "Searches", "sub": "every run; click a row -> Search detail"},
+
+      {"id": "matches",   "x": 690,  "y": 128, "w": 330, "h": 120, "accent": "blue",    "icon": "target",   "title": "Matches", "sub": "HOME BASE - ranked results, live auto-refresh"},
+
+      {"id": "profiles",  "x": 1400, "y": 130, "w": 290, "h": 96,  "accent": "magenta", "icon": "user",     "title": "Profiles & Resumes", "sub": "manage profiles + resumes"},
+      {"id": "clinic",    "x": 1400, "y": 310, "w": 290, "h": 96,  "accent": "magenta", "icon": "doc",      "title": "Resume Clinic", "sub": "review / tailor (optionally job-focused)"},
+      {"id": "export",    "x": 1400, "y": 500, "w": 290, "h": 96,  "accent": "magenta", "icon": "arrow",    "title": "Export", "sub": "md - pdf - docx - html - txt - json"},
+
+      {"id": "livemon",   "x": 90,   "y": 560, "w": 280, "h": 96,  "accent": "amber",   "icon": "activity", "title": "Live monitor", "sub": "watch the run; refreshes every 5s"},
+      {"id": "detail",    "x": 450,  "y": 560, "w": 290, "h": 96,  "accent": "amber",   "icon": "eye",      "title": "Search detail", "sub": "jobs surfaced, scores, filtered-out panel"},
+      {"id": "opp",       "x": 830,  "y": 552, "w": 310, "h": 116, "accent": "amber",   "icon": "gauge",    "title": "Opportunity", "sub": "one job: fit - gaps - deep review - tailor - prep"},
+      {"id": "report",    "x": 450,  "y": 750, "w": 290, "h": 96,  "accent": "amber",   "icon": "doc",      "title": "Run report", "sub": "the generated markdown summary"},
+
+      {"id": "settings",  "x": 1400, "y": 700, "w": 290, "h": 90,  "accent": "gray",    "icon": "shield",   "title": "Settings", "sub": "config + per-agent models + purge"},
+      {"id": "health",    "x": 1400, "y": 820, "w": 290, "h": 90,  "accent": "gray",    "icon": "gauge",    "title": "Spend & Health", "sub": "cost, PSSR, readiness dashboard"}
+    ],
+    "edges": [
+      {"from": "newsearch:bottom", "to": "livemon:top",  "accent": "green",   "style": "thick", "label": "start -> watch live"},
+      {"from": "livemon:right",    "to": "detail:left",  "accent": "amber",   "style": "thick", "label": "auto-open when the run completes"},
+      {"from": "detail:right",     "to": "opp:left",     "accent": "amber",                     "label": "open a job"},
+      {"from": "searches:bottom",  "to": "detail:top",   "accent": "green",                     "label": "row click"},
+      {"from": "matches:bottom",   "to": "opp:top",      "accent": "blue",    "style": "thick", "label": "open opportunity"},
+      {"from": "matches:right",    "to": "clinic:left",  "accent": "magenta",                   "label": "favorite a job -> focus"},
+      {"from": "profiles:bottom",  "to": "clinic:top",   "accent": "magenta",                   "label": "resume"},
+      {"from": "clinic:bottom",    "to": "export:top",   "accent": "magenta", "style": "thick", "label": "tailored resume out"},
+      {"from": "detail:bottom",    "to": "report:top",   "accent": "amber",                     "label": "view report"}
+    ],
+    "labels": [
+      {"x": 70,   "y": 104, "text": "FIND", "accent": "green", "tag": true, "size": 18},
+      {"x": 690,  "y": 102, "text": "MY OPPORTUNITIES - home base", "accent": "blue", "tag": true, "size": 18},
+      {"x": 1400, "y": 104, "text": "RESUME", "accent": "magenta", "tag": true, "size": 18},
+      {"x": 1400, "y": 672, "text": "SYSTEM (operator)", "accent": "gray", "tag": true, "size": 17}
+    ]
+  },
+  "takeaway": {"icon": "target", "accent": "blue", "text": "Land on {{blue:Matches}} (home base). {{green:FIND}} starts + lists runs, the {{amber:click-through}} screens carry a run/job deep-dive, {{magenta:RESUME}} tailors + exports, and {{gray:SYSTEM}} is operator-only. A finished run auto-opens its Search detail; any scored job opens an Opportunity."}
+}
