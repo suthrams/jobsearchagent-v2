@@ -125,22 +125,6 @@ def _build_ctx() -> nav.ViewContext:
     )
 
 
-def _on_profile_change() -> None:
-    """Sole writer of ``current_user_id`` from the profile switcher (ADR-062).
-
-    Fires only on an actual user pick (Streamlit reruns automatically after a
-    widget ``on_change``), so it cannot be triggered by the per-run mirror or by a
-    cross-page widget-state reset - which is what makes the active profile stick
-    across navigation. Re-scopes the API client + clears caches so the new
-    profile's matches/history/config load."""
-    _new = st.session_state.get("_profile_select")
-    if _new and _new != st.session_state.current_user_id:
-        st.session_state.current_user_id = _new
-        api.set_user_id(_new)
-        st.cache_data.clear()
-        st.session_state.config_cache = None
-
-
 def _render_topbar() -> None:
     """App header in the MAIN area: the app title on the left (bigger), the profile
     switcher on the top-right (the standard account-switcher spot). Rendered before
@@ -168,26 +152,31 @@ def _render_topbar() -> None:
             # and persist it so identity + display agree.
             _cur = _ids[0]
             st.session_state.current_user_id = _cur
-        # `current_user_id` is the single source of truth and persists across page
-        # navigation (plain session_state). Mirror the widget to it every run BEFORE
-        # the widget is created, so the selectbox always shows the active profile -
-        # even after st.switch_page resets the keyed widget state (the bug: under
-        # native multipage the keyed value diverged, and the old reverting sync then
-        # drove current_user_id back to a stale value). The on_change callback is the
-        # ONLY writer of current_user_id, so this mirror never clobbers a fresh pick
-        # (the callback has already committed it before this run).
-        if st.session_state.get("_profile_select") != _cur:
-            st.session_state["_profile_select"] = _cur
-        st.selectbox(
+        # BUG-008: keep the selected profile across page navigation. `current_user_id`
+        # is the single source of truth (a plain session_state key, so it survives
+        # st.switch_page). The selectbox is DISPLAY-driven from it via `index`, but a
+        # fixed `key` let Streamlit reuse stale widget state across pages and ignore
+        # `index` (the recurrence). Deriving the key FROM current_user_id makes each
+        # profile a fresh widget that honors `index`, so the box always shows the
+        # active profile; on a real pick the returned value differs and we commit it.
+        # No on_change (it misfired on navigation) - we reconcile from the return value.
+        _sel_key = f"_profile_select::{_cur}"
+        _choice = st.selectbox(
             "Profile",
             _ids,
+            index=_ids.index(_cur),
             format_func=lambda i: _id_to_label.get(i, i),
-            key="_profile_select",
-            on_change=_on_profile_change,
+            key=_sel_key,
             label_visibility="collapsed",
             help="Whose career this is (ADR-062). Switching re-scopes matches, "
                  "history, and the resume picker. Add a profile on Profiles & Resumes.",
         )
+        if _choice != st.session_state.current_user_id:
+            st.session_state.current_user_id = _choice
+            api.set_user_id(_choice)
+            st.cache_data.clear()
+            st.session_state.config_cache = None
+            st.rerun()
 
 
 # ── Native-multipage navigation (st.navigation / st.Page) ─────────────────────

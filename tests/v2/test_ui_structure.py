@@ -163,23 +163,25 @@ def test_matches_hosts_status_strip_and_start_routes_to_live_monitor():
 
 
 def test_profile_switcher_is_single_source_of_truth():
-    """BUG-006: the active profile must survive page navigation. The profile
-    selectbox must be driven by `current_user_id` (the single source of truth)
-    via an `on_change` callback, NOT by the old reverting sync
-    (`if _chosen != ... current_user_id`) which let a cross-page widget-state
-    reset clobber the active profile. Source-scan the entrypoint."""
+    """BUG-006/008: the active profile must survive page navigation. `current_user_id`
+    is the single source of truth; the selectbox DISPLAY is driven from it via `index`,
+    and its `key` is derived from current_user_id so Streamlit can't reuse stale widget
+    state and ignore `index` across st.switch_page (the BUG-008 recurrence). The active
+    profile is written only from the selectbox's returned value."""
     src = _ENTRYPOINT.read_text(encoding="utf-8")
-    assert "on_change=_on_profile_change" in src, (
-        "profile selectbox must update current_user_id via the on_change callback"
+    assert "index=_ids.index(_cur)" in src, (
+        "the profile selectbox display must be driven by current_user_id via index"
     )
-    assert "def _on_profile_change" in src, "the on_change callback must exist"
-    # The reverting read-back that caused the clobber must not return.
-    assert "_chosen != st.session_state.current_user_id" not in src, (
-        "the reverting profile sync (BUG-006) must not be reintroduced"
+    assert '_profile_select::' in src, (
+        "the selectbox key must be derived from current_user_id so index is honored "
+        "across page navigation (BUG-008)"
     )
-    # The widget is mirrored to the source of truth each run so it survives nav.
-    assert 'st.session_state["_profile_select"] = _cur' in src, (
-        "the profile widget must be mirrored to current_user_id each run"
+    assert "st.session_state.current_user_id = _choice" in src, (
+        "current_user_id must be written from the selectbox's returned choice"
+    )
+    # The on_change approach (BUG-006 attempt) misfired on navigation; it must be gone.
+    assert "_on_profile_change" not in src, (
+        "the on_change profile callback must not return (it misfired on navigation)"
     )
 
 

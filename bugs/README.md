@@ -53,3 +53,5 @@ ASCII only (repo convention).
 | [BUG-005](BUG-005-chat-input-send-disabled-and-not-cleared.md) | Chat input: Send stays disabled while typing; box not cleared after send | Medium | Fixed | none feasible (Streamlit interaction; structural fix) |
 | [BUG-006](BUG-006-profile-resets-on-navigation.md) | Selected profile resets on page navigation | High | Fixed | `tests/v2/test_ui_structure.py::test_profile_switcher_is_single_source_of_truth` |
 | [BUG-007](BUG-007-live-run-autorefresh-lambda-fragment.md) | Live Run Monitor never auto-refreshes (lambda passed to st.fragment) | Medium | Fixed | `tests/v2/test_ui_structure.py::test_live_monitor_autorefresh_uses_stable_fragment` |
+| [BUG-008](BUG-008-profile-reset-recurrence.md) | Profile selector STILL resets on navigation (BUG-006 fix insufficient) | High | Fixed | `tests/v2/test_ui_structure.py::test_profile_switcher_is_single_source_of_truth` |
+| [BUG-009](BUG-009-live-run-unreachable-after-declutter.md) | Live run unreachable from other screens after sidebar declutter | Medium | Fixed | none (runtime reachability; active-run chip jump restored) |

@@ -175,9 +175,13 @@ def _static_strip(wf_id: str | None, status: str | None) -> None:
 def _chip(wf_id: str | None, status: str | None) -> None:
     if not wf_id:
         return
-    # Text only (2026-06-08): the chip reports the run state from any screen, but its
-    # nav buttons were removed - "Open Matches" duplicated the native nav entry, and
-    # navigation lives in the nav + the inline Matches strip (which still has Watch/
-    # Cancel while running). Keeping the sidebar to a single status line.
+    # The chip reports the run state from any screen. Idle/done states are text-only
+    # (declutter, 2026-06-08) - navigation lives in the native nav + the Matches strip.
+    # BUG-009: while a run is ACTIVE, restore a "Watch live" jump here so the live
+    # monitor is reachable from any page (the Live monitor is a hidden destination
+    # with no nav entry; without this, a user who isn't on Matches had no way in).
     st.markdown("---")
     st.caption(f"{_CHIP_ICON.get(status, '⚪')} {_CHIP_LABEL.get(status, status or '—')}")
+    if status in ("running", "cancelling"):
+        if st.button("Watch live ▶", key="rs_chip_live", use_container_width=True):
+            _navigate("Live Run Monitor")
