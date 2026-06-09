@@ -266,9 +266,9 @@ destination (ADR-088 F).
 | Profiles & Resumes (RESUME) | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
 | Settings (operator) | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |
 | Spend & Health (operator) | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (day-by-day + week-by-week, per-agent and per-model spend); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
-| Search detail | `views/workflow_detail.py` | D, R + C | The per-RUN summary (ADR-088 Phase 6 shrank it): status + metrics, the manual-selection picker (ADR-060), the Find & Score jobs table (each row opens Opportunity), the discovered-jobs table, and collapsed Diagnostics (`compute_breakdown` + `constraint_analyzer`). The per-job Review / interview-Prep / Tailoring action region moved to Opportunity |
+| Search detail | `views/workflow_detail.py` | D, R + C | The per-RUN summary (ADR-088 Phase 6 shrank it): status + metrics, the manual-selection picker (ADR-060), the Find & Score jobs table (each row opens Opportunity), the discovered-jobs table, the "Why N job(s) were filtered out" panel (`build_relevance_drop_rows` over `discovery_stats.relevance_drops` — the per-job relevance/clearance drop reason, ADR-079/094), and collapsed Diagnostics (`compute_breakdown` + `constraint_analyzer`). The per-job Review / interview-Prep / Tailoring action region moved to Opportunity |
 | Opportunity | `views/opportunity.py` | D, R + C | The single per-job surface (ADR-088 Tier 2). Reads `load_job_pipeline` + the run state (fit, score, resume-gap vs career-gap, deep-review rounds, advice, prep); controls deep-review / tailoring (drafts + decisions + ADR-072 chat) / interview-prep on demand + exclude. Subsumes the former read-only Job Detail. Target of every job click (Matches "Open opportunity", Search-detail "Open"). Header carries the ADR-090 ★ favorite toggle; tailoring uses the shared `tailoring_panel`. No app-tracking (ADR-088 E / ADR-090; guardrail test) |
-| Live monitor | `views/live_monitor.py` | D, R + C | `GET /workflows/{id}`, `POST .../retry`; `load_step_executions` / `load_agent_events` / `load_llm_calls` |
+| Live monitor | `views/live_monitor.py` | D, R + C | `GET /workflows/{id}`, `POST .../retry`; `load_step_executions` / `load_agent_events` / `load_llm_calls`. Auto-refreshes every 5s while the run is active; when a run **completes** while being watched it hands off to Search detail (flag set in the fragment, `st.switch_page` from the top-level `render`, since switch_page is illegal inside a fragment). Failed/cancelled runs stay put so errors remain in view |
 | Run report | `views/run_report.py` | D, C | `GET /workflows/{id}/report` |
 
 **Active-track gating (ADR-071).** A profile is scored only on its active tracks
@@ -320,7 +320,9 @@ sequenceDiagram
     LM->>DB: load_step_executions / load_agent_events / load_llm_calls
     DB->>SQL: SELECT ... WHERE workflow_run_id=?
     DB-->>LM: activity rows
-    LM-->>U: status + activity feed
+    LM-->>U: status + activity feed (auto-refresh every 5s while active)
+    Note over LM: on completion the fragment flags a hand-off; the next app rerun
+    LM->>U: st.switch_page -> Search detail for wf_id (jobs surfaced + filtered-out panel)
 ```
 
 There is **no in-graph human-in-the-loop** (ADR-059): the graph runs end-to-end,

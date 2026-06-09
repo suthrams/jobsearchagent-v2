@@ -149,7 +149,7 @@ flowchart LR
 | in | `resume_profile` | Already redacted at rest (ADR-070); re-trimmed for the LLM (ADR-069) — belt and suspenders. |
 | in | `effective_config.search` | `relevance_filter`, plus the existing seniority signals (`exclude_senior`, `min/max_years_experience`) the prompt can reference, plus `exclude_clearance` (ADR-094). |
 | out | `normalized_jobs` | **Narrowed** to the kept set, discovery order preserved (so the title-relevance ordering still feeds the scored cap). |
-| out | `discovery_stats` | `relevance_dropped` (count), `relevance_kept` (count), `clearance_dropped` (ADR-094 count), and a per-job `{job_id, mismatch, reason}` list — the audit trail for why a job was shed. |
+| out | `discovery_stats` | `relevance_dropped` (count), `relevance_kept` (count), `clearance_dropped` (ADR-094 count), and `relevance_drops` — a per-job `{job_id, mismatch, reason, title, company}` list, the audit trail for why each job was shed. `title`/`company` are carried so the UI can surface the dropped job by name without a second read (older runs predating the enrichment omit them; the UI falls back to `job_id`). Surfaced on the Search-detail screen as the "Why N job(s) were filtered out" panel (`build_relevance_drop_rows` in `app/ui/formatting.py`). |
 
 > **ADR-094 — clearance exclusion.** When `search.exclude_clearance` is on (default
 > off), the node drops clearance-gated postings **deterministically, before the LLM

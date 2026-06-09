@@ -93,6 +93,41 @@ def discovery_funnel_summary(stats) -> str:
     return ("Filtered out before scoring — " + ", ".join(parts)) if parts else ""
 
 
+# User-facing label for each relevance-filter mismatch class (ADR-079 verdict +
+# ADR-094 clearance). Keep in sync with RelevanceVerdict.mismatch and the
+# clearance_filter "requires_clearance" sentinel.
+_MISMATCH_LABEL = {
+    "too_senior": "Too senior",
+    "too_junior": "Too junior",
+    "unrelated": "Unrelated",
+    "requires_clearance": "Needs clearance",
+    "none": "—",
+}
+
+
+def build_relevance_drop_rows(stats) -> list[dict]:
+    """Per-job rows for the 'why jobs were filtered out' panel (ADR-079/094).
+
+    Source is ``discovery_stats.relevance_drops`` — the audit trail the
+    relevance_filter node records when it hard-drops a posting before scoring.
+    Each entry carries ``job_id`` + ``mismatch`` + ``reason``; runs scored after
+    the title/company enrichment also carry ``title`` + ``company``. Older runs
+    fall back to the ``job_id`` so the panel still renders. Pure -> unit-testable.
+    """
+    drops = (stats or {}).get("relevance_drops") or []
+    rows: list[dict] = []
+    for d in drops:
+        title = (d.get("title") or "").strip()
+        mismatch = d.get("mismatch")
+        rows.append({
+            "Title": title or d.get("job_id") or "(unknown job)",
+            "Company": (d.get("company") or "").strip() or "—",
+            "Why dropped": _MISMATCH_LABEL.get(mismatch, mismatch or "—"),
+            "Reason": d.get("reason") or "",
+        })
+    return rows
+
+
 def _get_nested(d: dict, keys: list[str]):
     cur = d
     for k in keys:

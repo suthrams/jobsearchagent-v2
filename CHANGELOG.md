@@ -4,6 +4,36 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-09
+
+### Added — "Why jobs were filtered out" panel + auto-navigate to a finished run
+
+Surfaces the relevance pre-filter's per-job rejection reasons, and stops leaving the
+user stranded on the live monitor after a run finishes.
+
+- **Filtered-out panel (Search detail).** The relevance pre-filter (ADR-079) and the
+  optional clearance filter (ADR-094) already recorded a per-job audit trail in
+  `discovery_stats.relevance_drops`, but only the aggregate count ("relevance 18") was
+  ever shown. A new collapsible panel on the Search-detail screen lists each dropped
+  job by title + company with its mismatch class (Too senior / Too junior / Unrelated /
+  Needs clearance) and the one-line reason. Pure helper `build_relevance_drop_rows`
+  in `app/ui/formatting.py`; the data already flows through the existing
+  `/workflows/{id}/detail` read (no new endpoint).
+- **Audit-trail enrichment.** `relevance_filter` node now stores `title` + `company`
+  on each `relevance_drops` entry (both the LLM drops and the deterministic clearance
+  drops) so the panel is self-contained in run state and needs no second read. Runs
+  scored before this change omit them; the panel falls back to the `job_id`.
+- **Auto-navigate on completion (Live monitor).** When a run completes while the user
+  is watching the live monitor, the UI now hands off to that run's Search-detail page
+  (jobs surfaced, scores, the filtered-out panel) instead of leaving them on the static
+  activity feed. The fragment flags the hand-off and the top-level `render` calls
+  `st.switch_page` (illegal inside a fragment). Failed/cancelled runs stay on the
+  monitor so errors remain in view.
+- No ADR (additive surfacing + a UX hand-off, no contract change). Docs swept:
+  `relevance_filter_design.md`, `ui_architecture.md`. 1022 tests pass; UI smoke 12/12.
+
+---
+
 ## 2026-06-07
 
 ### Added — My favorite jobs + job-focused Resume Clinic (ADR-090)

@@ -24,6 +24,7 @@ from app.ui.data import (
 from app.ui.formatting import (
     _checked,
     build_discovered_rows,
+    build_relevance_drop_rows,
     discovery_funnel_summary,
     format_posting_age,
     format_posting_age_short,
@@ -164,6 +165,38 @@ def render(ctx: ViewContext) -> None:
                     _show_job(_dj, _dj.get("job_description"))
             else:
                 st.caption("Select a row to view its job details.")
+
+    def _render_filtered_out() -> None:
+        """ADR-079/094: jobs the relevance pre-filter (and the optional clearance
+        filter) hard-dropped BEFORE scoring, with the per-job reason. The audit
+        trail lives in discovery_stats.relevance_drops; this surfaces it so the
+        user can see exactly which job was shed and why (the count alone is in the
+        discovery funnel summary above)."""
+        _rows = build_relevance_drop_rows(state.get("discovery_stats"))
+        if not _rows:
+            return
+        with st.expander(
+            f"🚦 Why {len(_rows)} job(s) were filtered out before scoring",
+            expanded=False,
+        ):
+            st.caption(
+                "The relevance pre-filter (a cheap reasoning pass, ADR-079) judged "
+                "these a clear seniority or relevance mismatch for this profile and "
+                "dropped them before paying to score them. If it looks too aggressive, "
+                "loosen the experience window or turn it off under Settings -> search "
+                "filters; it re-bands automatically per profile."
+            )
+            st.dataframe(
+                pd.DataFrame(_rows),
+                key=f"filtered_out_table_{wf_id}",
+                hide_index=True,
+                use_container_width=True,
+                column_config={
+                    "Title": st.column_config.TextColumn("Title", width="medium"),
+                    "Why dropped": st.column_config.TextColumn("Why dropped", width="small"),
+                    "Reason": st.column_config.TextColumn("Reason", width="large"),
+                },
+            )
 
     # ── Manual scoring selection (ADR-060) ────────────────────────────────────
     # When a manual-selection run is parked after discovery, let the user pick
@@ -363,6 +396,10 @@ def render(ctx: ViewContext) -> None:
     # The per-job Review / interview Prep / Tailoring action region moved to the
     # Opportunity page (ADR-088 Tier 2). Open a job from the table above to reach
     # its fit, gaps, deep review, tailoring drafts, and interview prep.
+
+    # Jobs the relevance pre-filter dropped before scoring (with the per-job
+    # reason). Rendered for both the scored and the nothing-scored paths.
+    _render_filtered_out()
 
     # ── Diagnostics — collapsed by default to keep the action surfaces above ──
     st.markdown("---")

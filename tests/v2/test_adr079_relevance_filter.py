@@ -77,8 +77,11 @@ def test_node_drops_mismatches_keeps_rest_and_preserves_order():
     stats = out["discovery_stats"]
     assert stats["relevance_kept"] == 2
     assert stats["relevance_dropped"] == 1
+    # The audit entry carries the human-facing title + company (for the "why
+    # filtered out" UI panel) alongside the job_id/mismatch/reason.
     assert stats["relevance_drops"][0] == {
         "job_id": "j1", "mismatch": "too_senior", "reason": "asks 10+ yrs",
+        "title": "Senior Staff Engineer", "company": "A",
     }
     # the single batched call is counted against the run budget
     assert out["run_metrics"]["llm_calls"] == 1
@@ -173,7 +176,10 @@ def test_clearance_dropped_deterministically_before_llm():
     assert [j["job_id"] for j in agent.last_context["jobs"]] == ["c2"]  # c1 not sent
     stats = out["discovery_stats"]
     assert stats["clearance_dropped"] == 1
-    assert any(d["mismatch"] == "requires_clearance" for d in stats["relevance_drops"])
+    _drop = next(d for d in stats["relevance_drops"] if d["mismatch"] == "requires_clearance")
+    # clearance drops also carry title + company for the "why filtered out" panel
+    assert _drop["title"] == "Software Engineer"
+    assert _drop["company"] == "Gov"
 
 
 def test_clearance_kept_when_flag_off():

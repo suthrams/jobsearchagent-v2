@@ -15,11 +15,22 @@ from app.ui.data import (
     _cached_recent_workflows,
     _cached_step_executions,
 )
-from app.ui.nav import ViewContext, back_button
+from app.ui.nav import ViewContext, _navigate, back_button
 from app.workflows.limits import MAX_LLM_CALLS_PER_RUN
 
 
 def render(ctx: ViewContext) -> None:
+    # A run that finished while the user was watching sets this flag from inside the
+    # auto-refresh fragment (st.switch_page can't be called there). Honor it here, at
+    # the top of a clean app rerun, and take the user straight to the run's detail
+    # page (jobs surfaced, scores, the "why filtered out" panel) instead of leaving
+    # them on the now-static activity feed.
+    _done_wf = st.session_state.pop("_live_run_completed_nav", None)
+    if _done_wf:
+        _navigate("Workflow Detail", detail_workflow_id=_done_wf,
+                  last_status=st.session_state.get("last_status"))
+        return  # _navigate switches pages (reruns); nothing below should render
+
     back_button("Matches")  # in-app Back (ADR-088 F); reached from the Active Run widget
     st.header("Live monitor")
 
@@ -206,6 +217,11 @@ def _activity_body(wf_id: str, *, auto: bool) -> None:
         st.warning("Cancelling — the run will stop at the next step boundary.")
 
     # Leaving the active set: exit the auto-refresh fragment with a full app
-    # rerun so the controls + banner re-render in their terminal state.
+    # rerun so the controls + banner re-render in their terminal state. When the run
+    # COMPLETED (not failed/cancelled), flag a hand-off so the top-level render takes
+    # the user to the run's detail page; st.switch_page can't be called from inside a
+    # fragment, so we set the flag and let render() navigate on the next app rerun.
     if auto and status not in ("running", "cancelling"):
+        if status in ("completed", "completed_with_errors"):
+            st.session_state._live_run_completed_nav = wf_id
         st.rerun(scope="app")
