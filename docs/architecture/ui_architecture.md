@@ -485,15 +485,24 @@ sequenceDiagram
 There is no authentication. The active profile is resolved in exactly one place per
 side of the wire:
 
-- **Frontend:** `api_client.set_user_id(...)` attaches `?user_id=` to control-path
-  calls; `db_reader` functions take a `user_id` argument and filter on it. The
-  entrypoint calls `set_user_id` every run from `st.session_state.current_user_id`,
-  and the top-right profile switcher updates it (clearing caches + reruning on change).
+- **Frontend:** `api_client.set_user_id(...)` attaches `?user_id=` to every call
+  (reads and writes both go through the API since ADR-075). The entrypoint calls
+  `set_user_id` every run from `st.session_state.current_user_id`, and the top-right
+  profile switcher updates it (clearing caches + reruning on change).
 - **Backend:** `app/api/identity.py::get_current_user_id` reads the same query param.
 
 Scoping is **cooperative, not enforced** (ADR-062 Decision E): it filters which rows
 a view reads/writes, it is not an access boundary. Adding real auth later changes
 only `get_current_user_id`'s body and `set_user_id`'s source.
+
+A new profile is created through the **add-a-profile onboarding wizard** on the
+Profiles screen — three skippable steps, each one API write, tracked by
+`session_state.onboard_step`:
+
+![The add-a-profile onboarding wizard: Step 1 identity (POST /users), Step 2 resume (POST /users/{id}/resume, parsed; skippable), Step 3 default search criteria (PUT /config; skippable), then the profile is ready and pre-fills New search.](images/ui_onboarding_wizard.png)
+
+*Source spec: `tools/figure_renderer/specs/ui_onboarding_wizard.json` (re-render:
+`python tools/render_figures.py ui_onboarding_wizard`).*
 
 ---
 

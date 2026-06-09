@@ -1,0 +1,37 @@
+{
+  "id": "ui_onboarding_wizard",
+  "outDir": "docs/architecture/images",
+  "width": 1760,
+  "height": 1050,
+  "layout": "scene",
+  "title": "The add-a-profile onboarding wizard (ADR-062)",
+  "headSub": "Three quick steps on the Profiles screen, tracked by session_state.onboard_step (1 -> 2 -> 3). Each step is one API call; steps 2 and 3 are skippable; the finished profile then drives a pre-filled New search.",
+  "scene": {
+    "viewBox": [0, 0, 1760, 690],
+    "zones": [
+      {"x": 380, "y": 100, "w": 1160, "h": 300, "accent": "blue", "dashed": true, "fill": false, "label": "add-a-profile wizard - onboard_step 1 -> 2 -> 3 (steps 2 + 3 are skippable)"}
+    ],
+    "nodes": [
+      {"id": "start",  "x": 60,   "y": 190, "w": 290, "h": 120, "accent": "magenta", "icon": "user",   "title": "Profiles -> Add a profile", "sub": "RESUME group; no auth - cooperative identity (ADR-062)"},
+
+      {"id": "step1",  "x": 410,  "y": 150, "w": 290, "h": 120, "accent": "blue",    "icon": "user",   "title": "Step 1 - Identity", "sub": "display name (required) + optional note"},
+      {"id": "step2",  "x": 800,  "y": 150, "w": 290, "h": 120, "accent": "blue",    "icon": "doc",    "title": "Step 2 - Resume", "sub": "upload a PDF (parsed) - or skip"},
+      {"id": "step3",  "x": 1190, "y": 150, "w": 290, "h": 120, "accent": "blue",    "icon": "filter", "title": "Step 3 - Default search", "sub": "roles + locations - or skip"},
+
+      {"id": "done",   "x": 1190, "y": 440, "w": 290, "h": 110, "accent": "green",   "icon": "check",  "title": "Profile ready", "sub": "appears in the sidebar profile switcher"},
+      {"id": "run",    "x": 690,  "y": 560, "w": 380, "h": 100, "accent": "green",   "icon": "steps",  "title": "New search pre-fills", "sub": "roles + locations from the new profile's defaults"}
+    ],
+    "edges": [
+      {"from": "start:right",  "to": "step1:left",  "accent": "magenta",                 "label": "open"},
+      {"from": "step1:right",  "to": "step2:left",  "accent": "green", "style": "thick",  "label": "POST /users -> new profile id"},
+      {"from": "step2:right",  "to": "step3:left",  "accent": "green", "style": "thick",  "label": "POST /users/{id}/resume (parse)  -  or Skip"},
+      {"from": "step3:bottom", "to": "done:top",    "accent": "green",                    "label": "Save: PUT /config x2  -  or Skip + finish"},
+      {"from": "done:left",    "to": "run:right",   "accent": "green", "dashed": true,    "label": "switch to it -> run"}
+    ],
+    "labels": [
+      {"x": 60,  "y": 168, "text": "from the sidebar", "accent": "magenta", "tag": true, "size": 16},
+      {"x": 410, "y": 332, "text": "Steps 2-3: Cancel / start over -> back to Step 1", "accent": "gray", "tag": true, "size": 16}
+    ]
+  },
+  "takeaway": {"icon": "user", "accent": "blue", "text": "Three steps, three writes: {{green:POST /users}} (identity), {{green:POST .../resume}} (parsed), {{green:PUT /config}} (search defaults). Steps 2-3 skip cleanly; the new profile then pre-fills New search. Identity is cooperative - no auth (ADR-062)."}
+}
