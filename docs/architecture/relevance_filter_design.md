@@ -147,9 +147,16 @@ flowchart LR
 |---|---|---|
 | in | `normalized_jobs` | The discovered set (wide net when enabled). |
 | in | `resume_profile` | Already redacted at rest (ADR-070); re-trimmed for the LLM (ADR-069) — belt and suspenders. |
-| in | `effective_config.search` | `relevance_filter`, plus the existing seniority signals (`exclude_senior`, `min/max_years_experience`) the prompt can reference. |
+| in | `effective_config.search` | `relevance_filter`, plus the existing seniority signals (`exclude_senior`, `min/max_years_experience`) the prompt can reference, plus `exclude_clearance` (ADR-094). |
 | out | `normalized_jobs` | **Narrowed** to the kept set, discovery order preserved (so the title-relevance ordering still feeds the scored cap). |
-| out | `discovery_stats` | `relevance_dropped` (count), `relevance_kept` (count), and a per-job `{job_id, mismatch, reason}` list — the audit trail for why a job was shed. |
+| out | `discovery_stats` | `relevance_dropped` (count), `relevance_kept` (count), `clearance_dropped` (ADR-094 count), and a per-job `{job_id, mismatch, reason}` list — the audit trail for why a job was shed. |
+
+> **ADR-094 — clearance exclusion.** When `search.exclude_clearance` is on (default
+> off), the node drops clearance-gated postings **deterministically, before the LLM
+> call** (a keyword predicate, `app/services/clearance_filter.py`), so they cost no
+> tokens and are dropped reliably regardless of the agent verdict. They appear in
+> `relevance_drops` with `mismatch="requires_clearance"`. Opt-in, so a cleared profile
+> keeps cleared roles; only active while the relevance filter runs.
 | out | `run_metrics.llm_calls` | +1 (the single batched call), counted against `MAX_LLM_CALLS_PER_RUN` via `add_llm_calls_bulk`. |
 | out | `errors[]` | On filter failure only (see fallback). |
 

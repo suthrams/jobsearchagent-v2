@@ -35,6 +35,13 @@ search:
   # early-career profile and too-junior roles for a senior one. Off by default.
   # relevance_filter: true
 
+  # ADR-094: opt-in security-clearance exclusion, folded INTO the relevance filter.
+  # When true AND relevance_filter is on, postings requiring a US/government clearance
+  # (TS/SCI, Secret, polygraph, DoD, ...) are dropped before scoring. Deterministic
+  # keyword match - no extra LLM cost. No effect unless relevance_filter is on. Off by
+  # default so cleared candidates keep cleared roles.
+  # exclude_clearance: true
+
   # ADR-080: opt-in max posting age. Drop postings older than N days at discovery
   # (upstream of the relevance filter AND scoring). Stale postings correlate with
   # pulled requisitions / dead apply links. Postings with no parseable date are

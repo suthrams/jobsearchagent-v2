@@ -148,6 +148,55 @@ def test_node_noop_on_empty_input():
     assert out.get("normalized_jobs") is None  # node returns only step markers
 
 
+# ── ADR-094: clearance exclusion folded into the relevance filter ────────────
+
+def _clearance_state(**over):
+    jobs = [
+        {"id": "c1", "title": "Software Engineer", "company": "Gov",
+         "job_description": "Active TS/SCI clearance required."},
+        {"id": "c2", "title": "Software Engineer", "company": "Acme",
+         "job_description": "build things, no clearance needed"},
+    ]
+    s = _state(normalized_jobs=jobs, effective_config={
+        "search": {"relevance_filter": True, "exclude_clearance": True}})
+    s.update(over)
+    return s
+
+
+def test_clearance_dropped_deterministically_before_llm():
+    # The agent keeps everything it is shown; the cleared job must already be gone
+    # AND never sent to the agent (no token spend).
+    agent = _FakeAgent(RelevanceFilterResult(verdicts=[]))
+    node = make_relevance_filter_node(agent, MagicMock())
+    out = node(_clearance_state())
+    assert [j["id"] for j in out["normalized_jobs"]] == ["c2"]
+    assert [j["job_id"] for j in agent.last_context["jobs"]] == ["c2"]  # c1 not sent
+    stats = out["discovery_stats"]
+    assert stats["clearance_dropped"] == 1
+    assert any(d["mismatch"] == "requires_clearance" for d in stats["relevance_drops"])
+
+
+def test_clearance_kept_when_flag_off():
+    agent = _FakeAgent(RelevanceFilterResult(verdicts=[]))
+    node = make_relevance_filter_node(agent, MagicMock())
+    out = node(_clearance_state(effective_config={
+        "search": {"relevance_filter": True, "exclude_clearance": False}}))
+    assert {j["id"] for j in out["normalized_jobs"]} == {"c1", "c2"}
+    assert {j["job_id"] for j in agent.last_context["jobs"]} == {"c1", "c2"}
+    assert out["discovery_stats"].get("clearance_dropped", 0) == 0
+
+
+def test_clearance_all_dropped_skips_the_llm_call():
+    jobs = [{"id": "c1", "title": "Eng", "company": "Gov",
+             "job_description": "Top Secret clearance with polygraph required"}]
+    agent = _FakeAgent(RelevanceFilterResult(verdicts=[]))
+    node = make_relevance_filter_node(agent, MagicMock())
+    out = node(_clearance_state(normalized_jobs=jobs))
+    assert out["normalized_jobs"] == []
+    assert out["discovery_stats"]["clearance_dropped"] == 1
+    assert not hasattr(agent, "last_context")  # agent never called (no candidates)
+
+
 # ── Router: three-way precedence ─────────────────────────────────────────────
 
 def test_gate_defaults_to_score_jobs():

@@ -140,6 +140,17 @@ def render(ctx: ViewContext) -> None:
                      "so it drops too-senior roles for an early-career profile and "
                      "too-junior roles for a senior one. Widens discovery to triage from.",
             )
+            # ADR-094: clearance exclusion rides the relevance filter. Deterministic
+            # (keyword), so it adds no LLM cost; only acts when the relevance filter
+            # above is enabled. Default off so cleared candidates keep cleared roles.
+            exclude_clearance = st.checkbox(
+                "↳ also exclude jobs requiring a security clearance",
+                value=bool(search_cfg.get("exclude_clearance", False)),
+                help="ADR-094: when the relevance filter is on, also drop postings that "
+                     "require a US/government security clearance (TS/SCI, Secret, "
+                     "polygraph, DoD clearance, ...). Deterministic keyword match - no "
+                     "extra LLM cost. Has no effect unless the relevance filter is on.",
+            )
             persist_prefs = st.checkbox(
                 "Save these settings as my defaults for future runs",
                 value=False,
@@ -190,6 +201,8 @@ def render(ctx: ViewContext) -> None:
                 "exclude_senior": bool(exclude_senior),
                 # ADR-079: opt-in reasoning pre-filter before scoring.
                 "relevance_filter": bool(relevance_filter),
+                # ADR-094: clearance exclusion within the relevance filter (opt-in).
+                "exclude_clearance": bool(exclude_clearance),
                 # ADR-080: 0 = off (omit so discovery leaves the age bound off).
                 **({"max_posting_age_days": int(max_posting_age_days)}
                    if int(max_posting_age_days) > 0 else {}),
@@ -208,6 +221,7 @@ def render(ctx: ViewContext) -> None:
                 api.put_config("search.min_years_experience", int(min_years_experience))
                 api.put_config("search.exclude_senior", bool(exclude_senior))
                 api.put_config("search.relevance_filter", bool(relevance_filter))
+                api.put_config("search.exclude_clearance", bool(exclude_clearance))
                 api.put_config("search.max_posting_age_days", int(max_posting_age_days))
                 st.session_state.config_cache = None  # invalidate
             except Exception as exc:
