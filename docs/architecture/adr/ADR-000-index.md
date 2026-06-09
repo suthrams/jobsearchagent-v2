@@ -101,3 +101,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-093 | [Apply-Link Reliability + "Where to Focus" Triage Strip](ADR-093-apply-link-reliability-and-focus-triage.md) | Accepted (implemented) |
 | ADR-094 | [Security-Clearance Exclusion (Folded into the Relevance Filter)](ADR-094-clearance-exclusion-in-relevance-filter.md) | Accepted (implemented) |
 | ADR-095 | [Best-Effort Dead-Link Filter (Opt-in Discovery Step)](ADR-095-best-effort-dead-link-filter.md) | Accepted (implemented) |
+| ADR-096 | [Durable Run Recovery Across Restarts (Graceful Drain + Checkpointed Auto-Resume)](ADR-096-durable-run-recovery-across-restarts.md) | Accepted (implemented) |

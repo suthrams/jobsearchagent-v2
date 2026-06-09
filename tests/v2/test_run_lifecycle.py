@@ -5,6 +5,9 @@ Reuses the mocked-graph TestClient harness from test_api_workflows.py.
 """
 from __future__ import annotations
 
+import concurrent.futures
+import threading
+import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
@@ -16,6 +19,7 @@ from app.api.dependencies import get_graph
 from app.api.main import app
 from app.repositories.database import init_db
 from app.repositories.idempotency_repository import IdempotencyRepository
+from app.repositories.workflow_repository import WorkflowRepository
 from app.workflows import run_control
 from app.workflows.workflow_graph import _instrument_step, build_graph
 
@@ -209,3 +213,84 @@ def test_read_status_terminal_wins_over_cancel_flag(client):
         assert resp.json()["status"] == "completed"
     finally:
         run_control.clear_cancel(tid)
+
+
+# ── ADR-096: durable run recovery (startup resume + shutdown drain) ──────────────
+
+def test_recover_orphaned_runs_resumes_under_cap_fails_over_cap(tmp_path, monkeypatch):
+    """Startup recovery resumes orphaned runs under the attempt cap (re-submitting
+    them) and fails those that have exhausted it, leaving terminal/parked untouched."""
+    from app.api.routers import workflows as wf
+
+    db = tmp_path / "recover.db"
+    init_db(db)
+    repo = WorkflowRepository(db)
+    repo.create("wf_resume", "t", {"status": "running", "current_step": "career_advice"})
+    repo.create("wf_exhausted", "t", {"status": "running", "current_step": "score_jobs",
+                                      "resume_attempts": 3})
+    repo.create("wf_done", "t", {"status": "completed", "current_step": "completed"})
+
+    submitted: list = []
+    monkeypatch.setattr(wf, "_submit_run", lambda *a: submitted.append(a))
+    monkeypatch.setattr(wf.run_control, "try_acquire_running", lambda wfid: True)
+
+    result = wf.recover_orphaned_runs(MagicMock(), max_attempts=3, repo=repo)
+
+    assert result["resumed"] == ["wf_resume"]
+    assert result["failed"] == ["wf_exhausted"]
+    assert len(submitted) == 1                       # only the resumable run re-submitted
+    # the resumed run bumped its counter and stays running (resume in flight)
+    resumed_rec = repo.get_by_id("wf_resume")
+    assert resumed_rec["status"] == "running"
+    assert resumed_rec["state"]["resume_attempts"] == 1
+    # the exhausted run is failed; the completed run is untouched
+    assert repo.get_by_id("wf_exhausted")["status"] == "failed"
+    assert repo.get_by_id("wf_done")["status"] == "completed"
+
+
+def test_recover_orphaned_runs_noop_when_none(tmp_path, monkeypatch):
+    from app.api.routers import workflows as wf
+
+    db = tmp_path / "recover_empty.db"
+    init_db(db)
+    repo = WorkflowRepository(db)
+    repo.create("wf_done", "t", {"status": "completed", "current_step": "completed"})
+    submitted: list = []
+    monkeypatch.setattr(wf, "_submit_run", lambda *a: submitted.append(a))
+
+    result = wf.recover_orphaned_runs(MagicMock(), repo=repo)
+    assert result == {"resumed": [], "failed": []}
+    assert submitted == []
+
+
+def test_drain_inflight_runs_waits_for_completion(monkeypatch):
+    """A short run finishes inside the drain window -> counted finished, none left."""
+    from app.api.routers import workflows as wf
+
+    fresh = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    monkeypatch.setattr(wf, "_executor", fresh)
+    monkeypatch.setattr(wf, "_inflight_runs", set())
+
+    wf._submit_run(lambda: time.sleep(0.05))
+    finished, still_running = wf.drain_inflight_runs(timeout_seconds=5)
+    assert finished == 1
+    assert still_running == 0
+
+
+def test_drain_inflight_runs_reports_unfinished_past_timeout(monkeypatch):
+    """A run that exceeds the bounded window is reported still-running (left for
+    startup recovery), and the drain does not block past the timeout."""
+    from app.api.routers import workflows as wf
+
+    fresh = concurrent.futures.ThreadPoolExecutor(max_workers=2)
+    monkeypatch.setattr(wf, "_executor", fresh)
+    monkeypatch.setattr(wf, "_inflight_runs", set())
+
+    release = threading.Event()
+    wf._submit_run(lambda: release.wait(5))
+    try:
+        finished, still_running = wf.drain_inflight_runs(timeout_seconds=0.1)
+        assert finished == 0
+        assert still_running == 1
+    finally:
+        release.set()  # let the worker thread exit

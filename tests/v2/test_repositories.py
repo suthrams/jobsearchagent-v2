@@ -199,6 +199,50 @@ def test_reconcile_orphaned_runs_noop_when_none_active(db_path):
     assert repo.get_by_id("wf_done")["status"] == "completed"
 
 
+def test_list_orphaned_runs_returns_only_active_with_parsed_state(db_path):
+    repo = WorkflowRepository(db_path)
+    repo.create("wf_run", "t", {"status": "running", "current_step": "score_jobs"})
+    repo.create("wf_cancel", "t", {"status": "cancelling", "current_step": "deep_review"})
+    repo.create("wf_done", "t", {"status": "completed", "current_step": "completed"})
+    repo.create("wf_parked", "t", {"status": "awaiting_scoring_selection",
+                                   "current_step": "await_scoring_selection"})
+    orphans = repo.list_orphaned_runs()
+    assert {o["id"] for o in orphans} == {"wf_run", "wf_cancel"}
+    # state_json is parsed into ``state`` (a dict), state_json key removed
+    by_id = {o["id"]: o for o in orphans}
+    assert by_id["wf_run"]["state"]["current_step"] == "score_jobs"
+    assert "state_json" not in by_id["wf_run"]
+
+
+def test_bump_resume_attempt_increments_and_persists(db_path):
+    repo = WorkflowRepository(db_path)
+    repo.create("wf_a", "t", {"status": "running", "current_step": "x"})
+    assert repo.bump_resume_attempt("wf_a") == 1
+    assert repo.bump_resume_attempt("wf_a") == 2
+    assert repo.get_by_id("wf_a")["state"]["resume_attempts"] == 2
+    # status is not changed by a bump
+    assert repo.get_by_id("wf_a")["status"] == "running"
+    # missing run -> 0, no crash
+    assert repo.bump_resume_attempt("nope") == 0
+
+
+def test_mark_failed_sets_column_state_and_completed_at(db_path):
+    repo = WorkflowRepository(db_path)
+    repo.create("wf_f", "t", {"status": "running", "current_step": "career_advice"})
+    assert repo.mark_failed("wf_f", message="boom", error_type="ProcessInterrupted") is True
+    rec = repo.get_by_id("wf_f")
+    assert rec["status"] == "failed"
+    assert rec["state"]["status"] == "failed"
+    assert rec["state"]["errors"][-1] == {
+        "stage": "graph", "error_type": "ProcessInterrupted",
+        "message": "boom", "recoverable": False,
+    }
+    assert rec["completed_at"] is not None
+    assert rec["error_message"] == "boom"
+    # missing run -> False, no crash
+    assert repo.mark_failed("nope", message="x") is False
+
+
 # ─── ScoreRepository ─────────────────────────────────────────────────────────
 
 def test_score_create_and_fetch(db_path):

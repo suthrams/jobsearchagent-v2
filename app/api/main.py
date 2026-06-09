@@ -42,38 +42,70 @@ async def lifespan(app: FastAPI):
     # Skip if a test has already injected a graph via dependency_overrides
     if get_graph not in app.dependency_overrides:
         build_and_cache_graph()
-        _reconcile_orphaned_runs_on_startup()
+        _recover_orphaned_runs_on_startup()
     yield
+    if get_graph not in app.dependency_overrides:
+        _drain_inflight_runs_on_shutdown()
     cleanup_graph()
 
 
-def _reconcile_orphaned_runs_on_startup() -> None:
-    """Flip runs left running/cancelling by a previous (now-dead) process to failed.
+# ADR-096: how long a graceful shutdown waits for in-flight runs to checkpoint
+# before stopping the pool. Bounded so --reload / deploys don't hang; runs that
+# exceed it are picked up by startup recovery on the next boot. Env-overridable.
+def _drain_timeout_seconds() -> float:
+    import os
+    try:
+        return max(0.0, float(os.environ.get("WORKFLOW_SHUTDOWN_DRAIN_SECONDS", "30")))
+    except (TypeError, ValueError):
+        return 30.0
+
+
+def _recover_orphaned_runs_on_startup() -> None:
+    """Resume (or fail) runs left running/cancelling by a previous, now-dead process
+    (ADR-096 Layer 2).
 
     A workflow runs in an in-process thread pool, so a server restart or crash
-    mid-run (incl. the 'cannot schedule new futures after interpreter shutdown'
-    seen when uvicorn is stopped while a run executes) orphans the row at
-    running/cancelling and the UI shows it as perpetually running. At startup the
-    executor + run_control registry are empty, so any such row is definitively
-    orphaned. Best-effort: never block startup on a reconciliation failure.
+    mid-run (incl. the 'cannot schedule new futures after interpreter shutdown' seen
+    when uvicorn is stopped while a run executes) freezes its row at running/
+    cancelling. At startup the executor + run_control registry are empty, so any such
+    row is definitively orphaned. recover_orphaned_runs resumes each one from its
+    SqliteSaver checkpoint (under an attempt cap) and fails the unrecoverable ones.
+    Best-effort: never block startup on a recovery failure.
     """
     import logging
 
-    from app.repositories.workflow_repository import WorkflowRepository
+    from app.api.routers.workflows import recover_orphaned_runs
 
     try:
-        ids = WorkflowRepository().reconcile_orphaned_runs(
-            message=("Run interrupted by an API restart or shutdown (the process "
-                     "executing it is gone). Start a new run to retry."),
-        )
-        if ids:
+        result = recover_orphaned_runs(get_graph())
+        if result["resumed"] or result["failed"]:
             logging.getLogger(__name__).warning(
-                "Reconciled %d orphaned workflow run(s) to failed at startup: %s",
-                len(ids), ", ".join(ids),
+                "Startup run recovery: resumed=%s failed=%s",
+                result["resumed"], result["failed"],
             )
-    except Exception:  # noqa: BLE001 - reconciliation must never block startup
+    except Exception:  # noqa: BLE001 - recovery must never block startup
         logging.getLogger(__name__).exception(
-            "Startup reconciliation of orphaned runs failed (continuing).")
+            "Startup run recovery failed (continuing).")
+
+
+def _drain_inflight_runs_on_shutdown() -> None:
+    """Let in-flight runs reach a checkpoint before the process exits (ADR-096
+    Layer 1), so a graceful shutdown doesn't guillotine them mid-node. Bounded +
+    best-effort; whatever doesn't finish is recovered on the next startup."""
+    import logging
+
+    from app.api.routers.workflows import drain_inflight_runs
+
+    try:
+        finished, still_running = drain_inflight_runs(_drain_timeout_seconds())
+        if finished or still_running:
+            logging.getLogger(__name__).warning(
+                "Shutdown drain: %d run(s) finished, %d still running "
+                "(will be recovered on next startup).", finished, still_running,
+            )
+    except Exception:  # noqa: BLE001 - drain must never block shutdown
+        logging.getLogger(__name__).exception(
+            "Shutdown drain of in-flight runs failed (continuing).")
 
 
 app = FastAPI(title="Job Search Agent v2", lifespan=lifespan)

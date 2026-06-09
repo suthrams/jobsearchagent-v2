@@ -730,19 +730,31 @@ completed
 failed
 ```
 
-**Startup reconciliation of orphaned runs.** A workflow executes in an in-process
-thread pool, and only `register_run` (initial) and `generate_report` (terminal)
-write the `workflow_runs` row. So if the API process dies mid-run — a restart, a
-crash, or the interpreter-shutdown error `cannot schedule new futures after
-interpreter shutdown` raised when uvicorn is stopped while a run is executing — the
-row is frozen at `running`/`cancelling` and the UI shows it as perpetually running.
-On the next startup the executor and the `run_control` registry are freshly empty,
-so any `running`/`cancelling` row is definitively orphaned; the lifespan hook calls
-`WorkflowRepository.reconcile_orphaned_runs()` to flip those to `failed` (with a
-`ProcessInterrupted` error note + `completed_at`), leaving terminal and parked
-(`awaiting_scoring_selection`) runs untouched. Best-effort and never blocks startup.
+**Durable run recovery across restarts (ADR-096).** A workflow executes in an
+in-process thread pool, and only `register_run` (initial) and `generate_report`
+(terminal) write the `workflow_runs` row. So if the API process dies mid-run — a
+restart, a crash, or the interpreter-shutdown error `cannot schedule new futures
+after interpreter shutdown` raised when uvicorn is stopped while a run is executing
+— the row freezes at `running`/`cancelling` and the UI shows it as perpetually
+running. Two layers make a restart **pause** a run instead of **kill** it:
+
+- **Layer 1 — graceful drain (shutdown).** The lifespan shutdown calls
+  `drain_inflight_runs(timeout)`, waiting up to a bounded window (default 30s, env
+  `WORKFLOW_SHUTDOWN_DRAIN_SECONDS`) for in-flight runs to reach a checkpoint before
+  the process exits — so a clean stop never guillotines a run mid-node.
+- **Layer 2 — checkpointed auto-resume (startup).** On boot the executor and
+  `run_control` registry are freshly empty, so any `running`/`cancelling` row is
+  definitively orphaned. `recover_orphaned_runs(graph)` resumes each one from its
+  SqliteSaver checkpoint via `graph.invoke(None, config)` (the `_retry_graph` path)
+  under a per-run attempt cap (`MAX_RESUME_ATTEMPTS = 3`, counter in `state_json`),
+  and **fails** only the ones that exhaust the cap (so a poison run can't loop).
+- **Layer 3 — reconciliation backstop.** `WorkflowRepository.reconcile_orphaned_runs()`
+  flips orphans to `failed` (with a `ProcessInterrupted` note + `completed_at`) as the
+  fail-everything fallback. Terminal and parked (`awaiting_scoring_selection`) runs
+  are never touched.
+
 Single-process assumption (one-worker uvicorn / `--reload`); a multi-worker deploy
-would need a shared run registry first. This complements the in-flight guard and
+would need a shared run registry first. Complements the in-flight guard and
 cooperative cancel (ADR-082/083), which only cover a *live* process.
 
 ---

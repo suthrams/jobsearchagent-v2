@@ -9,6 +9,7 @@ import concurrent.futures
 import hashlib
 import json
 import logging
+import threading
 import uuid
 
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -41,9 +42,114 @@ router = APIRouter(prefix="/workflows", tags=["workflows"])
 
 _executor = concurrent.futures.ThreadPoolExecutor(max_workers=4)
 
+# ADR-096: track in-flight run futures so a graceful shutdown can DRAIN them (let
+# them reach a checkpoint) instead of having interpreter teardown guillotine them
+# mid-node ("cannot schedule new futures after interpreter shutdown"). Every run is
+# submitted through _submit_run so the set stays accurate.
+_inflight_runs: set[concurrent.futures.Future] = set()
+_inflight_lock = threading.Lock()
+
+# ADR-096: how many times startup recovery will resume a run from its checkpoint
+# before giving up and failing it (guards a poison run that crashes the process on
+# every resume from looping forever).
+MAX_RESUME_ATTEMPTS = 3
+
 # Terminal workflow statuses — a run in one of these is finished and cannot be
 # cancelled or re-run (ADR-082/083).
 _TERMINAL_STATUSES = ("completed", "failed", "cancelled")
+
+
+def _submit_run(fn, *args) -> concurrent.futures.Future:
+    """Submit a run to the pool and track its future for shutdown draining (ADR-096).
+
+    The done-callback deregisters the future so the in-flight set never grows without
+    bound. All kickoff sites (start / retry / phase-2 scoring) and startup recovery
+    go through here.
+    """
+    fut = _executor.submit(fn, *args)
+    with _inflight_lock:
+        _inflight_runs.add(fut)
+    fut.add_done_callback(_deregister_run)
+    return fut
+
+
+def _deregister_run(fut: concurrent.futures.Future) -> None:
+    with _inflight_lock:
+        _inflight_runs.discard(fut)
+
+
+def drain_inflight_runs(timeout_seconds: float) -> tuple[int, int]:
+    """Graceful-shutdown drain (ADR-096 Layer 1). Returns (finished, still_running).
+
+    Wait up to ``timeout_seconds`` for in-flight runs to reach completion so they
+    checkpoint cleanly. Because this runs in the lifespan shutdown — before
+    interpreter teardown sets the futures `_shutdown` flag — a run that finishes
+    inside the window never hits the "cannot schedule new futures after interpreter
+    shutdown" race. Runs that exceed the window are left to ADR-096 startup recovery
+    on the next boot; correctness does not depend on the drain completing.
+
+    The pool is intentionally NOT shut down here: at real process exit the executor
+    dies with the process, and an explicit shutdown would permanently disable the
+    module-level executor (fatal when a test harness enters/exits the lifespan more
+    than once in a single process). No new work arrives during shutdown anyway —
+    the server has stopped accepting connections — so a wait is sufficient.
+    """
+    with _inflight_lock:
+        pending = [f for f in _inflight_runs if not f.done()]
+    if not pending:
+        return 0, 0
+    done, not_done = concurrent.futures.wait(pending, timeout=timeout_seconds)
+    return len(done), len(not_done)
+
+
+def recover_orphaned_runs(graph, *, max_attempts: int = MAX_RESUME_ATTEMPTS,
+                          repo=None) -> dict:
+    """Startup recovery (ADR-096 Layer 2). Returns {"resumed": [...], "failed": [...]}.
+
+    A run left at running/cancelling by a dead process is durable: the SqliteSaver
+    holds its last checkpoint, so ``graph.invoke(None, config)`` (via _retry_graph)
+    resumes from the next pending node. At startup the executor + run_control
+    registry are freshly empty, so every such run is definitively orphaned. Resume
+    each one under the attempt cap; fail the ones that have used up their attempts so
+    a run that crashes the process on every resume cannot loop forever. Best-effort
+    per run — one run's failure to resubmit never blocks the others.
+
+    Assumes a durable checkpointer (real mode = SqliteSaver). In mocked mode there is
+    no checkpoint to resume; such runs fail once they exhaust the cap.
+    """
+    from app.repositories.workflow_repository import WorkflowRepository
+
+    if repo is None:
+        repo = WorkflowRepository(DEFAULT_DB_PATH)
+    resumed: list[str] = []
+    failed: list[str] = []
+    for run in repo.list_orphaned_runs():
+        wfid = run["id"]
+        attempts = int((run.get("state") or {}).get("resume_attempts") or 0)
+        if attempts >= max_attempts:
+            repo.mark_failed(
+                wfid,
+                message=(f"Run could not be recovered after {attempts} resume "
+                         "attempt(s) across restarts; giving up."),
+            )
+            failed.append(wfid)
+            continue
+        try:
+            repo.bump_resume_attempt(wfid)
+            config = {"configurable": {"thread_id": wfid}}
+            run_control.try_acquire_running(wfid)
+            _submit_run(_retry_graph, graph, config)
+            resumed.append(wfid)
+        except Exception:  # noqa: BLE001 - one bad run must not block the rest
+            logger.exception("Could not resubmit orphaned run %s; marking failed.", wfid)
+            repo.mark_failed(wfid, message="Could not be resubmitted for recovery after a restart.")
+            failed.append(wfid)
+    if resumed or failed:
+        logger.warning(
+            "ADR-096 startup recovery: resumed %d, failed %d orphaned run(s).",
+            len(resumed), len(failed),
+        )
+    return {"resumed": resumed, "failed": failed}
 
 
 def _get_idempotency_repo() -> IdempotencyRepository:
@@ -287,7 +393,7 @@ def start_workflow(
             )
 
     run_control.try_acquire_running(workflow_id)  # fresh id; always succeeds
-    _executor.submit(_run_graph, graph, initial_state, config)
+    _submit_run(_run_graph, graph, initial_state, config)
 
     logger.info("Workflow %s submitted to thread pool.", workflow_id)
     return response
@@ -485,7 +591,7 @@ def retry_workflow(
             },
         )
 
-    _executor.submit(_retry_graph, graph, config)
+    _submit_run(_retry_graph, graph, config)
     logger.info("Workflow %s re-submitted for retry, resuming from: %s", workflow_id, list(snapshot.next))
     return {"workflow_id": workflow_id, "status": "running", "resuming_from": list(snapshot.next)}
 
@@ -611,7 +717,7 @@ def submit_scoring_selection(
         "current_step": "scoring",
         "updated_at": utcnow_iso(),
     }
-    _executor.submit(_run_graph, graph, phase2_state, config)
+    _submit_run(_run_graph, graph, phase2_state, config)
 
     logger.info(
         "Workflow %s: scoring %d selected job(s) (phase 2).", workflow_id, len(capped),

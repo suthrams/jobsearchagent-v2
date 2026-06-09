@@ -40,17 +40,41 @@ user stranded on the live monitor after a run finishes.
   now uses a two-phase submit: the click captures the payload, raises a guard, and
   reruns so the button re-renders disabled ("Submitting…"); the next run executes the
   stashed payload while the button is greyed, then navigates / clears the guard on error.
-- **Orphaned runs reconciled at startup.** A workflow runs in an in-process thread
-  pool, and only `register_run` + `generate_report` write `workflow_runs`. If the API
-  process dies mid-run (restart, crash, or the `cannot schedule new futures after
-  interpreter shutdown` error seen when uvicorn is stopped while a run executes), the
-  row froze at `running`/`cancelling` and the UI showed it as perpetually running. The
-  lifespan startup now calls `WorkflowRepository.reconcile_orphaned_runs()` to flip
-  such rows to `failed` (with a `ProcessInterrupted` note + `completed_at`), leaving
-  terminal and parked runs untouched. Best-effort; never blocks startup. Single-process
-  assumption (one-worker uvicorn / `--reload`); complements ADR-082/083 (live process).
-- Docs swept: `workflow_model.md` (status lifecycle), `ui_architecture.md`. 1024 tests
-  pass (2 new reconciliation tests); UI smoke 12/12. No ADR (reliability + UX fixes).
+- **Orphaned runs reconciled at startup.** First cut: a startup hook flipped runs
+  left `running`/`cancelling` by a dead process to `failed` (see below — this grew
+  into ADR-096's full recovery stack).
+- Docs swept: `workflow_model.md`, `ui_architecture.md`. UI smoke 12/12.
+  No ADR for the button fix (UX); the run-recovery work became ADR-096.
+
+### Added — Durable run recovery across process restarts (ADR-096)
+
+A workflow executes in an in-process thread pool, and only `register_run` +
+`generate_report` write `workflow_runs`. So a process death mid-run (restart, crash,
+or the `cannot schedule new futures after interpreter shutdown` error when uvicorn is
+stopped while a run executes — the root cause of the career-advisor failure
+investigated this session) froze the row at `running` and showed it as perpetually
+running. ADR-096 makes a restart **pause** a run instead of **kill** it:
+
+- **Layer 1 — graceful drain (shutdown).** The lifespan shutdown calls
+  `drain_inflight_runs(timeout)`, waiting up to a bounded window (default 30s, env
+  `WORKFLOW_SHUTDOWN_DRAIN_SECONDS`) for in-flight runs to checkpoint before the
+  process exits, so a clean stop never guillotines a run mid-node. All runs submit
+  through a new `_submit_run` seam so the drain can track them. The pool is not
+  explicitly shut down (process exit handles it; an explicit shutdown would break a
+  test harness that re-enters the lifespan).
+- **Layer 2 — checkpointed auto-resume (startup).** `recover_orphaned_runs(graph)`
+  resumes each orphan from its SqliteSaver checkpoint via `graph.invoke(None, config)`
+  (the existing `_retry_graph` path) under a per-run attempt cap
+  (`MAX_RESUME_ATTEMPTS = 3`, counter in `state_json.resume_attempts`), and fails only
+  the runs that exhaust the cap so a poison run can't loop forever.
+- **Layer 3 — reconciliation backstop.** `WorkflowRepository.reconcile_orphaned_runs()`
+  (now built on a per-run `mark_failed` + `list_orphaned_runs`) remains the
+  fail-everything fallback. Terminal + parked runs are never touched.
+- New repo methods: `list_orphaned_runs`, `bump_resume_attempt`, `mark_failed`.
+  Single-process assumption (one-worker uvicorn / `--reload`); a multi-worker deploy
+  would need a shared run registry first. Complements ADR-082/083 (which cover a live
+  process). Docs swept: ADR-096 + index, `workflow_model.md`, CLAUDE.md. 1031 tests
+  pass (7 new); UI smoke 12/12.
 
 ---
 

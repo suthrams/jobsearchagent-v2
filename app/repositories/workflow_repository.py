@@ -67,53 +67,99 @@ class WorkflowRepository:
                 ),
             )
 
-    def reconcile_orphaned_runs(self, *, message: str) -> list[str]:
-        """Mark runs left non-terminal by a dead process as failed. Returns the ids.
+    def list_orphaned_runs(self) -> list[dict]:
+        """Runs left non-terminal by a dead process (status running/cancelling), with
+        state_json parsed into ``state`` (ADR-096).
 
-        A workflow executes in an in-process thread pool; only the register_run and
-        generate_report nodes write workflow_runs. So if the API process dies mid-run
-        (restart, crash, or interpreter shutdown -> 'cannot schedule new futures after
-        interpreter shutdown'), the row is frozen at running/cancelling and the UI
-        shows it as perpetually running. Called once at startup, when the executor and
-        run_control registry are freshly empty: any running/cancelling row is then
-        definitively orphaned (its owning process is gone), so flip it to failed with a
-        note and stamp completed_at + error_message. The embedded state_json status is
-        updated too, with an appended error, so state readers agree with the column.
-
-        Single-process assumption: correct for the standard one-worker uvicorn and for
-        --reload (only the killed worker's runs are orphaned). A true multi-worker
-        deploy would need a shared run registry before enabling this.
+        Only register_run and generate_report write workflow_runs, so a run whose
+        process died mid-flight is frozen at running/cancelling. Called at startup,
+        when the executor + run_control registry are freshly empty, every such row is
+        definitively orphaned (its owning process is gone). Oldest first.
         """
-        now = utcnow_iso()
-        reconciled: list[str] = []
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
-                "SELECT id, state_json FROM workflow_runs "
-                "WHERE status IN ('running', 'cancelling')"
+                "SELECT * FROM workflow_runs WHERE status IN ('running', 'cancelling') "
+                "ORDER BY started_at"
             ).fetchall()
-            for r in rows:
-                wid = r["id"]
-                try:
-                    state = json.loads(r["state_json"] or "{}")
-                except Exception:
-                    state = {}
-                state["status"] = "failed"
-                errs = list(state.get("errors") or [])
-                errs.append({
-                    "stage": "graph", "error_type": "ProcessInterrupted",
-                    "message": message, "recoverable": False,
-                })
-                state["errors"] = errs
-                state["updated_at"] = now
-                conn.execute(
-                    """UPDATE workflow_runs
-                       SET status = 'failed', state_json = ?, updated_at = ?,
-                           completed_at = COALESCE(completed_at, ?), error_message = ?
-                       WHERE id = ?""",
-                    (json.dumps(state), now, now, message, wid),
-                )
-                reconciled.append(wid)
-        return reconciled
+        out: list[dict] = []
+        for r in rows:
+            d = dict(r)
+            try:
+                d["state"] = json.loads(d.pop("state_json") or "{}")
+            except Exception:
+                d["state"] = {}
+            out.append(d)
+        return out
+
+    def bump_resume_attempt(self, workflow_id: str) -> int:
+        """Increment the run's ``state.resume_attempts`` counter and return the new
+        value (ADR-096). The counter rides state_json so no schema change is needed;
+        it caps how many times startup recovery will resume a run before giving up."""
+        now = utcnow_iso()
+        with get_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT state_json FROM workflow_runs WHERE id = ?", (workflow_id,)
+            ).fetchone()
+            if row is None:
+                return 0
+            try:
+                state = json.loads(row["state_json"] or "{}")
+            except Exception:
+                state = {}
+            attempts = int(state.get("resume_attempts") or 0) + 1
+            state["resume_attempts"] = attempts
+            state["updated_at"] = now
+            conn.execute(
+                "UPDATE workflow_runs SET state_json = ?, updated_at = ? WHERE id = ?",
+                (json.dumps(state), now, workflow_id),
+            )
+        return attempts
+
+    def mark_failed(self, workflow_id: str, *, message: str,
+                    error_type: str = "ProcessInterrupted") -> bool:
+        """Flip a single run to failed in both the status column and the embedded
+        state_json, stamping completed_at + error_message (ADR-096). Returns False if
+        the run does not exist. Used by startup recovery for runs that exhaust their
+        resume attempts, and by reconcile_orphaned_runs for the fail-everything path."""
+        now = utcnow_iso()
+        with get_connection(self.db_path) as conn:
+            row = conn.execute(
+                "SELECT state_json FROM workflow_runs WHERE id = ?", (workflow_id,)
+            ).fetchone()
+            if row is None:
+                return False
+            try:
+                state = json.loads(row["state_json"] or "{}")
+            except Exception:
+                state = {}
+            state["status"] = "failed"
+            errs = list(state.get("errors") or [])
+            errs.append({
+                "stage": "graph", "error_type": error_type,
+                "message": message, "recoverable": False,
+            })
+            state["errors"] = errs
+            state["updated_at"] = now
+            conn.execute(
+                """UPDATE workflow_runs
+                   SET status = 'failed', state_json = ?, updated_at = ?,
+                       completed_at = COALESCE(completed_at, ?), error_message = ?
+                   WHERE id = ?""",
+                (json.dumps(state), now, now, message, workflow_id),
+            )
+        return True
+
+    def reconcile_orphaned_runs(self, *, message: str) -> list[str]:
+        """Mark ALL currently-orphaned runs (running/cancelling) failed; return ids.
+
+        The fail-everything backstop (ADR-096 Layer 3). ADR-096 startup recovery
+        prefers resuming orphans from their checkpoint; this is the fallback when no
+        durable resume is possible. Terminal + parked runs are never matched.
+        """
+        ids = [r["id"] for r in self.list_orphaned_runs()]
+        for wid in ids:
+            self.mark_failed(wid, message=message)
+        return ids
 
     def get_by_status(self, status: str) -> list[dict]:
         with get_connection(self.db_path) as conn:
