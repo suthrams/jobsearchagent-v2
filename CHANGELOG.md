@@ -88,6 +88,20 @@ out-of-graph on-demand (curate-after) ops. Specs in
 `python tools/render_figures.py <id>`. Also fixed a stale `db_reader` read-path
 sentence in S1 (retired by ADR-075).
 
+### Docs — sweep stale `db_reader` references in the canonical docs (ADR-075)
+
+`db_reader.py` was deleted by ADR-075 (all UI reads go through the API ->
+`app/services/reads/`), but a few **current** reference docs still described it as
+live. Updated `ui_architecture.md` (two mermaid sequence diagrams + the §7.5 "pure
+read-path" premise + the §9 caching note now route through `api_client` ->
+FastAPI -> `services/reads`), `data_model.md` (every "Read by: `db_reader.load_*`"
+annotation now names the real read-service function, e.g.
+`workflow_reads.list_workflow_runs`, via the API), and `ui_model.md` (profile
+switcher + clinic past-runs read path). Left untouched on purpose: ADRs, phase
+docs, the ui-read-funnel migration plan, the "before" refactor diagram, and the
+ADR index — those are point-in-time records correctly describing the pre-ADR-075
+state. Docs-only.
+
 ---
 
 ## 2026-06-07

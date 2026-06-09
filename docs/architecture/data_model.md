@@ -143,10 +143,10 @@ CREATE TABLE workflow_runs (
 - **Written by**: `register_run` node at workflow start (initial row), and
   `generate_report` node at workflow end (terminal status + final
   metrics). Every node update funnels through the orchestrator.
-- **Read by**: `app/ui/db_reader.py::load_persisted_workflow_runs`
-  (Workflow History table), `load_workflow_run` (Workflow Detail
-  header), the on-demand tailoring router (reads `state_json` for
-  `resume_profile` + `selected_jobs`).
+- **Read by**: `app/services/reads/workflow_reads.list_workflow_runs`
+  (Searches table) and `get_workflow_run_detail` (Search detail header),
+  surfaced to the UI via the API (ADR-075); the on-demand tailoring router
+  (reads `state_json` for `resume_profile` + `selected_jobs`).
 - **Critical invariant** (CLAUDE.md): "register_run is the graph entry
   point. It writes the initial state (including `effective_config` and
   `custom_urls`) to `workflow_runs` so the Workflow Detail UI can show
@@ -209,9 +209,10 @@ CREATE TABLE jobs (
 - **Excluded by**: `POST /jobs/{id}/exclude` endpoint
   (`app/api/routers/jobs.py`) → `JobRepository.set_excluded`.
 - **Read by**: `JobDiscoveryService.deduplicate` (drops re-discovered URLs
-  via `url_exists`); `db_reader.load_workflow_jobs` (Find & Score table);
-  `db_reader.load_scored_jobs` (cross-run analytics — default-hides
-  excluded). Tailoring router reads `jobs.id` for routing.
+  via `url_exists`); `app/services/reads/workflow_reads.list_workflow_jobs`
+  (Find & Score table) and `dashboard_reads.list_scored_jobs` (cross-run
+  analytics — default-hides excluded), both via the API (ADR-075). Tailoring
+  router reads `jobs.id` for routing.
 - **Why URL is the load-bearing dedup key** (ADR-057): Adzuna can surface
   the same posting on different days with a fresh `source_job_id` and a
   fresh row `id` would be assigned. URL is the only stable identifier.
@@ -353,8 +354,8 @@ CREATE TABLE job_scores (
   via `ScoreRepository.create`.
 - **Read by**: `await_job_selection` router for auto-select decision
   (ADR-054 — qualifies on the best track score, not overall);
-  `db_reader.load_workflow_jobs` (Find & Score); analytics views
-  (Top Matches, IC / Architect / Management Track, Companies);
+  `app/services/reads/workflow_reads.list_workflow_jobs` (Find & Score, via
+  the API); analytics views (Top Matches, IC / Architect / Management Track, Companies);
   `report_generator` for the run report.
 
 ---
@@ -636,7 +637,7 @@ CREATE INDEX idx_resume_clinic_user ON resume_clinic_reviews(user_id);
 | `resume_id`            | TEXT        | FK -> `resumes.id`. Ownership enforced cooperatively by the runner. |
 | `workflow_run_id`      | TEXT        | FK -> `workflow_runs.id` of the lightweight `workflow_type="resume_clinic"` row written for cost attribution; NULL only for legacy rows. |
 | `source_workflow_run_id` | TEXT      | ADR-072. FK -> `workflow_runs.id` of the originating job-search run when this is a **tailoring chat** launched from a scored job; NULL for a plain (job-agnostic) clinic. |
-| `job_id`               | TEXT        | ADR-072. The scored job this chat refines; NULL for a plain clinic. A row with `job_id` set is listed under its job (db_reader `load_job_chat_sessions`) and excluded from the clinic past-runs panel. |
+| `job_id`               | TEXT        | ADR-072. The scored job this chat refines; NULL for a plain clinic. A row with `job_id` set is listed under its job (via the read service behind the clinic-runs API) and excluded from the clinic past-runs panel. |
 | `target_role`          | TEXT        | Optional free-text target; absent -> quality-only mode. |
 | `target_track`         | TEXT        | Optional one of `ic` / `architect` / `management`. |
 | `seniority_aware`      | INT         | `0` or `1` (cast to bool on read); whether the reviewer calibrated to the candidate's stage. |
@@ -664,8 +665,9 @@ CREATE INDEX idx_resume_clinic_user ON resume_clinic_reviews(user_id);
   `edited_json` when an explicit payload is supplied; a payload-less decision
   leaves `edited_json` untouched so a `Save`/`approve` after a chat-revise session
   cannot clobber the accumulated chat edits.
-- **Read by**: `GET /users/{id}/resume-clinic`; the Streamlit "Resume Clinic"
-  view's past-runs panel via `db_reader.load_user_clinic_reviews`.
+- **Read by**: `GET /users/{id}/resume-clinic` (the read service behind it),
+  surfaced in the Streamlit "Resume Clinic" view's past-runs panel via the API
+  (ADR-075).
 
 ---
 
@@ -858,7 +860,8 @@ CREATE TABLE step_executions (
   `duration_ms` is computed by SQLite `julianday()` at completion.
 - **Read by**: `system_health.performance_summary` (the System Dashboard
   Performance section's "slowest steps", node-level p95);
-  `db_reader.load_step_executions` (Workflow Detail timeline).
+  `app/services/reads/workflow_reads.list_step_executions` (the Live monitor
+  timeline, via the API).
 
 ---
 
@@ -903,8 +906,8 @@ CREATE TABLE agent_events (
 
 - **Written by**: `BaseAgent._run` via `ObservabilityService.record_event`.
   Every agent inherits this — the orchestrator does not need to wire it.
-- **Read by**: `db_reader.load_agent_events` (Live Run Monitor activity
-  feed); per-job drill-down screen.
+- **Read by**: `app/services/reads/workflow_reads.list_agent_events` (Live
+  monitor activity feed, via the API); per-job drill-down screen.
 
 ---
 
@@ -1075,9 +1078,10 @@ CREATE TABLE security_events (
 
 HTTP-layer observability (ADR-074 Gap 5). One append-only row per REST request,
 written by the FastAPI middleware. Net-new in ADR-074 — before it, the API surface
-had no observability at all. Covers the control path (writes/actions) plus the few
-read endpoints the UI calls; the UI's browse reads bypass the API by design
-(`db_reader` direct SQLite).
+had no observability at all. Since ADR-075 it covers **every** UI interaction —
+writes/actions and browse reads alike — because the UI's browse reads now go
+through the API too (the old `db_reader` direct-SQLite path is gone), so the table
+is a complete record of UI-to-backend traffic.
 
 ### Schema
 
@@ -1407,7 +1411,8 @@ memory_items.memory_value_json
   shape change is unavoidable.
 - **No hidden chain-of-thought.** Store summaries, not raw reasoning.
 - **Extract for indexed reads.** Use SQLite's `json_extract()` in
-  per-row read queries — see `db_reader.py` for the pattern.
+  per-row read queries — see `app/services/reads/` for the pattern (the
+  read path since ADR-075).
 
 ---
 

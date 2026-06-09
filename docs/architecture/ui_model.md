@@ -129,8 +129,8 @@ job-seekers from one install under sequential use.
 ### UI Elements
 
 * a sidebar **Profile** dropdown (over `GET /users`) that sets
-  `st.session_state["current_user_id"]` and is mirrored onto the API client and
-  the `db_reader` read path
+  `st.session_state["current_user_id"]` and is mirrored onto the API client, which
+  attaches `?user_id=` to every read and write (the single API path since ADR-075)
 * an **Add profile** button opening a 3-step onboarding wizard: identity
   (name + optional note -> `POST /users`) -> resume upload (scoped to the new
   profile) -> default roles/locations (saved as that profile's `user_config`)
@@ -468,8 +468,9 @@ that the senior-tuned funnel underserves.
 * `api_client.list_resume_clinic_runs` -> `GET /users/{user_id}/resume-clinic`
 * `api_client.submit_resume_clinic_decision` -> `POST /resume-clinic/{id}/decisions`
 * `api_client.export_resume_clinic` -> `GET /resume-clinic/{id}/export?format=...`
-* Read path: `db_reader.load_user_clinic_reviews(user_id)` for the
-  past-runs panel.
+* Read path for the past-runs panel: `api_client.list_resume_clinic_runs` ->
+  `GET /users/{user_id}/resume-clinic` (backed by the read services; no direct DB
+  read since ADR-075).
 
 ### Rules
 

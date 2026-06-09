@@ -344,7 +344,7 @@ sequenceDiagram
     participant G as LangGraph run (thread pool)
     participant SQL as data/v2.db
     participant LM as live_monitor.render
-    participant DB as db_reader
+    participant RS as services/reads
 
     U->>SR: fill form, "Start Workflow"
     SR->>AC: api.start_workflow(resume_id, search_criteria, config, custom_urls)
@@ -360,9 +360,13 @@ sequenceDiagram
     LM->>AC: api.get_workflow_status(wf_id)
     AC->>API: GET /workflows/{id}
     API-->>LM: status, current_step, run_metrics
-    LM->>DB: load_step_executions / load_agent_events / load_llm_calls
-    DB->>SQL: SELECT ... WHERE workflow_run_id=?
-    DB-->>LM: activity rows
+    LM->>AC: get_step_executions / agent_events / llm_calls
+    AC->>API: GET /workflows/{id}/steps · /agent-events · /llm-calls
+    API->>RS: list_step_executions / list_agent_events / list_llm_calls
+    RS->>SQL: SELECT ... WHERE workflow_run_id=?
+    SQL-->>RS: rows
+    RS-->>API: rows
+    API-->>LM: activity rows (no direct DB read — ADR-075)
     LM-->>U: status + activity feed (auto-refresh every 5s while active)
     Note over LM: on completion the fragment flags a hand-off; the next app rerun
     LM->>U: st.switch_page -> Search detail for wf_id (jobs surfaced + filtered-out panel)
@@ -460,22 +464,32 @@ sequenceDiagram
 
 ### 7.5 A pure read-path render (the common case)
 
-Most screens never touch the backend at all. Workflow History is representative:
+Most screens are **read-only** — they display stored data and trigger no work. But
+since ADR-075 even those reads go through the API; there is no direct-DB path.
+Searches (Workflow History) is representative:
 
 ```mermaid
 sequenceDiagram
     participant E as entrypoint
     participant H as history.render
-    participant DB as db_reader
+    participant D as data.py (@st.cache_data)
+    participant AC as api_client
+    participant API as FastAPI
+    participant RS as services/reads
     participant SQL as data/v2.db
 
     E->>H: render(ctx)
-    H->>DB: load_persisted_workflow_runs(user_id=current_user_id)
-    DB->>SQL: SELECT ... json_extract(state_json, ...) WHERE user_id=?
-    SQL-->>DB: rows
-    DB-->>H: DataFrame
+    H->>D: cached workflow-runs read (user_id=current_user_id)
+    D->>AC: get_workflow_runs(...)
+    AC->>API: GET /workflows?user_id=...
+    API->>RS: list_workflow_runs(user_id=...)
+    RS->>SQL: SELECT ... json_extract(state_json, ...) WHERE user_id=?
+    SQL-->>RS: rows
+    RS-->>API: rows
+    API-->>D: JSON -> DataFrame (cached)
+    D-->>H: DataFrame
     H->>H: build table + metrics, wire row-click to _navigate
-    Note over H,SQL: zero FastAPI calls. the read path is direct + cooperative-scoped by user_id
+    Note over H,SQL: one API read path (ADR-075); cooperative-scoped by user_id; cached in data.py
 ```
 
 ---
@@ -518,10 +532,13 @@ API on every keystroke. Two mechanisms absorb that:
 - **`st.session_state.config_cache`** holds `GET /config` for the run; set it to
   `None` after any config write so the next run refetches.
 
-`db_reader` functions are intentionally **not** `@st.cache_data`-decorated — they are
-cheap direct SQLite reads and must always reflect the latest rows the backend wrote
-(e.g. the Live Monitor activity feed during a running workflow). The sidebar
-"Refresh data" button does `st.cache_data.clear()` + rerun to force everything fresh.
+Live, must-be-fresh reads (e.g. the Live Monitor activity feed during a running
+workflow) call the `api_client.get_*` functions **directly**, bypassing the
+`data.py` cache wrappers, so they always reflect the latest rows the backend wrote;
+the auto-refresh fragment also clears the relevant `_cached_*` entries each tick. The
+sidebar "Refresh data" button does `st.cache_data.clear()` + rerun to force
+everything fresh. (Pre-ADR-075 this role was filled by the uncached `db_reader`
+helpers; those are gone — every read is now an API call, cached or not.)
 
 ---
 
