@@ -175,6 +175,20 @@ selected `detail_workflow_id`/`detail_job_id`) it reads from `st.session_state`.
 
 ## 4. Navigation model (ADR-088: native multipage)
 
+**Outside view — the end-to-end journey.** Before the screens, here is the whole
+application flow from the job seeker's side: the human defines the search, judges
+the matches, and decides the resume, while the agents do the searching, scoring, and
+drafting underneath. The app deliberately stops at the decision — there is no
+Apply/Save/status tracking, because the career call stays human-owned.
+
+![End-to-end job-seeker journey, outside view: a top lane of what the human does (onboard, define search, watch, review matches, dig in, tailor, apply) over a bottom lane of what the app does (parse, search, filter+score, rank, deep review, draft, export then stop), with DEFINE/JUDGE/DECIDE/ACT marking the human-owned moments.](images/ui_jobseeker_journey_outside.png)
+
+*Source spec: `tools/figure_renderer/specs/ui_jobseeker_journey_outside.json`
+(re-render: `python tools/render_figures.py ui_jobseeker_journey_outside`).*
+
+**Inside view — the screens and how they connect.** The same journey, expressed as
+the actual screens and navigation:
+
 ![The jobseeker journey: the four sidebar groups (FIND, MY OPPORTUNITIES, RESUME, SYSTEM), the four click-through destinations, and how they connect. Matches is the home base; a finished run auto-opens its Search detail; any scored job opens an Opportunity.](images/ui_jobseeker_flow.png)
 
 *The jobseeker flows at a glance — sidebar groups are color-coded (green FIND, blue
