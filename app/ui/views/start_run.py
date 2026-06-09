@@ -175,9 +175,20 @@ def render(ctx: ViewContext) -> None:
             placeholder="https://www.linkedin.com/jobs/view/123\nhttps://acme.com/careers/staff-engineer",
         )
 
-        submitted = st.form_submit_button("Start Workflow")
+        # The button greys out while a submission is in flight (the guard below).
+        _submitting = st.session_state.get("_run_submitting", False)
+        submitted = st.form_submit_button(
+            "Submitting…" if _submitting else "Start Workflow",
+            disabled=_submitting,
+        )
 
-    if submitted:
+    # Two-phase submit. Each kickoff gets a fresh Idempotency-Key (api_client), so
+    # the server can't dedupe two distinct user clicks - a double-click would start
+    # two runs. So the guard lives here: phase A (this click) captures the form
+    # payload, raises _run_submitting, and reruns so the button re-renders disabled;
+    # phase B (the rerun) executes the stashed payload while the button is greyed,
+    # then navigates away (success) or clears the guard so the user can retry (error).
+    if submitted and not _submitting:
         custom_urls = [u.strip() for u in custom_urls_raw.splitlines() if u.strip()]
 
         search_criteria = {
@@ -221,21 +232,42 @@ def render(ctx: ViewContext) -> None:
             },
         }
 
-        if persist_prefs:
+        # Stash everything needed by phase B. The form's widget values are only
+        # available on this click run; a plain st.rerun would lose them, so capture
+        # the built payload (and any prefs to persist) into session_state now.
+        prefs = {
+            "scoring.min_match_score": int(run_threshold),
+            "scoring.manual_selection": bool(manual_scoring),
+            "scoring.max_scored": int(max_scored),
+            "search.max_discovered": int(max_discovered),
+            "search.titles": search_criteria["roles"],
+            "search.locations": search_criteria["locations"],
+            "search.max_years_experience": int(max_years_experience),
+            "search.min_years_experience": int(min_years_experience),
+            "search.exclude_senior": bool(exclude_senior),
+            "search.relevance_filter": bool(relevance_filter),
+            "search.exclude_clearance": bool(exclude_clearance),
+            "search.max_posting_age_days": int(max_posting_age_days),
+            "search.drop_dead_links": bool(drop_dead_links),
+        }
+        st.session_state._pending_run = {
+            "resume_id": resume_id,
+            "search_criteria": search_criteria,
+            "effective_config": effective_config,
+            "custom_urls": custom_urls,
+            "prefs": prefs if persist_prefs else None,
+        }
+        st.session_state._run_submitting = True
+        st.rerun()  # re-render with the button disabled, then run phase B below
+
+    # Phase B: a submission is in flight - execute it with the button greyed out.
+    if st.session_state.get("_run_submitting") and st.session_state.get("_pending_run"):
+        pending = st.session_state._pending_run
+
+        if pending.get("prefs"):
             try:
-                api.put_config("scoring.min_match_score", int(run_threshold))
-                api.put_config("scoring.manual_selection", bool(manual_scoring))
-                api.put_config("scoring.max_scored", int(max_scored))
-                api.put_config("search.max_discovered", int(max_discovered))
-                api.put_config("search.titles", search_criteria["roles"])
-                api.put_config("search.locations", search_criteria["locations"])
-                api.put_config("search.max_years_experience", int(max_years_experience))
-                api.put_config("search.min_years_experience", int(min_years_experience))
-                api.put_config("search.exclude_senior", bool(exclude_senior))
-                api.put_config("search.relevance_filter", bool(relevance_filter))
-                api.put_config("search.exclude_clearance", bool(exclude_clearance))
-                api.put_config("search.max_posting_age_days", int(max_posting_age_days))
-                api.put_config("search.drop_dead_links", bool(drop_dead_links))
+                for _key, _val in pending["prefs"].items():
+                    api.put_config(_key, _val)
                 st.session_state.config_cache = None  # invalidate
             except Exception as exc:
                 st.warning(f"Settings save failed (run will still start): {exc}")
@@ -243,20 +275,26 @@ def render(ctx: ViewContext) -> None:
         try:
             with st.spinner("Submitting workflow…"):
                 resp = api.start_workflow(
-                    resume_id, search_criteria,
-                    effective_config=effective_config,
-                    custom_urls=custom_urls,
+                    pending["resume_id"], pending["search_criteria"],
+                    effective_config=pending["effective_config"],
+                    custom_urls=pending["custom_urls"],
                 )
             st.session_state.workflow_id = resp["workflow_id"]
             st.session_state.last_status = "running"
             st.session_state.last_response = resp
             st.session_state.detail_workflow_id = resp["workflow_id"]
+            # Clear the guard before leaving so returning to this page is clean.
+            st.session_state._run_submitting = False
+            st.session_state._pending_run = None
             # Take the user straight to the Live monitor once the workflow_id is
             # available, so they can watch the run unfold. The Live monitor
             # auto-refreshes while the run is active (no manual Refresh needed);
-            # on completion it points to the matches/report. (Matches still hosts
-            # the ADR-089 status strip for anyone who navigates there.)
+            # on completion it hands off to the run's detail page. (Matches still
+            # hosts the ADR-089 status strip for anyone who navigates there.)
             st.toast("Search started — taking you to the live run.")
             _navigate("Live Run Monitor")
         except Exception as exc:
+            # Failed to start: drop the guard so the button re-enables for a retry.
+            st.session_state._run_submitting = False
+            st.session_state._pending_run = None
             st.error(f"Failed to start workflow: {exc}")

@@ -165,6 +165,40 @@ def test_workflow_list_recent(db_path):
     assert len(results) == 3
 
 
+def test_reconcile_orphaned_runs_fails_only_active_runs(db_path):
+    """A server restart leaves runs frozen at running/cancelling (only register_run
+    and generate_report write workflow_runs). Startup reconciliation flips exactly
+    those to failed, leaving terminal + parked runs untouched."""
+    repo = WorkflowRepository(db_path)
+    repo.create("wf_running", "t", {"status": "running", "current_step": "career_advice"})
+    repo.create("wf_cancelling", "t", {"status": "cancelling", "current_step": "score_jobs"})
+    repo.create("wf_done", "t", {"status": "completed", "current_step": "completed"})
+    repo.create("wf_parked", "t", {"status": "awaiting_scoring_selection",
+                                   "current_step": "await_scoring_selection"})
+
+    ids = repo.reconcile_orphaned_runs(message="interrupted by restart")
+
+    assert set(ids) == {"wf_running", "wf_cancelling"}
+    assert repo.get_by_id("wf_running")["status"] == "failed"
+    assert repo.get_by_id("wf_cancelling")["status"] == "failed"
+    # terminal + parked runs are not touched
+    assert repo.get_by_id("wf_done")["status"] == "completed"
+    assert repo.get_by_id("wf_parked")["status"] == "awaiting_scoring_selection"
+    # the failure is recorded in the column + the embedded state, with completed_at set
+    rec = repo.get_by_id("wf_running")
+    assert rec["error_message"] == "interrupted by restart"
+    assert rec["completed_at"] is not None
+    assert rec["state"]["status"] == "failed"
+    assert rec["state"]["errors"][-1]["error_type"] == "ProcessInterrupted"
+
+
+def test_reconcile_orphaned_runs_noop_when_none_active(db_path):
+    repo = WorkflowRepository(db_path)
+    repo.create("wf_done", "t", {"status": "completed", "current_step": "completed"})
+    assert repo.reconcile_orphaned_runs(message="x") == []
+    assert repo.get_by_id("wf_done")["status"] == "completed"
+
+
 # ─── ScoreRepository ─────────────────────────────────────────────────────────
 
 def test_score_create_and_fetch(db_path):

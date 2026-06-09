@@ -42,8 +42,38 @@ async def lifespan(app: FastAPI):
     # Skip if a test has already injected a graph via dependency_overrides
     if get_graph not in app.dependency_overrides:
         build_and_cache_graph()
+        _reconcile_orphaned_runs_on_startup()
     yield
     cleanup_graph()
+
+
+def _reconcile_orphaned_runs_on_startup() -> None:
+    """Flip runs left running/cancelling by a previous (now-dead) process to failed.
+
+    A workflow runs in an in-process thread pool, so a server restart or crash
+    mid-run (incl. the 'cannot schedule new futures after interpreter shutdown'
+    seen when uvicorn is stopped while a run executes) orphans the row at
+    running/cancelling and the UI shows it as perpetually running. At startup the
+    executor + run_control registry are empty, so any such row is definitively
+    orphaned. Best-effort: never block startup on a reconciliation failure.
+    """
+    import logging
+
+    from app.repositories.workflow_repository import WorkflowRepository
+
+    try:
+        ids = WorkflowRepository().reconcile_orphaned_runs(
+            message=("Run interrupted by an API restart or shutdown (the process "
+                     "executing it is gone). Start a new run to retry."),
+        )
+        if ids:
+            logging.getLogger(__name__).warning(
+                "Reconciled %d orphaned workflow run(s) to failed at startup: %s",
+                len(ids), ", ".join(ids),
+            )
+    except Exception:  # noqa: BLE001 - reconciliation must never block startup
+        logging.getLogger(__name__).exception(
+            "Startup reconciliation of orphaned runs failed (continuing).")
 
 
 app = FastAPI(title="Job Search Agent v2", lifespan=lifespan)

@@ -730,6 +730,21 @@ completed
 failed
 ```
 
+**Startup reconciliation of orphaned runs.** A workflow executes in an in-process
+thread pool, and only `register_run` (initial) and `generate_report` (terminal)
+write the `workflow_runs` row. So if the API process dies mid-run — a restart, a
+crash, or the interpreter-shutdown error `cannot schedule new futures after
+interpreter shutdown` raised when uvicorn is stopped while a run is executing — the
+row is frozen at `running`/`cancelling` and the UI shows it as perpetually running.
+On the next startup the executor and the `run_control` registry are freshly empty,
+so any `running`/`cancelling` row is definitively orphaned; the lifespan hook calls
+`WorkflowRepository.reconcile_orphaned_runs()` to flip those to `failed` (with a
+`ProcessInterrupted` error note + `completed_at`), leaving terminal and parked
+(`awaiting_scoring_selection`) runs untouched. Best-effort and never blocks startup.
+Single-process assumption (one-worker uvicorn / `--reload`); a multi-worker deploy
+would need a shared run registry first. This complements the in-flight guard and
+cooperative cancel (ADR-082/083), which only cover a *live* process.
+
 ---
 
 ## 16. Observability Integration

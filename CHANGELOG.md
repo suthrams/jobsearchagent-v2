@@ -32,6 +32,26 @@ user stranded on the live monitor after a run finishes.
 - No ADR (additive surfacing + a UX hand-off, no contract change). Docs swept:
   `relevance_filter_design.md`, `ui_architecture.md`. 1022 tests pass; UI smoke 12/12.
 
+### Fixed — Start-button double-submit + orphaned "running" runs after a restart
+
+- **Start button greys out on submit.** "Start Workflow" stayed enabled during the
+  "Submitting…" spinner, and since each kickoff gets a fresh Idempotency-Key the
+  server couldn't dedupe a double-click - two clicks started two runs. `start_run.py`
+  now uses a two-phase submit: the click captures the payload, raises a guard, and
+  reruns so the button re-renders disabled ("Submitting…"); the next run executes the
+  stashed payload while the button is greyed, then navigates / clears the guard on error.
+- **Orphaned runs reconciled at startup.** A workflow runs in an in-process thread
+  pool, and only `register_run` + `generate_report` write `workflow_runs`. If the API
+  process dies mid-run (restart, crash, or the `cannot schedule new futures after
+  interpreter shutdown` error seen when uvicorn is stopped while a run executes), the
+  row froze at `running`/`cancelling` and the UI showed it as perpetually running. The
+  lifespan startup now calls `WorkflowRepository.reconcile_orphaned_runs()` to flip
+  such rows to `failed` (with a `ProcessInterrupted` note + `completed_at`), leaving
+  terminal and parked runs untouched. Best-effort; never blocks startup. Single-process
+  assumption (one-worker uvicorn / `--reload`); complements ADR-082/083 (live process).
+- Docs swept: `workflow_model.md` (status lifecycle), `ui_architecture.md`. 1024 tests
+  pass (2 new reconciliation tests); UI smoke 12/12. No ADR (reliability + UX fixes).
+
 ---
 
 ## 2026-06-07

@@ -67,6 +67,54 @@ class WorkflowRepository:
                 ),
             )
 
+    def reconcile_orphaned_runs(self, *, message: str) -> list[str]:
+        """Mark runs left non-terminal by a dead process as failed. Returns the ids.
+
+        A workflow executes in an in-process thread pool; only the register_run and
+        generate_report nodes write workflow_runs. So if the API process dies mid-run
+        (restart, crash, or interpreter shutdown -> 'cannot schedule new futures after
+        interpreter shutdown'), the row is frozen at running/cancelling and the UI
+        shows it as perpetually running. Called once at startup, when the executor and
+        run_control registry are freshly empty: any running/cancelling row is then
+        definitively orphaned (its owning process is gone), so flip it to failed with a
+        note and stamp completed_at + error_message. The embedded state_json status is
+        updated too, with an appended error, so state readers agree with the column.
+
+        Single-process assumption: correct for the standard one-worker uvicorn and for
+        --reload (only the killed worker's runs are orphaned). A true multi-worker
+        deploy would need a shared run registry before enabling this.
+        """
+        now = utcnow_iso()
+        reconciled: list[str] = []
+        with get_connection(self.db_path) as conn:
+            rows = conn.execute(
+                "SELECT id, state_json FROM workflow_runs "
+                "WHERE status IN ('running', 'cancelling')"
+            ).fetchall()
+            for r in rows:
+                wid = r["id"]
+                try:
+                    state = json.loads(r["state_json"] or "{}")
+                except Exception:
+                    state = {}
+                state["status"] = "failed"
+                errs = list(state.get("errors") or [])
+                errs.append({
+                    "stage": "graph", "error_type": "ProcessInterrupted",
+                    "message": message, "recoverable": False,
+                })
+                state["errors"] = errs
+                state["updated_at"] = now
+                conn.execute(
+                    """UPDATE workflow_runs
+                       SET status = 'failed', state_json = ?, updated_at = ?,
+                           completed_at = COALESCE(completed_at, ?), error_message = ?
+                       WHERE id = ?""",
+                    (json.dumps(state), now, now, message, wid),
+                )
+                reconciled.append(wid)
+        return reconciled
+
     def get_by_status(self, status: str) -> list[dict]:
         with get_connection(self.db_path) as conn:
             rows = conn.execute(
