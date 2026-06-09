@@ -22,9 +22,12 @@ import plotly.express as px
 import streamlit as st
 
 import app.ui.api_client as api
+from app.services.posting_age_filter import is_stale
 from app.ui.components.favorites import favorited_ids, render_favorite_toggle
+from app.ui.components.posting_link import source_badge
 from app.ui.components.run_status import render_run_status
 from app.ui.data import _cached_scored_jobs, _cached_user_resumes, _get_config_cached
+from app.ui.formatting import format_posting_age_short
 from app.ui.nav import ViewContext, _navigate
 
 _VALID_TRACKS = ["ic", "architect", "management"]
@@ -78,6 +81,84 @@ def _empty_state() -> None:
             _navigate("Start New Run")
 
 
+def _focus_jobs(df: pd.DataFrame, active_tracks: list[str], limit: int = 3) -> pd.DataFrame:
+    """ADR-093 #2: the top `limit` jobs to ACT on now, ranked by best ACTIVE-track
+    score (ADR-071), tie-broken by posting freshness then overall score. Pure +
+    deterministic (no LLM) - it reorders data the scorer already produced. A
+    recommendation of where to spend effort, not a status/tracker.
+    """
+    if df is None or df.empty:
+        return df.head(0) if df is not None else pd.DataFrame()
+    work = df.copy()
+    score_cols = [_TRACK_SCORE[t] for t in active_tracks
+                  if _TRACK_SCORE.get(t) in work.columns]
+    if score_cols:
+        work["_best"] = work[score_cols].apply(pd.to_numeric, errors="coerce").max(axis=1)
+    elif "overall_score" in work.columns:
+        work["_best"] = pd.to_numeric(work["overall_score"], errors="coerce")
+    else:
+        return work.head(0)
+    work = work[work["_best"].notna() & (work["_best"] > 0)]
+    if work.empty:
+        return work
+    # ISO date strings sort correctly lexicographically; missing -> "" sorts last.
+    work["_posted"] = (work["posted_at"].fillna("").astype(str)
+                       if "posted_at" in work.columns else "")
+    work["_overall"] = pd.to_numeric(work.get("overall_score"), errors="coerce").fillna(0)
+    work = work.sort_values(["_best", "_posted", "_overall"],
+                            ascending=[False, False, False])
+    return work.head(limit)
+
+
+def _focus_card(job: pd.Series) -> None:
+    title = str(job.get("title") or "(untitled)")
+    company = str(job.get("company") or "—")
+    loc = str(job.get("location") or "").strip()
+    best = int(job["_best"]) if pd.notna(job.get("_best")) else 0
+    st.markdown(f"**{title}**")
+    st.caption(company + (f"  ·  {loc}" if loc else ""))
+    st.progress(min(best, 100) / 100.0, text=f"Best fit {best}")
+    # At-a-glance link reliability (ADR-093 #1): source + freshness, so the user
+    # knows before clicking through whether the link is likely live.
+    bits: list[str] = []
+    badge = source_badge(job.get("source"))
+    if badge:
+        bits.append(badge)
+    age = format_posting_age_short(job.get("posted_at"))
+    if age:
+        bits.append(age + (" ⚠️" if is_stale(job.get("posted_at")) else ""))
+    if bits:
+        st.caption("  ·  ".join(bits))
+    why = (str(job.get("match_summary") or "")).strip()
+    if why:
+        st.caption(why[:140] + ("…" if len(why) > 140 else ""))
+    rec = (str(job.get("recommended_next_action") or "")).strip()
+    if rec:
+        st.markdown(f"➡ _{rec[:120]}{'…' if len(rec) > 120 else ''}_")
+    jid = str(job.get("job_id"))
+    if st.button("Open ▶", key=f"focus_open_{jid}", type="primary",
+                 use_container_width=True):
+        _navigate("Opportunity",
+                  detail_workflow_id=job.get("workflow_id"),
+                  detail_job_id=job.get("job_id"))
+
+
+def _render_focus(df: pd.DataFrame, active_tracks: list[str]) -> None:
+    """The 'Where to focus' triage strip (ADR-093 #2): up to 3 cards of the
+    strongest fits to act on now, each a one-click jump into its Opportunity page
+    (tailor / prep). Suggestion only - no Apply/Save/status (CLAUDE.md guardrail)."""
+    top = _focus_jobs(df, active_tracks, limit=3)
+    if top is None or top.empty:
+        return
+    st.markdown("#### Where to focus")
+    st.caption("Your strongest fits to act on now — open one to tailor your resume or "
+               "prep for it. A suggestion of where to spend effort, not a checklist.")
+    for col, (_, job) in zip(st.columns(len(top)), top.iterrows()):
+        with col, st.container(border=True):
+            _focus_card(job)
+    st.markdown("---")
+
+
 def _filters(ctx: ViewContext) -> ViewContext:
     """Render the cross-run filter controls in-screen and return them as a
     ViewContext (ADR-088 Phase 3 - contextual filters).
@@ -128,6 +209,11 @@ def render(ctx: ViewContext) -> None:
     if df.empty:
         _empty_state()
         return
+
+    # ADR-093 #2: the "where to focus" triage strip - the strongest fits to act on
+    # now, above the full browsable tabs. Ranked over the active tracks (ADR-071),
+    # independent of the search box below.
+    _render_focus(df, _active_tracks())
 
     roles_tab, companies_tab = st.tabs(["Roles", "Companies"])
     with roles_tab:

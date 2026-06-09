@@ -139,8 +139,12 @@ def test_job_surfaces_have_no_application_tracking():
                  "mark as applied", " save ", " apply "]
     # ADR-090: the favorites surface joins the scan. "favorite" is the sanctioned
     # positive filter-input word; status/outcome words remain forbidden.
+    # ADR-093: Matches' "where to focus" strip and the posting-link helper join the
+    # scan - the triage strip is a suggestion (not a to-do/applied list) and the
+    # posting links say "posting", never "apply".
     for rel in ("views/opportunity.py", "components/run_status.py",
-                "components/favorites.py"):
+                "components/favorites.py", "views/matches.py",
+                "components/posting_link.py"):
         blob = _ui_string_blob(_ENTRYPOINT.parent / rel)
         hits = [w for w in forbidden if w in blob]
         assert not hits, f"{rel} UI text must not imply application tracking: {hits}"

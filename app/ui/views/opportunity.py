@@ -27,6 +27,7 @@ import streamlit as st
 import app.ui.api_client as api
 from app.ui.components.bullets import _bullets, _para
 from app.ui.components.favorites import render_favorite_toggle
+from app.ui.components.posting_link import render_posting_links, source_badge
 from app.ui.components.tailoring_panel import render_job_tailoring
 from app.ui.data import (
     _cached_job_pipeline,
@@ -89,18 +90,25 @@ def _header(wf_id: str, job_id: str, job: dict, state: dict) -> None:
         bits.append(f"source `{src}`")
     st.markdown("  ·  ".join(str(b) for b in bits))
 
-    if job.get("url"):
-        st.link_button("Open the full posting ↗", job["url"])
+    # ADR-093: posting-link reliability. Show the source (employer-direct vs an
+    # expiring aggregator link) and, when the link is unreliable or the posting is
+    # stale, offer a "find the live posting" web-search fallback so a dead link is
+    # never a dead end.
+    from app.services.posting_age_filter import is_stale
+    _stale = is_stale(job.get("posted_at"))
+    render_posting_links(job, key="opp_posting", stale=_stale, container_width=False)
 
-    # Best active-track score + posting freshness, the at-a-glance context line.
+    # Best active-track score + link source + posting freshness, the at-a-glance line.
     ctx_bits: list[str] = []
     best = _best_track(state, job)
     if best:
         ctx_bits.append(f"Best track: **{best[0]} {best[1]}**")
+    _badge = source_badge(job.get("source"))
+    if _badge:
+        ctx_bits.append(_badge)
     age = format_posting_age(job.get("posted_at"))
     if age:
-        from app.services.posting_age_filter import is_stale
-        ctx_bits.append(age + ("  ⚠️ may be stale" if is_stale(job.get("posted_at")) else ""))
+        ctx_bits.append(age + ("  ⚠️ may be stale" if _stale else ""))
     if ctx_bits:
         st.caption("  ·  ".join(ctx_bits))
     st.caption(f"Found `{_fmt_ts(job.get('found_at'))}`  ·  from search `{wf_id[:8]}…`")
