@@ -131,6 +131,45 @@ def _compact_fidelity(fidelity: dict | None) -> dict | None:
     }
 
 
+def _parse_profile_dict(resume: dict) -> dict:
+    raw = resume.get("parsed_profile_json")
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except Exception:
+            return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _run_fidelity_on_row(deps, row: dict, resume: dict) -> dict | None:
+    """ADR-092: run the Fidelity Reviewer on a clinic row's CURRENT rewrites
+    (the chat-edited overhaul if present, else the agent overhaul). Returns the
+    verdict dict, or None when there are no rewrites or the reviewer LLM call
+    fails (never-crash). Shared by the on-demand fidelity-check endpoint and the
+    accept-time gate in the decisions endpoint - fidelity no longer runs per
+    chat turn (cost)."""
+    overhaul = row.get("edited") or row.get("overhaul") or {}
+    rewrites = overhaul.get("rewrites") or []
+    if not rewrites:
+        return None
+    parsed_profile = _parse_profile_dict(resume)
+    raw_text = resume.get("raw_text") or ""
+    try:
+        result = deps.fidelity_reviewer.run(
+            row.get("workflow_run_id") or "",
+            build_fidelity_context_for_overhaul(
+                clinic_id=row.get("id") or "",
+                resume_id=resume.get("id") or "",
+                parsed_profile=parsed_profile,
+                raw_text=raw_text,
+                rewrites=rewrites,
+            ),
+        )
+        return result.model_dump()
+    except LLMProviderError:
+        return None
+
+
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["resume_clinic"])
@@ -380,8 +419,21 @@ def submit_resume_clinic_decision(
         payload={"review_id": review_id, "job_id": row.get("job_id"),
                  "edited": bool(body.edited)},
     )
-    updated = deps.resume_clinic_repo.get_by_id(review_id)
-    return _serialize_row(updated or row)
+    updated = deps.resume_clinic_repo.get_by_id(review_id) or row
+    # ADR-092: fidelity is the gate at accept time (it no longer runs per chat
+    # turn). Review the accepted draft on approve/edit so the verdict the user
+    # sees on the exported resume reflects its final state. A human `edit` is
+    # still owner-authored (ADR-059) - but the chat-revise drafts that reach
+    # here are agent-authored, so policing them at accept is correct. Never-
+    # crash: a reviewer failure leaves the existing verdict in place.
+    if body.approval in ("approve", "edit"):
+        resume = deps.resume_repo.get_by_id(updated.get("resume_id"))
+        if resume is not None:
+            verdict = _run_fidelity_on_row(deps, updated, resume)
+            if verdict is not None:
+                deps.resume_clinic_repo.set_fidelity_review(review_id, verdict)
+                updated = deps.resume_clinic_repo.get_by_id(review_id) or updated
+    return _serialize_row(updated)
 
 
 # ── Resume text export (ADR-066 fast-follow) ─────────────────────────────────
@@ -625,36 +677,16 @@ def chat_resume_clinic(
         ) from exc
 
     new_overhaul = result.overhaul.model_dump()
-    rewrites = new_overhaul.get("rewrites") or []
 
-    # Fidelity invariant (ADR-066 carried into ADR-068): always run on the FULL
-    # set of rewrites every clinic call, skipped only when there are no
-    # rewrites. Reviewing the whole draft each turn (not just the changed
-    # bullets) is deliberate: a fabricated claim authored two turns ago must
-    # stay flagged until it is actually fixed, and the persisted verdict must
-    # describe the WHOLE resume the user is about to export - not just the last
-    # delta. Fidelity is the cheap (Haiku) leg; the cost lever for the chat
-    # loop is fewer turns via the prior_fidelity self-correction feedback
-    # (ADR-091), not narrowing this review. A reviewer LLM failure persists the
-    # turn with null fidelity rather than failing the chat.
+    # ADR-092 (cost): a chat turn no longer runs the Fidelity Reviewer. The edit
+    # changed the draft, so any prior verdict is now stale - clear it (pass
+    # fidelity_review=None). Fidelity is on-demand: the user runs it via
+    # POST .../fidelity-check (the "Check fidelity" button) and applies the
+    # flagged fixes via a follow-up chat turn ("Apply fidelity fixes"); it also
+    # runs as a gate at accept time (the decisions endpoint). This makes the
+    # cheap Haiku chat the per-turn cost and the (also Haiku) review a
+    # user-chosen expense rather than an automatic one. decision is unchanged.
     fidelity_dict: dict | None = None
-    if rewrites:
-        try:
-            fidelity_result = deps.fidelity_reviewer.run(
-                workflow_run_id,
-                build_fidelity_context_for_overhaul(
-                    clinic_id=review_id,
-                    resume_id=resume.get("id") or "",
-                    parsed_profile=parsed_profile,
-                    raw_text=raw_text,
-                    rewrites=rewrites,
-                ),
-            )
-            fidelity_dict = fidelity_result.model_dump()
-        except LLMProviderError:
-            fidelity_dict = None
-
-    # Persist. decision is unchanged - that's a separate user action.
     deps.resume_clinic_repo.set_edited(
         review_id, new_overhaul, fidelity_review=fidelity_dict,
     )
@@ -696,3 +728,42 @@ def discard_resume_clinic_edits(
         )
     deps.resume_clinic_repo.discard_edits(review_id)
     return {"cleared": True, "review_id": review_id}
+
+
+@router.post("/resume-clinic/{review_id}/fidelity-check", status_code=200)
+def fidelity_check_resume_clinic(
+    review_id: str,
+    deps: WorkflowDependencies = Depends(get_deps),
+) -> dict:
+    """ADR-092: run the Fidelity Reviewer on the clinic review's CURRENT draft
+    on demand (the "Check fidelity" button), persist the verdict, and return it.
+
+    Fidelity no longer runs automatically on every chat turn (cost). This lets
+    the user pay for a review when they want one, see the flagged claims, then
+    apply the fixes via a follow-up chat turn ("Apply fidelity fixes"). One
+    Haiku call. Returns {clinic_id, fidelity_review} (verdict is null when the
+    draft has no rewrites or the reviewer LLM call failed).
+    """
+    row = deps.resume_clinic_repo.get_by_id(review_id)
+    if row is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "clinic_review_not_found",
+                "message": f"Resume clinic review {review_id!r} not found.",
+                "review_id": review_id,
+            },
+        )
+    resume = deps.resume_repo.get_by_id(row.get("resume_id"))
+    if resume is None:
+        raise HTTPException(
+            status_code=404,
+            detail={
+                "error": "resume_not_found",
+                "message": "The resume this clinic review points at is missing.",
+                "resume_id": row.get("resume_id"),
+            },
+        )
+    verdict = _run_fidelity_on_row(deps, row, resume)
+    deps.resume_clinic_repo.set_fidelity_review(review_id, verdict)
+    return {"clinic_id": review_id, "fidelity_review": verdict}

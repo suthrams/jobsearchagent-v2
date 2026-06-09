@@ -99,36 +99,85 @@ def render_chat_panel(review: dict, *, user_id: str,
                 "Consider locking in your edit soon."
             )
 
-    # ── Fidelity verdict (ADR-091) ──────────────────────────────────────────
-    # Surface the reviewer's latest verdict so the user sees WHY a draft is
-    # flagged. The next chat turn feeds these claims back to the agent, which
-    # tries to fix them automatically (the user can also direct it).
+    # ── Fidelity check (ADR-092: on-demand + one-click apply) ────────────────
+    # Fidelity no longer runs on every chat turn (cost). The user runs it when
+    # they want via "Check fidelity"; if it flags claims, "Apply fidelity fixes"
+    # makes the agent ground/remove them in one click and the live preview
+    # updates. It also runs automatically as a gate when the user Saves.
+    _hist_key = f"rc_chat_history_{_clinic_id}"
+    st.markdown("**Fidelity check**")
     _rc_fid = _rc_preview_review.get("fidelity_review") or {}
-    if _rc_fid:
-        _fid_status = (_rc_fid.get("overall_fidelity_status") or "").lower()
-        _fid_claims = _rc_fid.get("unsupported_claims") or []
-        if _fid_status == "pass" and not _fid_claims:
-            st.success("Fidelity check passed - every rewrite is backed by your resume.")
-        else:
-            _fid_label = {"fail": "failed",
-                          "needs_revision": "needs revision"}.get(
-                              _fid_status, _fid_status or "flagged")
-            with st.expander(
-                f"Fidelity check: {_fid_label} "
-                f"({len(_fid_claims)} unsupported claim(s))",
-                expanded=True,
-            ):
-                if _fid_claims:
-                    st.caption(
-                        "The reviewer flagged these as not backed by your "
-                        "resume. Your next chat turn will automatically try to "
-                        "ground or remove them - or tell it how you'd like them "
-                        "handled."
+    _fid_status = (_rc_fid.get("overall_fidelity_status") or "").lower()
+    _fid_claims = _rc_fid.get("unsupported_claims") or []
+
+    _fc1, _fc2 = st.columns([2, 3])
+    if _fc1.button("Check fidelity", key=f"rc_fid_check_{_clinic_id}",
+                   use_container_width=True,
+                   help="Run the fidelity reviewer on the current draft (one Haiku "
+                        "call, ~$0.01). It flags any claim not backed by your resume."):
+        try:
+            with st.spinner("Reviewing fidelity…"):
+                _resp = api.fidelity_check_resume_clinic(_clinic_id)
+            _base = st.session_state.get(state_key) or review or {}
+            _m = dict(_base)
+            _m["fidelity_review"] = _resp.get("fidelity_review")
+            st.session_state[state_key] = _m
+            st.rerun()
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Fidelity check failed: {exc}")
+
+    if not _rc_fid:
+        st.caption(
+            "Not checked since your last edit. Click **Check fidelity** to review "
+            "the current draft — it also runs automatically when you Save."
+        )
+    elif _fid_status == "pass" and not _fid_claims:
+        st.success("Fidelity passed — every rewrite is backed by your resume.")
+    else:
+        _fid_label = {"fail": "failed", "needs_revision": "needs revision"}.get(
+            _fid_status, _fid_status or "flagged")
+        st.warning(f"Fidelity {_fid_label}: {len(_fid_claims)} unsupported claim(s).")
+        if _fid_claims:
+            with st.expander("Flagged claims", expanded=True):
+                for _c in _fid_claims:
+                    st.markdown(f"- {_c}")
+        if _fc2.button("✨ Apply fidelity fixes", type="primary",
+                       key=f"rc_fid_apply_{_clinic_id}", use_container_width=True,
+                       help="Have the agent ground or remove every flagged claim, then "
+                            "re-check. Updates the live preview and the export."):
+            try:
+                _fix_msg = (
+                    "Apply the fidelity reviewer's feedback. For each claim it flagged "
+                    "as unsupported, either ground it (tighten the wording so it only "
+                    "states what my resume backs, and cite the specific resume fact in "
+                    "supporting_evidence) or remove it. Do not re-assert any flagged "
+                    "claim unchanged, and do not fabricate."
+                )
+                with st.spinner("Applying fidelity fixes…"):
+                    _chat_resp = api.chat_resume_clinic(
+                        _clinic_id, _fix_msg, section="whole",
+                        history=st.session_state.get(_hist_key, []),
                     )
-                    for _c in _fid_claims:
-                        st.markdown(f"- {_c}")
-                else:
-                    st.caption("The reviewer recommends another revision pass.")
+                    _recheck = api.fidelity_check_resume_clinic(_clinic_id)
+                _base = st.session_state.get(state_key) or review or {}
+                _m = dict(_base)
+                _m["edited"] = _chat_resp.get("overhaul")
+                _m["fidelity_review"] = _recheck.get("fidelity_review")
+                _m["decision"] = None
+                st.session_state[state_key] = _m
+                st.session_state.setdefault(_hist_key, [])
+                st.session_state[_hist_key].append(
+                    {"role": "user", "message": "Apply fidelity fixes"})
+                st.session_state[_hist_key].append(
+                    {"role": "assistant", "message": _chat_resp.get("reply") or ""})
+                st.session_state[_rc_cost_key] = {
+                    "turns_used":      _chat_resp.get("turns_used", 0),
+                    "max_turns":       _chat_resp.get("max_turns", 0),
+                    "session_cost_usd": _chat_resp.get("session_cost_usd", 0.0),
+                }
+                st.rerun()
+            except Exception as exc:  # noqa: BLE001
+                st.error(f"Apply fidelity fixes failed: {exc}")
 
     # ── Chat input ──────────────────────────────────────────────────────────
     _rc_section_options = {

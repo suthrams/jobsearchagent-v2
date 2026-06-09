@@ -111,6 +111,20 @@ class ResumeClinicRepository:
                  clinic_id),
             )
 
+    def set_fidelity_review(self, clinic_id: str, fidelity_review: dict | None) -> None:
+        """ADR-092: persist ONLY the fidelity verdict, leaving edited_json and
+        decision untouched. Used by the on-demand fidelity-check endpoint and
+        the accept-time gate now that fidelity no longer runs on every chat turn.
+        """
+        with get_connection(self.db_path) as conn:
+            conn.execute(
+                """UPDATE resume_clinic_reviews
+                   SET fidelity_review_json = ?
+                   WHERE id = ?""",
+                (json.dumps(fidelity_review) if fidelity_review is not None else None,
+                 clinic_id),
+            )
+
     def discard_edits(self, clinic_id: str) -> None:
         """ADR-068: revert the chat-edited state. Clears `edited_json`,
         `decision`, and `decided_at` so the renderer falls back to the

@@ -67,7 +67,10 @@ POST /users/{id}/resume                        → upload + parse a PDF resume f
 DELETE /users/{id}/resume/{resume_id}          → delete a resume; cascades to its clinic reviews (200)
 POST /users/{id}/resume-clinic                 → run a Resume Clinic review on a resume (ADR-066, 200)
 GET  /users/{id}/resume-clinic                 → list past clinic runs for a profile
-POST /resume-clinic/{id}/decisions             → record approve / revise / reject / edit for a clinic review
+POST /resume-clinic/{id}/decisions             → record approve / revise / reject / edit (runs the fidelity gate on approve/edit, ADR-092)
+POST /resume-clinic/{id}/chat                  → one chat-revise turn (ADR-068; no per-turn fidelity since ADR-092)
+POST /resume-clinic/{id}/fidelity-check        → run the Fidelity Reviewer on the current draft on demand (ADR-092, 200)
+POST /resume-clinic/{id}/discard-edits         → revert chat edits to the agent overhaul (ADR-068, 200)
 GET  /resume-clinic/{id}/export                → render the clinic resume in md/txt/html/json/docx/pdf (200)
 GET  /users/{id}/favorites                     → list My favorite jobs for a profile (ADR-090)
 POST /users/{id}/favorites                     → favorite a job {workflow_id, job_id}; 201; 409 favorites_cap_reached; 404 job_not_found

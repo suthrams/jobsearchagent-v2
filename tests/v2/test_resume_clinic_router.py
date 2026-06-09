@@ -190,6 +190,10 @@ def _make_deps() -> WorkflowDependencies:
             clinic_store[clinic_id]["decision"] = None
             clinic_store[clinic_id]["decided_at"] = None
 
+    def _clinic_set_fidelity_review(clinic_id, fidelity_review):
+        if clinic_id in clinic_store:
+            clinic_store[clinic_id]["fidelity_review"] = fidelity_review
+
     clinic_repo = MagicMock()
     clinic_repo.create.side_effect = _clinic_create
     clinic_repo.get_by_id.side_effect = _clinic_get
@@ -197,6 +201,7 @@ def _make_deps() -> WorkflowDependencies:
     clinic_repo.set_decision.side_effect = _clinic_decision
     clinic_repo.set_edited.side_effect = _clinic_set_edited
     clinic_repo.discard_edits.side_effect = _clinic_discard_edits
+    clinic_repo.set_fidelity_review.side_effect = _clinic_set_fidelity_review
 
     # Workflow repo: no-op create/update; get_by_status returns empty.
     workflow_repo = MagicMock()
@@ -598,87 +603,108 @@ def test_chat_round_trip_persists_edited_and_returns_reply(client):
     assert row["decision"] is None
 
 
-def test_chat_always_runs_fidelity_when_rewrites_exist(client):
+def test_chat_does_not_run_fidelity_per_turn(client):
+    """ADR-092: a chat turn no longer runs the Fidelity Reviewer (cost). It
+    persists the edit and clears any stale verdict; fidelity is on-demand."""
     c, deps = client
     created = c.post(
         f"/users/{USER_ID}/resume-clinic",
         json={"resume_id": RESUME_ID},
     ).json()
     clinic_id = created["clinic_id"]
+    deps.fidelity_reviewer.run.reset_mock()
 
     resp = c.post(
         f"/resume-clinic/{clinic_id}/chat",
         json={"message": "tighten the summary"},
     )
     assert resp.status_code == 200, resp.text
-    # The mocked fidelity agent was called.
-    deps.fidelity_reviewer.run.assert_called()
-    assert resp.json()["fidelity_review"] is not None
+    # The chat turn did NOT call the fidelity reviewer.
+    deps.fidelity_reviewer.run.assert_not_called()
+    assert resp.json()["fidelity_review"] is None
+    # The edit was still persisted, with its (now stale) verdict cleared.
+    row = deps.resume_clinic_repo.get_by_id(clinic_id)
+    assert row["edited"] is not None
+    assert row["fidelity_review"] is None
 
 
-def test_chat_feeds_prior_fidelity_into_agent_context(client):
-    """ADR-091: the prior turn's fidelity verdict is fed back into the agent
-    context so it can self-correct flagged claims instead of re-asserting them."""
+def test_fidelity_check_runs_on_full_draft_and_persists(client):
+    """ADR-092: POST /fidelity-check runs the reviewer on the current draft's
+    full rewrite set, persists the verdict, and returns it."""
     c, deps = client
     created = c.post(
         f"/users/{USER_ID}/resume-clinic", json={"resume_id": RESUME_ID},
     ).json()
     clinic_id = created["clinic_id"]
-    # Turn 1 persists a fidelity verdict on the row.
+    # Edit once so there's a chat-edited overhaul to review.
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "tighten"})
+    deps.fidelity_reviewer.run.reset_mock()
+
+    resp = c.post(f"/resume-clinic/{clinic_id}/fidelity-check")
+    assert resp.status_code == 200, resp.text
+    deps.fidelity_reviewer.run.assert_called_once()
+    # Reviewed the full rewrite set, not a delta.
+    fid_ctx = deps.fidelity_reviewer.run.call_args.args[1]
+    bullets = (fid_ctx.get("tailored_draft") or {}).get(
+        "experience_bullet_suggestions") or []
+    assert len(bullets) >= 1
+    # Verdict returned + persisted.
+    assert resp.json()["fidelity_review"] is not None
+    assert deps.resume_clinic_repo.get_by_id(clinic_id)["fidelity_review"] is not None
+
+
+def test_fidelity_check_returns_null_when_reviewer_raises(client):
+    from app.providers.llm_client import LLMProviderError
+
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic", json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "tighten"})
+    deps.fidelity_reviewer.run.side_effect = LLMProviderError("upstream")
+
+    resp = c.post(f"/resume-clinic/{clinic_id}/fidelity-check")
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["fidelity_review"] is None
+
+
+def test_chat_feeds_prior_fidelity_into_agent_context(client):
+    """ADR-091/092: a prior fidelity verdict (from a Check) is fed back into the
+    next chat turn so the agent can self-correct the flagged claims."""
+    c, deps = client
+    created = c.post(
+        f"/users/{USER_ID}/resume-clinic", json={"resume_id": RESUME_ID},
+    ).json()
+    clinic_id = created["clinic_id"]
+    # Edit, then run a fidelity check so the row carries a verdict.
     c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "first"})
+    c.post(f"/resume-clinic/{clinic_id}/fidelity-check")
     deps.resume_chat.run.reset_mock()
-    # Turn 2's context should carry the prior verdict.
-    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "second"})
+    # The next chat turn's context should carry the prior verdict.
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "fix the flags"})
     ctx = deps.resume_chat.run.call_args.args[1]
     assert "prior_fidelity" in ctx
     assert ctx["prior_fidelity"] is not None
     assert ctx["prior_fidelity"]["status"] == "pass"
 
 
-def test_chat_reviews_full_draft_every_turn(client):
-    """ADR-091: fidelity reviews the WHOLE draft every turn, not just the
-    changed bullets - a claim flagged earlier must stay policed until fixed,
-    and the persisted verdict must describe the full resume the user exports.
-    The cost lever is fewer turns (prior_fidelity feedback), not narrowing
-    this review."""
+def test_decision_runs_fidelity_gate_at_accept(client):
+    """ADR-092: approve/edit decisions run the Fidelity Reviewer on the accepted
+    draft and return the verdict, so the gate reflects the exported resume."""
     c, deps = client
     created = c.post(
         f"/users/{USER_ID}/resume-clinic", json={"resume_id": RESUME_ID},
     ).json()
     clinic_id = created["clinic_id"]
-    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "first"})
-    calls_after_first = deps.fidelity_reviewer.run.call_count
-    # A second turn still runs fidelity on the full rewrite set.
-    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "second"})
-    assert deps.fidelity_reviewer.run.call_count == calls_after_first + 1
-    # The fidelity context carries the full rewrite set, not a delta.
-    fid_ctx = deps.fidelity_reviewer.run.call_args.args[1]
-    bullets = (fid_ctx.get("tailored_draft") or {}).get(
-        "experience_bullet_suggestions") or []
-    assert len(bullets) >= 1
+    c.post(f"/resume-clinic/{clinic_id}/chat", json={"message": "tighten"})
+    deps.fidelity_reviewer.run.reset_mock()
 
-
-def test_chat_persists_null_fidelity_when_reviewer_raises(client):
-    from app.providers.llm_client import LLMProviderError
-
-    c, deps = client
-    created = c.post(
-        f"/users/{USER_ID}/resume-clinic",
-        json={"resume_id": RESUME_ID},
-    ).json()
-    clinic_id = created["clinic_id"]
-
-    deps.fidelity_reviewer.run.side_effect = LLMProviderError("upstream")
-    resp = c.post(
-        f"/resume-clinic/{clinic_id}/chat",
-        json={"message": "tighten the summary"},
-    )
+    resp = c.post(f"/resume-clinic/{clinic_id}/decisions", json={"approval": "approve"})
     assert resp.status_code == 200, resp.text
-    body = resp.json()
-    assert body["fidelity_review"] is None
-    # The edited overhaul was still persisted - the user still got the revision.
-    row = deps.resume_clinic_repo.get_by_id(clinic_id)
-    assert row["edited"] is not None
+    deps.fidelity_reviewer.run.assert_called_once()
+    assert resp.json()["decision"] == "approve"
+    assert resp.json()["fidelity_review"] is not None
 
 
 def test_chat_uses_edited_when_present_else_overhaul_as_input(client):
@@ -904,8 +930,9 @@ def test_chat_response_returns_turns_used_max_turns_and_session_cost(client):
     body = resp.json()
     assert body["turns_used"] == 2          # 1 prior + 1 from this turn
     assert body["max_turns"] == 25
-    # 2 chat * 0.012 + 2 fidelity * 0.005 = 0.034
-    assert abs(body["session_cost_usd"] - 0.034) < 1e-6
+    # ADR-092: a chat turn no longer runs fidelity, so only the prior seeded
+    # fidelity row counts. 2 chat * 0.012 + 1 fidelity * 0.005 = 0.029
+    assert abs(body["session_cost_usd"] - 0.029) < 1e-6
 
 
 def test_chat_blocks_with_429_when_turn_cap_reached(client):
@@ -1008,6 +1035,6 @@ def test_chat_session_cost_includes_reviewer_chat_and_fidelity_rows(client):
     # turns_used counts ONLY chat rows (1 from this turn, since prior rows
     # are reviewer + fidelity, not chat).
     assert body["turns_used"] == 1
-    # session_cost includes all four rows: reviewer (0.080) + initial
-    # fidelity (0.020) + this turn's chat (0.012) + this turn's fidelity (0.005).
-    assert abs(body["session_cost_usd"] - 0.117) < 1e-6
+    # ADR-092: the chat turn no longer runs fidelity, so the rollup is
+    # reviewer (0.080) + initial fidelity (0.020) + this turn's chat (0.012) = 0.112.
+    assert abs(body["session_cost_usd"] - 0.112) < 1e-6

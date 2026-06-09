@@ -643,7 +643,7 @@ CREATE INDEX idx_resume_clinic_user ON resume_clinic_reviews(user_id);
 | `review_json`          | TEXT (JSON) | `ResumeQuality` — the dimension scorecard + `overall_summary`. Always present. |
 | `alignment_json`       | TEXT (JSON) | `Alignment` — `fit_summary`, `missing_skills[]`, `missing_keywords[]`, `suggested_certifications[]`, `suggested_projects[]`, `emphasize[]`, `confidence`. NULL when the run had no target. |
 | `overhaul_json`        | TEXT (JSON) | The reorganization plan (`section_order[]` + `moves[]`) plus the `rewrites[]` list in the tailoring claim-type shape. |
-| `fidelity_review_json` | TEXT (JSON) | `FidelityReview` verdict on the rewrites. NULL when the run had no rewrites or fidelity raised an `LLMProviderError`. |
+| `fidelity_review_json` | TEXT (JSON) | `FidelityReview` verdict on the rewrites. NULL when the run had no rewrites or fidelity raised an `LLMProviderError`. ADR-092: a chat turn now CLEARS this (edit invalidates the verdict); it is (re)written on demand by `POST .../fidelity-check` and at accept by the decisions endpoint, via `ResumeClinicRepository.set_fidelity_review`. |
 | `decision`             | TEXT        | `"approve"` \| `"revise"` \| `"reject"` \| `"edit"`. NULL until user decides. |
 | `edited_json`          | TEXT (JSON) | Human-authored overhaul on `edit` (ADR-059). Original `overhaul_json` retained. NOT re-run through Fidelity. |
 | `decided_at`           | TEXT        | ISO 8601 UTC. |

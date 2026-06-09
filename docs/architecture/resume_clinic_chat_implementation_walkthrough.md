@@ -225,6 +225,16 @@ def discard_resume_clinic_edits(
 > only overwrites `edited_json` when an explicit payload is supplied - a payload-less
 > decision (e.g. `approve` after chatting) no longer clobbers the accumulated edits.
 
+> **ADR-092 update (cost).** Step 5 no longer runs per chat turn. A chat turn runs
+> the (now Haiku) chat agent ONLY and clears the stale verdict
+> (`set_edited(..., fidelity_review=None)`). Fidelity is instead **on-demand** via
+> `POST /resume-clinic/{id}/fidelity-check` (the "Check fidelity" button →
+> `ResumeClinicRepository.set_fidelity_review`) and runs as a **gate at accept** in
+> the decisions endpoint (`approve`/`edit`). The chat panel adds an **Apply fidelity
+> fixes** button that sends one fixed chat instruction to ground/remove the flagged
+> claims and then re-checks — the one-click path that makes fidelity feedback land in
+> the exported resume.
+
 `discard_resume_clinic_edits` flow:
 
 1. Load the clinic review row.

@@ -529,6 +529,19 @@ def chat_resume_clinic(review_id: str, message: str, *,
     return r.json()
 
 
+def fidelity_check_resume_clinic(review_id: str) -> dict:
+    """POST /resume-clinic/{review_id}/fidelity-check - run the Fidelity Reviewer
+    on the current draft on demand (ADR-092). Returns
+    {clinic_id, fidelity_review}; fidelity_review is null when the draft has no
+    rewrites or the reviewer call failed. One Haiku call."""
+    r = httpx.post(
+        f"{BASE_URL}/resume-clinic/{review_id}/fidelity-check",
+        timeout=120.0,  # the fidelity reviewer calls a model
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def discard_resume_clinic_edits(review_id: str) -> dict:
     """POST /resume-clinic/{review_id}/discard-edits - revert the chat state.
 

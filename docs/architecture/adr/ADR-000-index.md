@@ -97,3 +97,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-089 | [Matches as the Live Home Base](ADR-089-matches-as-live-home-base.md) | Accepted (implemented) |
 | ADR-090 | [My Favorite Jobs + Job-Focused Resume Clinic](ADR-090-favorites-and-job-focused-clinic.md) | Accepted (implementing) |
 | ADR-091 | [Resume Clinic Chat Reliability, Fidelity Feedback, and Export Fidelity](ADR-091-resume-clinic-chat-reliability-and-fidelity-feedback.md) | Accepted (implemented) |
+| ADR-092 | [Clinic Chat Cost — Haiku Chat + On-Demand / At-Accept Fidelity](ADR-092-clinic-chat-cost-haiku-and-on-demand-fidelity.md) | Accepted (implemented) |
