@@ -129,7 +129,7 @@ agents:
   resume_parser:        {provider: claude, model: claude-sonnet-4-6}
   custom_url_extractor: {provider: claude, model: claude-sonnet-4-6}
   resume_reviewer:      {provider: claude, model: claude-sonnet-4-6}   # ADR-066 Resume Clinic; low-volume, quality-sensitive
-  resume_chat:          {provider: claude, model: claude-sonnet-4-6}   # ADR-068 Resume Clinic chat-revise loop; low-volume per turn
+  resume_chat:          {provider: claude, model: claude-haiku-4-5-20251001}   # ADR-068 chat-revise; ADR-092 Haiku for cost (schema-validated 2026-06-08; ~5x cheaper than sonnet)
 
 # ─── v2 Model Catalog + Pricing (ADR-058) ────────────────────────────────────
 # The catalog of registered (provider, model) pairs and their per-million-token
@@ -145,7 +145,7 @@ models:
     claude:
       - {id: claude-haiku-4-5-20251001, input_per_m: 1.00,  output_per_m: 5.00}
       - {id: claude-sonnet-4-6,         input_per_m: 3.00,  output_per_m: 15.00}
-      - {id: claude-opus-4-7,           input_per_m: 15.00, output_per_m: 75.00}
+      - {id: claude-opus-4-8,           input_per_m: 5.00,  output_per_m: 25.00}
     openai:
       # TODO: refresh against the current OpenAI pricing page when the catalog is
       # reviewed. The 2024 models below are stale; o1 was superseded by o3.

@@ -146,13 +146,20 @@ def render_chat_panel(review: dict, *, user_id: str,
         format_func=lambda k: _rc_section_options[k],
         key=f"rc_chat_section_{_clinic_id}",
     )
+    _rc_msg_key = f"rc_chat_msg_{_clinic_id}"
+    # Clear the box after a successful send. The send handler sets a pending-
+    # clear flag and reruns; we honor it HERE, before the text_area is
+    # instantiated, because Streamlit forbids mutating a widget's value once it
+    # exists in the same run.
+    if st.session_state.pop(f"{_rc_msg_key}__clear", False):
+        st.session_state[_rc_msg_key] = ""
     _rc_message = st.text_area(
         "What would you like to change?",
         placeholder=(
             "e.g. \"make the summary shorter and front-load the "
             "cybersecurity angle\" or \"promote my projects above experience\""
         ),
-        key=f"rc_chat_msg_{_clinic_id}",
+        key=_rc_msg_key,
         height=80,
     )
 
@@ -161,10 +168,17 @@ def render_chat_panel(review: dict, *, user_id: str,
         st.session_state[_rc_chat_history_key] = []
 
     _cc1, _cc2, _cc3 = st.columns([2, 2, 2])
-    if _cc1.button("Send feedback", type="primary",
-                   disabled=not _rc_message.strip(),
-                   key=f"rc_chat_send_{_clinic_id}",
-                   use_container_width=True):
+    # Always-enabled Send (no `disabled=` gate): a Streamlit text_area only
+    # commits its value on blur/Ctrl+Enter, so a disabled-while-empty button
+    # never re-enabled as the user typed. We validate on click instead.
+    _send_clicked = _cc1.button(
+        "Send feedback", type="primary",
+        key=f"rc_chat_send_{_clinic_id}",
+        use_container_width=True,
+    )
+    if _send_clicked and not _rc_message.strip():
+        st.warning("Type what you'd like to change first.")
+    elif _send_clicked:
         try:
             with st.spinner("Revising…"):
                 _chat_resp = api.chat_resume_clinic(
@@ -202,6 +216,9 @@ def render_chat_panel(review: dict, *, user_id: str,
             _merged["fidelity_review"] = _chat_resp.get("fidelity_review")
             _merged["decision"] = None
             st.session_state[state_key] = _merged
+            # Clear the input box on the next run (honored before the widget is
+            # rebuilt) so it's ready for the next message.
+            st.session_state[f"{_rc_msg_key}__clear"] = True
             st.rerun()
         except httpx.HTTPStatusError as exc:
             # Surface the cap-reached reason directly on 429.

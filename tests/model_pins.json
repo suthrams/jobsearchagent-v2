@@ -32,6 +32,6 @@
     "resume_parser":        {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-28"},
     "custom_url_extractor": {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-28"},
     "resume_reviewer":      {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-28"},
-    "resume_chat":          {"provider": "claude", "model": "claude-sonnet-4-6",         "validated_on": "2026-05-29"}
+    "resume_chat":          {"provider": "claude", "model": "claude-haiku-4-5-20251001", "validated_on": "2026-06-08"}
   }
 }
