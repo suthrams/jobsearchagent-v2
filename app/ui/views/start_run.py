@@ -224,9 +224,12 @@ def render(ctx: ViewContext) -> None:
             st.session_state.last_status = "running"
             st.session_state.last_response = resp
             st.session_state.detail_workflow_id = resp["workflow_id"]
-            # ADR-089: hand the flow back to Matches, where the live status strip
-            # takes over (running -> results appear inline, no manual refresh).
-            st.toast("Search started — watching it on Matches.")
-            _navigate("Matches")
+            # Take the user straight to the Live monitor once the workflow_id is
+            # available, so they can watch the run unfold. The Live monitor
+            # auto-refreshes while the run is active (no manual Refresh needed);
+            # on completion it points to the matches/report. (Matches still hosts
+            # the ADR-089 status strip for anyone who navigates there.)
+            st.toast("Search started — taking you to the live run.")
+            _navigate("Live Run Monitor")
         except Exception as exc:
             st.error(f"Failed to start workflow: {exc}")

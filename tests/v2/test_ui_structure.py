@@ -146,13 +146,16 @@ def test_job_surfaces_have_no_application_tracking():
         assert not hits, f"{rel} UI text must not imply application tracking: {hits}"
 
 
-def test_matches_is_the_live_home_base():
-    """ADR-089: Matches renders the run-status strip, and New search hands the flow
-    back to Matches after Start (so the core loop never leaves Matches)."""
+def test_matches_hosts_status_strip_and_start_routes_to_live_monitor():
+    """ADR-089 + 2026-06-08 UX: Matches still hosts the run-status strip (the live
+    home base for anyone who navigates there), but starting a New search now takes
+    the user straight to the Live Run Monitor so they can watch the run unfold."""
     matches = (_ENTRYPOINT.parent / "views" / "matches.py").read_text(encoding="utf-8")
     start = (_ENTRYPOINT.parent / "views" / "start_run.py").read_text(encoding="utf-8")
     assert "render_run_status(" in matches, "Matches must render the run-status strip"
-    assert '_navigate("Matches")' in start, "New search must land on Matches after Start"
+    assert '_navigate("Live Run Monitor")' in start, (
+        "New search must route to the Live Run Monitor after Start"
+    )
 
 
 def test_every_destination_has_a_navigation_entry_point():

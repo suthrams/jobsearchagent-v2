@@ -70,6 +70,12 @@ After **Start**, New search navigates back to **Matches** (instead of the static
 own page (it is config-heavy - titles, locations, ADR-060/065/079/080 opt-ins);
 Matches just launches it (`[ + New search ]`) and reclaims the flow on submit.
 
+> **Revised 2026-06-08 (UX).** Start now routes straight to the **Live Run Monitor**
+> (not Matches) so the user watches the run unfold; the Live monitor auto-refreshes
+> every 5s while active (same `st.fragment` pattern as the strip). Matches still hosts
+> the status strip for anyone who navigates there, and the completed run still surfaces
+> there. Enforced by `test_ui_structure.py::test_matches_hosts_status_strip_and_start_routes_to_live_monitor`.
+
 ### E. The run-centric screens demote, they do not disappear
 
 **Searches** stays in the FIND group as a secondary run log (the home of "re-run a

@@ -73,6 +73,39 @@ def render(ctx: ViewContext) -> None:
         except Exception as exc:
             st.error(f"Cancel failed: {exc}")
 
+    # While the run is active, auto-refresh the activity body every 5s so the
+    # user can watch it without clicking Refresh (mirrors the ADR-089 Matches
+    # strip). The body lives in a fragment so only it re-renders per tick; on
+    # completion the fragment triggers a full app rerun so the static controls
+    # (Retry/Cancel disappear) and the completion banner update.
+    if status in ("running", "cancelling"):
+        st.caption("🔄 Live — auto-refreshing every 5s while the run is active.")
+        st.fragment(lambda: _activity_body(wf_id, auto=True), run_every=5)()
+    else:
+        _activity_body(wf_id, auto=False)
+
+
+def _activity_body(wf_id: str, *, auto: bool) -> None:
+    """Render the status + metrics + activity feed for a workflow. When ``auto``
+    (the run is active), re-poll status and refresh the activity caches first so
+    each 5s fragment tick shows fresh data; once the run leaves the active set,
+    trigger a full app rerun to exit the auto-refresh branch."""
+    if auto:
+        for _fn in (_cached_step_executions, _cached_agent_events, _cached_llm_calls):
+            try:
+                _fn.clear()
+            except Exception:  # noqa: BLE001
+                pass
+        try:
+            _resp = api.get_workflow_status(wf_id)
+            st.session_state.last_response = _resp
+            st.session_state.last_status = _resp.get("status")
+        except Exception:  # noqa: BLE001 - keep last known state on a poll hiccup
+            pass
+
+    status = st.session_state.last_status or "unknown"
+    resp = st.session_state.last_response or {}
+
     icon = {
         "running": "🔵", "completed": "🟢", "failed": "🔴",
         "cancelling": "🟠", "cancelled": "⚫",
@@ -157,3 +190,8 @@ def render(ctx: ViewContext) -> None:
         st.info("Workflow cancelled.")
     elif status == "cancelling":
         st.warning("Cancelling — the run will stop at the next step boundary.")
+
+    # Leaving the active set: exit the auto-refresh fragment with a full app
+    # rerun so the controls + banner re-render in their terminal state.
+    if auto and status not in ("running", "cancelling"):
+        st.rerun(scope="app")
