@@ -227,8 +227,8 @@ for _header, _names in nav.NAV_GROUPS.items():
     _grouped[_header] = _section
 
 # Hidden destinations: registered so they route, but absent from the sidebar. Park
-# them in the unlabeled operator section - visibility="hidden" keeps them off-screen
-# regardless of section, so this placement is purely structural.
+# them in the SYSTEM section - visibility="hidden" keeps them off-screen regardless
+# of section, so this placement is purely structural.
 for _name in nav.DESTINATION_VIEWS:
     _pg = st.Page(
         _page_factory(_name),

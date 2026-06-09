@@ -93,10 +93,15 @@ MY OPPORTUNITIES-> Matches                     (merges Top Matches + 3 track vie
                                                 Companies is an in-page tab)
 RESUME          -> Resume Clinic
                    Profiles & Resumes          (was Profiles)
------------------ (a rule, no operator noun)
-                   Settings
-                   Spend & Health              (was System Dashboard)
+SYSTEM          -> Settings                    (was an unlabeled rule; relabeled
+                   Spend & Health               "SYSTEM" 2026-06-08 at owner request)
 ```
+
+> **Revised 2026-06-08.** The operator group's unlabeled rule header was replaced
+> with an explicit `SYSTEM` label (`nav.OPERATOR_SECTION = "SYSTEM"`) so Settings +
+> Spend & Health read as a clear system-wide group. The rule-glyph rationale (G)
+> below is superseded for the header; the "operator screens render last / off the
+> first glance" intent still holds (SYSTEM renders last, after the job-seeker groups).
 
 (Grouping revised after the UX review - see `ui_journey_reorg_plan.md` section 11:
 Searches sits under FIND, not MY OPPORTUNITIES; the operator screens get a plain

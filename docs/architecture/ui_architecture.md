@@ -174,10 +174,12 @@ is the single source of truth for the journey structure:
 - **`NAV_GROUPS`** — an ordered mapping of sidebar section header → the internal
   view names under it. The four groups are `FIND` (New search, Searches),
   `MY OPPORTUNITIES` (Matches), `RESUME` (Resume Clinic, Profiles & Resumes), and
-  the operator group under a rule. Dict order is render order. The operator section
-  header is a rule-glyph (`nav.OPERATOR_SECTION = "──────"`), not a noun: an
-  *unlabeled* (`""`) section would be pinned to the top of the nav by Streamlit, the
-  opposite of "operator screens out of the first glance" (ADR-088 G).
+  `SYSTEM` (Settings, Spend & Health). Dict order is render order, so the SYSTEM
+  group renders last. ADR-088 originally used an unlabeled rule-glyph header here
+  (operator screens out of the first glance, ADR-088 G); revised 2026-06-08 to an
+  explicit `nav.OPERATOR_SECTION = "SYSTEM"` label at the owner's request, so the
+  config + health screens read as a clear system-wide group rather than a faint
+  divider.
 - **`DESTINATION_VIEWS`** — Opportunity (the per-job page), Search detail, Live
   monitor, Run report. Registered with `st.Page(..., visibility="hidden")`, so they
   **route** (by click) but never appear in the sidebar. Each renders its own in-app

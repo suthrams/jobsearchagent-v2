@@ -29,12 +29,13 @@ from dataclasses import dataclass
 import streamlit as st
 
 # ── Journey groups (the sidebar) ──────────────────────────────────────────────
-# The operator group's section header. ADR-088 wants "a rule, no operator noun":
-# st.navigation pins an *unlabeled* ("") section to the TOP of the nav, the opposite
-# of what we want, so the operator group carries a rule-glyph header instead. It
-# renders as a faint divider caption beneath the job-seeker groups - a rule, not a
-# noun like "MANAGE" (we removed "Workflow" vocabulary; don't add operator-speak).
-OPERATOR_SECTION = "──────"
+# The system group's section header. ADR-088 originally used an unlabeled rule glyph
+# here ("a rule, no operator noun"), but the owner asked for an explicit label so the
+# Settings + Spend & Health screens read as a clear system-wide group rather than a
+# faint divider (revised 2026-06-08). Kept terse + uppercase to match FIND / RESUME /
+# MY OPPORTUNITIES; "SYSTEM" umbrellas both config (Settings) and monitoring
+# (Spend & Health) without operator jargon.
+OPERATOR_SECTION = "SYSTEM"
 
 # Ordered mapping of sidebar SECTION HEADER -> the internal view names under it.
 # Dict order is render order, so the operator section (the rule) sits last.
