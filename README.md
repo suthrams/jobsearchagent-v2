@@ -4,6 +4,24 @@ A multi-agent career intelligence system that discovers jobs, scores fit across 
 
 Built as a real-world exploration of **production agentic AI patterns**: stateful workflow graphs, structured output, bounded ReAct loops, critique-reflection cycles, evidence-bound generation, and out-of-graph human review (ADR-059).
 
+## Article series
+
+This project is documented in a 13-part LinkedIn series on building and operating a real agentic system, from the first overnight script to the finale:
+
+1. [Built an AI Agent to Assist My Job Search: 8 patterns that actually work](https://www.linkedin.com/pulse/built-ai-agent-assist-my-job-search-8-patterns-actually-suthram-xjhye/)
+2. [What Building an AI Agent from Scratch Actually Teaches You](https://www.linkedin.com/pulse/what-building-ai-agent-from-scratch-actually-teaches-you-suthram-s8zqe/)
+3. [Design Before Code: How a Week Without Coding Changed My AI Agent](https://www.linkedin.com/pulse/design-before-code-how-week-without-coding-changed-my-suthram-7dihe/)
+4. [Going multi-agent unlocks 6 new agentic AI patterns](https://www.linkedin.com/pulse/going-multi-agent-unlocks-6-new-agentic-ai-patterns-sivakumar-suthram-ounxe/)
+5. [Per-agent model selection: a seam, not a refactor](https://www.linkedin.com/pulse/per-agent-model-selection-seam-refactor-sivakumar-suthram-le2ue/)
+6. [Cost is a design decision, not a dashboard](https://www.linkedin.com/pulse/cost-design-decision-dashboard-sivakumar-suthram-xe4oe/)
+7. [The agent I trust the least](https://www.linkedin.com/pulse/agent-i-trust-least-sivakumar-suthram-caaje/)
+8. [Gate the irreversible, not everything](https://www.linkedin.com/pulse/gate-irreversible-everything-sivakumar-suthram-zjide/)
+9. [The model is the only part I cannot pin down](https://www.linkedin.com/pulse/model-only-part-i-cannot-pin-down-sivakumar-suthram-cup8e/)
+10. [The strongest security control is the feature you don't build](https://www.linkedin.com/pulse/strongest-security-control-feature-you-dont-build-sivakumar-suthram-8zyue/)
+11. [Never trust the green dashboard](https://www.linkedin.com/pulse/never-trust-green-dashboard-sivakumar-suthram-vqh2e/)
+12. [Your AI system has more APIs than you think](https://www.linkedin.com/pulse/your-ai-system-has-more-apis-than-you-think-sivakumar-suthram-elnbe/)
+13. [AI didn't take me out of the loop. It moved me to the top of it](https://www.linkedin.com/pulse/ai-didnt-take-me-out-loop-moved-top-sivakumar-suthram-zfvfe/) (series finale)
+
 ## What It Does
 
 1. **Discovers** jobs from Adzuna (aggregates Indeed, Glassdoor, etc.) and LinkedIn (manual URL intake) — concurrently
