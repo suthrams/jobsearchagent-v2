@@ -54,39 +54,39 @@ Serves **multiple profiles** from one install (ADR-062) — each with its own re
 flowchart TD
     subgraph YOU["What You Bring"]
         R["Resume PDF"]
-        PREFS["Preferences\nlocations · salary · tracks"]
+        PREFS["Preferences<br>locations · salary · tracks"]
     end
 
     subgraph SOURCES["Job Sources"]
-        AZ["Adzuna API\n(concurrent, 5 workers)"]
-        LI["LinkedIn / custom URLs\nmanual intake"]
-        ATS["ATS-direct\nGreenhouse · Lever (opt-in)"]
+        AZ["Adzuna API<br>(concurrent, 5 workers)"]
+        LI["LinkedIn / custom URLs<br>manual intake"]
+        ATS["ATS-direct<br>Greenhouse · Lever (opt-in)"]
     end
 
     subgraph WORKFLOW["LangGraph Workflow - in-graph, no interrupt()"]
         DISC["Discover + keyword filter"]
-        REL["Relevance Filter\nopt-in pre-scoring (ADR-079)"]
-        RES["Research Agent\ncompany + role context"]
-        SCORE["Scoring Agent\nactive tracks concurrently"]
-        GATE{"Deep-review gate\nhigh-match jobs only"}
+        REL["Relevance Filter<br>opt-in pre-scoring (ADR-079)"]
+        RES["Research Agent<br>company + role context"]
+        SCORE["Scoring Agent<br>active tracks concurrently"]
+        GATE{"Deep-review gate<br>high-match jobs only"}
         CRITIC["Resume Critic"]
         AUDIT["Review Auditor"]
         ADVISOR["Career Advisor"]
         REPORT["Generate Report"]
-        CP[("SqliteSaver\ncheckpoints")]
+        CP[("SqliteSaver<br>checkpoints")]
     end
 
     subgraph ONDEMAND["On-Demand - out-of-graph (ADR-055/066/085)"]
         COACH["Interview Coach"]
-        TAILOR["Tailoring Agent\nevidence-bound"]
-        FIDELITY["Fidelity Reviewer\nguardrail"]
-        CLINIC["Resume Clinic\nreview · chat · export"]
+        TAILOR["Tailoring Agent<br>evidence-bound"]
+        FIDELITY["Fidelity Reviewer<br>guardrail"]
+        CLINIC["Resume Clinic<br>review · chat · export"]
     end
 
     subgraph OUTPUTS["Results"]
         API["FastAPI Backend"]
         UI["Streamlit UI"]
-        DB[("SQLite\njobs · scores · reviews")]
+        DB[("SQLite<br>jobs · scores · reviews")]
     end
 
     R --> DISC
