@@ -1,0 +1,30 @@
+{
+  "id": "diag_v2_article13_02_caught_by_a_human",
+  "width": 1860,
+  "height": 880,
+  "layout": "scene",
+  "title": "Caught by a human",
+  "headSub": "Most of the nine root-cause writeups began the same way: I was using the app, something looked wrong, and I went digging. The AI did not catch them. The loop a human runs around it did.",
+  "scene": {
+    "viewBox": [0, 0, 1860, 560],
+    "zones": [],
+    "nodes": [
+      {"id": "use",  "x": 60,   "y": 120, "w": 360, "h": 130, "accent": "blue",  "icon": "user",   "title": "Found in real use", "sub": "not by a test - by me, using it"},
+      {"id": "rca",  "x": 560,  "y": 120, "w": 360, "h": 130, "accent": "amber", "icon": "doc",    "title": "Root-cause writeup", "sub": "what broke, and why"},
+      {"id": "test", "x": 1060, "y": 120, "w": 360, "h": 130, "accent": "green", "icon": "shield", "title": "Forcing-function test", "sub": "fails the build if it returns"},
+      {"id": "recur","x": 560,  "y": 360, "w": 360, "h": 120, "accent": "red",   "icon": "activity","title": "BUG-008 = BUG-006 again", "sub": "a fix that did not hold the first time"}
+    ],
+    "edges": [
+      {"from": "use:right",   "to": "rca:left",  "accent": "amber", "style": "thick", "label": "dig in"},
+      {"from": "rca:right",   "to": "test:left", "accent": "green", "style": "thick", "label": "pin it"},
+      {"from": "test:bottom", "to": "recur:right", "accent": "red", "dashed": true, "label": "until it holds"},
+      {"from": "recur:left",  "to": "use:bottom", "accent": "red", "dashed": true}
+    ],
+    "labels": [
+      {"x": 1500, "y": 150, "text": "9 writeups", "accent": "amber", "tag": true, "size": 18},
+      {"x": 1500, "y": 210, "text": "25 agent failures + 7 schema repairs", "accent": "gray", "tag": true, "size": 15},
+      {"x": 1500, "y": 268, "text": "across 1,100+ runs", "accent": "gray", "tag": true, "size": 15}
+    ]
+  },
+  "takeaway": {"icon": "check", "accent": "green", "text": "The model writes confident, plausible code. The only thing between plausible and correct was a human reading it and a test the human commissioned. {{green:Review did not get automated away. It got more important.}}"}
+}

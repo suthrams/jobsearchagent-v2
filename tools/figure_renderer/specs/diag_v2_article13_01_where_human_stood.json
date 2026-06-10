@@ -1,0 +1,41 @@
+{
+  "id": "diag_v2_article13_01_where_human_stood",
+  "width": 2040,
+  "height": 1140,
+  "layout": "scene",
+  "title": "Where the human stood",
+  "headSub": "The same split on almost every task: the model did the construction, I kept the judgment, and review is the gate everything passed through.",
+  "scene": {
+    "viewBox": [0, 0, 2040, 800],
+    "zones": [
+      {"x": 20, "y": 140, "w": 2000, "h": 250, "accent": "blue",  "dashed": false, "fill": false, "label": "HUMAN-OWNED - the judgment"},
+      {"x": 20, "y": 510, "w": 2000, "h": 250, "accent": "amber", "dashed": true,  "fill": false, "label": "AI-ACCELERATED - the construction"}
+    ],
+    "nodes": [
+      {"id": "h1", "x": 60,   "y": 190, "w": 340, "h": 130, "accent": "blue",  "icon": "target", "title": "Name the need", "sub": "what is worth building"},
+      {"id": "h2", "x": 455,  "y": 190, "w": 340, "h": 130, "accent": "blue",  "icon": "doc",    "title": "Define + spec", "sub": "the ADRs"},
+      {"id": "h3", "x": 850,  "y": 190, "w": 340, "h": 130, "accent": "blue",  "icon": "filter", "title": "Set the boundaries", "sub": "contracts, controls"},
+      {"id": "h4", "x": 1245, "y": 186, "w": 340, "h": 138, "accent": "green", "icon": "check",  "title": "REVIEW", "sub": "the gate"},
+      {"id": "h5", "x": 1640, "y": 190, "w": 340, "h": 130, "accent": "blue",  "icon": "shield", "title": "Decide + refuse", "sub": "what ships, what does not"},
+
+      {"id": "a1", "x": 60,   "y": 540, "w": 340, "h": 130, "accent": "amber", "icon": "code",     "title": "Scaffold the code"},
+      {"id": "a2", "x": 455,  "y": 540, "w": 340, "h": 130, "accent": "amber", "icon": "code",     "title": "Write the functions"},
+      {"id": "a3", "x": 850,  "y": 540, "w": 340, "h": 130, "accent": "amber", "icon": "steps",    "title": "Wire the parts"},
+      {"id": "a4", "x": 1245, "y": 540, "w": 340, "h": 130, "accent": "amber", "icon": "doc",      "title": "Draft the output"},
+      {"id": "a5", "x": 1640, "y": 540, "w": 340, "h": 130, "accent": "amber", "icon": "table",    "title": "Fill the tests"}
+    ],
+    "edges": [
+      {"from": "h1:right", "to": "h2:left", "accent": "blue", "style": "thick"},
+      {"from": "h2:right", "to": "h3:left", "accent": "blue", "style": "thick"},
+      {"from": "h3:right", "to": "h4:left", "accent": "blue", "style": "thick"},
+      {"from": "h4:right", "to": "h5:left", "accent": "blue", "style": "thick"},
+
+      {"from": "h1:bottom", "to": "a1:top", "accent": "gray", "dashed": true, "label": "directs"},
+      {"from": "h2:bottom", "to": "a2:top", "accent": "gray", "dashed": true},
+      {"from": "h3:bottom", "to": "a3:top", "accent": "gray", "dashed": true},
+      {"from": "a4:top",    "to": "h4:bottom", "accent": "green", "style": "thick", "label": "nothing ships unreviewed"},
+      {"from": "h5:bottom", "to": "a5:top", "accent": "gray", "dashed": true}
+    ]
+  },
+  "takeaway": {"icon": "check", "accent": "green", "text": "Construction moved down to the model. Definition, review, and the decision to refuse stayed up with me. {{green:Review}} is the gate every line of the model's work had to pass through."}
+}

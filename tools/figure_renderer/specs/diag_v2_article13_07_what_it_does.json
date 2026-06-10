@@ -1,0 +1,42 @@
+{
+  "id": "diag_v2_article13_07_what_it_does",
+  "width": 2000,
+  "height": 1040,
+  "layout": "cards",
+  "title": "What I built for myself, a job seeker",
+  "headSub": "One personal tool, grouped by the journey: everything from finding a job to a resume I would actually send. The one thing it does not do is decide for me.",
+  "cardWidth": 360,
+  "cards": [
+    {"icon": "globe", "accent": "green", "label": "FIND", "sub": "discover, then filter", "lines": [
+      "Sources: Adzuna, Greenhouse, Lever, custom URLs",
+      "Filters: experience, posting age, dead links",
+      "Reasoning relevance pre-filter drops mismatches",
+      "Optional security-clearance exclusion"
+    ]},
+    {"icon": "target", "accent": "blue", "label": "MATCH", "sub": "score and rank", "lines": [
+      "Fit scored across three career tracks",
+      "Matches home base, ranked best-fit first",
+      "Where-to-focus triage strip",
+      "Favorite the ones worth pursuing"
+    ]},
+    {"icon": "eye", "accent": "amber", "label": "UNDERSTAND", "sub": "go deep on the strong ones", "lines": [
+      "Per-job fit: resume-gap vs career-gap",
+      "Deep review on the strong matches",
+      "Company and role research",
+      "Interview prep on demand"
+    ]},
+    {"icon": "doc", "accent": "magenta", "label": "TAILOR", "sub": "rewrite, never fabricate", "lines": [
+      "Evidence-bound resume tailoring",
+      "Fidelity reviewer checks every claim",
+      "Approve / revise / reject / edit",
+      "Export: md, pdf, docx, html, txt, json"
+    ]},
+    {"icon": "shield", "accent": "gray", "label": "OPERATE", "sub": "the guardrails", "lines": [
+      "Cost and health dashboards",
+      "Cost caps enforced in code",
+      "PII redacted before the model",
+      "Multiple profiles, one install"
+    ]}
+  ],
+  "takeaway": {"icon": "check", "accent": "blue", "text": "Everything from a raw job posting to a resume I would send. It stops at the apply button on purpose. {{blue:The decision to apply is mine.}}"}
+}

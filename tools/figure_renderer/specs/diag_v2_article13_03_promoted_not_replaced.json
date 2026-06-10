@@ -1,0 +1,30 @@
+{
+  "id": "diag_v2_article13_03_promoted_not_replaced",
+  "width": 1860,
+  "height": 900,
+  "layout": "tiers",
+  "title": "What endures, and what moves",
+  "connector": "the fundamentals did not get replaced. they got more load-bearing.",
+  "left": {
+    "head": "ENDURES  -  the engineering",
+    "items": [
+      {"title": "Boundaries between the parts", "accent": "green"},
+      {"title": "Typed contracts at every seam", "accent": "green"},
+      {"title": "Controls and cost caps in code", "accent": "green"},
+      {"title": "Consequences and accountability", "accent": "green", "focal": true},
+      {"title": "Design before code", "accent": "green"},
+      {"title": "Review as the gate", "accent": "green"}
+    ]
+  },
+  "right": {
+    "head": "MOVES  -  the headline",
+    "items": [
+      {"title": "Who writes the construction", "accent": "magenta"},
+      {"title": "Which model is cheapest this quarter", "accent": "magenta"},
+      {"title": "The framework of the month", "accent": "magenta"},
+      {"title": "The UI conventions", "accent": "magenta"},
+      {"title": "How fast a feature lands", "accent": "magenta"}
+    ]
+  },
+  "takeaway": {"icon": "check", "accent": "green", "text": "A capable model changes who types. It does not change what good looks like. {{green:The fundamentals did not get replaced. They got more load-bearing.}}"}
+}

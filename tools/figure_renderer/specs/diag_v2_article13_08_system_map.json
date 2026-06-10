@@ -1,0 +1,55 @@
+{
+  "id": "diag_v2_article13_08_system_map",
+  "width": 1280,
+  "height": 1860,
+  "layout": "scene",
+  "title": "The agent graph, and where each article looked",
+  "headSub": "One run, top to bottom. The orchestrator owns state and calls each specialized agent in turn; agents return typed output and never touch the data. Each box notes the article that zoomed in on it.",
+  "scene": {
+    "viewBox": [0, 0, 1280, 1560],
+    "zones": [
+      {"x": 400, "y": 250, "w": 470, "h": 930, "accent": "amber", "dashed": true, "fill": false, "label": "THE AGENT GRAPH - in-graph funnel (Art 4)"},
+      {"x": 920, "y": 480, "w": 320, "h": 490, "accent": "gray", "dashed": true, "fill": false, "label": "ON DEMAND - out of graph"}
+    ],
+    "nodes": [
+      {"id": "start",  "x": 360, "y": 80,  "w": 520, "h": 100, "accent": "green",   "icon": "steps",    "title": "A run starts", "sub": "UI -> REST API -> orchestrator (Art 12 / 3 / 9)"},
+
+      {"id": "relev",  "x": 440, "y": 320, "w": 390, "h": 82, "accent": "amber",   "icon": "filter",   "title": "Relevance filter", "sub": "opt-in, drops mismatches"},
+      {"id": "research","x": 440,"y": 428, "w": 390, "h": 82, "accent": "amber",   "icon": "globe",    "title": "Research"},
+      {"id": "scoring","x": 440, "y": 536, "w": 390, "h": 90, "accent": "amber",   "icon": "target", "focal": true, "title": "Scoring", "sub": "every job, cheapest model (Art 6)"},
+      {"id": "critic", "x": 430, "y": 652, "w": 195, "h": 82, "accent": "amber",   "icon": "doc",      "title": "Resume Critic"},
+      {"id": "auditor","x": 645, "y": 652, "w": 195, "h": 82, "accent": "amber",   "icon": "check",    "title": "Review Auditor"},
+      {"id": "advisor","x": 440, "y": 768, "w": 390, "h": 82, "accent": "amber",   "icon": "user",     "title": "Career Advisor"},
+      {"id": "coach",  "x": 440, "y": 876, "w": 390, "h": 82, "accent": "amber",   "icon": "steps",    "title": "Interview Coach"},
+      {"id": "report", "x": 440, "y": 984, "w": 390, "h": 82, "accent": "green",   "icon": "doc",      "title": "Generate report"},
+
+      {"id": "seam",   "x": 70,  "y": 536, "w": 300, "h": 92, "accent": "magenta", "icon": "arrow",    "title": "Model seam", "sub": "LLMClient + registry (Art 5)"},
+      {"id": "llm",    "x": 70,  "y": 660, "w": 300, "h": 92, "accent": "magenta", "icon": "activity", "title": "LLM provider", "sub": "Claude / OpenAI (Art 12)"},
+
+      {"id": "tailor", "x": 935, "y": 548, "w": 290, "h": 78, "accent": "amber",   "icon": "doc",      "title": "Tailoring (Art 7 / 8)"},
+      {"id": "fidelity","x": 935,"y": 638, "w": 290, "h": 78, "accent": "amber",   "icon": "check",    "title": "Fidelity Reviewer"},
+      {"id": "clinic", "x": 935, "y": 728, "w": 290, "h": 78, "accent": "magenta", "icon": "doc",      "title": "Resume Clinic"},
+      {"id": "chat",   "x": 935, "y": 818, "w": 290, "h": 78, "accent": "magenta", "icon": "activity", "title": "Resume Chat"},
+
+      {"id": "decide", "x": 330, "y": 1240,"w": 320, "h": 96, "accent": "green",   "icon": "user",     "title": "Human decides", "sub": "gate the irreversible (Art 8)"},
+      {"id": "watch",  "x": 700, "y": 1240,"w": 380, "h": 96, "accent": "gray",    "icon": "gauge",    "title": "Recorded", "sub": "cost caps + observability (Art 6 / 11)"}
+    ],
+    "edges": [
+      {"from": "start:bottom",   "to": "relev:top",    "accent": "green", "style": "thick", "label": "kick off"},
+      {"from": "relev:bottom",   "to": "research:top", "accent": "amber"},
+      {"from": "research:bottom","to": "scoring:top",  "accent": "amber"},
+      {"from": "scoring:bottom", "to": "critic:top",   "accent": "amber"},
+      {"from": "critic:right",   "to": "auditor:left", "accent": "amber", "label": "reflect (<=2)"},
+      {"from": "auditor:bottom", "to": "advisor:top",  "accent": "amber"},
+      {"from": "advisor:bottom", "to": "coach:top",    "accent": "amber"},
+      {"from": "coach:bottom",   "to": "report:top",   "accent": "amber"},
+      {"from": "scoring:left",   "to": "seam:right",   "accent": "magenta", "dashed": true, "label": "every agent calls one interface"},
+      {"from": "seam:bottom",    "to": "llm:top",      "accent": "magenta"},
+      {"from": "scoring:right",  "to": "tailor:left",  "accent": "gray", "dashed": true, "label": "on a scored job"},
+      {"from": "tailor:bottom",  "to": "fidelity:top", "accent": "amber"},
+      {"from": "report:bottom",  "to": "decide:top",   "accent": "green", "label": "you decide what ships"},
+      {"from": "report:bottom",  "to": "watch:top",    "accent": "gray", "dashed": true, "label": "recorded"}
+    ]
+  },
+  "takeaway": {"icon": "steps", "accent": "amber", "text": "Eleven specialized agents, one orchestrator that owns the state, one model seam they all call. {{amber:Each box names the article that took it apart. One architecture, designed before the first line of code (Art 3).}}"}
+}

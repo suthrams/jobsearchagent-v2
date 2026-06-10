@@ -1,0 +1,55 @@
+{
+  "id": "diag_v2_article13_05_product_echo",
+  "width": 2040,
+  "height": 1140,
+  "layout": "scene",
+  "title": "The product keeps the same shape",
+  "headSub": "The runtime is the build in miniature. The agents do the construction. The human defines, judges, and decides. The app stops at the decision.",
+  "scene": {
+    "viewBox": [0, 0, 2040, 800],
+    "zones": [
+      {"x": 20, "y": 150, "w": 2000, "h": 230, "accent": "blue",  "dashed": false, "fill": false, "label": "JOB SEEKER - defines, judges, decides"},
+      {"x": 20, "y": 470, "w": 2000, "h": 230, "accent": "amber", "dashed": true,  "fill": false, "label": "THE APP - agents do the construction"}
+    ],
+    "nodes": [
+      {"id": "h1", "x": 40,   "y": 196, "w": 250, "h": 120, "accent": "blue",  "icon": "user",     "title": "Onboard", "sub": "profile + resume"},
+      {"id": "h2", "x": 330,  "y": 196, "w": 250, "h": 120, "accent": "green", "icon": "target",   "title": "Define search", "sub": "roles, filters, go"},
+      {"id": "h3", "x": 620,  "y": 196, "w": 250, "h": 120, "accent": "blue",  "icon": "activity", "title": "Watch it run", "sub": "live monitor"},
+      {"id": "h4", "x": 910,  "y": 196, "w": 250, "h": 120, "accent": "green", "icon": "table",    "title": "Review matches", "sub": "ranked; triage"},
+      {"id": "h5", "x": 1200, "y": 196, "w": 250, "h": 120, "accent": "blue",  "icon": "gauge",    "title": "Dig into a match", "sub": "fit, gaps, prep"},
+      {"id": "h6", "x": 1490, "y": 196, "w": 250, "h": 120, "accent": "green", "icon": "check",    "title": "Tailor resume", "sub": "approve / edit"},
+      {"id": "h7", "x": 1780, "y": 196, "w": 250, "h": 120, "accent": "green", "icon": "arrow",    "title": "Apply", "sub": "export + apply"},
+
+      {"id": "a1", "x": 40,   "y": 524, "w": 250, "h": 120, "accent": "amber", "icon": "doc",    "title": "Parse resume", "sub": "-> profile"},
+      {"id": "a2", "x": 330,  "y": 524, "w": 250, "h": 120, "accent": "amber", "icon": "globe",  "title": "Search market", "sub": "Adzuna + ATS"},
+      {"id": "a3", "x": 620,  "y": 524, "w": 250, "h": 120, "accent": "amber", "icon": "robot",  "focal": true, "title": "Filter + score", "sub": "agents"},
+      {"id": "a4", "x": 910,  "y": 524, "w": 250, "h": 120, "accent": "amber", "icon": "filter", "title": "Rank + surface", "sub": "best-fit first"},
+      {"id": "a5", "x": 1200, "y": 524, "w": 250, "h": 120, "accent": "amber", "icon": "eye",    "title": "Deep review", "sub": "on demand"},
+      {"id": "a6", "x": 1490, "y": 524, "w": 250, "h": 120, "accent": "amber", "icon": "doc",    "title": "Draft + fidelity", "sub": "no fabrication"},
+      {"id": "a7", "x": 1780, "y": 524, "w": 250, "h": 120, "accent": "gray",  "icon": "shield", "title": "Export, then stop", "sub": "no app tracking"}
+    ],
+    "edges": [
+      {"from": "h1:right", "to": "h2:left", "accent": "blue", "style": "thick"},
+      {"from": "h2:right", "to": "h3:left", "accent": "blue", "style": "thick"},
+      {"from": "h3:right", "to": "h4:left", "accent": "blue", "style": "thick"},
+      {"from": "h4:right", "to": "h5:left", "accent": "blue", "style": "thick"},
+      {"from": "h5:right", "to": "h6:left", "accent": "blue", "style": "thick"},
+      {"from": "h6:right", "to": "h7:left", "accent": "blue", "style": "thick"},
+
+      {"from": "h1:bottom", "to": "a1:top", "accent": "gray",  "dashed": true},
+      {"from": "h2:bottom", "to": "a2:top", "accent": "green"},
+      {"from": "a3:top",    "to": "h3:bottom", "accent": "gray", "dashed": true},
+      {"from": "a4:top",    "to": "h4:bottom", "accent": "green"},
+      {"from": "h5:bottom", "to": "a5:top", "accent": "gray",  "dashed": true},
+      {"from": "a6:top",    "to": "h6:bottom", "accent": "green"},
+      {"from": "a7:top",    "to": "h7:bottom", "accent": "gray", "dashed": true}
+    ],
+    "labels": [
+      {"x": 330,  "y": 176, "text": "DEFINE", "accent": "green", "tag": true, "size": 15},
+      {"x": 910,  "y": 176, "text": "JUDGE",  "accent": "green", "tag": true, "size": 15},
+      {"x": 1490, "y": 176, "text": "DECIDE", "accent": "green", "tag": true, "size": 15},
+      {"x": 1780, "y": 176, "text": "ACT",    "accent": "green", "tag": true, "size": 15}
+    ]
+  },
+  "takeaway": {"icon": "target", "accent": "green", "text": "The agents search, score, and draft. The human {{green:defines}}, {{green:judges}}, and {{green:decides}} - then the app stops, because the career call stays human-owned. The thing I built embodies the thesis I built it by."}
+}

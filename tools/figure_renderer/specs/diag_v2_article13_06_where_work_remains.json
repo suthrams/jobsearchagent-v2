@@ -1,0 +1,18 @@
+{
+  "id": "diag_v2_article13_06_where_work_remains",
+  "width": 1860,
+  "height": 1040,
+  "layout": "table",
+  "title": "Where the work still is",
+  "headSub": "An honest finale names its gaps. Mine are roughly the field's open frontier.",
+  "gridCols": "minmax(360px,1.1fr) 1.1fr 1.2fr",
+  "head": ["Our gap", "The field's status", "The honest reason"],
+  "rows": [
+    {"icon": "activity", "accent": "amber", "label": "Behavioral drift", "sub": "registry designed, not built", "cells": [{"text": "long-running agents degrade; pre-deploy evals are not production monitoring"}, {"text": "I have not built it, so I did not write it up"}]},
+    {"icon": "database", "accent": "amber", "label": "Long-term memory", "sub": "designed, unwired", "cells": [{"text": "cross-session identity and staleness are open problems"}, {"text": "no need yet; structured context still suffices"}]},
+    {"icon": "shield", "accent": "red", "label": "No auth, PII at rest in cleartext", "sub": "classic appsec", "cells": [{"text": "a well-understood, standard fix"}, {"text": "deferred for a single-owner localhost tool; one seam the day it ships"}]},
+    {"icon": "gauge", "accent": "amber", "label": "Cost is per run, not per outcome", "sub": "and the real outcome is off-app", "cells": [{"text": "the true outcome - an interview, an offer accepted - happens off-app, in the human's hands"}, {"text": "by design: the app measures opportunity identification, not the end-to-end hire"}]},
+    {"icon": "user", "accent": "gray", "label": "Governance cooperative", "sub": "not enforced", "cells": [{"text": "regulators converge on human oversight and accountability"}, {"text": "fine for one owner; an access boundary is the next build"}]}
+  ],
+  "takeaway": {"icon": "target", "accent": "amber", "text": "None of these is a secret, and every one maps to an open problem the wider field is still working. {{amber:I am not behind the field on these. The field is still standing where I am standing.}}"}
+}

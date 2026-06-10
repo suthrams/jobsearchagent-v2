@@ -1,0 +1,17 @@
+{
+  "id": "diag_v2_article13_09_challenges",
+  "width": 1900,
+  "height": 1020,
+  "layout": "table",
+  "title": "What bit me along the way",
+  "headSub": "The build was not smooth. Four operational problems taught me the most, and each looked fine right up until it did not.",
+  "gridCols": "minmax(280px,0.8fr) 1.3fr 1.2fr",
+  "head": ["Where", "The challenge", "What fixed it"],
+  "rows": [
+    {"icon": "gauge", "accent": "red", "label": "Observability", "sub": "Art 11", "cells": [{"text": "the cost dashboard read three times under the real bill for weeks, while every test stayed green"}, {"text": "an invariant that follows the value across layers, not a per-layer unit test"}]},
+    {"icon": "shield", "accent": "amber", "label": "Cost", "sub": "Art 6", "cells": [{"text": "a settings dropdown left the busiest agent on the expensive model; the bill climbed quietly for days"}, {"text": "cost caps enforced in code in three places, never a dashboard you watch after the fact"}]},
+    {"icon": "activity", "accent": "blue", "label": "Performance", "sub": "Art 6 / 9", "cells": [{"text": "scoring ran one job at a time, about 75 seconds a run"}, {"text": "concurrency on independent calls, about 20 seconds at the same cost, with a timing test to guard it"}]},
+    {"icon": "filter", "accent": "red", "label": "Security", "sub": "Art 10", "cells": [{"text": "two of the three lethal-trifecta legs are open by necessity, and the model is a black box I cannot inspect"}, {"text": "hold the third leg nearly shut: no tools, no egress, a human on anything irreversible"}]}
+  ],
+  "takeaway": {"icon": "shield", "accent": "amber", "text": "Every one of these looked fine until it did not. {{amber:The dashboard stayed green while the numbers under it were wrong.}} The fixes were architecture, not paying more attention."}
+}

@@ -1,0 +1,32 @@
+{
+  "id": "diag_v2_article13_10_what_transfers",
+  "width": 1980,
+  "height": 880,
+  "layout": "cards",
+  "title": "If you build your own, this is the part that transfers",
+  "headSub": "None of it is about this app. It is what building it with an AI taught me about building anything with one.",
+  "cardWidth": 360,
+  "cards": [
+    {"icon": "target", "accent": "green", "label": "Start with a need", "lines": [
+      "a clear purpose and a defined outcome",
+      "not because agents are in fashion"
+    ]},
+    {"icon": "shield", "accent": "amber", "label": "Adopt with guardrails", "lines": [
+      "governance and controls in place",
+      "from day one, not bolted on later"
+    ]},
+    {"icon": "steps", "accent": "blue", "label": "Decide the autonomy", "lines": [
+      "how much the AI does on its own",
+      "and where the human's call has to sit"
+    ]},
+    {"icon": "filter", "accent": "magenta", "label": "Build for the problem", "lines": [
+      "leave out what it does not need",
+      "context decides, and context can change"
+    ]},
+    {"icon": "check", "accent": "green", "label": "Keep review", "lines": [
+      "the seat that matters most",
+      "now that the model writes the code"
+    ]}
+  ],
+  "takeaway": {"icon": "target", "accent": "blue", "text": "The model is a tool, a powerful one. {{blue:Judgment, clear specs, review, and restraint are the job now.}}"}
+}

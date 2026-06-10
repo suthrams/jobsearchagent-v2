@@ -1,0 +1,17 @@
+{
+  "id": "diag_v2_article13_04_refusals",
+  "width": 1900,
+  "height": 1020,
+  "layout": "table",
+  "title": "Built for the problem, not for show",
+  "headSub": "A capable model will build anything you describe, so scope is the hard part. I built what this job search needed and left the rest, knowing the context can change.",
+  "gridCols": "minmax(340px,1fr) 1.1fr 1.2fr",
+  "head": ["Left out", "Why it wasn't needed here", "What would bring it back"],
+  "rows": [
+    {"icon": "shield", "accent": "amber", "label": "Model-invoked tools", "sub": "an autonomous tool loop", "cells": [{"text": "the job is search, score, draft - nothing for the agent to go act on"}, {"text": "a use case where the agent must take an action, with the cost caps extended to cover it"}]},
+    {"icon": "database", "accent": "gray", "label": "A vector store / memory", "sub": "recall across sessions", "cells": [{"text": "structured context covers a single job search"}, {"text": "cross-session recall, or many profiles, that context cannot carry"}]},
+    {"icon": "filter", "accent": "gray", "label": "Approval gates on every step", "sub": "pause-and-wait everywhere", "cells": [{"text": "the reversible steps are cheap to redo"}, {"text": "more irreversible actions added to the flow"}]},
+    {"icon": "target", "accent": "green", "label": "Application tracking", "sub": "apply / save / status", "cells": [{"text": "the tool's job ends at the resume; a person tracks their own applications"}, {"text": "stays out by choice - the apply decision is the human's"}]}
+  ],
+  "takeaway": {"icon": "check", "accent": "amber", "text": "I built what this problem needed, not what the field is excited about. {{amber:Context decides what to leave out, and context can change.}}"}
+}
