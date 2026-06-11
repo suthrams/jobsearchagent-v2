@@ -185,6 +185,8 @@ desktop.ini
 # ─── Logs ─────────────────────────────────────────────────────────────────────
 *.log
 tmp_*.py
+# one-off scratch tools (e.g. _capture_dashboard.py), not committed
+tools/_*.py
 
 # ─── Backups / editor swap files ─────────────────────────────────────────────
 *~
