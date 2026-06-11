@@ -10,6 +10,7 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.ui.data import _cached_user_resumes, _get_config_cached
+from app.ui.formatting import locations_to_text, parse_locations_input
 from app.ui.nav import ViewContext, _navigate
 
 
@@ -22,9 +23,10 @@ def render(ctx: ViewContext) -> None:
     scoring_cfg = eff.get("scoring", {}) or {}
 
     _default_roles = ", ".join(search_cfg.get("titles", []))
-    # ADR-064: locations are one-per-line so "City, State" survives (a comma split
-    # would shatter "Atlanta, GA" into "Atlanta" + "GA").
-    _default_locations = "\n".join(search_cfg.get("locations", []))
+    # ADR-064/BUG-011: locations are one-per-line so "City, State" survives (a comma
+    # split would shatter "Atlanta, GA" into "Atlanta" + "GA"). Shared seam with the
+    # Settings page via parse_locations_input / locations_to_text.
+    _default_locations = locations_to_text(search_cfg.get("locations", []))
 
     with st.expander("📋 Settings in play for this run", expanded=True):
         st.caption(
@@ -181,6 +183,14 @@ def render(ctx: ViewContext) -> None:
             "Submitting…" if _submitting else "Start Workflow",
             disabled=_submitting,
         )
+        # Persist the form's search settings to THIS profile without starting a run
+        # (the persist checkbox above only fires when a run is also started).
+        save_only = st.form_submit_button(
+            "Save settings to my profile",
+            disabled=_submitting,
+            help="Save these roles, locations, and filters as your profile's "
+                 "defaults for future runs. Does not start a workflow.",
+        )
 
     # Two-phase submit. Each kickoff gets a fresh Idempotency-Key (api_client), so
     # the server can't dedupe two distinct user clicks - a double-click would start
@@ -188,12 +198,13 @@ def render(ctx: ViewContext) -> None:
     # payload, raises _run_submitting, and reruns so the button re-renders disabled;
     # phase B (the rerun) executes the stashed payload while the button is greyed,
     # then navigates away (success) or clears the guard so the user can retry (error).
-    if submitted and not _submitting:
+    if (submitted or save_only) and not _submitting:
         custom_urls = [u.strip() for u in custom_urls_raw.splitlines() if u.strip()]
 
         search_criteria = {
             "roles": [r.strip() for r in roles.split(",") if r.strip()],
-            "locations": [ln.strip() for ln in locations.splitlines() if ln.strip()],
+            # BUG-011/ADR-064: one-per-line so "Atlanta, GA" survives (shared seam).
+            "locations": parse_locations_input(locations),
         }
         # ADR-071: the run inherits the profile's active scoring tracks. Validate
         # against the three known names; an empty/invalid set is omitted so the
@@ -232,9 +243,9 @@ def render(ctx: ViewContext) -> None:
             },
         }
 
-        # Stash everything needed by phase B. The form's widget values are only
-        # available on this click run; a plain st.rerun would lose them, so capture
-        # the built payload (and any prefs to persist) into session_state now.
+        # The profile defaults this form persists -- shared by the save-only path
+        # (below) and the save-with-run path (phase B). Widget values are only
+        # readable on this click run, so capture them now.
         prefs = {
             "scoring.min_match_score": int(run_threshold),
             "scoring.manual_selection": bool(manual_scoring),
@@ -250,6 +261,23 @@ def render(ctx: ViewContext) -> None:
             "search.max_posting_age_days": int(max_posting_age_days),
             "search.drop_dead_links": bool(drop_dead_links),
         }
+        # Save-only: persist these settings to the acting profile and stop -- no run.
+        # (put_config carries the profile via the ?user_id= seam, so this writes to
+        # THIS profile; invalidate the config cache so the form re-reads the saved
+        # values on the next render.)
+        if save_only:
+            try:
+                for _key, _val in prefs.items():
+                    api.put_config(_key, _val)
+                st.session_state.config_cache = None
+                st.success("Saved these search settings as defaults for your profile.")
+            except Exception as exc:
+                st.error(f"Save failed: {exc}")
+            return
+
+        # Stash everything needed by phase B. The form's widget values are only
+        # available on this click run; a plain st.rerun would lose them, so capture
+        # the built payload (and any prefs to persist) into session_state now.
         st.session_state._pending_run = {
             "resume_id": resume_id,
             "search_criteria": search_criteria,

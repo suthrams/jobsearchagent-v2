@@ -17,3 +17,4 @@
 | [BUG-008](BUG-008-profile-reset-recurrence.md) | Profile selector STILL resets to primary on navigation (BUG-006 fix insufficient) | High (wrong-profile data scoping; recurrence of BUG-006) | Fixed | none |
 | [BUG-009](BUG-009-live-run-unreachable-after-declutter.md) | Live run unreachable from other screens after the sidebar declutter | Medium (a running search can't be watched from most screens) | Fixed | none |
 | [BUG-010](BUG-010-truncated-snippet-defeats-clearance-and-experience-filters.md) | Truncated aggregator snippets defeat the clearance + experience filters | High | Fixed | `tests/v2/test_bug010_title_filters.py` |
+| [BUG-011](BUG-011-settings-locations-comma-split-corrupts-city-state.md) | Settings locations field comma-splits, corrupting "City, State" | High | Fixed | `tests/v2/test_bug011_locations_input.py` |

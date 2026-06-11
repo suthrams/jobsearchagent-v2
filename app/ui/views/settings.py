@@ -10,7 +10,12 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.ui.data import _cached_get_providers, _get_config_cached
-from app.ui.formatting import _get_nested, _label_with_cost
+from app.ui.formatting import (
+    _get_nested,
+    _label_with_cost,
+    locations_to_text,
+    parse_locations_input,
+)
 from app.ui.nav import ViewContext
 
 
@@ -78,13 +83,15 @@ def render(ctx: ViewContext) -> None:
               [t.strip() for t in titles_str.split(",") if t.strip()])
 
     locations_str = st.text_area(
-        "search.locations (comma-separated)",
-        value=", ".join(search.get("locations", [])),
-        height=60,
+        "search.locations (one per line)",
+        value=locations_to_text(search.get("locations", [])),
+        height=80,
+        help="One location per line, e.g. 'Atlanta, GA' on its own line. A comma is "
+             "part of the location (City, State), not a separator (BUG-011/ADR-064). "
+             "'Remote' triggers the remote search.",
     )
     if st.button("Save locations"):
-        _save("search.locations",
-              [l.strip() for l in locations_str.split(",") if l.strip()])
+        _save("search.locations", parse_locations_input(locations_str))
 
     max_discovered = st.number_input(
         "search.max_discovered (manual-mode discovery net width)",

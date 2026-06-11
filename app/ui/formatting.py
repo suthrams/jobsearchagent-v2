@@ -10,6 +10,24 @@ from __future__ import annotations
 import pandas as pd
 
 
+def parse_locations_input(text: str | None) -> list[str]:
+    """Split a locations text box into a clean list, ONE PER LINE (ADR-064, BUG-011).
+
+    Locations are newline-delimited, NEVER comma-split: a comma is part of the
+    location itself ("Atlanta, GA"), so splitting on commas would shatter
+    "City, State" into two bogus entries. Each line is stripped; blank lines are
+    dropped. This is the single seam both the Start-Run form and the Settings page
+    use, so the two surfaces cannot drift back to comma-splitting.
+    """
+    return [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
+
+
+def locations_to_text(locations) -> str:
+    """Render a locations list back into a one-per-line text-box value -- the exact
+    inverse of parse_locations_input."""
+    return "\n".join(locations or [])
+
+
 def _fmt_ts(raw) -> str:
     """Format an ISO 8601 string as 'YYYY-MM-DD HH:MM:SS' for display."""
     if raw is None or (isinstance(raw, float) and pd.isna(raw)):
