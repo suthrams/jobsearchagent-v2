@@ -190,6 +190,18 @@ def update_user(user_id: int | str, name: str, note: str | None = None) -> dict:
     return r.json()
 
 
+def delete_user(user_id: int | str) -> dict:
+    """DELETE /users/{user_id} - delete a profile and cascade its owned data.
+
+    Workflow history is preserved (orphaned). Returns `{user_id, deleted: {table:
+    count}}`. 403 if the profile is not deletable (profile 0); 404 if unknown -
+    both surface as httpx HTTPStatusError for the UI to toast.
+    """
+    r = httpx.delete(f"{BASE_URL}/users/{user_id}", timeout=_TIMEOUT_POST)
+    r.raise_for_status()
+    return r.json()
+
+
 def delete_resume(user_id: int | str, resume_id: str) -> dict:
     """DELETE /users/{user_id}/resume/{resume_id}.
 

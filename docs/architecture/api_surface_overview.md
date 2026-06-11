@@ -8,7 +8,7 @@ see the **Overview** section there.
 
 ## All endpoints at a glance
 
-Eleven domains, forty endpoints, grouped by responsibility. The canonical
+Eleven domains, forty-one endpoints, grouped by responsibility. The canonical
 path form (with curly braces) is used throughout.
 
 ![API surface: all forty REST endpoints grouped into eleven domains - Profiles, Workflows, Workflow reads, Per-job on demand (tailorings, deep-review, interview-prep, score), Tailoring drafts, Job exclusion, Favorites, Review later, Resume Clinic, Config, and Ops health.](images/api_surface.png)
@@ -31,6 +31,7 @@ braces.
 | `GET` | `/users` | List profiles (default user 0 first). |
 | `POST` | `/users` | Create a new profile. Returns the assigned id. |
 | `PUT` | `/users/{user_id}` | Update a profile's display name / note. |
+| `DELETE` | `/users/{user_id}` | Delete a profile; cascades its owned data (resumes, config, memory, clinic reviews, saved jobs), preserves workflow history (orphaned). 403 on profile 0. |
 | `POST` | `/users/{user_id}/resume` | Upload + parse a PDF resume. Becomes the profile's active resume. |
 | `DELETE` | `/users/{user_id}/resume/{resume_id}` | Hard-delete a resume; cascades to its Resume Clinic reviews. Workflow history is preserved. |
 

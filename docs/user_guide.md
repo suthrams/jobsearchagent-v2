@@ -198,8 +198,11 @@ pages. The groups, top-down:
 
 **RESUME**
 - **Resume Clinic** — improve a resume itself, with no specific job in mind.
-- **Profiles & Resumes** — manage profiles and run the **Add profile** onboarding
-  wizard (ADR-062; see [section 7a](#7a-profiles-multi-user-adr-062)). (Was "Profiles".)
+- **Profiles** — manage job-seeker profiles in one table: each profile's resume
+  status with a View link, plus per-row actions (edit name/note, upload/overwrite
+  resume, delete profile after confirmation), and an **Add New** button that creates
+  a profile and uploads its resume in one step (ADR-062; see
+  [section 7a](#7a-profiles-multi-user-adr-062)).
 
 **Operator** *(below a rule, out of the first glance)*
 - **Settings** — view and edit the active profile's config (search criteria,
@@ -207,7 +210,7 @@ pages. The groups, top-down:
   **per-agent provider + model**). Each profile has its own overrides layered over the
   shared YAML defaults; a new profile starts on pure defaults. Protected keys (hard
   limits, retention windows, prompt definitions) remain read-only and shared.
-- **Spend & Health** — cost, security, latency, and reliability in one pane
+- **System Dashboard** — cost, security, latency, and reliability in one pane
   (ADR-073). (Was "System Dashboard".)
 
 **Click-through destinations** *(not in the sidebar; reached by clicking a row or
@@ -251,7 +254,7 @@ else. There is no login.
 ### Switching profiles
 
 Pick a profile from the **Profile** dropdown in the top-right header. The whole UI re-scopes:
-Searches, Matches, Spend & Health, and New search
+Searches, Matches, System Dashboard, and New search
 resume picker all now show only that profile's data. The **Primary** profile
 (id 0) owns everything that existed before profiles were introduced.
 
@@ -686,7 +689,7 @@ profile, newest first. Click an expander to see its summary and tap
 
 The clinic is one reviewer call plus (when there are rewrites) one
 Fidelity Reviewer call. It writes a lightweight `resume_clinic`
-`workflow_runs` row so **Spend & Health** attributes clinic spend
+`workflow_runs` row so **System Dashboard** attributes clinic spend
 to the active profile correctly.
 
 ### Export the final resume
@@ -755,7 +758,7 @@ Horizontal bar chart of the top 20 companies by best overall match score, filter
 
 Shows total workflow runs and cumulative estimated API cost across all runs. The full runs table below includes per-run status, job counts, LLM call counts, and cost.
 
-All of this is **scoped to the active profile** (ADR-062). **Spend & Health**
+All of this is **scoped to the active profile** (ADR-062). **System Dashboard**
 (formerly Cost Dashboard) likewise defaults to the active profile; tick **All
 profiles (system-wide)** there to see spend, security events, latency, and
 reliability across every profile at once, and click a profile in the by-profile

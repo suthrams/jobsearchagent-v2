@@ -176,6 +176,84 @@ def test_upload_resume_parse_failure_422(tmp_path):
         app.dependency_overrides.clear()
 
 
+# ── DELETE /users/{user_id} - delete profile (cascade) ──────────────────────
+
+def test_delete_profile_returns_counts_and_removes_it(client):
+    client.post("/users", json={"name": "Son"})  # -> id 1
+    resp = client.delete("/users/1")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["user_id"] == "1"
+    assert body["deleted"]["users"] == 1
+    # gone from the list; only profile 0 remains
+    assert [u["id"] for u in client.get("/users").json()["users"]] == [0]
+
+
+def test_delete_profile_0_is_forbidden(client):
+    resp = client.delete("/users/0")
+    assert resp.status_code == 403
+    assert resp.json()["detail"]["error"] == "profile_not_deletable"
+    assert any(u["id"] == 0 for u in client.get("/users").json()["users"])  # still there
+
+
+def test_delete_profile_unknown_404(client):
+    resp = client.delete("/users/999")
+    assert resp.status_code == 404
+    assert resp.json()["detail"]["error"] == "unknown_user"
+
+
+def test_delete_profile_cascades_owned_data_preserves_history(tmp_path):
+    """Repo-level: deleting a profile removes its OWNED working data but preserves
+    workflow run history (orphaned for cost/analytics)."""
+    from app.repositories.database import get_connection, init_db, utcnow_iso
+
+    db_path = tmp_path / "v2.db"
+    init_db(db_path)
+    repo = UserRepository(db_path)
+    uid = repo.create("Son")              # -> 1
+    uid_s = str(uid)
+    now = utcnow_iso()
+    with get_connection(db_path) as conn:
+        conn.execute(
+            "INSERT INTO user_config (id,user_id,config_key,config_value_json,created_at,updated_at) "
+            "VALUES (?,?,?,?,?,?)",
+            (f"user_{uid_s}__search.titles", uid_s, "search.titles", '["x"]', now, now))
+        conn.execute(
+            "INSERT INTO favorite_jobs (user_id,workflow_id,job_id,kind,created_at) VALUES (?,?,?,?,?)",
+            (uid_s, "wf", "job-a", "review_later", now))
+        conn.execute(
+            "INSERT INTO resumes (id,file_name,created_at,user_id) VALUES (?,?,?,?)",
+            ("r-1", "cv.pdf", now, uid_s))
+        # history: preserved (orphaned)
+        conn.execute(
+            "INSERT INTO workflow_runs (id,workflow_type,status,state_json,user_id,started_at,updated_at) "
+            "VALUES (?,?,?,?,?,?,?)",
+            ("run-1", "full_career_review", "completed", "{}", uid_s, now, now))
+
+    counts = repo.delete(uid)
+    assert counts["users"] == 1
+    assert counts["user_config"] == 1
+    assert counts["favorite_jobs"] == 1
+    assert counts["resumes"] == 1
+
+    with get_connection(db_path) as conn:
+        for table in ("user_config", "favorite_jobs", "resumes"):
+            n = conn.execute(f"SELECT COUNT(*) FROM {table} WHERE user_id=?", (uid_s,)).fetchone()[0]
+            assert n == 0, f"{table} should be cascaded"
+        # history is NOT deleted - it stays (orphaned), so cost/analytics survive
+        hist = conn.execute("SELECT COUNT(*) FROM workflow_runs WHERE user_id=?", (uid_s,)).fetchone()[0]
+        assert hist == 1, "workflow history must be preserved"
+    assert repo.get_by_id(uid) is None
+
+
+def test_delete_profile_0_raises_valueerror(tmp_path):
+    from app.repositories.database import init_db
+    db_path = tmp_path / "v2.db"
+    init_db(db_path)
+    with pytest.raises(ValueError):
+        UserRepository(db_path).delete(0)
+
+
 # ── DELETE /users/{user_id}/resume/{resume_id} ──────────────────────────────
 
 

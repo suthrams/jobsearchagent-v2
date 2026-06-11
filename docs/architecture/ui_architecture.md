@@ -203,8 +203,8 @@ is the single source of truth for the journey structure:
 - **`NAV_GROUPS`** — an ordered mapping of sidebar section header → the internal
   view names under it. The four groups are `FIND` (New search, Searches),
   `MY OPPORTUNITIES` (Matches, Maybe / Review later — ADR-100),
-  `RESUME` (Resume Clinic, Profiles & Resumes), and
-  `SYSTEM` (Settings, Spend & Health). Dict order is render order, so the SYSTEM
+  `RESUME` (Resume Clinic, Profiles), and
+  `SYSTEM` (Settings, System Dashboard). Dict order is render order, so the SYSTEM
   group renders last. ADR-088 originally used an unlabeled rule-glyph header here
   (operator screens out of the first glance, ADR-088 G); revised 2026-06-08 to an
   explicit `nav.OPERATOR_SECTION = "SYSTEM"` label at the owner's request, so the
@@ -216,7 +216,7 @@ is the single source of truth for the journey structure:
   Back (ADR-088 F).
 - **`DISPLAY_TITLE`** — internal view name → the user-facing title. The internal
   names (the `REGISTRY` keys, the `_navigate` targets) stay stable, so the ADR-088
-  rename ("Workflow History" → "Searches", "System Dashboard" → "Spend & Health", …)
+  rename ("Workflow History" → "Searches", "Start New Run" → "New search", …)
   is one map, not a churn across ~12 call sites. A `test_ui_structure` invariant
   asserts no `DISPLAY_TITLE` value says "Workflow" — the chrome drops the system
   vocabulary while the plumbing keeps its stable identifiers.
@@ -228,7 +228,7 @@ There are two ways the active view changes:
 1. **A sidebar nav click** — Streamlit routes to that `st.Page` and runs it. No app
    code mediates it; there is no `sidebar_view` key any more.
 2. **Programmatic navigation** — a button inside a view jumps to another screen
-   (e.g. a Searches row → Search detail; a Spend & Health row → that run's detail;
+   (e.g. a Searches row → Search detail; a System Dashboard row → that run's detail;
    the Matches "Open opportunity" button; Back buttons). This goes through
    `nav._navigate`, which sets any companion session state then calls
    `st.switch_page(page)` on the registered `st.Page`. `st.switch_page` reruns
@@ -299,9 +299,9 @@ destination (ADR-088 F).
 | Searches (FIND) | `views/history.py` | R | `load_persisted_workflow_runs`, `load_workflow_runs` |
 | Matches (MY OPPORTUNITIES) | `views/matches.py` | R + C | The live home base (ADR-089). Tops with the state-aware **run-status strip** (`components/run_status.py`); then `load_scored_jobs` (Roles tab: active-track `segmented_control` + NEW badges on the latest run's rows; Companies tab: plotly). Merges the former Top Matches + IC/Architect/Management + Companies (ADR-088 B). While a search runs, the strip auto-refreshes via `st.fragment(run_every=5s)` and reruns the app on completion. "Open opportunity" routes to the Opportunity page. The selected-row cluster carries the ADR-090 ★ favorite toggle (+ a ★ marker column) |
 | Resume Clinic (RESUME) | `views/resume_clinic.py` | R + C | `POST/GET /users/{id}/resume-clinic`, `.../decisions`, `.../chat`, `.../export`; `load_user_resumes` / `load_user_clinic_reviews`. **ADR-090:** an optional "Focus a job (from My favorite jobs)" dropdown; a focus routes the session to the shared `tailoring_panel` (a tailored resume), else the job-agnostic review |
-| Profiles & Resumes (RESUME) | `views/profiles.py` | C | `POST/PUT /users`, `POST/DELETE /users/{id}/resume`; `list_resume_clinic_runs`; `load_user_resumes` |
+| Profiles (RESUME) | `views/profiles.py` | C | Table of profiles with per-row actions (st.dialog modals) + an "Add New" flow. `GET/POST/PUT/DELETE /users`, `POST /users/{id}/resume`, `GET /users/{id}/resumes/{rid}/profile` (view parsed resume). Deleting a profile cascades its owned data, preserves history. |
 | Settings (operator) | `views/settings.py` | C | `GET/PUT /config`, `POST /config/reload`, `GET /config/providers`, **`POST /admin/purge`** (ADR-070) |
-| Spend & Health (operator) | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (day-by-day + week-by-week, per-agent and per-model spend); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
+| System Dashboard (operator) | `views/system_dashboard.py` | R | `system_health` (security/performance/reliability/scalability/`profiles_overview`) + `cost_breakdown` (day-by-day + week-by-week, per-agent and per-model spend); `SecurityRepository.list_for_user`. PSSR+Security+Cost in one pane; profile -> run -> job drilldown (ADR-073) |
 | Search detail | `views/workflow_detail.py` | D, R + C | The per-RUN summary (ADR-088 Phase 6 shrank it): status + metrics, the manual-selection picker (ADR-060), the Find & Score jobs table (each row opens Opportunity), the discovered-jobs table, the "Why N job(s) were filtered out" panel (`build_relevance_drop_rows` over `discovery_stats.relevance_drops` — the per-job relevance/clearance drop reason, ADR-079/094), and collapsed Diagnostics (`compute_breakdown` + `constraint_analyzer`). The per-job Review / interview-Prep / Tailoring action region moved to Opportunity |
 | Opportunity | `views/opportunity.py` | D, R + C | The single per-job surface (ADR-088 Tier 2). Reads `load_job_pipeline` + the run state (fit, score, resume-gap vs career-gap, deep-review rounds, advice, prep); controls deep-review / tailoring (drafts + decisions + ADR-072 chat) / interview-prep on demand + exclude. Subsumes the former read-only Job Detail. Target of every job click (Matches "Open opportunity", Search-detail "Open"). Header carries the ADR-090 ★ favorite toggle; tailoring uses the shared `tailoring_panel`. No app-tracking (ADR-088 E / ADR-090; guardrail test) |
 | Live monitor | `views/live_monitor.py` | D, R + C | `GET /workflows/{id}`, `POST .../retry`; `load_step_executions` / `load_agent_events` / `load_llm_calls`. Auto-refreshes every 5s while the run is active; when a run **completes** while being watched it hands off to Search detail (flag set in the fragment, `st.switch_page` from the top-level `render`, since switch_page is illegal inside a fragment). Failed/cancelled runs stay put so errors remain in view |

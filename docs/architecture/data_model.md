@@ -209,6 +209,16 @@ data it *uses* (resume, config, memory, history) lives in those tables keyed by
 `user_id`. Deliberately minimal so adding authentication later is "attach a
 credential to an existing row," not a data-model migration.
 
+**Profile delete cascade (`DELETE /users/{id}`).** Deleting a profile (via
+`UserRepository.delete`) removes its OWNED working data — `resumes`, `user_config`,
+`memory_items`, `resume_clinic_reviews`, `favorite_jobs` (both favorite +
+review_later kinds) — and the `users` row, in one transaction. It deliberately
+PRESERVES `workflow_runs` (and `api_requests` / `idempotency_keys`): history +
+telemetry are kept (orphaned; the read layer COALESCEs `user_id` to `"0"`), so a
+profile delete never loses cost/analytics. Profile `0` (pre-existing data) is not
+deletable (the repo raises; the endpoint returns `403`). This is distinct from the
+ADR-070 run-purge cascade below (which is keyed by `workflow_run`, not `user_id`).
+
 ### Schema
 
 ```sql

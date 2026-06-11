@@ -38,6 +38,40 @@ class UserRepository:
                 (name, note, int(user_id)),
             )
 
+    # Owned working data deleted with a profile (keyed by the decimal-string
+    # user_id, ADR-062). workflow_runs / api_requests / idempotency_keys are NOT
+    # here on purpose: history + telemetry are preserved (orphaned to "0" by the
+    # COALESCE in the read layer), so a profile delete never loses cost/analytics.
+    _OWNED_TABLES = (
+        "resumes",
+        "user_config",
+        "memory_items",
+        "resume_clinic_reviews",
+        "favorite_jobs",
+    )
+
+    def delete(self, user_id: int | str) -> dict:
+        """Delete a profile and cascade its OWNED working data; preserve history.
+
+        Refuses to delete profile 0 (the reserved pre-existing-data identity) -
+        raises ValueError. Returns a dict of per-table deletion counts (including
+        ``users``). Deterministic; one transaction.
+        """
+        uid_int = int(user_id)
+        if uid_int == 0:
+            raise ValueError("profile 0 (pre-existing data) cannot be deleted")
+        uid_str = str(uid_int)
+        counts: dict[str, int] = {}
+        with get_connection(self.db_path) as conn:
+            for table in self._OWNED_TABLES:
+                cur = conn.execute(
+                    f"DELETE FROM {table} WHERE user_id = ?", (uid_str,)
+                )
+                counts[table] = cur.rowcount
+            cur = conn.execute("DELETE FROM users WHERE id = ?", (uid_int,))
+            counts["users"] = cur.rowcount
+        return counts
+
     def list_all(self) -> list[dict]:
         """All profiles, default user (id 0) first, then by id ascending."""
         with get_connection(self.db_path) as conn:

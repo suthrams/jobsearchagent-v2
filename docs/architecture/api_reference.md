@@ -64,6 +64,7 @@ PUT  /config                                   → upsert one user-config overri
 GET  /users                                    → list profiles (ADR-062; default user 0 first)
 POST /users                                    → create a profile, returns its assigned id (201)
 PUT  /users/{id}                               → update a profile's name / note (200)
+DELETE /users/{id}                             → delete a profile; cascades its owned data, preserves history; 403 on profile 0 (200)
 POST /users/{id}/resume                        → upload + parse a PDF resume for a profile (ADR-062, 201)
 DELETE /users/{id}/resume/{resume_id}          → delete a resume; cascades to its clinic reviews (200)
 POST /users/{id}/resume-clinic                 → run a Resume Clinic review on a resume (ADR-066, 200)

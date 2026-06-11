@@ -67,10 +67,10 @@ DISPLAY_TITLE: dict[str, str] = {
     "Review Later": "Maybe / Review later",
     # RESUME
     "Resume Clinic": "Resume Clinic",
-    "Profiles": "Profiles & Resumes",
+    "Profiles": "Profiles",
     # operator group (below the rule)
     "Settings": "Settings",
-    "System Dashboard": "Spend & Health",
+    "System Dashboard": "System Dashboard",
     # destinations (hidden from the sidebar)
     "Workflow Detail": "Search detail",
     "Opportunity": "Opportunity",

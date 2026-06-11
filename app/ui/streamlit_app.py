@@ -69,8 +69,6 @@ for _key, _default in (
     ("detail_job_id", None),
     ("config_cache", None),
     ("current_user_id", "0"),  # ADR-062: active profile; default = pre-existing data
-    ("onboard_step", 1),       # onboarding wizard cursor
-    ("onboard_new_user_id", None),
     # Cross-run filter values (ADR-088 Phase 3): the controls render in the Matches
     # view, but the values persist here so _build_ctx() (and New search's threshold
     # default) can read them even when Matches is not the current page.

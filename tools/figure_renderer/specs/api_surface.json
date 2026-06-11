@@ -9,7 +9,7 @@
   "head": ["Domain", "Endpoints"],
   "gridCols": "260px 1fr",
   "rows": [
-    {"icon": "user", "accent": "green", "label": "Profiles", "sub": "users + resumes", "cells": [{"code": "GET /users   POST /users   PUT /users/{id}   POST /users/{id}/resume   DELETE /users/{id}/resume/{rid}"}]},
+    {"icon": "user", "accent": "green", "label": "Profiles", "sub": "users + resumes", "cells": [{"code": "GET /users   POST /users   PUT /users/{id}   DELETE /users/{id}   POST /users/{id}/resume   DELETE /users/{id}/resume/{rid}"}]},
     {"icon": "steps", "accent": "amber", "label": "Workflows", "sub": "run lifecycle", "cells": [{"code": "POST /workflows   GET /workflows/{id}   POST /workflows/{id}/retry   POST /workflows/{id}/scoring   POST /workflows/{id}/cancel"}]},
     {"icon": "chart", "accent": "blue", "label": "Workflow reads", "sub": "results", "cells": [{"code": "GET /workflows/{id}/jobs   GET /workflows/{id}/report"}]},
     {"icon": "edit", "accent": "magenta", "label": "Per-job on demand", "sub": "out-of-graph ops", "cells": [{"code": "POST /workflows/{wf}/jobs/{job}/tailorings   .../deep-review   .../interview-prep   .../score"}]},

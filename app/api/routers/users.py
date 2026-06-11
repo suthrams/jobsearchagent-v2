@@ -118,6 +118,36 @@ def update_user(
     return {"user": repo.get_by_id(user_id)}
 
 
+@router.delete("/{user_id}", status_code=200)
+def delete_user(
+    user_id: int,
+    repo: UserRepository = Depends(get_user_repo),
+) -> dict:
+    """Delete a profile and cascade its OWNED working data (resumes, config,
+    memory, clinic reviews, saved jobs). Workflow history + telemetry are preserved
+    (orphaned; reads COALESCE to profile 0). Profile 0 (pre-existing data) cannot be
+    deleted -> 403. Returns per-table deletion counts."""
+    if not repo.exists(user_id):
+        raise HTTPException(
+            status_code=404,
+            detail={"error": "unknown_user", "message": f"No profile with id {user_id}."},
+        )
+    try:
+        counts = repo.delete(user_id)
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=403,
+            detail={"error": "profile_not_deletable", "message": str(exc)},
+        ) from exc
+    except Exception as exc:
+        logger.exception("delete_user failed for id=%s", user_id)
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "persist_failed", "message": str(exc)},
+        ) from exc
+    return {"user_id": str(user_id), "deleted": counts}
+
+
 @router.post("/{user_id}/resume", status_code=201)
 def upload_resume(
     user_id: int,
