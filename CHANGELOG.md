@@ -4,6 +4,54 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-10
+
+### Docs — architecture docs refreshed to current + ASCII diagrams replaced with rendered figures
+
+Brought the living architecture docs current to the latest application state and
+converted every genuine ASCII/text diagram into a deterministic rendered figure
+(`figure_renderer`: JSON spec -> HTML/CSS -> Chromium PNG, every label literal +
+ASCII). ADRs and phase docs were left untouched as point-in-time records.
+
+- **Currency sweep (14 docs).** `wiki.md`: "8 agents" -> 13 LLM-using components
+  (11 `BaseAgent` + 2 helpers); test count 937 -> 1031; post-9 build row extended
+  ADR-087 -> ADR-096; doc counts 32 -> 34 and 88 -> 97 (index + 96 ADRs).
+  `README.md`: Resume Critic model Sonnet -> Haiku (per `tests/model_pins.json`).
+  `features.md`: 22 -> 23 tables, 937 -> 1031 tests. `architecture_overview.md`:
+  fixed `principles.md` + `docs/architecture/adr/` references, added the Resume
+  Chat agent and the 13-component note. `workflow_model.md` S15: replaced stale
+  pre-ADR-059 state names (`jobs_fetched`, `awaiting_tailoring_approval`, ...) with
+  the real 6 statuses + `WorkflowStep` sequence from `app/state/workflow_state.py`.
+  `patterns.md`, `implementation_plan.md`, `security_observability_design.md`,
+  `health_check_design.md`: agent/test/status fixes. The 7 core docs (data_model,
+  state_and_memory, config_model, prompt model, agent_model, workflow_model,
+  relevance_filter) were already current.
+- **Rendered figures (11; 10 new specs + the previously-unembedded overview).**
+  `architecture_overview`, `workflow_funnel`, `workflow_state_lifecycle`,
+  `state_ownership_cycle`, `agent_coordination`, `security_trust_boundaries`,
+  `prompt_layers`, `schema_enforcement`, `pii_ingestion_flow`, `health_aggregation`,
+  `patterns_orchestration`. Each replaces its ASCII block, carries bracket-free alt
+  text and a re-render command, and was render-verified (clipping/overflow fixed on
+  3 during verification). Specs in `tools/figure_renderer/specs/`; PNGs in
+  `docs/architecture/images/`.
+- Verified: all embedded image paths resolve; no brackets in alt text; fences
+  balanced around every edit; secret audit clean; 1031 tests pass. Commit
+  `e9137d9`.
+
+### Chore — repo line-ending and ignore hygiene
+
+- **`.gitattributes` eol=lf** (`0cd0633`): changed the catch-all from `* text=auto`
+  to `* text=auto eol=lf` so text files are checked out as LF on every platform,
+  not just stored as LF. Stops Windows clones from showing spurious CRLF-only `M`
+  markers (empty content diffs).
+- **`.gitignore`** (`8c6ceeb`, `d8fa591`): ignore `tools/_*.py` one-off scratch
+  scripts (e.g. the self-declared throwaway `_capture_dashboard.py`) alongside the
+  existing `tmp_*.py` convention, and ignore the `.logs/` run-log directory. Figure
+  spec JSONs (`tools/figure_renderer/specs/*.json`) stay tracked - they are the
+  source of truth for the rendered figures.
+
+---
+
 ## 2026-06-09
 
 ### Added — "Why jobs were filtered out" panel + auto-navigate to a finished run
