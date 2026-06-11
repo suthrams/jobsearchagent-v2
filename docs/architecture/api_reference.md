@@ -412,15 +412,9 @@ Out-of-graph tailoring (ADR-055). The same `TailoringAgent` and `FidelityReviewe
 
 The flow:
 
-```mermaid
-flowchart TD
-    A["Workflow already completed<br>(selected_jobs in checkpoint)"]
-    A -->|"user clicks Tailor for this job"| B["POST /workflows/{wf}/jobs/{job}/tailorings<br>synchronous, ~5-15s"]
-    B --> C["TailoringAgent then FidelityReviewer then tailored_resumes row"]
-    C -->|"returns { tailoring_id, tailored, fidelity_review }"| D["User reviews diffs + evidence"]
-    D --> E["POST /tailorings/{tailoring_id}/decisions<br>{ approval: approve, revise, reject, edit }"]
-    E --> F["tailored_resumes.decision set,<br>approved = (decision == approve)"]
-```
+![On-demand tailoring flow, left to right: a completed workflow with selected_jobs in the checkpoint; the user triggers POST workflows jobs tailorings (synchronous, about 5 to 15 seconds), which runs the Tailoring Agent then the Fidelity Reviewer to produce a tailored_resumes draft returning tailoring_id, draft and fidelity_review; the human reviews diffs and evidence; POST tailorings decisions records approve, revise, reject or edit; the decision persists, approved when approve or edit. Out-of-graph with no interrupt; the human owns the decision.](images/api_ondemand_tailoring.png)
+
+<sub>Figure source: `tools/figure_renderer/specs/api_ondemand_tailoring.json` (deterministic renderer; text is verbatim from the spec).</sub>
 
 ### POST /workflows/{workflow_id}/jobs/{job_id}/tailorings
 

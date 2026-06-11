@@ -1,0 +1,23 @@
+{
+  "id": "api_ondemand_tailoring",
+  "outDir": "docs/architecture/images",
+  "width": 2520,
+  "height": 600,
+  "layout": "flow",
+  "title": "On-demand tailoring: out-of-graph, the {{green:human}} owns the decision",
+  "headSub": "ADR-055/059/061. The workflow runs end to end with no interrupt(). Tailoring is triggered per job AFTER the run completes; the Fidelity Reviewer always runs, and the only gate is the human decision, validated server-side before it persists.",
+  "flow": [
+    {"title": "Workflow completed", "meta": ["selected_jobs in checkpoint"], "accent": "blue", "icon": "check"},
+    {"arrow": "user: Tailor for this job"},
+    {"title": "POST .../jobs/{job}/tailorings", "meta": ["synchronous, ~5-15s"], "accent": "amber", "icon": "doc", "focal": true},
+    {"arrow": true},
+    {"title": "TailoringAgent -> FidelityReviewer", "meta": ["fidelity always runs (ADR-066)"], "accent": "magenta", "icon": "robot"},
+    {"arrow": true},
+    {"title": "tailored_resumes row", "meta": ["returns tailoring_id, draft, fidelity_review"], "accent": "gray", "icon": "database"},
+    {"arrow": "human reviews diffs + evidence"},
+    {"title": "POST /tailorings/{id}/decisions", "meta": ["approve / revise / reject / edit"], "accent": "amber", "icon": "pen"},
+    {"arrow": true},
+    {"title": "decision persisted", "meta": ["approved when approve or edit"], "accent": "gray", "icon": "check"}
+  ],
+  "takeaway": {"icon": "target", "accent": "green", "text": "Gate the irreversible, not everything. Tailoring is repeatable and post-hoc, so it runs {{amber:out of graph}} with no interrupt(); the only HITL is the {{green:human decision}} on the draft, validated before it persists."}
+}
