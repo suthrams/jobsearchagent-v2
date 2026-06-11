@@ -13,6 +13,7 @@
 | [../README.md](../README.md) | Project overview, quick start, architecture diagram, agent table |
 | [user_guide.md](user_guide.md) | End-to-end v2 walkthrough — setup, running the backend, using the UI, HITL workflow |
 | [features.md](features.md) | Complete v2 feature and capability reference |
+| [testing.md](testing.md) | Single source of truth for testing — strategy, suite layout, how to run, and the current test statistics (other docs point here instead of hardcoding counts) |
 | [wiki.md](wiki.md) | Wiki landing page — all 20 topic areas with pointers to detail files |
 
 ### Architecture

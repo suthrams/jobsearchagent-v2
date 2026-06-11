@@ -165,7 +165,7 @@ run/job link. Full suite must stay green (currently 784).
    25-turn cap + a visible session-cost meter — identical UX to the clinic.
 3. The session exports to all six formats via the existing renderer, deterministically.
 4. The session is listed under its job/run and is per-profile isolated.
-5. No change to clinic-only behavior; existing 784 tests still pass + new tests green.
+5. No change to clinic-only behavior; the existing suite still passes + new tests green (test strategy + counts: `docs/testing.md`).
 6. Zero new fabrication surface (fidelity invariant provably enforced on the new path).
 
 ## Resolved decisions (Phase 1)

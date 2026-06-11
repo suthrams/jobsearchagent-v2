@@ -62,7 +62,9 @@
 | 9 | Cost optimization — model tiering, volume caps | ✓ complete |
 | post-9 | Usability refactor, multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + impact (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062), shared v1 libs (ADR-063), per-run search criteria + experience targeting (ADR-064/065), Resume Clinic (ADR-066), resume schema v2 (ADR-067), chat cost caps (ADR-068), PII redaction at the LLM seam (ADR-069), retention + redacted state (ADR-070), per-profile active scoring tracks (ADR-071), tailoring live chat (ADR-072), wired security events + System Dashboard (ADR-073), closed observability gaps + `api_requests` (ADR-074), UI read funnel through the API (ADR-075), runtime budget-cap + failed-call cost + drift proxy (ADR-076/077/078), relevance pre-filter (ADR-079), posting-age staleness (ADR-080), ATS-direct sources (ADR-081), idempotent kickoff (ADR-082), cooperative cancellation (ADR-083), liveness/readiness endpoints (ADR-084), on-demand interview prep (ADR-085), scoring resume projection (ADR-086), async-batch spike (ADR-087, deferred), UI journey reorg + native multipage (ADR-088), Matches live home base (ADR-089), favorites + job-focused Resume Clinic (ADR-090), clinic chat reliability + cost (ADR-091/092), apply-link reliability (ADR-093), clearance exclusion in relevance filter (ADR-094), best-effort dead-link filter (ADR-095), durable run recovery across restarts (ADR-096), curated ATS-direct board batch (ADR-097), per-profile ATS targeting in the Settings UI (ADR-098) | ✓ complete |
 
-**Test count:** ~1031 passing (mock mode, no real API calls in CI). The ADR index and CI are the live source of truth as this drifts.
+**Testing:** strategy, layout, and the current test count live in one place —
+[testing.md](testing.md). Counts are not duplicated here (CI is the live source of
+truth as the suite grows).
 
 ---
 
@@ -76,6 +78,7 @@
 | [cost_troubleshooting.md](cost_troubleshooting.md) | Step-by-step cost diagnosis: per-agent cost queries, reconciliation against the provider billing console, lever decision matrix, pre-flight estimation, regression-prevention invariants. Read this when cost surprises happen. |
 | [model_recommendations.md](model_recommendations.md) | Recommended per-agent model assignment with rationale, estimated cost per run, escalation order if budget pressure mounts, symptoms that signal an agent should be upgraded. Read this when configuring or tuning the system. |
 | [features.md](features.md) | Complete v2 feature reference — every agent, out-of-graph human decision points, observability, model tiering, feature summary table |
+| [testing.md](testing.md) | **Single source of truth for testing** — strategy (mock-mode CI, `-m integration` live smoke, invariant + forcing-function tests, model pins), how the suite is laid out, how to run it, what a change must add, and the current test statistics. Other docs point here instead of hardcoding counts |
 | [README.md](README.md) | Docs index — maps every topic area to its authoritative file; v1 reference section |
 
 **Execution limits (enforced in `app/workflows/limits.py`):**

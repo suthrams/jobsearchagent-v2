@@ -346,7 +346,7 @@ subsystem is exactly the failure an invariant test guards against):
 6. **UI** — `smoke-test-ui` 15/15 with the renamed view; `test_ui_structure`
    updated for `System Dashboard`.
 
-Full suite (`python -m pytest tests/`) must stay green (currently 1031 passed).
+Full suite (`python -m pytest tests/`) must stay green (current count + strategy: `docs/testing.md`).
 
 ---
 

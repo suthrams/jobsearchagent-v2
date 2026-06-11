@@ -4,6 +4,9 @@
 > **Date:** 2026-05-30 · **Status:** Proposed, phase 0 not started.
 > **Scope:** `app/ui/streamlit_app.py` only. No backend, API, schema, or behavior
 > changes. The user-visible app must look and behave identically at every step.
+> **Test counts below are point-in-time per-phase snapshots**, not the current
+> total — for the test strategy, layout, and live count see
+> [`docs/testing.md`](../testing.md).
 
 ---
 

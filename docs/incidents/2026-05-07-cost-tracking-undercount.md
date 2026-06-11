@@ -138,7 +138,8 @@ Live run on 2026-05-07:
 | Gap | `~2.4%` undercount |
 
 Within the 20% tolerance documented in `docs/model_recommendations.md`,
-down from `~3-4x`. Suite: 533 passed, 1 skipped.
+down from `~3-4x`. Suite green at the time (test strategy + current counts:
+`docs/testing.md`).
 
 ---
 

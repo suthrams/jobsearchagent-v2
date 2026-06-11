@@ -1,6 +1,10 @@
 
 # Implementation Plan – jobsearchagent-v2
 
+> **Test counts in this document are point-in-time milestones**, each pinned to the
+> commit recorded beside it — they are history, not the current total. For the test
+> strategy, suite layout, and the live count, see [`docs/testing.md`](../testing.md).
+
 ---
 
 ## Overview

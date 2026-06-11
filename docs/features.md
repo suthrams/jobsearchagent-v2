@@ -415,4 +415,4 @@ Every endpoint (except the health probes) accepts an optional `?user_id=` (defau
 | Multi-user profiles — sequential, no-auth, cooperative isolation (ADR-062) | ✅ |
 | FastAPI backend + Streamlit UI (UI reads through API, ADR-075) | ✅ |
 | SQLite persistence — 23 application tables | ✅ |
-| Test suite — ~1031 tests, mock mode, no real API calls in CI | ✅ |
+| Test suite — mock mode, no real API calls in CI (strategy + live count: [testing.md](testing.md)) | ✅ |
