@@ -29,6 +29,20 @@ profile. That makes it the LLM counterpart to ADR-065's symmetric deterministic
 pair — `exceeds_cap` (max bound) and `below_floor` (min bound) — in one feature,
 on one checkbox.
 
+**The relevance axis is suitability, not keyword-match (prompt v2).** `unrelated`
+means a role genuinely UNSUITABLE for the candidate — a different profession with no
+transferable overlap (sales, real estate, nursing, finance for a technical
+candidate) — NOT merely a role outside the exact `target_roles`. `target_roles` is
+the candidate's stated interest, not a hard boundary. The verdict is weighted by
+CAREER STAGE: for an early-career profile (entry titles, low/zero years,
+`exclude_senior`, low `max_years_experience`) the agent is generous about
+ADJACENCY, keeping transferable-skill neighbours — e.g. for an entry cybersecurity
+grad it keeps IT/sysadmin, SOC, GRC/audit, cloud, networking, data, and software/QA
+roles. This stops the prefilter stranding a candidate who is open to adjacent entry
+work, while still dropping the genuinely-off roles a noisy keyword search surfaces.
+(It does NOT recommend roles — it widens what counts as suitable; proactive
+role/career-family recommendation is a separate, deliberately deferred capability.)
+
 ---
 
 ## 2. Control flow — where the node sits and how the gate routes
@@ -149,7 +163,7 @@ flowchart LR
 | in | `resume_profile` | Already redacted at rest (ADR-070); re-trimmed for the LLM (ADR-069) — belt and suspenders. |
 | in | `effective_config.search` | `relevance_filter`, plus the existing seniority signals (`exclude_senior`, `min/max_years_experience`) the prompt can reference, plus `exclude_clearance` (ADR-094). |
 | out | `normalized_jobs` | **Narrowed** to the kept set, discovery order preserved (so the title-relevance ordering still feeds the scored cap). |
-| out | `discovery_stats` | `relevance_dropped` (count), `relevance_kept` (count), `clearance_dropped` (ADR-094 count), and `relevance_drops` — a per-job `{job_id, mismatch, reason, title, company}` list, the audit trail for why each job was shed. `title`/`company` are carried so the UI can surface the dropped job by name without a second read (older runs predating the enrichment omit them; the UI falls back to `job_id`). Surfaced on the Search-detail screen as the "Why N job(s) were filtered out" panel (`build_relevance_drop_rows` in `app/ui/formatting.py`). |
+| out | `discovery_stats` | `relevance_dropped` (count), `relevance_kept` (count), `clearance_dropped` (ADR-094 count), and `relevance_drops` — a per-job `{job_id, mismatch, reason, title, company, url}` list, the audit trail for why each job was shed. `title`/`company`/`url` are carried so the UI can surface the dropped job by name without a second read, and `url` lets the user click through and verify the verdict for themselves (older runs predating the enrichment omit `title`/`company`; the UI falls back to `job_id`, and a missing `url` renders a blank Link cell). Surfaced on the Search-detail screen as the "Why N job(s) were filtered out" panel (`build_relevance_drop_rows` in `app/ui/formatting.py`), with `url` rendered as a clickable `LinkColumn`. |
 
 > **ADR-094 — clearance exclusion.** When `search.exclude_clearance` is on (default
 > off), the node drops clearance-gated postings **deterministically, before the LLM
@@ -215,7 +229,7 @@ flowchart TB
 | Output schema | `RelevanceFilterResult { verdicts: list[RelevanceVerdict] }` |
 | Verdict | `RelevanceVerdict { job_id: str, keep: bool, mismatch: Literal["none","too_senior","too_junior","unrelated"], reason: str }` |
 | Seniority axis | **Bidirectional, profile-relative** — `too_senior` drops roles above an early-career profile's band; `too_junior` drops roles below a senior profile's band. Band inferred from the profile + `search.min/max_years_experience` + `exclude_senior`. |
-| Relevance axis | `unrelated` drops roles outside the profile's target roles/domain. |
+| Relevance axis | **Suitability, not keyword-match (prompt v2)** — `unrelated` drops roles genuinely UNSUITABLE for the candidate (a different profession with no transferable overlap), NOT roles merely outside `target_roles`. Weighted by career stage: adjacent transferable-skill roles (IT/SOC/GRC/cloud/data for an entry cyber grad) are KEPT, so the prefilter does not strand a candidate open to adjacent entry work. |
 | Decision bias | Conservative — drop only on a **clear** mismatch; keep when unsure (recall-biased, mirrors ADR-065) |
 
 ### Reliability — never lose a run to a filter fault

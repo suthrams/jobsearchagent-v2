@@ -143,8 +143,11 @@ def build_relevance_drop_rows(stats) -> list[dict]:
     Source is ``discovery_stats.relevance_drops`` — the audit trail the
     relevance_filter node records when it hard-drops a posting before scoring.
     Each entry carries ``job_id`` + ``mismatch`` + ``reason``; runs scored after
-    the title/company enrichment also carry ``title`` + ``company``. Older runs
-    fall back to the ``job_id`` so the panel still renders. Pure -> unit-testable.
+    the title/company enrichment also carry ``title`` + ``company`` + ``url``.
+    The ``url`` lets the user click through a dropped posting and verify the
+    verdict; older runs without it render a blank Link cell. Older runs also fall
+    back to the ``job_id`` for the title so the panel still renders. Pure ->
+    unit-testable.
     """
     drops = (stats or {}).get("relevance_drops") or []
     rows: list[dict] = []
@@ -156,6 +159,7 @@ def build_relevance_drop_rows(stats) -> list[dict]:
             "Company": (d.get("company") or "").strip() or "—",
             "Why dropped": _MISMATCH_LABEL.get(mismatch, mismatch or "—"),
             "Reason": d.get("reason") or "",
+            "Link": (d.get("url") or "").strip(),
         })
     return rows
 

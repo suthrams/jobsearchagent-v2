@@ -95,17 +95,23 @@ def test_discovery_funnel_summary_empty_when_nothing_dropped():
 def test_build_relevance_drop_rows_maps_titles_and_labels():
     stats = {"relevance_drops": [
         {"job_id": "j1", "mismatch": "too_senior", "reason": "asks 10+ yrs",
-         "title": "Sr. Staff Engineer", "company": "Acme"},
+         "title": "Sr. Staff Engineer", "company": "Acme",
+         "url": "https://example.com/j1"},
         {"job_id": "j2", "mismatch": "unrelated", "reason": "legal role",
-         "title": "Legal Analyst", "company": "WSFS"},
+         "title": "Legal Analyst", "company": "WSFS",
+         "url": "https://example.com/j2"},
         {"job_id": "j3", "mismatch": "requires_clearance",
-         "reason": "TS/SCI required", "title": "ISSO", "company": "Gov"},
+         "reason": "TS/SCI required", "title": "ISSO", "company": "Gov",
+         "url": "https://example.com/j3"},
     ]}
     rows = build_relevance_drop_rows(stats)
     assert [r["Title"] for r in rows] == ["Sr. Staff Engineer", "Legal Analyst", "ISSO"]
     assert [r["Why dropped"] for r in rows] == ["Too senior", "Unrelated", "Needs clearance"]
     assert rows[0]["Company"] == "Acme"
     assert rows[0]["Reason"] == "asks 10+ yrs"
+    # The link lets the user click through and verify each verdict for themselves.
+    assert [r["Link"] for r in rows] == [
+        "https://example.com/j1", "https://example.com/j2", "https://example.com/j3"]
 
 
 def test_build_relevance_drop_rows_falls_back_to_job_id_for_legacy_runs():
@@ -117,6 +123,7 @@ def test_build_relevance_drop_rows_falls_back_to_job_id_for_legacy_runs():
     assert rows[0]["Title"] == "abc123"   # job_id stands in for a missing title
     assert rows[0]["Company"] == "—"
     assert rows[0]["Why dropped"] == "Too senior"
+    assert rows[0]["Link"] == ""          # missing url renders a blank Link cell
 
 
 def test_build_relevance_drop_rows_empty():

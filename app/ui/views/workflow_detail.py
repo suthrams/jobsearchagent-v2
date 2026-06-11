@@ -200,6 +200,9 @@ def render(ctx: ViewContext) -> None:
                     "Title": st.column_config.TextColumn("Title", width="medium"),
                     "Why dropped": st.column_config.TextColumn("Why dropped", width="small"),
                     "Reason": st.column_config.TextColumn("Reason", width="large"),
+                    "Link": st.column_config.LinkColumn(
+                        "Link", width="small", display_text="open"
+                    ),
                 },
             )
 

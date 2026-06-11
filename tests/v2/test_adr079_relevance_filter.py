@@ -42,11 +42,11 @@ class _FakeAgent:
 def _jobs():
     return [
         {"id": "j1", "title": "Senior Staff Engineer", "company": "A",
-         "job_description": "10+ years required"},
+         "job_description": "10+ years required", "url": "https://boards/j1"},
         {"id": "j2", "title": "Junior Developer", "company": "B",
-         "job_description": "entry level"},
+         "job_description": "entry level", "url": "https://boards/j2"},
         {"id": "j3", "title": "Software Engineer", "company": "C",
-         "job_description": "build things"},
+         "job_description": "build things", "url": "https://boards/j3"},
     ]
 
 
@@ -77,11 +77,12 @@ def test_node_drops_mismatches_keeps_rest_and_preserves_order():
     stats = out["discovery_stats"]
     assert stats["relevance_kept"] == 2
     assert stats["relevance_dropped"] == 1
-    # The audit entry carries the human-facing title + company (for the "why
-    # filtered out" UI panel) alongside the job_id/mismatch/reason.
+    # The audit entry carries the human-facing title + company + url (for the "why
+    # filtered out" UI panel, with a click-through link) alongside the
+    # job_id/mismatch/reason.
     assert stats["relevance_drops"][0] == {
         "job_id": "j1", "mismatch": "too_senior", "reason": "asks 10+ yrs",
-        "title": "Senior Staff Engineer", "company": "A",
+        "title": "Senior Staff Engineer", "company": "A", "url": "https://boards/j1",
     }
     # the single batched call is counted against the run budget
     assert out["run_metrics"]["llm_calls"] == 1
@@ -156,9 +157,9 @@ def test_node_noop_on_empty_input():
 def _clearance_state(**over):
     jobs = [
         {"id": "c1", "title": "Software Engineer", "company": "Gov",
-         "job_description": "Active TS/SCI clearance required."},
+         "job_description": "Active TS/SCI clearance required.", "url": "https://boards/c1"},
         {"id": "c2", "title": "Software Engineer", "company": "Acme",
-         "job_description": "build things, no clearance needed"},
+         "job_description": "build things, no clearance needed", "url": "https://boards/c2"},
     ]
     s = _state(normalized_jobs=jobs, effective_config={
         "search": {"relevance_filter": True, "exclude_clearance": True}})
@@ -177,9 +178,11 @@ def test_clearance_dropped_deterministically_before_llm():
     stats = out["discovery_stats"]
     assert stats["clearance_dropped"] == 1
     _drop = next(d for d in stats["relevance_drops"] if d["mismatch"] == "requires_clearance")
-    # clearance drops also carry title + company for the "why filtered out" panel
+    # clearance drops also carry title + company + url for the "why filtered out"
+    # panel (the link lets the user verify the clearance requirement themselves)
     assert _drop["title"] == "Software Engineer"
     assert _drop["company"] == "Gov"
+    assert _drop["url"] == "https://boards/c1"
 
 
 def test_clearance_kept_when_flag_off():
@@ -264,3 +267,27 @@ def test_agent_returns_validated_result():
     assert res.verdicts[0].job_id == "j1"
     assert res.verdicts[0].keep is False
     assert res.verdicts[0].mismatch == "unrelated"
+
+
+# ── Prompt calibration: suitability/adjacency, not keyword role-match ─────────
+
+def test_prompt_judges_suitability_and_adjacency_not_keyword_match():
+    """Forcing function: the relevance prompt must judge candidate SUITABILITY
+    (keeping adjacent, transferable-skill roles by career stage), not a strict
+    keyword match to target_roles. Guards against a regression to the old binary
+    'in-domain or drop' rule that stranded entry candidates open to adjacent work.
+    """
+    from pathlib import Path
+
+    prompt = (Path(__file__).resolve().parents[2]
+              / "app" / "prompts" / "agents" / "relevance_filter.txt").read_text(encoding="utf-8")
+    low = prompt.lower()
+    # The suitability/adjacency calibration must be present...
+    assert "suitab" in low
+    assert "adjacent" in low
+    assert "transferable" in low
+    assert "career stage" in low or "early-career" in low
+    # ...and target_roles must be explicitly NOT a hard boundary.
+    assert "not a hard boundary" in low or "not merely" in low
+    # Prompt version was bumped so the change is observable in llm_calls.
+    assert prompt.lstrip().startswith("# version: 2")

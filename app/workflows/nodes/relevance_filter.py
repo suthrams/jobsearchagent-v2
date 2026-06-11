@@ -87,7 +87,8 @@ def make_relevance_filter_node(
                     clearance_drops.append(
                         {"job_id": jid, "mismatch": "requires_clearance",
                          "reason": "Posting requires a security clearance.",
-                         "title": j.get("title") or "", "company": j.get("company") or ""})
+                         "title": j.get("title") or "", "company": j.get("company") or "",
+                         "url": j.get("url") or ""})
                 else:
                     candidates.append(j)
             if clearance_drops:
@@ -163,12 +164,14 @@ def make_relevance_filter_node(
             jid = job.get("id", job.get("job_id", ""))
             v = verdicts.get(jid)
             if v is not None and not v.keep:
-                # Carry title + company so the "why filtered out" UI panel is
+                # Carry title + company + url so the "why filtered out" UI panel is
                 # self-contained in state and needs no extra read (the dropped jobs
-                # are no longer in normalized_jobs to look up).
+                # are no longer in normalized_jobs to look up). url lets the user
+                # click through and verify the verdict for themselves.
                 dropped_audit.append(
                     {"job_id": jid, "mismatch": v.mismatch, "reason": v.reason[:200],
-                     "title": job.get("title") or "", "company": job.get("company") or ""}
+                     "title": job.get("title") or "", "company": job.get("company") or "",
+                     "url": job.get("url") or ""}
                 )
                 continue
             kept.append(job)  # no verdict or keep=true -> kept (recall-biased)

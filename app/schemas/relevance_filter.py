@@ -7,8 +7,12 @@ set on the auto-scoring branch.
 
 The seniority axis is judged RELATIVE to the profile's own target band, so the same
 agent serves both ends: `too_senior` for an early-career profile, `too_junior` for a
-senior one. `unrelated` covers the relevance axis (off the profile's target
-roles/domain). `none` accompanies a keep.
+senior one. `unrelated` covers the SUITABILITY axis: a role genuinely unsuitable for
+the candidate (a different profession with no transferable overlap), NOT merely a
+role outside the exact `target_roles`. Adjacent roles the candidate's career stage
+could plausibly fill (e.g. IT / SOC / GRC / data for an entry cyber grad) are KEPT,
+so the prefilter does not strand a candidate open to adjacent work. `none`
+accompanies a keep.
 """
 from typing import Literal
 
