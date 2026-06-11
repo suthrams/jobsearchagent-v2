@@ -2,7 +2,8 @@
 
 Status: SPIKE (research). 2026-06-04. Companion to ADR-080 (the near-term
 posting-age patch). The recommendation below (Greenhouse + Lever, ATS-direct) was
-**prototyped in ADR-081** (`app/services/ats_scrapers.py`).
+**prototyped in ADR-081** (`app/services/ats_scrapers.py`) and a curated,
+live-verified board batch was **turned on by default in ADR-097** (2026-06-10).
 
 > Source-terms caveat: API terms, free-tier limits, and coverage change. Endpoints
 > and shapes below reflect research as of 2026-06; **verify current terms against
@@ -40,6 +41,27 @@ ATS feeds are queried **per company** (by board token / slug), so they need a
 **curated target-company list**. Two seam wins: ATS apply URLs are stable (no
 rotating session token, so URL dedup gets *more* reliable), and ATS endpoints
 rarely 429.
+
+### 3a. Curated batch wired on (ADR-097, 2026-06-10)
+
+The ATS-direct mechanism (ADR-081) shipped with empty company lists. ADR-097
+curated a **live-verified batch** — 33 Greenhouse + 3 Lever boards, each confirmed
+returning jobs on 2026-06-10 — and turned it on by default in `config.yaml` +
+`config.example.yaml`, with per-board fetch parallelized (`ThreadPoolExecutor`).
+Re-verify / prune with `python tools/verify_ats_boards.py` (boards rename or close
+over time; per-board failures are non-fatal at runtime).
+
+### 3b. Rejected source — jobright.ai (2026-06-10)
+
+Investigated on request; **rejected**. jobright.ai is a consumer "AI job-search
+copilot", not a data provider: no public API; its `/api/` is `robots.txt`-disallowed
+and `/jobs/` is blocked for our bots; the personalized feed is login-gated. Its only
+open surface is curated GitHub repos (e.g. `jobright-ai/2026-Software-Engineer-New-Grad`)
+which are **unlicensed**, format-unstable (markdown tables, rolling 7-day window),
+and whose apply links are `jobright.ai` **redirect** URLs, not the employer's own
+page. It fails the reliability / trust / no-security-risk bar. The roles it
+aggregates are overwhelmingly Greenhouse/Lever/company-ATS postings anyway, so the
+source-of-truth path (ADR-097) gets the same jobs cleanly.
 
 ## 4. Aggregators & niche boards (most share Adzuna's staleness)
 

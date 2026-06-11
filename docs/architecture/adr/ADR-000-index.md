@@ -102,3 +102,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-094 | [Security-Clearance Exclusion (Folded into the Relevance Filter)](ADR-094-clearance-exclusion-in-relevance-filter.md) | Accepted (implemented) |
 | ADR-095 | [Best-Effort Dead-Link Filter (Opt-in Discovery Step)](ADR-095-best-effort-dead-link-filter.md) | Accepted (implemented) |
 | ADR-096 | [Durable Run Recovery Across Restarts (Graceful Drain + Checkpointed Auto-Resume)](ADR-096-durable-run-recovery-across-restarts.md) | Accepted (implemented) |
+| ADR-097 | [Curated, Live-Verified ATS-Direct Board Batch (Greenhouse + Lever)](ADR-097-curated-ats-direct-board-batch.md) | Accepted (implemented) |

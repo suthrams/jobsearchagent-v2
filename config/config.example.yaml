@@ -92,18 +92,24 @@ scrapers:
       - principal engineer
       - solutions architect
 
-  # ADR-081: ATS-direct sources (source-of-truth). Listings are live by definition
-  # and the apply URL is the employer's own ATS page — so no dead-link / 429 issue
-  # (unlike Adzuna). Queried PER COMPANY: list the board tokens / slugs of your
-  # target companies (empty list = off). Title relevance uses the run's roles.
-  # Find a token from the careers URL: Greenhouse `boards.greenhouse.io/<token>`,
-  # Lever `jobs.lever.co/<slug>`.
+  # ADR-081 + ADR-097: ATS-direct sources (source-of-truth). Listings are live by
+  # definition and the apply URL is the employer's own ATS page — so no dead-link /
+  # 429 issue (unlike Adzuna). Queried PER COMPANY (one concurrent GET per board);
+  # title relevance uses the run's roles. Empty list = off. Find a token from the
+  # careers URL: Greenhouse `boards.greenhouse.io/<token>`, Lever `jobs.lever.co/<slug>`.
+  # The lists below are a curated batch live-verified 2026-06-10 (ADR-097); re-verify
+  # or prune with `python tools/verify_ats_boards.py`.
   greenhouse:
     enabled: true
-    companies: []   # e.g. [stripe, figma, anthropic]
+    companies: [
+      affirm, airbnb, anthropic, asana, attentive, brex, chime, cloudflare,
+      coinbase, databricks, datadog, discord, dropbox, elastic, faire, figma,
+      flexport, gitlab, gusto, hightouch, instacart, mercury, pinterest, reddit,
+      robinhood, samsara, scaleai, sofi, stripe, twilio, upgrade, vercel, verkada,
+    ]
   lever:
     enabled: true
-    companies: []   # e.g. [leverdemo]
+    companies: [gopuff, palantir, spotify]
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # v2 Configuration (ADR-053 + ADR-058)

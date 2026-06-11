@@ -24,6 +24,7 @@ from __future__ import annotations
 import html
 import logging
 import re
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from typing import Any
 
@@ -39,6 +40,9 @@ _TIMEOUT_S = 15.0
 # A single board can list hundreds of roles; bound what we pull per board before
 # the title-relevance gate so one big company can't dominate a run.
 _MAX_JOBS_PER_BOARD = 100
+# ADR-097: boards are fetched concurrently (one HTTP GET per board) so a curated
+# batch of dozens of companies adds seconds, not tens of seconds, to discovery.
+_DEFAULT_WORKERS = 8
 _TAG_RE = re.compile(r"<[^>]+>")
 _WS_RE = re.compile(r"\s+")
 
@@ -74,31 +78,43 @@ class GreenhouseScraper(BaseScraper):
     _URL = "https://boards-api.greenhouse.io/v1/boards/{token}/jobs?content=true"
 
     def __init__(self, tokens: list[str], relevant_tokens: list[str] | None = None,
-                 timeout_s: float = _TIMEOUT_S) -> None:
+                 timeout_s: float = _TIMEOUT_S, max_workers: int = _DEFAULT_WORKERS) -> None:
         super().__init__("greenhouse")
         self._tokens = [t.strip() for t in tokens if t and t.strip()]
         self._relevant = [t.lower() for t in (relevant_tokens or [])]
         self._timeout = timeout_s
+        self._max_workers = max_workers
 
     def scrape(self) -> list[Job]:
         jobs: list[Job] = []
+        if not self._tokens:
+            self.log_result(jobs)
+            return jobs
+        # ADR-097: fetch every board concurrently, but collect in token order so the
+        # result is deterministic. A per-board failure is logged and skipped.
         with httpx.Client(timeout=self._timeout, follow_redirects=True) as client:
+            with ThreadPoolExecutor(max_workers=min(self._max_workers, len(self._tokens))) as ex:
+                futures = {tok: ex.submit(self._fetch_board, client, tok) for tok in self._tokens}
             for token in self._tokens:
                 try:
-                    resp = client.get(self._URL.format(token=token))
-                    resp.raise_for_status()
-                    items = (resp.json() or {}).get("jobs") or []
+                    jobs.extend(futures[token].result())
                 except Exception as exc:
                     self.logger.warning("greenhouse board %s failed: %s", token, exc)
-                    continue
-                for item in items[:_MAX_JOBS_PER_BOARD]:
-                    if not _title_ok(item.get("title") or "", self._relevant):
-                        continue
-                    job = self._to_job(item, token)
-                    if job is not None:
-                        jobs.append(job)
         self.log_result(jobs)
         return jobs
+
+    def _fetch_board(self, client: httpx.Client, token: str) -> list[Job]:
+        resp = client.get(self._URL.format(token=token))
+        resp.raise_for_status()
+        items = (resp.json() or {}).get("jobs") or []
+        out: list[Job] = []
+        for item in items[:_MAX_JOBS_PER_BOARD]:
+            if not _title_ok(item.get("title") or "", self._relevant):
+                continue
+            job = self._to_job(item, token)
+            if job is not None:
+                out.append(job)
+        return out
 
     @staticmethod
     def _to_job(item: dict, token: str) -> Job | None:
@@ -125,31 +141,43 @@ class LeverScraper(BaseScraper):
     _URL = "https://api.lever.co/v0/postings/{slug}?mode=json"
 
     def __init__(self, slugs: list[str], relevant_tokens: list[str] | None = None,
-                 timeout_s: float = _TIMEOUT_S) -> None:
+                 timeout_s: float = _TIMEOUT_S, max_workers: int = _DEFAULT_WORKERS) -> None:
         super().__init__("lever")
         self._slugs = [s.strip() for s in slugs if s and s.strip()]
         self._relevant = [t.lower() for t in (relevant_tokens or [])]
         self._timeout = timeout_s
+        self._max_workers = max_workers
 
     def scrape(self) -> list[Job]:
         jobs: list[Job] = []
+        if not self._slugs:
+            self.log_result(jobs)
+            return jobs
+        # ADR-097: concurrent per-board fetch, collected in slug order; per-board
+        # failures are logged and skipped.
         with httpx.Client(timeout=self._timeout, follow_redirects=True) as client:
+            with ThreadPoolExecutor(max_workers=min(self._max_workers, len(self._slugs))) as ex:
+                futures = {slug: ex.submit(self._fetch_board, client, slug) for slug in self._slugs}
             for slug in self._slugs:
                 try:
-                    resp = client.get(self._URL.format(slug=slug))
-                    resp.raise_for_status()
-                    items = resp.json() or []
+                    jobs.extend(futures[slug].result())
                 except Exception as exc:
                     self.logger.warning("lever board %s failed: %s", slug, exc)
-                    continue
-                for item in items[:_MAX_JOBS_PER_BOARD]:
-                    if not _title_ok(item.get("text") or "", self._relevant):
-                        continue
-                    job = self._to_job(item, slug)
-                    if job is not None:
-                        jobs.append(job)
         self.log_result(jobs)
         return jobs
+
+    def _fetch_board(self, client: httpx.Client, slug: str) -> list[Job]:
+        resp = client.get(self._URL.format(slug=slug))
+        resp.raise_for_status()
+        items = resp.json() or []
+        out: list[Job] = []
+        for item in items[:_MAX_JOBS_PER_BOARD]:
+            if not _title_ok(item.get("text") or "", self._relevant):
+                continue
+            job = self._to_job(item, slug)
+            if job is not None:
+                out.append(job)
+        return out
 
     @staticmethod
     def _to_job(item: dict, slug: str) -> Job | None:

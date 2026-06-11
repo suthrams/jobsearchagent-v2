@@ -6,6 +6,35 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-10
 
+### Added — ATS-direct curated board batch, on by default (ADR-097)
+
+Turned on the dormant ATS-direct discovery (ADR-081) with a curated, live-verified
+batch of source-of-truth employer boards, and parallelized the per-board fetch. This
+followed a rejected request to source jobs from jobright.ai (no API, robots/ToS
+disallow, unlicensed + redirect-only GitHub lists) — the roles it aggregates are
+mostly Greenhouse/Lever postings, so we go to the source instead.
+
+- **Curated batch (33 Greenhouse + 3 Lever), live-verified 2026-06-10.** Greenhouse:
+  affirm, airbnb, anthropic, asana, attentive, brex, chime, cloudflare, coinbase,
+  databricks, datadog, discord, dropbox, elastic, faire, figma, flexport, gitlab,
+  gusto, hightouch, instacart, mercury, pinterest, reddit, robinhood, samsara,
+  scaleai, sofi, stripe, twilio, upgrade, vercel, verkada. Lever: gopuff, palantir,
+  spotify. Each board confirmed HTTP 200 + non-empty; activated in `config.yaml`,
+  documented in `config.example.yaml`. `enabled: true` stays the off-switch.
+- **Concurrency.** `GreenhouseScraper` / `LeverScraper` now fetch boards
+  concurrently (`ThreadPoolExecutor`, 8 workers), collected in token/slug order, so
+  a 36-board fan-out adds a few seconds, not ~15-20s. Resolves the ADR-081 follow-up.
+- **Reusable checker.** `tools/verify_ats_boards.py` re-verifies the configured
+  boards against the live APIs and flags dead ones to prune (non-zero exit for CI).
+- **Integration (no new mechanism):** config -> `ats_scraper_factory` ->
+  `discover_jobs` -> the unified dedup / posting-age (ADR-080) / dead-link (ADR-095) /
+  node-cap pipeline -> the standard funnel (relevance filter -> score -> auto-select
+  -> deep review -> report). Additive alongside Adzuna; senior tuning unchanged via
+  `scoring.min_match_score`.
+- Docs swept: ADR-097 + index, `wiki.md`, `spike_job_data_sources.md` (curated batch
+  + jobright rejection), CLAUDE.md scraper rules, `config.example.yaml`. Tests: 4 new
+  (well-formed batch + concurrent order/failure); 1035 pass.
+
 ### Docs — architecture docs refreshed to current + ASCII diagrams replaced with rendered figures
 
 Brought the living architecture docs current to the latest application state and
