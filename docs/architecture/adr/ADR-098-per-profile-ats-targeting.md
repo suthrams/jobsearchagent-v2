@@ -150,7 +150,7 @@ So you approve one thing at a time, these are NOT part of this decision:
   ADR is the floor; the resolver is the nicer ceiling.)
 - **Source visibility in lists.** A Source column/badge in the discovered + Matches
   tables (today the employer-direct vs aggregator badge shows only on job detail,
-  ADR-093).
+  ADR-093). **Shipped in ADR-099.**
 
 ## PSSR
 

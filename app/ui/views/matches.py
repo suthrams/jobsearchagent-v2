@@ -24,10 +24,9 @@ import streamlit as st
 import app.ui.api_client as api
 from app.services.posting_age_filter import is_stale
 from app.ui.components.favorites import favorited_ids, render_favorite_toggle
-from app.ui.components.posting_link import source_badge
 from app.ui.components.run_status import render_run_status
 from app.ui.data import _cached_scored_jobs, _cached_user_resumes, _get_config_cached
-from app.ui.formatting import format_posting_age_short
+from app.ui.formatting import format_posting_age_short, source_label
 from app.ui.nav import ViewContext, _navigate
 
 _VALID_TRACKS = ["ic", "architect", "management"]
@@ -121,7 +120,7 @@ def _focus_card(job: pd.Series) -> None:
     # At-a-glance link reliability (ADR-093 #1): source + freshness, so the user
     # knows before clicking through whether the link is likely live.
     bits: list[str] = []
-    badge = source_badge(job.get("source"))
+    badge = source_label(job.get("source"))  # ADR-099: exact source, not just class
     if badge:
         bits.append(badge)
     age = format_posting_age_short(job.get("posted_at"))
@@ -259,6 +258,13 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
             "recommended_next_action", "url"]
     if "posted_at" in shown.columns:
         cols.insert(3, "posted_at")
+    # ADR-099: exact job source as its own column (Greenhouse/Lever/Adzuna/...), so
+    # you can see which feed - and with ADR-098, which of your boards - produced a
+    # match without opening the row.
+    if "source" in shown.columns:
+        shown = shown.copy()
+        shown["Source"] = shown["source"].apply(source_label)
+        cols.insert(cols.index("location") + 1, "Source")
     # NEW badge on rows scored by the latest finished run (ADR-089): the payoff of a
     # just-completed search is obvious without leaving Matches.
     _latest = (st.session_state.get("workflow_id")
@@ -299,6 +305,11 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
             "title": st.column_config.TextColumn("Title", width="large"),
             "company": st.column_config.TextColumn("Company", width="medium"),
             "location": st.column_config.TextColumn("Location", width="small"),
+            "Source": st.column_config.TextColumn(
+                "Source", width="small",
+                help="Where this posting came from. Green = employer-direct ATS "
+                     "(Greenhouse/Lever, source of truth); yellow = aggregator "
+                     "(Adzuna/Indeed/LinkedIn); 🔗 = your custom URL."),
             "Posted": st.column_config.TextColumn("Posted", width="small"),
             "Score": st.column_config.ProgressColumn(
                 "Score", min_value=0, max_value=100, format="%d"),

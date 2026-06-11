@@ -44,6 +44,7 @@ Jobs are discovered from multiple sources concurrently on every run. Discovery h
 - Queried **per company** — board tokens/slugs of target companies under `scrapers.greenhouse.companies` / `scrapers.lever.companies` (empty list = off); ships with a curated, live-verified default batch (ADR-097)
 - **Per-profile target companies (ADR-098):** managed from the Settings "Target companies" section with **verify-on-add** (a dead slug is rejected before it joins your list). The list resolves per run from your `effective_config`, so an edit applies on your next run with no restart; a profile override replaces the default, a new profile inherits it
 - Built per run by `WorkflowDependencies.ats_scraper_factory(roles, scrapers_cfg)`; additive alongside Adzuna
+- **Source visibility (ADR-099):** each job shows its exact origin with a reliability colour (🟢 Greenhouse/Lever employer-direct, 🟡 Adzuna/Indeed/LinkedIn aggregator, 🔗 custom URL) as a Source column in the Matches and discovered-jobs tables and on the focus cards / Opportunity page
 
 ### LinkedIn + custom URLs (manual intake)
 - LinkedIn blocks automated scraping — the built-in `LinkedInScraper` reads job URLs from `data/linkedin_inbox.txt` (one per line) and clears entries it has processed

@@ -420,6 +420,12 @@ cheaper results.
   an edit takes effect on your **next run with no restart**.
 - Maintenance: `python tools/verify_ats_boards.py` re-checks the configured boards
   and flags dead ones to prune.
+- **Seeing where a job came from (ADR-099):** every discovered/matched job shows its
+  exact source with a reliability colour — 🟢 Greenhouse / 🟢 Lever (employer-direct,
+  source of truth), 🟡 Adzuna / 🟡 LinkedIn (aggregator), 🔗 your custom URL. It
+  appears as a **Source** column in the **Matches -> Roles** table and the **Workflow
+  Detail -> all discovered jobs** table, and on each Matches focus card + the
+  Opportunity page. That's how you tell which of your boards actually produced a match.
 
 ---
 

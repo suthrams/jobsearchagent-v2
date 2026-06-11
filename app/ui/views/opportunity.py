@@ -27,7 +27,7 @@ import streamlit as st
 import app.ui.api_client as api
 from app.ui.components.bullets import _bullets, _para
 from app.ui.components.favorites import render_favorite_toggle
-from app.ui.components.posting_link import render_posting_links, source_badge
+from app.ui.components.posting_link import render_posting_links
 from app.ui.components.tailoring_panel import render_job_tailoring
 from app.ui.data import (
     _cached_job_pipeline,
@@ -35,7 +35,7 @@ from app.ui.data import (
     _cached_workflow_detail,
     _cached_workflow_jobs,
 )
-from app.ui.formatting import _fmt_ts, format_posting_age
+from app.ui.formatting import _fmt_ts, format_posting_age, source_label
 from app.ui.nav import ViewContext, _navigate, back_button
 from app.workflows.limits import TRACK_TO_SCORE_KEY, get_active_tracks
 
@@ -103,7 +103,7 @@ def _header(wf_id: str, job_id: str, job: dict, state: dict) -> None:
     best = _best_track(state, job)
     if best:
         ctx_bits.append(f"Best track: **{best[0]} {best[1]}**")
-    _badge = source_badge(job.get("source"))
+    _badge = source_label(job.get("source"))  # ADR-099: exact source name
     if _badge:
         ctx_bits.append(_badge)
     age = format_posting_age(job.get("posted_at"))

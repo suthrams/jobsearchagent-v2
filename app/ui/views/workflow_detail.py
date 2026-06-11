@@ -154,6 +154,11 @@ def render(ctx: ViewContext) -> None:
                 selection_mode="single-row",
                 column_config={
                     "Posted": st.column_config.TextColumn("Posted", width="small"),
+                    "Source": st.column_config.TextColumn(  # ADR-099
+                        "Source", width="small",
+                        help="Where this posting came from. Green = employer-direct "
+                             "ATS (Greenhouse/Lever); yellow = aggregator "
+                             "(Adzuna/Indeed/LinkedIn); 🔗 = your custom URL."),
                     "Status": st.column_config.TextColumn("Status", width="small"),
                 },
             )

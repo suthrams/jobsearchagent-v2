@@ -11,6 +11,7 @@ from app.ui.formatting import (
     build_relevance_drop_rows,
     discovery_funnel_summary,
     format_posting_age_short,
+    source_label,
 )
 
 NOW = datetime(2026, 6, 4, 12, 0, 0, tzinfo=timezone.utc)
@@ -24,13 +25,29 @@ def test_format_posting_age_short():
     assert format_posting_age_short("garbage", now=NOW) == ""
 
 
+def test_source_label_maps_known_and_unknown():
+    # ADR-099: exact source name with the reliability-class icon.
+    assert source_label("greenhouse") == "🟢 Greenhouse"
+    assert source_label("lever") == "🟢 Lever"
+    assert source_label("Adzuna") == "🟡 Adzuna"          # case-insensitive
+    assert source_label("indeed") == "🟡 Indeed"
+    assert source_label("linkedin") == "🟡 LinkedIn"
+    assert source_label("manual") == "🔗 Custom URL"
+    assert source_label("custom_url") == "🔗 Custom URL"
+    # empty / None -> blank (no badge); unknown -> visible neutral fallback.
+    assert source_label("") == ""
+    assert source_label(None) == ""
+    assert source_label("weworkremotely") == "• Weworkremotely"
+
+
 def test_build_discovered_rows_flags_scored_and_unscored():
     discovered = [
         {"id": "j1", "title": "Eng", "company": "A", "location": "Remote",
-         "posted_at": "2026-06-01T00:00:00Z"},
-        {"id": "j2", "title": "Lead", "company": "B", "location": "NYC", "posted_at": None},
+         "source": "greenhouse", "posted_at": "2026-06-01T00:00:00Z"},
+        {"id": "j2", "title": "Lead", "company": "B", "location": "NYC",
+         "source": "adzuna", "posted_at": None},
         {"id": "j3", "title": "Staff", "company": "C", "location": "SF",
-         "posted_at": "2026-05-01T00:00:00Z"},
+         "posted_at": "2026-05-01T00:00:00Z"},  # no source -> blank
     ]
     scored = [
         {"job_id": "j1", "status": "scored"},
@@ -41,8 +58,11 @@ def test_build_discovered_rows_flags_scored_and_unscored():
     assert [r["Title"] for r in rows] == ["Eng", "Lead", "Staff"]
     assert rows[0]["Status"] == "✅ scored"
     assert rows[0]["Posted"] == "3d"
+    assert rows[0]["Source"] == "🟢 Greenhouse"   # ADR-099
     assert rows[1]["Status"] == "not scored"   # no scored entry
     assert rows[1]["Posted"] == ""             # unknown date
+    assert rows[1]["Source"] == "🟡 Adzuna"
+    assert rows[2]["Source"] == ""             # missing source -> blank
     assert rows[2]["Status"] == "budget_skipped"
 
 

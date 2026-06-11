@@ -48,6 +48,36 @@ def format_posting_age_short(posted_at, *, now=None) -> str:
     return "today" if age <= 0 else f"{age}d"
 
 
+# ADR-099: map a stored job source to a display label with a reliability-class icon.
+# The 🟢/🟡 carry the same employer-direct-vs-aggregator meaning as the ADR-093 badge
+# (Greenhouse/Lever are source-of-truth; Adzuna/Indeed/LinkedIn are aggregators;
+# custom URLs are the user's own). Pure + total: unknown/empty -> safe label.
+_SOURCE_DISPLAY = {
+    "greenhouse": "🟢 Greenhouse",
+    "lever": "🟢 Lever",
+    "adzuna": "🟡 Adzuna",
+    "indeed": "🟡 Indeed",
+    "linkedin": "🟡 LinkedIn",
+    "ladders": "🟡 Ladders",
+    "manual": "🔗 Custom URL",
+    "custom_url": "🔗 Custom URL",
+    "custom": "🔗 Custom URL",
+}
+
+
+def source_label(source: str | None) -> str:
+    """Exact, human source name with a reliability-class icon (ADR-099).
+
+    e.g. 'greenhouse' -> '🟢 Greenhouse', 'adzuna' -> '🟡 Adzuna'. Empty/None -> ''.
+    An unrecognized source falls back to a neutral '• <Titlecased>' so it is still
+    visible rather than blank. Pure - no Streamlit, no I/O.
+    """
+    s = (source or "").strip().lower()
+    if not s:
+        return ""
+    return _SOURCE_DISPLAY.get(s, "• " + s.replace("_", " ").title())
+
+
 def build_discovered_rows(normalized_jobs, scored_jobs, *, now=None) -> list[dict]:
     """Compact rows for the 'discovered jobs' table (ADR-080 surfacing).
 
@@ -69,6 +99,7 @@ def build_discovered_rows(normalized_jobs, scored_jobs, *, now=None) -> list[dic
             "Title": j.get("title") or "(untitled)",
             "Company": j.get("company") or "—",
             "Location": j.get("location") or "—",
+            "Source": source_label(j.get("source")),  # ADR-099
             "Status": "✅ scored" if status == "scored" else (status or "not scored"),
         })
     return rows

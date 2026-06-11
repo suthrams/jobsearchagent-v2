@@ -6,6 +6,25 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-11
 
+### Added — job source visibility in the discovered + Matches lists (ADR-099)
+
+Picks up the "Source visibility in lists" item de-bundled from ADR-098. A job's
+origin was persisted in `jobs.source` since ADR-081 and shown as an
+employer-direct/aggregator *class* badge on cards (ADR-093), but the tabular lists
+had no source at all and never named the actual feed.
+
+- **`formatting.source_label(source)`** — pure helper mapping a stored source to an
+  exact label with the reliability-class icon (`greenhouse -> "🟢 Greenhouse"`,
+  `adzuna -> "🟡 Adzuna"`, `manual -> "🔗 Custom URL"`, unknown -> neutral fallback).
+- **Source column** added to the Matches "Roles" table and the Workflow Detail "all
+  discovered jobs" table (`build_discovered_rows` now carries `Source`). The Matches
+  focus cards + Opportunity detail upgraded from the class-only badge to the exact
+  name. So you can see which feed — and with ADR-098, which of your boards — produced
+  a match without opening the row.
+- Presentation only: no DB/API change (`source` already travels in the payloads);
+  `source_kind`/`needs_fallback` (apply-link reliability, ADR-093) untouched.
+- Tests: `source_label` mapping + `Source` in `build_discovered_rows`; UI smoke 12/12.
+
 ### Added — per-profile ATS targeting, managed in the Settings UI (ADR-098)
 
 ADR-097 shipped the curated ATS batch as a **system-wide** default, resolved at
