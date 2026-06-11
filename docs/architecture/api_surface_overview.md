@@ -8,83 +8,15 @@ see the **Overview** section there.
 
 ## All endpoints at a glance
 
-Eight domains, twenty-nine endpoints. Path parameters are written
-without curly braces (`/users/id` rather than `/users/{id}`) so the
-diagram renders cleanly; the canonical form with braces lives in the
-reference table below.
+Eleven domains, forty endpoints, grouped by responsibility. The canonical
+path form (with curly braces) is used throughout.
 
-![API surface — all endpoints grouped by domain](images/api_surface.png)
+![API surface: all forty REST endpoints grouped into eleven domains - Profiles, Workflows, Workflow reads, Per-job on demand (tailorings, deep-review, interview-prep, score), Tailoring drafts, Job exclusion, Favorites, Review later, Resume Clinic, Config, and Ops health.](images/api_surface.png)
 
-> The PNG above is rendered deterministically from
-> `tools/figure_renderer/specs/api_surface.json` (the same engine as the article
-> figures); the JSON spec is the render source of truth and writes straight into
-> `docs/architecture/images/` via its `outDir`. Regenerate with
-> `python tools/render_figures.py api_surface`. The Mermaid block below is a
-> textual mirror kept in sync for inline rendering on GitHub / IDE preview.
-
-```mermaid
-flowchart TB
-    subgraph Profiles
-        p1[GET /users]
-        p2[POST /users]
-        p3[PUT /users/id]
-        p4[POST /users/id/resume]
-        p5[DELETE /users/id/resume/rid]
-    end
-
-    subgraph Workflows
-        w1[POST /workflows]
-        w2[GET /workflows/id]
-        w3[POST /workflows/id/retry]
-        w4[POST /workflows/id/scoring]
-        w5[POST /workflows/id/cancel]
-    end
-
-    subgraph Workflow_reads
-        r1[GET /workflows/id/jobs]
-        r2[GET /workflows/id/report]
-    end
-
-    subgraph Per_job_on_demand
-        d1[POST /workflows/wf/jobs/job/tailorings]
-        d2[POST /workflows/wf/jobs/job/deep-review]
-        d3[POST /workflows/wf/jobs/job/interview-prep]
-        d4[POST /workflows/wf/jobs/job/score]
-    end
-
-    subgraph Tailoring_drafts
-        t1[GET /workflows/wf/tailorings]
-        t2[GET /tailorings/id]
-        t3[POST /tailorings/id/decisions]
-    end
-
-    subgraph Job_exclusion
-        j1[GET /jobs/excluded]
-        j2[POST /jobs/id/exclude]
-        j3[DELETE /jobs/id/exclude]
-    end
-
-    subgraph Resume_Clinic
-        c1[POST /users/id/resume-clinic]
-        c2[GET /users/id/resume-clinic]
-        c3[POST /resume-clinic/id/decisions]
-        c4[POST /resume-clinic/id/chat]
-        c5[POST /resume-clinic/id/discard-edits]
-        c6[GET /resume-clinic/id/export]
-    end
-
-    subgraph Config
-        f1[GET /config]
-        f2[PUT /config]
-        f3[GET /config/providers]
-        f4[POST /config/reload]
-    end
-
-    subgraph Ops_health
-        o1[GET /health]
-        o2[GET /readyz]
-    end
-```
+> The PNG is rendered deterministically from
+> `tools/figure_renderer/specs/api_surface.json` (the render source of truth);
+> it writes straight into `docs/architecture/images/` via its `outDir`.
+> Regenerate with `python tools/render_figures.py api_surface`.
 
 ## Reference table
 
@@ -147,6 +79,22 @@ same key + body replays the original run instead of starting a second; `retry` a
 | `GET` | `/jobs/excluded` | List jobs explicitly excluded from results. |
 | `POST` | `/jobs/{job_id}/exclude` | Exclude a job from scoring / cross-run analytics. |
 | `DELETE` | `/jobs/{job_id}/exclude` | Restore a previously-excluded job. |
+
+### Favorites (ADR-090)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/users/{user_id}/favorites` | List the profile's favorite jobs. |
+| `POST` | `/users/{user_id}/favorites` | Favorite a job `{workflow_id, job_id}`. 409 `favorites_cap_reached`; 404 `job_not_found`. |
+| `DELETE` | `/users/{user_id}/favorites/{job_id}` | Un-favorite a job (idempotent). |
+
+### Review later (ADR-100)
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/users/{user_id}/review-later` | List the profile's Maybe / Review-later jobs. |
+| `POST` | `/users/{user_id}/review-later` | Move a job to review-later `{workflow_id, job_id}`. 409 `review_later_cap_reached`; 404 `job_not_found`. |
+| `DELETE` | `/users/{user_id}/review-later/{job_id}` | Remove from review-later (idempotent). |
 
 ### Resume Clinic (ADR-066, ADR-068)
 

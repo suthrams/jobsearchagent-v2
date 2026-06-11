@@ -2,7 +2,7 @@
   "id": "api_surface",
   "outDir": "docs/architecture/images",
   "width": 1680,
-  "height": 1400,
+  "height": 1680,
   "layout": "table",
   "title": "REST API surface - by domain",
   "headSub": "Every endpoint the Streamlit UI calls, grouped by responsibility.",
@@ -12,12 +12,14 @@
     {"icon": "user", "accent": "green", "label": "Profiles", "sub": "users + resumes", "cells": [{"code": "GET /users   POST /users   PUT /users/{id}   POST /users/{id}/resume   DELETE /users/{id}/resume/{rid}"}]},
     {"icon": "steps", "accent": "amber", "label": "Workflows", "sub": "run lifecycle", "cells": [{"code": "POST /workflows   GET /workflows/{id}   POST /workflows/{id}/retry   POST /workflows/{id}/scoring   POST /workflows/{id}/cancel"}]},
     {"icon": "chart", "accent": "blue", "label": "Workflow reads", "sub": "results", "cells": [{"code": "GET /workflows/{id}/jobs   GET /workflows/{id}/report"}]},
-    {"icon": "edit", "accent": "magenta", "label": "Per-job on demand", "sub": "out-of-graph ops", "cells": [{"code": "POST /workflows/{wf}/jobs/{job}/tailorings   .../deep-review   .../interview-prep"}]},
+    {"icon": "edit", "accent": "magenta", "label": "Per-job on demand", "sub": "out-of-graph ops", "cells": [{"code": "POST /workflows/{wf}/jobs/{job}/tailorings   .../deep-review   .../interview-prep   .../score"}]},
     {"icon": "doc", "accent": "magenta", "label": "Tailoring drafts", "sub": "review + decide", "cells": [{"code": "GET /workflows/{wf}/tailorings   GET /tailorings/{id}   POST /tailorings/{id}/decisions"}]},
     {"icon": "filter", "accent": "red", "label": "Job exclusion", "sub": "filter input", "cells": [{"code": "GET /jobs/excluded   POST /jobs/{id}/exclude   DELETE /jobs/{id}/exclude"}]},
+    {"icon": "check", "accent": "blue", "label": "Favorites", "sub": "saved jobs (ADR-090)", "cells": [{"code": "GET /users/{id}/favorites   POST /users/{id}/favorites   DELETE /users/{id}/favorites/{job}"}]},
+    {"icon": "clock", "accent": "blue", "label": "Review later", "sub": "saved jobs (ADR-100)", "cells": [{"code": "GET /users/{id}/review-later   POST /users/{id}/review-later   DELETE /users/{id}/review-later/{job}"}]},
     {"icon": "pen", "accent": "amber", "label": "Resume Clinic", "sub": "out-of-graph", "cells": [{"code": "POST /users/{id}/resume-clinic   GET /users/{id}/resume-clinic   POST /resume-clinic/{id}/decisions   .../chat   .../discard-edits   .../export"}]},
     {"icon": "gauge", "accent": "blue", "label": "Config", "sub": "settings", "cells": [{"code": "GET /config   PUT /config   GET /config/providers   POST /config/reload"}]},
     {"icon": "shield", "accent": "green", "label": "Ops / health", "sub": "unauth (ADR-084)", "cells": [{"code": "GET /health   GET /readyz"}]}
   ],
-  "takeaway": {"icon": "globe", "accent": "amber", "text": "Nine groups, one rule: the UI is a {{blue:client}}. Every read and write is a REST call - the backend owns all state (ADR-075); only the ops probes are unauthenticated."}
+  "takeaway": {"icon": "globe", "accent": "amber", "text": "Eleven groups, one rule: the UI is a {{blue:client}}. Every read and write is a REST call - the backend owns all state (ADR-075); only the ops probes are unauthenticated."}
 }
