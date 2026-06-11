@@ -77,25 +77,9 @@ v1 (`main.py` + three agents) established the core patterns that v2 built on. Un
 
 **v2:** LangGraph stateful graph. Each node reads from and writes to `WorkflowState`. `SqliteSaver` persists state after every node for durability, error recovery, and the ADR-060 two-phase scoring re-entry — the workflow itself runs end-to-end with no `interrupt()` pause (ADR-059). The orchestrator is the only code that updates state — agents return structured outputs, never mutate state directly.
 
-```
-v1: main.py → profile_agent.load() → scoring_agent.score_batch() → [done]
+![Workflow orchestration evolving from a fixed v1 sequence to a stateful v2 LangGraph: the v1 lane runs main.py to profile load to scoring to done; the v2 in-graph lane runs register_run, discover_jobs, research and score, auto-select, deep review and advise, generate_report; and an out-of-graph lane runs tailoring, deep-review, and interview-prep on demand per scored job](images/patterns_orchestration.png)
 
-v2: LangGraph graph (configurable funnel width — ADR-061)
-      register_run → discover_jobs (≤ max_discovered manual / max_scored auto)
-        → load_resume
-        → [optional manual scoring triage between phases, ADR-060]
-        → [research + score concurrently, ≤ scoring.max_scored (≤25)]
-        → auto-select qualifying jobs (ADR-054/059 — no HITL pause; top 3)
-        → [deep_review per selected job, concurrent]
-        → career_advisor → interview_coach (threshold-gated)
-        → generate_report
-
-      On-demand, post-workflow, per scored job (ADR-055/061):
-      POST /workflows/{wf}/jobs/{job}/tailorings   → TailoringAgent → FidelityReviewer
-        (deep-reviews on demand first if the job was never auto-selected)
-      POST /workflows/{wf}/jobs/{job}/deep-review   → ResumeCritic + ReviewAuditor
-      POST /workflows/{wf}/jobs/{job}/interview-prep → InterviewCoach
-```
+*Figure: v1 was a fixed sequence with no shared state; v2 is a stateful graph that runs end to end with no `interrupt()` (ADR-059), and any scored job can be pulled deeper out-of-graph on demand (ADR-055/061). Re-render with `python tools/render_figures.py patterns_orchestration`.*
 
 **Why it matters:** State-driven execution enables HITL, error recovery, and workflow introspection. The graph topology is testable independently of agent quality.
 
@@ -281,7 +265,7 @@ MAX_LLM_CALLS_PER_RUN  = 200  # global per-run budget backstop
 
 **v1:** 3 general-purpose agents. `TailoringAgent` did both generation and output formatting. `ProfileAgent` handled both PDF parsing and caching.
 
-**v2:** Specialized, single-responsibility agents — each with one prompt file, one output schema, and one pattern. The set has grown past the original eight as features landed (relevance pre-filter, Resume Clinic):
+**v2:** Specialized, single-responsibility agents — each with one prompt file, one output schema, and one pattern. The set has grown past the original eight as features landed (relevance pre-filter, Resume Clinic). These 11 agents, plus two LLM helpers (`resume_parser`, `custom_url_extractor`), make **13 LLM-using components** in all:
 
 | Agent | Single Responsibility |
 |---|---|

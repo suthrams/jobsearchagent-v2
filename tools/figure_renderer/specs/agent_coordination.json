@@ -1,0 +1,23 @@
+{
+  "id": "agent_coordination",
+  "outDir": "docs/architecture/images",
+  "width": 1860,
+  "height": 560,
+  "layout": "flow",
+  "title": "Centralized coordination: every agent is run by the {{blue:orchestrator}}",
+  "headSub": "No agent-to-agent calls. The orchestrator runs each agent, validates its output, and decides the next step.",
+  "flow": [
+    {"title": "Workflow orchestrator", "accent": "blue", "icon": "steps"},
+    {"arrow": "runs agent"},
+    {"title": "Agent reads selected state", "accent": "gray", "icon": "eye"},
+    {"arrow": true},
+    {"title": "Agent returns structured output", "accent": "amber", "icon": "robot", "focal": true},
+    {"arrow": true},
+    {"title": "Orchestrator validates output", "accent": "green", "icon": "shield"},
+    {"arrow": true},
+    {"title": "Updates state", "accent": "green", "icon": "database"},
+    {"arrow": true},
+    {"title": "Decides next step", "accent": "green", "icon": "target"}
+  ],
+  "takeaway": {"icon": "check", "accent": "green", "text": "Coordination is centralized through the orchestrator, which validates each output before it touches state - avoiding {{red:uncontrolled agent-to-agent}} behavior."}
+}

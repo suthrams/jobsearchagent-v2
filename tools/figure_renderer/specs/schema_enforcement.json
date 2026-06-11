@@ -1,0 +1,21 @@
+{
+  "id": "schema_enforcement",
+  "outDir": "docs/architecture/images",
+  "width": 1820,
+  "height": 540,
+  "layout": "flow",
+  "title": "Output enforcement: raw model output never persists directly",
+  "headSub": "Every LLM result must clear schema, business-logic, and security checks before it is written - otherwise it is rejected.",
+  "flow": [
+    {"title": "LLM output", "accent": "amber", "icon": "robot"},
+    {"arrow": true},
+    {"title": "Schema validation", "meta": ["Pydantic"], "accent": "blue", "icon": "check"},
+    {"arrow": true},
+    {"title": "Business-logic validation", "accent": "blue", "icon": "target"},
+    {"arrow": true},
+    {"title": "Security checks", "accent": "blue", "icon": "shield"},
+    {"arrow": true},
+    {"title": "Persist or reject", "accent": "green", "icon": "database", "focal": true}
+  ],
+  "takeaway": {"icon": "shield", "accent": "green", "text": "Three gates stand between the model and the database - schema, business logic, and security - so malformed or unsafe output is {{red:rejected}}, never stored."}
+}

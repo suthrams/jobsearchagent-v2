@@ -54,15 +54,15 @@
 | 1 | Foundation — schemas, repos, config | ✓ complete |
 | 2 | Services — job discovery, resume parser | ✓ complete |
 | 3 | LLM provider — ClaudeProvider, prompt caching | ✓ complete |
-| 4 | All 8 agents | ✓ complete |
+| 4 | All agents (11 BaseAgent subclasses + 2 LLM helpers = 13 LLM-using components) | ✓ complete |
 | 5 | LangGraph workflow orchestrator | ✓ complete |
 | 6 | FastAPI backend + Streamlit UI | ✓ complete |
 | 7 | Live agents — real Claude, SqliteSaver | ✓ complete |
 | 8 | Performance — concurrent scoring + scraping | ✓ complete |
 | 9 | Cost optimization — model tiering, volume caps | ✓ complete |
-| post-9 | Usability refactor, multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + impact (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062), shared v1 libs (ADR-063), per-run search criteria + experience targeting (ADR-064/065), Resume Clinic (ADR-066), resume schema v2 (ADR-067), chat cost caps (ADR-068), PII redaction at the LLM seam (ADR-069), retention + redacted state (ADR-070), per-profile active scoring tracks (ADR-071), tailoring live chat (ADR-072), wired security events + System Dashboard (ADR-073), closed observability gaps + `api_requests` (ADR-074), UI read funnel through the API (ADR-075), runtime budget-cap + failed-call cost + drift proxy (ADR-076/077/078), relevance pre-filter (ADR-079), posting-age staleness (ADR-080), ATS-direct sources (ADR-081), idempotent kickoff (ADR-082), cooperative cancellation (ADR-083), liveness/readiness endpoints (ADR-084), on-demand interview prep (ADR-085), scoring resume projection (ADR-086), async-batch spike (ADR-087, deferred) | ✓ complete |
+| post-9 | Usability refactor, multi-provider (ADR-053), deep-review-for-all (ADR-054), on-demand tailoring (ADR-055), tailoring page-budget + impact (ADR-056), per-job exclusion (ADR-057), model config to YAML (ADR-058), retire in-graph HITL + human edit (ADR-059), manual scoring selection (ADR-060), configurable funnel width (ADR-061), multi-user profiles (ADR-062), shared v1 libs (ADR-063), per-run search criteria + experience targeting (ADR-064/065), Resume Clinic (ADR-066), resume schema v2 (ADR-067), chat cost caps (ADR-068), PII redaction at the LLM seam (ADR-069), retention + redacted state (ADR-070), per-profile active scoring tracks (ADR-071), tailoring live chat (ADR-072), wired security events + System Dashboard (ADR-073), closed observability gaps + `api_requests` (ADR-074), UI read funnel through the API (ADR-075), runtime budget-cap + failed-call cost + drift proxy (ADR-076/077/078), relevance pre-filter (ADR-079), posting-age staleness (ADR-080), ATS-direct sources (ADR-081), idempotent kickoff (ADR-082), cooperative cancellation (ADR-083), liveness/readiness endpoints (ADR-084), on-demand interview prep (ADR-085), scoring resume projection (ADR-086), async-batch spike (ADR-087, deferred), UI journey reorg + native multipage (ADR-088), Matches live home base (ADR-089), favorites + job-focused Resume Clinic (ADR-090), clinic chat reliability + cost (ADR-091/092), apply-link reliability (ADR-093), clearance exclusion in relevance filter (ADR-094), best-effort dead-link filter (ADR-095), durable run recovery across restarts (ADR-096) | ✓ complete |
 
-**Test count:** ~937 passing (mock mode, no real API calls in CI). The ADR index and CI are the live source of truth as this drifts.
+**Test count:** ~1031 passing (mock mode, no real API calls in CI). The ADR index and CI are the live source of truth as this drifts.
 
 ---
 
@@ -344,8 +344,8 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
 | docs/ top-level | 10 |
-| docs/architecture/ | 32 |
-| docs/architecture/adr/ | 88 (index + 87 ADRs) |
+| docs/architecture/ | 34 |
+| docs/architecture/adr/ | 97 (index + 96 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/incidents/ (postmortem log: README + per-incident) | 2 |
 | docs/models/ | 3 |

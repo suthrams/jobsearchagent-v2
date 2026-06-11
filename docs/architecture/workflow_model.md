@@ -26,9 +26,9 @@ stage, to a small set of jobs that receive the most expensive treatment. The
 funnel gets narrower — and the per-job accuracy and focus get higher — from left
 to right.
 
-```text
-Discover many cheaply → score the worthwhile → deeply analyze the few
-```
+![The workflow funnel: discover many cheaply, then score the worthwhile, then deeply analyze the few, with per-job accuracy and cost rising left to right](images/workflow_funnel.png)
+
+*Figure: the funnel narrows left to right; width is a cost-bounded human decision (ADR-061). Re-render with `python tools/render_figures.py workflow_funnel`.*
 
 The funnel's width is a **human decision bounded by a cost ceiling** (ADR-061),
 not a fixed cap:
@@ -715,20 +715,15 @@ Retry once → Attempt recovery → Fail gracefully
 
 ## 15. Workflow State Transitions
 
-Each workflow step updates state:
+A run moves through six **status** values: `initialized`, `running`,
+`awaiting_scoring_selection` (the opt-in manual scoring park, ADR-060),
+`cancelling`/`cancelled` (ADR-083), `completed`, and `failed`. Within `running`,
+`current_step` advances through the `WorkflowStep` sequence (`job_discovery` ->
+`resume_profile_loading` -> `scoring` -> `research` -> ... -> `report_generation`).
 
-```text
-initialized
-jobs_fetched
-profile_loaded
-jobs_scored
-awaiting_user_selection
-deep_review_in_progress
-review_completed
-awaiting_tailoring_approval
-completed
-failed
-```
+![Run status lifecycle: initialized to running to a terminal completed, failed, or cancelled state, with an optional manual-scoring park and a checkpoint-based resume](images/workflow_state_lifecycle.png)
+
+*Figure: the run-status lifecycle. The in-graph workflow runs end to end with no `interrupt()` (ADR-059); the only park is the opt-in manual scoring gate (ADR-060), and a restart resumes from the last checkpoint (ADR-096). Re-render with `python tools/render_figures.py workflow_state_lifecycle`.*
 
 **Durable run recovery across restarts (ADR-096).** A workflow executes in an
 in-process thread pool, and only `register_run` (initial) and `generate_report`

@@ -82,28 +82,9 @@ The goal is to ensure:
 
 ## 4. Trust Boundaries
 
-```text
-User Input (Trusted but unverified)
-        ↓
-System Input Layer
-        ↓
-UNTRUSTED ZONE:
-- Job descriptions
-- Scraped pages
-        ↓
-Controlled Processing:
-- Normalization
-- Parsing
-        ↓
-LLM Boundary:
-- Reasoning only
-        ↓
-Trusted Zone:
-- Validated outputs
-- Structured state
-        ↓
-Persistence Layer (SQLite)
-```
+![Trust boundaries: user input flows through the system input layer into an untrusted zone of job descriptions and scraped pages, through controlled processing and the LLM reasoning boundary, into a trusted zone of validated structured state and SQLite persistence](images/security_trust_boundaries.png)
+
+*Figure: untrusted text (job descriptions, scraped pages) reaches the model only as data to reason over, never as instructions; only validated, structured output crosses into the trusted zone. Re-render with `python tools/render_figures.py security_trust_boundaries`.*
 
 Key rule:
 

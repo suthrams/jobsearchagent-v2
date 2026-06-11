@@ -42,23 +42,29 @@ Infrastructure scaling (e.g., Postgres, distributed execution) is intentionally 
 
 ## 3. High-Level Architecture
 
+![Job Search Agent end-to-end architecture: what you bring, the in-graph LangGraph funnel, the on-demand out-of-graph operations, and the serving and persistence layer](images/architecture_overview.png)
+
+*Figure: the full system. Left, what you bring (resume, preferences) and the job sources (Adzuna, LinkedIn/custom URLs, ATS-direct). Center, the in-graph LangGraph funnel (discover, relevance filter, score, deep review, advise, report) that runs end to end with no `interrupt()`. Below, the on-demand out-of-graph operations (tailoring, Resume Clinic, interview prep). Right, serving and persistence, with the UI a pure client of the API (ADR-075). Re-render with `python tools/render_figures.py architecture_overview`.*
+
+A simplified linear view of the same flow:
+
 ```text
-Frontend UI (Streamlit)
-        ↓
-Workflow Orchestrator (Backend)
-        ↓
+Frontend UI (Streamlit)  ->  API (FastAPI)
+        |
+Workflow Orchestrator (Backend, LangGraph)
+        |
 Job Discovery + Resume Profile Services
-        ↓
-Scoring Layer
-        ↓
+        |
+Relevance Filter (opt-in) -> Scoring Layer
+        |
 Auto-select qualifying jobs (no in-graph pause; ADR-059)
-        ↓
+        |
 Deep Review Workflow
-        ↓
-Agents (Research, Critic, Auditor, Advisor, etc.)
-        ↓
+        |
+Agents (Research, Critic, Auditor, Advisor, ...)
+        |
 Tools / Services (deterministic execution)
-        ↓
+        |
 SQLite (state + history + observability)
 ```
 
@@ -82,9 +88,9 @@ The architecture is guided by:
 Details are defined in:
 
 ```text
-architecture_principles.md
+principles.md
 patterns.md
-docs/adr/
+docs/architecture/adr/
 ```
 
 ---
@@ -154,8 +160,12 @@ Core agents:
 * Tailoring Agent
 * Fidelity Reviewer
 * Resume Reviewer (Resume Clinic, ADR-066)
+* Resume Chat (Resume Clinic / tailoring live chat, ADR-068/072)
 
-Agents do not execute actions directly.
+These 11 agents all inherit `BaseAgent`. Together with two LLM helpers
+(`resume_parser`, `custom_url_extractor`) the system has **13 LLM-using
+components** — see `agent_graph_overview.md`. Agents do not execute actions
+directly.
 
 ---
 

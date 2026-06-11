@@ -44,15 +44,9 @@ Every prompt must:
 
 Each agent prompt is composed of layered components:
 
-```text id="w1e2p0"
-[1] Shared Guardrails
-[2] Agent Role Definition
-[3] Task Objective
-[4] Input Context
-[5] Constraints
-[6] Output Schema
-[7] Failure Behavior
-```
+![Each agent prompt is composed of seven layers from top to bottom: shared guardrails, agent role definition, task objective, input context, constraints, output schema, and failure behavior](images/prompt_layers.png)
+
+*Figure: the seven prompt layers, applied identically to all 13 LLM-using components. Re-render with `python tools/render_figures.py prompt_layers`.*
 
 This structure must be consistent across all agents.
 
@@ -238,17 +232,9 @@ All agents must return structured outputs.
 
 ### Enforcement Pipeline
 
-```text id="q3xv8l"
-LLM Output
-    ↓
-Schema Validation
-    ↓
-Business Logic Validation
-    ↓
-Security Checks
-    ↓
-Persist or Reject
-```
+![Output enforcement pipeline: LLM output passes through schema validation, business-logic validation, and security checks before it is persisted or rejected](images/schema_enforcement.png)
+
+*Figure: raw model output never persists directly; it must clear schema, business-logic, and security checks first. Re-render with `python tools/render_figures.py schema_enforcement`.*
 
 ---
 

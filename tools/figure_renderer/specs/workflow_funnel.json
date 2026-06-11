@@ -1,0 +1,17 @@
+{
+  "id": "workflow_funnel",
+  "outDir": "docs/architecture/images",
+  "width": 1760,
+  "height": 560,
+  "layout": "flow",
+  "title": "The workflow is a {{amber:funnel}}: discover many, score the worthwhile, analyze the few",
+  "headSub": "Width is a human decision bounded by a cost ceiling (ADR-061), not a fixed cap. Per-job accuracy and focus rise left to right.",
+  "flow": [
+    {"title": "Discover many cheaply", "meta": ["wide net, low cost", "<=50  (search.max_discovered)"], "accent": "blue", "icon": "globe"},
+    {"arrow": "narrows"},
+    {"title": "Score the worthwhile", "meta": ["research + score", "<=25  (scoring.max_scored)"], "accent": "amber", "icon": "target", "focal": true},
+    {"arrow": "narrows"},
+    {"title": "Deeply analyze the few", "meta": ["critic, auditor, advisor", "top 3 auto-selected"], "accent": "green", "icon": "eye"}
+  ],
+  "takeaway": {"icon": "filter", "accent": "amber", "text": "Pay the most only where it matters: the {{green:few}} jobs that clear the bar get the expensive deep review, not the {{blue:many}} that were merely discovered."}
+}

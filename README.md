@@ -249,7 +249,7 @@ notebooks/            Phase validation notebooks
 | Relevance Filter | Haiku | Structured output (batch) | Opt-in (`search.relevance_filter`) — one cheap call before scoring (ADR-079) |
 | Research Agent | Haiku | Bounded ReAct | Every job |
 | Scoring Agent | Haiku | Structured output | Every job (concurrent) |
-| Resume Critic | Sonnet | Critique | High-match jobs only |
+| Resume Critic | Haiku | Critique | High-match jobs only |
 | Review Auditor | Haiku | Evaluator / Reflection | High-match jobs only |
 | Career Advisor | Sonnet | Advisory | After reflection loop |
 | Interview Coach | Sonnet | On-demand | on-demand by default (ADR-085); auto only if `scoring.auto_interview_prep` |

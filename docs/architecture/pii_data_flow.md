@@ -37,25 +37,9 @@ There are three PII surfaces, analyzed in turn:
 
 ## 2. Ingestion flow (where PII enters)
 
-```text
-POST /users/{user_id}/resume              app/api/routers/users.py:103-147
-        |  (PDF UploadFile -> NamedTemporaryFile on local disk)
-        v
-ResumeParser.parse_pdf()                  app/services/resume_parser.py:77-99
-        |  pdfminer.six extract_text() -> raw_text (full resume, all PII)
-        v
-ResumeParser.parse_text()                 app/services/resume_parser.py:101-181
-        |  1. heuristic regex parse (name=first line, email regex, skills)
-        |  2. Claude enhancement: SENDS FULL raw_text TO THE LLM  <-- Surface A
-        v
-ResumeProfile (Pydantic)                  app/schemas/resume_profile.py:41-68
-        |  raw_text is a MANDATORY field on the profile (line 46)
-        v
-ResumeRepository.create()                 app/repositories/resume_repository.py:19-35
-        |  INSERT INTO resumes (raw_text, parsed_profile_json, ...)  <-- Surface B
-        v
-data/v2.db  (plaintext SQLite)
-```
+![Resume ingestion path: a resume upload flows through parse_pdf and parse_text (Surface A, the LLM call) into the ResumeProfile and ResumeRepository.create insert (Surface B), landing in the plaintext SQLite database](images/pii_ingestion_flow.png)
+
+*Figure: the ingestion path and its two PII surfaces. Source anchors: `routers/users.py` (upload) -> `resume_parser.parse_pdf` / `parse_text` (Surface A, the LLM call, redacted send-side per ADR-069) -> `ResumeProfile` (raw_text is a mandatory field) -> `resume_repository.create` (Surface B, the at-rest INSERT) -> `data/v2.db` (plaintext SQLite). Re-render with `python tools/render_figures.py pii_ingestion_flow`.*
 
 Key fact carried through the rest of this document: **`parsed_profile_json`
 contains `raw_text`**, because `raw_text` is a required field on `ResumeProfile`

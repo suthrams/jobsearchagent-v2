@@ -86,19 +86,9 @@ Agents may read selected state and return structured outputs, but they do not di
 
 The update pattern is:
 
-```text
-Orchestrator loads state
-        ↓
-Orchestrator builds agent input
-        ↓
-Agent returns structured output
-        ↓
-Orchestrator validates output
-        ↓
-Orchestrator writes approved update to state
-        ↓
-State is persisted
-```
+![The controlled state-update cycle: the orchestrator loads state, builds the agent input, the agent returns structured output, the orchestrator validates it, writes the approved update, and persists state](images/state_ownership_cycle.png)
+
+*Figure: only the orchestrator writes state; agents return structured output that is validated before any update. Re-render with `python tools/render_figures.py state_ownership_cycle`.*
 
 This prevents agents from creating uncontrolled state changes.
 

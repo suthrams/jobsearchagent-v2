@@ -38,21 +38,9 @@ Agents do not communicate directly with each other.
 
 Instead:
 
-```text
-Workflow Orchestrator
-        ↓
-Runs Agent
-        ↓
-Agent reads workflow state
-        ↓
-Agent returns structured output
-        ↓
-Orchestrator validates output
-        ↓
-Orchestrator updates state
-        ↓
-Orchestrator decides next step
-```
+![Centralized agent coordination: the orchestrator runs each agent, the agent reads selected state and returns structured output, the orchestrator validates the output, updates state, and decides the next step](images/agent_coordination.png)
+
+*Figure: coordination is centralized through the orchestrator; there are no agent-to-agent calls. Re-render with `python tools/render_figures.py agent_coordination`.*
 
 This keeps coordination centralized and avoids uncontrolled agent-to-agent behavior.
 

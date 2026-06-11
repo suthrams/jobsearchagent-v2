@@ -1,0 +1,23 @@
+{
+  "id": "prompt_layers",
+  "outDir": "docs/architecture/images",
+  "width": 1520,
+  "height": 980,
+  "layout": "flow",
+  "title": "Every agent prompt is composed of the same {{amber:seven layers}}",
+  "headSub": "One skeleton across all 13 LLM-using components: guardrails first, output schema and failure behavior always present.",
+  "flow": [
+    {"title": "Every agent prompt", "meta": ["one skeleton", "all 13 components"], "accent": "blue", "icon": "doc"},
+    {"arrow": "composed of"},
+    {"title": "7 layers, top to bottom", "accent": "amber", "icon": "steps", "stack": [
+      {"title": "[1] Shared guardrails", "accent": "green", "icon": "shield"},
+      {"title": "[2] Agent role definition"},
+      {"title": "[3] Task objective"},
+      {"title": "[4] Input context"},
+      {"title": "[5] Constraints"},
+      {"title": "[6] Output schema"},
+      {"title": "[7] Failure behavior"}
+    ]}
+  ],
+  "takeaway": {"icon": "doc", "accent": "amber", "text": "Same seven layers for every component, so behavior stays {{green:consistent and testable}} across agents - guardrails are never optional, and the model always knows its schema and how to fail."}
+}

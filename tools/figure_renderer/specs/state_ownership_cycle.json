@@ -1,0 +1,23 @@
+{
+  "id": "state_ownership_cycle",
+  "outDir": "docs/architecture/images",
+  "width": 1860,
+  "height": 560,
+  "layout": "flow",
+  "title": "Only the {{green:orchestrator}} writes state: the controlled update cycle",
+  "headSub": "Agents may read selected state and return structured output, but never mutate state directly.",
+  "flow": [
+    {"title": "Orchestrator loads state", "accent": "blue", "icon": "database"},
+    {"arrow": true},
+    {"title": "Builds agent input", "accent": "blue", "icon": "steps"},
+    {"arrow": true},
+    {"title": "Agent returns structured output", "accent": "amber", "icon": "robot", "focal": true},
+    {"arrow": true},
+    {"title": "Orchestrator validates", "accent": "green", "icon": "shield"},
+    {"arrow": true},
+    {"title": "Writes approved update", "accent": "green", "icon": "edit"},
+    {"arrow": "persist"},
+    {"title": "State persisted", "accent": "green", "icon": "database"}
+  ],
+  "takeaway": {"icon": "shield", "accent": "green", "text": "Agents reason and return structured output; only the orchestrator validates and writes state - so no agent can make an {{red:uncontrolled}} state change."}
+}

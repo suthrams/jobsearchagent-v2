@@ -1,0 +1,23 @@
+{
+  "id": "pii_ingestion_flow",
+  "outDir": "docs/architecture/images",
+  "width": 2400,
+  "height": 580,
+  "layout": "flow",
+  "title": "Where PII enters: the resume ingestion path and its {{red:two surfaces}}",
+  "headSub": "raw_text rides inside parsed_profile_json, so the full resume reaches both the LLM (Surface A) and at-rest storage (Surface B).",
+  "flow": [
+    {"title": "POST /users/{id}/resume", "meta": ["PDF upload"], "accent": "blue", "icon": "doc"},
+    {"arrow": true},
+    {"title": "ResumeParser.parse_pdf", "meta": ["pdfminer -> raw_text"], "accent": "gray", "icon": "filter"},
+    {"arrow": true},
+    {"title": "ResumeParser.parse_text", "meta": ["Surface A: raw_text to LLM", "redacted at the seam (ADR-069)"], "accent": "red", "icon": "robot", "focal": true},
+    {"arrow": true},
+    {"title": "ResumeProfile", "meta": ["raw_text is a required field"], "accent": "gray", "icon": "doc"},
+    {"arrow": true},
+    {"title": "ResumeRepository.create", "meta": ["Surface B: INSERT raw_text"], "accent": "red", "icon": "database"},
+    {"arrow": true},
+    {"title": "data/v2.db", "meta": ["plaintext SQLite"], "accent": "gray", "icon": "database"}
+  ],
+  "takeaway": {"icon": "lock", "accent": "red", "text": "Two surfaces carry full PII: the LLM call (Surface A, closed send-side by {{green:redaction at the seam}}, ADR-069) and at-rest storage (Surface B, the remaining open surface)."}
+}

@@ -1,0 +1,34 @@
+{
+  "id": "workflow_state_lifecycle",
+  "outDir": "docs/architecture/images",
+  "width": 1580,
+  "height": 940,
+  "layout": "scene",
+  "title": "Run status lifecycle: initialized to a terminal state, with a manual-mode park",
+  "headSub": "Six runtime statuses. The in-graph workflow runs end to end with no interrupt() (ADR-059); the only park is the opt-in manual scoring gate (ADR-060).",
+  "scene": {
+    "viewBox": [0, 0, 1580, 640],
+    "nodes": [
+      {"id": "init",   "x": 50,   "y": 290, "w": 240, "h": 120, "accent": "gray",  "icon": "steps",    "title": "initialized", "sub": "run registered"},
+      {"id": "run",    "x": 410,  "y": 285, "w": 260, "h": 135, "accent": "blue",  "icon": "activity", "title": "running", "sub": "executing nodes", "focal": true},
+      {"id": "await",  "x": 410,  "y": 70,  "w": 320, "h": 120, "accent": "amber", "icon": "clock",    "title": "awaiting_scoring_selection", "sub": "manual-mode park (ADR-060)"},
+      {"id": "done",   "x": 1280, "y": 90,  "w": 250, "h": 120, "accent": "green", "icon": "check",    "title": "completed", "sub": "report generated"},
+      {"id": "fail",   "x": 1280, "y": 285, "w": 250, "h": 120, "accent": "red",   "icon": "alert",    "title": "failed", "sub": "unrecoverable error"},
+      {"id": "cancng", "x": 800,  "y": 470, "w": 240, "h": 120, "accent": "amber", "icon": "clock",    "title": "cancelling", "sub": "cooperative (ADR-083)"},
+      {"id": "cancd",  "x": 1280, "y": 470, "w": 250, "h": 120, "accent": "gray",  "icon": "eyeoff",   "title": "cancelled", "sub": "stopped at node boundary"}
+    ],
+    "edges": [
+      {"from": "init:right",  "to": "run:left",     "accent": "blue", "style": "thick", "label": "start"},
+      {"from": "run:top",     "to": "await:bottom", "accent": "amber", "bend": 0.3, "label": "park"},
+      {"from": "await:bottom","to": "run:top",      "accent": "amber", "bend": -0.3, "label": "resume (phase 2)"},
+      {"from": "run:right",   "to": "done:left",    "accent": "green", "style": "thick", "label": "success"},
+      {"from": "run:right",   "to": "fail:left",    "accent": "red",   "label": "error"},
+      {"from": "run:bottom",  "to": "cancng:left",  "accent": "amber", "label": "cancel requested"},
+      {"from": "cancng:right","to": "cancd:left",   "accent": "gray",  "label": "at node boundary"}
+    ],
+    "labels": [
+      {"x": 410, "y": 450, "text": "a restart resumes running from its last checkpoint (ADR-096)", "accent": "blue", "tag": true, "size": 15}
+    ]
+  },
+  "takeaway": {"icon": "activity", "accent": "blue", "text": "A run goes initialized -> running -> {{green:completed}} or {{red:failed}}; manual scoring parks at awaiting_scoring_selection and resumes in phase 2; cancel is {{amber:cooperative}}; and a restart resumes from the last checkpoint."}
+}

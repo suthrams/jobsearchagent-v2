@@ -1,0 +1,24 @@
+{
+  "id": "health_aggregation",
+  "outDir": "docs/architecture/images",
+  "width": 1560,
+  "height": 840,
+  "layout": "scene",
+  "title": "Readiness aggregation: one critical dependency, the rest only degrade",
+  "headSub": "/readyz probes shared dependencies. Only the database is critical; capability probes change ready vs degraded, never down.",
+  "scene": {
+    "viewBox": [0, 0, 1560, 540],
+    "nodes": [
+      {"id": "check",    "x": 50,  "y": 195, "w": 320, "h": 160, "accent": "blue",  "icon": "gauge", "title": "Readiness check", "sub": "/readyz aggregates probes", "focal": true},
+      {"id": "down",     "x": 880, "y": 50,  "w": 600, "h": 120, "accent": "red",   "icon": "alert", "title": "down  (HTTP 503)", "sub": "database probe failed (critical)"},
+      {"id": "ready",    "x": 880, "y": 210, "w": 600, "h": 120, "accent": "green", "icon": "check", "title": "ready  (HTTP 200)", "sub": "all critical + capability probes ok"},
+      {"id": "degraded", "x": 880, "y": 370, "w": 600, "h": 120, "accent": "amber", "icon": "eye",   "title": "degraded  (HTTP 200)", "sub": "a capability probe (agent_provider / adzuna) is down"}
+    ],
+    "edges": [
+      {"from": "check:right", "to": "down:left",     "accent": "red",   "style": "thick", "label": "not database.ok"},
+      {"from": "check:right", "to": "ready:left",    "accent": "green", "style": "thick", "label": "all ok"},
+      {"from": "check:right", "to": "degraded:left", "accent": "amber", "label": "else"}
+    ]
+  },
+  "takeaway": {"icon": "gauge", "accent": "green", "text": "Only the database is critical: if it fails the service is {{red:down}} (503); a degraded capability still serves {{green:200}}, so a single dependency blip never flaps the whole system."}
+}

@@ -1,0 +1,41 @@
+{
+  "id": "patterns_orchestration",
+  "outDir": "docs/architecture/images",
+  "width": 2100,
+  "height": 1080,
+  "layout": "lanes",
+  "title": "Workflow orchestration: from a fixed v1 sequence to a {{green:stateful v2 graph}}",
+  "headSub": "v2 runs end to end with no interrupt() (ADR-059); SqliteSaver persists after every node; the only human decision is out-of-graph, on demand.",
+  "lanes": [
+    {"title": "v1 - fixed sequence", "sub": "no shared state; a crash loses all progress", "flow": [
+      {"title": "main.py", "icon": "code", "accent": "gray"},
+      {"arrow": true},
+      {"title": "profile_agent.load()", "accent": "gray"},
+      {"arrow": true},
+      {"title": "scoring_agent.score_batch()", "accent": "gray"},
+      {"arrow": true},
+      {"title": "done", "accent": "gray"}
+    ]},
+    {"transition": "v2: LangGraph stateful graph - state persisted after every node, configurable funnel width (ADR-061)"},
+    {"title": "v2 in-graph workflow", "tone": "good", "flow": [
+      {"title": "register_run", "icon": "steps", "accent": "green"},
+      {"arrow": true},
+      {"title": "discover_jobs", "meta": ["wide net"], "icon": "globe", "accent": "green"},
+      {"arrow": true},
+      {"title": "research + score", "meta": ["resume loaded", "<=25, concurrent"], "icon": "target", "accent": "green", "focal": true},
+      {"arrow": true},
+      {"title": "auto-select", "meta": ["top 3 qualifying"], "icon": "check", "accent": "green"},
+      {"arrow": true},
+      {"title": "deep_review + advise", "meta": ["critic, auditor, advisor"], "icon": "eye", "accent": "green"},
+      {"arrow": true},
+      {"title": "generate_report", "icon": "chart", "accent": "green"}
+    ]},
+    {"transition": "On-demand, post-run, per scored job (ADR-055/061) - out-of-graph, no graph pause"},
+    {"title": "out-of-graph on-demand operations", "tone": "blue", "flow": [
+      {"title": "POST .../tailorings", "meta": ["TailoringAgent + FidelityReviewer"], "icon": "edit", "accent": "blue"},
+      {"title": "POST .../deep-review", "meta": ["ResumeCritic + ReviewAuditor"], "icon": "eye", "accent": "blue"},
+      {"title": "POST .../interview-prep", "meta": ["InterviewCoach"], "icon": "robot", "accent": "blue"}
+    ]}
+  ],
+  "takeaway": {"icon": "check", "accent": "green", "text": "State-driven execution buys HITL, error recovery, and introspection: the graph topology is testable independently of agent quality, and any scored job can be pulled deeper {{blue:on demand}} without re-running the graph."}
+}

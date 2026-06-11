@@ -614,7 +614,7 @@ app/providers/prompt_loader.py  ← cache_control: ephemeral
 > Run a full workflow with real API keys before and after model tiering.
 > Confirm cost reduction in the `llm_calls` observability table and no quality regression in scored outputs.
 
-**Status: in progress** — model tiering + volume cap implemented; prompt caching live since Phase 3.
+**Status: complete** — model tiering + volume cap implemented; prompt caching live since Phase 3.
 
 ---
 

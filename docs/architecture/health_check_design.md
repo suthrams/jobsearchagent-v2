@@ -96,11 +96,9 @@ drive each branch without touching the environment or a real DB.
 
 ## 4. Aggregation
 
-```
-if not database.ok:                      status = "down"      (HTTP 503)
-elif all critical+capability checks ok:  status = "ready"     (HTTP 200)
-else:                                    status = "degraded"  (HTTP 200)
-```
+![Readiness aggregation: the readiness check returns down with HTTP 503 when the critical database probe fails, ready with HTTP 200 when all critical and capability probes pass, and degraded with HTTP 200 otherwise](images/health_aggregation.png)
+
+*Figure: only the database is critical (its failure means down/503); a degraded capability probe still serves 200. Re-render with `python tools/render_figures.py health_aggregation`.*
 
 - **Critical** = `database`.
 - **Capability** (affect `ready` vs `degraded`, never `down`) = `agent_provider`,
@@ -176,7 +174,7 @@ No DB schema change, no repository change, no new config keys.
   renders with the new tile (and renders when `get_readiness` returns the unreachable
   fallback).
 
-Target: all existing tests still pass (917) + the new ones.
+Target: all existing tests still pass (1031) + the new ones.
 
 ---
 
