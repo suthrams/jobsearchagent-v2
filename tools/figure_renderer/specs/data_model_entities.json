@@ -1,0 +1,39 @@
+{
+  "id": "data_model_entities",
+  "outDir": "docs/architecture/images",
+  "width": 2200,
+  "height": 1240,
+  "layout": "scene",
+  "title": "Entity relationships: {{blue:workflow_runs}} is the run root; user data outlives a run",
+  "headSub": "Most tables are scoped to a run and purged with it (ADR-070). users, memory_items, and user_config (ADR-062) are user-owned and outlive any single execution.",
+  "scene": {
+    "viewBox": [0, 0, 2200, 980],
+    "zones": [
+      {"x": 700, "y": 40, "w": 1460, "h": 560, "accent": "blue", "dashed": true, "fill": false, "label": "run-scoped: a child row belongs to one workflow_run and is purged with it (ADR-070)"},
+      {"x": 700, "y": 660, "w": 1460, "h": 280, "accent": "magenta", "dashed": true, "fill": false, "label": "user-owned: outlives any run; removed only when the profile is deleted (ADR-062)"}
+    ],
+    "nodes": [
+      {"id": "root", "x": 60, "y": 300, "w": 560, "h": 150, "accent": "blue", "focal": true, "icon": "database", "title": "workflow_runs", "sub": "one row per run - the state + final metrics"},
+
+      {"id": "discovery", "x": 740, "y": 90,  "w": 660, "h": 120, "accent": "blue",    "icon": "globe",  "title": "discovery + inputs", "sub": "jobs (URL-deduped, cross-run) - resumes (raw_text-hash deduped)"},
+      {"id": "outputs",   "x": 740, "y": 240, "w": 660, "h": 150, "accent": "green",   "icon": "target", "title": "per-(run, job) agent outputs", "sub": "job_scores - review_rounds - resume_reviews - career_advice - interview_prep - tailored_resumes"},
+      {"id": "report",    "x": 740, "y": 430, "w": 660, "h": 120, "accent": "gray",    "icon": "chart",  "title": "run rollups + HITL", "sub": "reports (one/run) - run_metrics (one/run) - human_decisions (HITL trail)"},
+
+      {"id": "obs",       "x": 1440, "y": 150, "w": 660, "h": 150, "accent": "gray",   "icon": "eye",    "title": "observability", "sub": "step_executions - agent_events - llm_calls (all many per run)"},
+      {"id": "sec",       "x": 1440, "y": 390, "w": 660, "h": 120, "accent": "red",    "icon": "shield", "title": "security_events", "sub": "injection / redaction / blocked-tool, per run"},
+
+      {"id": "users",     "x": 740,  "y": 720, "w": 420, "h": 150, "accent": "magenta", "icon": "user",     "title": "users", "sub": "profile identities (id 0 = pre-existing data)"},
+      {"id": "memory",    "x": 1210, "y": 720, "w": 420, "h": 150, "accent": "magenta", "icon": "database", "title": "memory_items", "sub": "long-term store, per profile"},
+      {"id": "uconfig",   "x": 1680, "y": 720, "w": 420, "h": 150, "accent": "magenta", "icon": "edit",     "title": "user_config", "sub": "preference overrides, per profile"}
+    ],
+    "edges": [
+      {"from": "root:right", "to": "discovery:left", "accent": "blue", "label": "produces"},
+      {"from": "root:right", "to": "outputs:left",   "accent": "green"},
+      {"from": "root:right", "to": "report:left",    "accent": "gray"},
+      {"from": "outputs:right", "to": "obs:left",    "accent": "gray", "dashed": true},
+      {"from": "outputs:right", "to": "sec:left",    "accent": "red",  "dashed": true},
+      {"from": "users:top", "to": "root:bottom", "accent": "magenta", "dashed": true, "label": "owns (via user_id)"}
+    ]
+  },
+  "takeaway": {"icon": "database", "accent": "blue", "text": "One root, two lifetimes: {{blue:run-scoped}} child rows are purged with their run, while {{magenta:user-owned}} tables (profiles, memory, config) persist across every run."}
+}

@@ -57,28 +57,9 @@ it written, where is it read" without reading code.
 
 ## 3. Entity Relationships
 
-```text
-workflow_runs (one per run)
-   ├── jobs                  (many; URL-deduped, persisted across runs)
-   ├── resumes               (one active per user; raw_text-hash deduped)
-   ├── job_scores            (one per scored (workflow, job))
-   ├── review_rounds         (1-3 per (workflow, job) — reflection loop)
-   ├── resume_reviews        (one per (workflow, job) — final critic+auditor output)
-   ├── career_advice         (one per (workflow, job))
-   ├── interview_prep        (one per (workflow, job) where threshold met)
-   ├── tailored_resumes      (many per (workflow, job) — one per draft attempt)
-   ├── reports               (one per workflow)
-   ├── human_decisions       (many per workflow; HITL trail)
-   ├── step_executions       (many per workflow; one per node entry)
-   ├── agent_events          (many per workflow; per-agent lifecycle)
-   ├── llm_calls             (many per workflow; per LLM call)
-   ├── run_metrics           (one per workflow; aggregated rollup)
-   └── security_events       (many; injection, redaction, blocked tool)
+![Entity relationships: workflow_runs is the run root. Run-scoped child tables (jobs, resumes, job_scores, review_rounds, resume_reviews, career_advice, interview_prep, tailored_resumes, reports, run_metrics, human_decisions, step_executions, agent_events, llm_calls, security_events) are purged with the run. users, memory_items and user_config are user-owned and outlive any run.](images/data_model_entities.png)
 
-users                        (ADR-062; profile identities — id 0 = pre-existing data)
-memory_items                 (per user_id; long-term learning store, isolated per profile)
-user_config                  (per user_id; preference overrides)
-```
+<sub>Figure source: `tools/figure_renderer/specs/data_model_entities.json`.</sub>
 
 `memory_items` and `user_config` are intentionally NOT scoped to a workflow
 run — they outlive any single execution.

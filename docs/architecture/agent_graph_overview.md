@@ -98,44 +98,9 @@ The funnel agents are wired into a single LangGraph state machine defined in
 `register_run`; ADR-060 phase-2 (manual scoring continuation) re-enters at
 `score_jobs` on the same thread.
 
-```text
-START
-  │
-  ├── new run ──> register_run ── discover_jobs ── load_resume ──┐
-  │                                                              │
-  └── phase 2  ─────────────────────────────────────────┐        │
-                                                       │        │
-                                                       ▼        ▼
-                                                  score_jobs ◀── scoring_mode_gate
-                                                       ▲        │
-                                          relevance_filter ◀────┤  (ADR-079, opt-in)
-                                                       │        │
-                                                       │        └── manual ──> await_scoring_selection ──> END (phase 1)
-                                                       │
-                                                       ▼
-                                                  await_job_selection (auto-select top 3)
-                                                       │
-                                                       ▼
-                                                  deep_review_gate
-                                                  ├── no qualifying jobs ──> generate_report
-                                                  └── ≥1 qualifying ──> deep_review
-                                                                          │
-                                                                          ▼
-                                                                    [ResumeCritic ⇄ ReviewAuditor
-                                                                       reflection loop,
-                                                                       MAX_REVIEW_ROUNDS=2]
-                                                                          │
-                                                                          ▼
-                                                                    career_advice
-                                                                          │
-                                                                          ▼
-                                                                    interview_router
-                                                                    ├── score ≥ threshold ──> interview_prep ──> generate_report
-                                                                    └── below threshold ────────────────────────> generate_report
-                                                                                                                       │
-                                                                                                                       ▼
-                                                                                                                      END
-```
+![The in-graph workflow as swimlanes: a Discover lane (register_run, discover_jobs, load_resume); the scoring_mode_gate routing to manual await_scoring_selection, the opt-in relevance_filter, or score_jobs; a Score lane (relevance_filter, score_jobs, await_job_selection); the deep_review_gate; a Deep review and advise lane (deep_review with the critic-auditor reflection loop, career_advice, interview_router); the interview_router gate; and a Finish lane (interview_prep, generate_report, END). Stateful LangGraph, no interrupt.](images/workflow_node_graph.png)
+
+<sub>Figure source: `tools/figure_renderer/specs/workflow_node_graph.json`.</sub>
 
 Per-node agent calls:
 
@@ -162,38 +127,15 @@ HITL graph pauses.
 
 ### On-demand tailoring
 
-```text
-POST /workflows/{wf}/jobs/{job}/tailorings
-  │
-  ▼
-TailoringAgent  ────►  FidelityReviewer  ────►  tailored_resumes row
-                                                       │
-                                                       ▼
-                                            POST /tailorings/{id}/decisions
-                                            (approve / revise / reject / edit)
-```
+![On-demand tailoring flow: a completed workflow, then POST tailorings runs the Tailoring Agent and Fidelity Reviewer to a tailored_resumes draft, then POST tailorings decisions records approve, revise, reject or edit.](images/api_ondemand_tailoring.png)
+
+<sub>Figure source: `tools/figure_renderer/specs/api_ondemand_tailoring.json` (shared with the API reference).</sub>
 
 ### Resume Clinic + chat-revise
 
-```text
-POST /users/{id}/resume-clinic
-  │
-  ▼
-ResumeReviewerAgent  ────►  FidelityReviewer  ────►  resume_clinic_reviews row
-                                                            │
-                                                            ▼
-                                            POST /resume-clinic/{id}/chat (each turn)
-                                            ─────►  ResumeChatAgent  ────►  FidelityReviewer
-                                                                                  │
-                                                                                  ▼
-                                                                            edited_json updated
-                                            POST /resume-clinic/{id}/decisions  OR  /discard-edits
-                                            ─────►  decision recorded / edits cleared
-                                                            │
-                                                            ▼
-                                            GET /resume-clinic/{id}/export?format=...
-                                            (deterministic renderer; no agent call)
-```
+![Resume Clinic flow: POST resume-clinic runs the Resume Reviewer and Fidelity Reviewer into a resume_clinic_reviews row; a chat-revise loop (POST chat) runs the Resume Chat Agent and Fidelity Reviewer to update edited_json each turn; then decisions or discard-edits; then GET export in any format via a deterministic renderer with no agent call.](images/resume_clinic_flow.png)
+
+<sub>Figure source: `tools/figure_renderer/specs/resume_clinic_flow.json`.</sub>
 
 ## Cross-cutting invariants
 

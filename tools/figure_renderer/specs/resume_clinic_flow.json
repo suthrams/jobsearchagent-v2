@@ -1,0 +1,26 @@
+{
+  "id": "resume_clinic_flow",
+  "outDir": "docs/architecture/images",
+  "width": 2600,
+  "height": 640,
+  "layout": "flow",
+  "title": "Resume Clinic: out-of-graph review, chat-revise, and {{green:deterministic export}}",
+  "headSub": "ADR-066/068. Job-agnostic, runs only on user request. The Fidelity Reviewer runs on every rewrite; the chat loop revises edited_json turn by turn; export is a pure renderer with no agent call.",
+  "flow": [
+    {"title": "POST .../resume-clinic", "meta": ["user request"], "accent": "blue", "icon": "doc"},
+    {"arrow": true},
+    {"title": "ResumeReviewer -> FidelityReviewer", "meta": ["review; fidelity on rewrites (ADR-066)"], "accent": "magenta", "icon": "robot"},
+    {"arrow": true},
+    {"title": "resume_clinic_reviews row", "meta": ["persisted"], "accent": "gray", "icon": "database"},
+    {"arrow": "chat-revise loop"},
+    {"title": "POST .../chat (each turn)", "stack": [
+      {"title": "ResumeChatAgent -> FidelityReviewer", "accent": "magenta", "icon": "robot"},
+      {"title": "edited_json updated", "accent": "gray", "icon": "edit"}
+    ]},
+    {"arrow": "decision"},
+    {"title": "decisions / discard-edits", "meta": ["recorded or cleared"], "accent": "amber", "icon": "check"},
+    {"arrow": true},
+    {"title": "GET .../export?format=", "meta": ["deterministic renderer", "no agent call"], "accent": "green", "icon": "chart", "focal": true}
+  ],
+  "takeaway": {"icon": "lock", "accent": "green", "text": "Every rewrite is fidelity-checked and every edit is the human's; export is a {{green:pure renderer}} (md/txt/html/json/docx/pdf), so the materialized resume is exactly the approved text - never re-authored by a model."}
+}

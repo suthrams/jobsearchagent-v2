@@ -1,0 +1,43 @@
+{
+  "id": "workflow_node_graph",
+  "outDir": "docs/architecture/images",
+  "width": 2400,
+  "height": 1480,
+  "layout": "lanes",
+  "title": "The in-graph workflow: a {{green:stateful LangGraph}} with gates, no interrupt()",
+  "headSub": "Defined in app/workflows/workflow_graph.py. Conditional entry routes a fresh run to register_run; ADR-060 phase-2 re-enters at score_jobs on the same thread. Gates (shown between lanes) route on config + results.",
+  "lanes": [
+    {"title": "Discover", "tone": "blue", "flow": [
+      {"title": "register_run", "meta": ["writes initial state"], "icon": "steps", "accent": "blue"},
+      {"arrow": true},
+      {"title": "discover_jobs", "meta": ["scrapers; wide net"], "icon": "globe", "accent": "blue"},
+      {"arrow": true},
+      {"title": "load_resume", "meta": ["active resume, redacted"], "icon": "doc", "accent": "blue"}
+    ]},
+    {"transition": "scoring_mode_gate (on the load_resume edge): manual -> await_scoring_selection -> END (phase 1) | relevance-filter on -> relevance_filter | else -> score_jobs"},
+    {"title": "Score", "tone": "blue", "flow": [
+      {"title": "relevance_filter", "meta": ["opt-in, ADR-079", "one batched call"], "icon": "filter", "accent": "amber"},
+      {"arrow": true},
+      {"title": "score_jobs", "meta": ["ResearchAgent then ScoringAgent", "per job, concurrent"], "icon": "target", "accent": "magenta", "focal": true},
+      {"arrow": true},
+      {"title": "await_job_selection", "meta": ["auto-select top 3 qualifying"], "icon": "check", "accent": "blue"}
+    ]},
+    {"transition": "deep_review_gate: no qualifying job -> generate_report | >=1 qualifying -> deep_review"},
+    {"title": "Deep review + advise", "tone": "good", "flow": [
+      {"title": "deep_review", "meta": ["ResumeCritic / ReviewAuditor", "reflection loop, <=2 rounds"], "icon": "eye", "accent": "green"},
+      {"arrow": true},
+      {"title": "career_advice", "meta": ["CareerAdvisor, per job"], "icon": "user", "accent": "green"},
+      {"arrow": true},
+      {"title": "interview_router", "meta": ["gate on match score"], "icon": "gauge", "accent": "gray"}
+    ]},
+    {"transition": "interview_router: score >= threshold (or requested) -> interview_prep | else -> generate_report"},
+    {"title": "Finish", "tone": "blue", "flow": [
+      {"title": "interview_prep", "meta": ["InterviewCoach", "on-demand by default, ADR-085"], "icon": "robot", "accent": "amber"},
+      {"arrow": true},
+      {"title": "generate_report", "meta": ["aggregate; terminal status"], "icon": "chart", "accent": "blue"},
+      {"arrow": true},
+      {"title": "END", "icon": "check", "accent": "gray"}
+    ]}
+  ],
+  "takeaway": {"icon": "steps", "accent": "green", "text": "State is persisted after every node, so the topology is testable independently of agent quality. The graph never blocks: the only HITL is {{blue:out of graph}}, on demand, after the run completes."}
+}
