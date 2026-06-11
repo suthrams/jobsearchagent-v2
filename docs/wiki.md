@@ -115,6 +115,7 @@ The funnel's width is configurable within hard ceilings (ADR-061); the rest are 
 | [architecture/workflow_model.md](architecture/workflow_model.md) | Complete execution blueprint for all sub-workflows: discovery, resume profile, scoring, shortlist + HITL, deep review, interview prep, tailoring, reporting, error handling; state transition diagrams; parallelization strategy |
 | [architecture/relevance_filter_design.md](architecture/relevance_filter_design.md) | Control + data flow for the opt-in reasoning relevance pre-filter (ADR-079): the three-way `scoring_mode_gate`, the wide-net-then-narrow coupling, the redaction seam, the new `RelevanceFilterAgent`, and the never-lose-the-run fallback |
 | [architecture/spike_job_data_sources.md](architecture/spike_job_data_sources.md) | Spike (ADR-080 companion): free job-data API alternatives to Adzuna. Aggregator-vs-source-of-truth framing; ATS-direct (Greenhouse/Lever) as the root-cause fix for dead apply links — **prototyped in ADR-081** (`app/services/ats_scrapers.py`); per-company-list tradeoff |
+| [architecture/spike_workday_ats.md](architecture/spike_workday_ats.md) | Spike (BUG-010 / ADR-081 companion): live-API de-risk of a **Workday** ATS-direct source. Confirms the undocumented CXS list+detail contract (full JDs, clearance text present) on 6/6 boards with zero blocking; records the volume/rate-limit + 3-part-board-id risks. Recommendation: GO, build `WorkdayScraper` (ADR-101 pending); iCIMS stays rejected |
 
 **Agent model tiering (Phase 9):**
 
