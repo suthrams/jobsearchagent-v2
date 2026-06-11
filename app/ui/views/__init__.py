@@ -24,6 +24,7 @@ from app.ui.views import (
     opportunity,
     profiles,
     resume_clinic,
+    review_later,
     run_report,
     settings,
     start_run,
@@ -44,4 +45,5 @@ REGISTRY: dict[str, Callable[[ViewContext], None]] = {
     "Live Run Monitor": live_monitor.render,
     "Opportunity": opportunity.render,
     "Start New Run": start_run.render,
+    "Review Later": review_later.render,
 }

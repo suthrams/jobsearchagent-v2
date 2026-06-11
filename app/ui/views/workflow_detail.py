@@ -17,6 +17,7 @@ import app.ui.api_client as api
 from app.services.constraint_analyzer import analyze, summary_metrics
 from app.ui.data import (
     _cached_cost_breakdown,
+    _cached_review_later,
     _cached_run_metrics,
     _cached_workflow_detail,
     _cached_workflow_jobs,
@@ -205,6 +206,44 @@ def render(ctx: ViewContext) -> None:
                     ),
                 },
             )
+
+            # ADR-100: pull a dropped job back out of the discard bucket into the
+            # "Maybe / Review later" list. No scoring here (Phase 1) - it just gets
+            # set aside for the user to reconsider (and later score) from that list.
+            _drops = (state.get("discovery_stats") or {}).get("relevance_drops") or []
+            _uid = str(st.session_state.get("current_user_id", "0"))
+            _saved_ids = {d.get("job_id") for d in _cached_review_later(_uid)}
+            _movable = [d for d in _drops
+                        if d.get("job_id") and d.get("job_id") not in _saved_ids]
+            if _saved_ids:
+                st.caption(
+                    f"{len(_saved_ids)} of these are already on your Review later list."
+                )
+            if _movable:
+                _label_to_id = {
+                    (d.get("title") or d.get("job_id")): d.get("job_id") for d in _movable
+                }
+                _picked = st.multiselect(
+                    "Move to Review later (reconsider these later, without scoring now)",
+                    options=list(_label_to_id.keys()),
+                    key=f"review_later_pick_{wf_id}",
+                )
+                if st.button("Move to Review later", key=f"review_later_btn_{wf_id}",
+                             disabled=not _picked):
+                    _moved = 0
+                    for _lbl in _picked:
+                        try:
+                            api.add_review_later(_uid, wf_id, _label_to_id[_lbl])
+                            _moved += 1
+                        except api.ReviewLaterCapError:
+                            st.warning("Your Review later list is full (cap reached).")
+                            break
+                        except Exception as exc:  # noqa: BLE001 - surface, never crash
+                            st.warning(f"Could not move '{_lbl}': {exc}")
+                    if _moved:
+                        _cached_review_later.clear()
+                        st.success(f"Moved {_moved} job(s) to your Review later list.")
+                        st.rerun()
 
     # ── Manual scoring selection (ADR-060) ────────────────────────────────────
     # When a manual-selection run is parked after discovery, let the user pick

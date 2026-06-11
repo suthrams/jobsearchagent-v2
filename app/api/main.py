@@ -31,6 +31,7 @@ from app.api.routers.jobs import exclusion_router as jobs_exclusion_router
 from app.api.routers.jobs import router as jobs_router
 from app.api.routers.reports import router as reports_router
 from app.api.routers.resume_clinic import router as resume_clinic_router
+from app.api.routers.review_later import router as review_later_router
 from app.api.routers.tailoring import router as tailoring_router
 from app.api.routers.users import router as users_router
 from app.api.routers.workflows import router as workflows_router
@@ -186,6 +187,7 @@ app.include_router(config_router)
 app.include_router(tailoring_router)
 app.include_router(users_router)  # ADR-062: profile management
 app.include_router(favorites_router)  # ADR-090: My favorite jobs
+app.include_router(review_later_router)  # ADR-100: Review-later saved-job list
 app.include_router(resume_clinic_router)  # ADR-066: standalone Resume Clinic
 app.include_router(admin_router)  # ADR-070: data-retention purge
 app.include_router(dashboard_router)  # ADR-075: cross-run read endpoints

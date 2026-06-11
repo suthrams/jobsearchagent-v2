@@ -41,7 +41,7 @@ OPERATOR_SECTION = "SYSTEM"
 # Dict order is render order, so the operator section (the rule) sits last.
 NAV_GROUPS: dict[str, list[str]] = {
     "FIND": ["Start New Run", "Workflow History"],
-    "MY OPPORTUNITIES": ["Matches"],
+    "MY OPPORTUNITIES": ["Matches", "Review Later"],
     "RESUME": ["Resume Clinic", "Profiles"],
     OPERATOR_SECTION: ["Settings", "System Dashboard"],
 }
@@ -64,6 +64,7 @@ DISPLAY_TITLE: dict[str, str] = {
     "Workflow History": "Searches",
     # MY OPPORTUNITIES
     "Matches": "Matches",
+    "Review Later": "Maybe / Review later",
     # RESUME
     "Resume Clinic": "Resume Clinic",
     "Profiles": "Profiles & Resumes",

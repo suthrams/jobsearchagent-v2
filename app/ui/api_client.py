@@ -649,6 +649,38 @@ def remove_favorite(user_id: str, job_id: str) -> None:
     r.raise_for_status()
 
 
+# ── ADR-100: Review-later saved-job list ─────────────────────────────────────
+
+class ReviewLaterCapError(Exception):
+    """Raised by add_review_later when the profile is at the review-later cap (409)."""
+
+
+def list_review_later(user_id: str) -> list[dict]:
+    """GET /users/{user_id}/review-later - the profile's review-later jobs, newest first."""
+    r = httpx.get(f"{BASE_URL}/users/{user_id}/review-later", timeout=_TIMEOUT_GET)
+    r.raise_for_status()
+    return r.json().get("review_later", [])
+
+
+def add_review_later(user_id: str, workflow_id: str, job_id: str) -> dict:
+    """POST /users/{user_id}/review-later. Raises ReviewLaterCapError on 409 (cap)."""
+    r = httpx.post(
+        f"{BASE_URL}/users/{user_id}/review-later",
+        json={"workflow_id": workflow_id, "job_id": job_id},
+        timeout=_TIMEOUT_POST,
+    )
+    if r.status_code == 409:
+        raise ReviewLaterCapError()
+    r.raise_for_status()
+    return r.json().get("review_later", {})
+
+
+def remove_review_later(user_id: str, job_id: str) -> None:
+    """DELETE /users/{user_id}/review-later/{job_id} (idempotent)."""
+    r = httpx.delete(f"{BASE_URL}/users/{user_id}/review-later/{job_id}", timeout=_TIMEOUT_POST)
+    r.raise_for_status()
+
+
 # ── ADR-070: data-retention purge ────────────────────────────────────────────
 
 def purge_data() -> dict:

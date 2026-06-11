@@ -90,6 +90,16 @@ def _cached_favorites(user_id: str | None) -> list[dict]:
         return []
 
 
+@st.cache_data(ttl=10)
+def _cached_review_later(user_id: str | None) -> list[dict]:
+    """A profile's review-later jobs via the API (ADR-100). Degrades to an empty list
+    when the backend is unavailable so the Review-later view never crashes."""
+    try:
+        return api.list_review_later(user_id)
+    except Exception:
+        return []
+
+
 @st.cache_data(ttl=15)
 def _cached_scored_jobs(user_id: str | None, include_excluded: bool = False) -> dict:
     """Scored-jobs analytics via the API (ADR-075 Phase 3). `user_id` is a cache

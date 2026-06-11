@@ -1217,28 +1217,39 @@ CREATE TABLE memory_items (
 
 ---
 
-## 7.2 favorite_jobs (ADR-090)
+## 7.2 favorite_jobs — the saved-jobs store (ADR-090, generalized ADR-100)
 
 ### Purpose
 
-"My favorite jobs" — a bounded, per-profile set of jobs the user flags to tailor
-toward. It is a **filter-input** (a signal the user gives the system), the positive
-counterpart of the ADR-057 `jobs.excluded` flag — **not application tracking**. It
+The kind-discriminated **saved-jobs store**. Two per-profile working sets share this
+one table, keyed by `kind`:
+- `kind='favorite'` (ADR-090) — "My favorite jobs", jobs the user flags to tailor toward.
+- `kind='review_later'` (ADR-100) — "Maybe / Review later", jobs the relevance/clearance
+  filter dropped that the user pulled back out of the discard bucket to consider later.
+
+Both are a **filter-input** (a signal the user gives the system), the positive
+counterpart of the ADR-057 `jobs.excluded` flag — **not application tracking**. A row
 stores only a job reference + a display snapshot + a timestamp; there is **no**
-status / applied / pursuing / stage / outcome column, by design.
+status / applied / pursuing / stage / outcome column, **for any kind**, by design (a
+schema forcing-function test guards this). Each kind is bounded per profile
+(`MAX_FAVORITES=25`, `MAX_REVIEW_LATER=50`). A job is saved in at most one bucket per
+profile (`UNIQUE(user_id, job_id)`); moving it to another kind moves the bucket.
 
 ### Schema
 
 ```sql
 CREATE TABLE favorite_jobs (
-    id INTEGER PRIMARY KEY,         -- rowid alias; no AUTOINCREMENT
-    user_id TEXT NOT NULL,          -- owning profile (decimal-string users.id, ADR-062)
-    workflow_id TEXT NOT NULL,      -- run that surfaced the job (JD resolution)
-    job_id TEXT NOT NULL,           -- the scored job
-    title TEXT,                     -- display snapshot (survives a run purge)
-    company TEXT,                   -- display snapshot
+    id INTEGER PRIMARY KEY,                 -- rowid alias; no AUTOINCREMENT
+    user_id TEXT NOT NULL,                  -- owning profile (decimal-string users.id, ADR-062)
+    workflow_id TEXT NOT NULL,              -- run that surfaced the job (JD resolution)
+    job_id TEXT NOT NULL,                   -- the job
+    kind TEXT NOT NULL DEFAULT 'favorite',  -- ADR-100: 'favorite' | 'review_later'
+    title TEXT,                             -- display snapshot (survives a run purge)
+    company TEXT,                           -- display snapshot
+    url TEXT,                               -- ADR-100: snapshot apply link
+    source TEXT,                            -- ADR-100: snapshot source (greenhouse/adzuna/...)
     created_at TEXT NOT NULL,
-    UNIQUE(user_id, job_id)         -- favorited at most once per profile
+    UNIQUE(user_id, job_id)                 -- saved at most once per profile
 );
 ```
 
@@ -1247,10 +1258,12 @@ CREATE TABLE favorite_jobs (
 | Column | Type | Notes |
 |---|---|---|
 | `id` | INTEGER PK | rowid alias (plain `INTEGER PRIMARY KEY`, so no `sqlite_sequence`). |
-| `user_id` | TEXT | Owning profile; favorites are per-profile and isolated. |
+| `user_id` | TEXT | Owning profile; saved jobs are per-profile and isolated. |
 | `workflow_id` | TEXT | The run whose state holds the job's JD (used by the clinic focus). |
-| `job_id` | TEXT | The favorited scored job. `UNIQUE(user_id, job_id)` dedupes. |
-| `title` / `company` | TEXT | Snapshot at favorite time, so the dropdown still shows the role after a run purge. |
+| `job_id` | TEXT | The saved job. `UNIQUE(user_id, job_id)` dedupes across kinds. |
+| `kind` | TEXT | `favorite` or `review_later` (ADR-100). Per-kind list, cap, and id-set. |
+| `title` / `company` | TEXT | Snapshot at save time, so the list still shows the role after a run purge. |
+| `url` / `source` | TEXT | Snapshot link + source (ADR-100), so the review-later list renders the job's link without re-reading the run. |
 | `created_at` | TEXT | ISO-8601 UTC. |
 
 ### Invariants

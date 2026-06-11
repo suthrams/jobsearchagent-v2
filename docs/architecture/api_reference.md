@@ -75,6 +75,9 @@ GET  /resume-clinic/{id}/export                → render the clinic resume in m
 GET  /users/{id}/favorites                     → list My favorite jobs for a profile (ADR-090)
 POST /users/{id}/favorites                     → favorite a job {workflow_id, job_id}; 201; 409 favorites_cap_reached; 404 job_not_found
 DELETE /users/{id}/favorites/{job_id}          → un-favorite a job (idempotent, 204)
+GET  /users/{id}/review-later                  → list the Maybe/Review-later jobs for a profile (ADR-100)
+POST /users/{id}/review-later                  → move a job to review-later {workflow_id, job_id}; 201; 409 review_later_cap_reached; 404 job_not_found
+DELETE /users/{id}/review-later/{job_id}       → remove from review-later (idempotent, 204)
 POST /admin/purge                              → run the data-retention purge (ADR-070; contract, impl pending, 200)
 ```
 

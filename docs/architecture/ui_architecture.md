@@ -202,7 +202,8 @@ is the single source of truth for the journey structure:
 
 - **`NAV_GROUPS`** — an ordered mapping of sidebar section header → the internal
   view names under it. The four groups are `FIND` (New search, Searches),
-  `MY OPPORTUNITIES` (Matches), `RESUME` (Resume Clinic, Profiles & Resumes), and
+  `MY OPPORTUNITIES` (Matches, Maybe / Review later — ADR-100),
+  `RESUME` (Resume Clinic, Profiles & Resumes), and
   `SYSTEM` (Settings, Spend & Health). Dict order is render order, so the SYSTEM
   group renders last. ADR-088 originally used an unlabeled rule-glyph header here
   (operator screens out of the first glance, ADR-088 G); revised 2026-06-08 to an

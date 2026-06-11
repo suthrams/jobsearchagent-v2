@@ -295,15 +295,24 @@ CREATE TABLE IF NOT EXISTS idempotency_keys (
 -- the column set). Deliberately NOT in _RUN_CHILD_TABLES: favorites are user-owned
 -- working data that survive a run purge (the snapshot persists); they are removed
 -- when their owning profile is deleted.
+-- ADR-100: this is the kind-discriminated SAVED-JOBS store. `kind='favorite'`
+-- (ADR-090) is the original positive filter-input; `kind='review_later'` is the
+-- "Maybe / Review later" bucket a user moves a relevance-dropped job into. Both are
+-- curation (filter-input), NOT application tracking: no status/applied/stage/outcome
+-- column, ever (the schema forcing-function test guards this for every kind). A job
+-- is saved in at most ONE bucket per profile (UNIQUE(user_id, job_id)).
 CREATE TABLE IF NOT EXISTS favorite_jobs (
     id INTEGER PRIMARY KEY,                 -- rowid alias; no AUTOINCREMENT (avoids sqlite_sequence)
     user_id TEXT NOT NULL,                 -- owning profile (decimal-string users.id)
     workflow_id TEXT NOT NULL,             -- run that surfaced the job (for JD resolution)
-    job_id TEXT NOT NULL,                  -- the scored job
+    job_id TEXT NOT NULL,                  -- the job
+    kind TEXT NOT NULL DEFAULT 'favorite', -- ADR-100: 'favorite' | 'review_later'
     title TEXT,                            -- display snapshot (survives run purge)
     company TEXT,                          -- display snapshot
+    url TEXT,                              -- ADR-100: snapshot apply link (survives purge)
+    source TEXT,                           -- ADR-100: snapshot source (greenhouse/adzuna/...)
     created_at TEXT NOT NULL,
-    UNIQUE(user_id, job_id)                -- favorited at most once per profile
+    UNIQUE(user_id, job_id)                -- saved at most once per profile
 );
 
 CREATE INDEX IF NOT EXISTS idx_workflow_runs_status     ON workflow_runs(status);
@@ -380,6 +389,18 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             "ALTER TABLE jobs ADD COLUMN excluded_at TEXT",
             # ADR-080: posting date for the staleness signal + max-age filter.
             "ALTER TABLE jobs ADD COLUMN posted_at TEXT",
+        ):
+            try:
+                conn.execute(col_ddl)
+            except Exception:
+                pass  # column already exists
+        # Migration (ADR-100): generalize favorite_jobs into a kind-discriminated
+        # saved-job store (favorites + review-later) with a snapshot link/source.
+        # Same idempotent ADD COLUMN pattern; safe on existing DBs.
+        for col_ddl in (
+            "ALTER TABLE favorite_jobs ADD COLUMN kind TEXT NOT NULL DEFAULT 'favorite'",
+            "ALTER TABLE favorite_jobs ADD COLUMN url TEXT",
+            "ALTER TABLE favorite_jobs ADD COLUMN source TEXT",
         ):
             try:
                 conn.execute(col_ddl)

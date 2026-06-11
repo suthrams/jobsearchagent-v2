@@ -11,10 +11,19 @@ import pytest
 
 from app.repositories.database import get_connection, init_db
 from app.repositories.favorite_repository import (
+    KIND_FAVORITE,
+    KIND_REVIEW_LATER,
     MAX_FAVORITES,
+    MAX_REVIEW_LATER,
     FavoriteRepository,
     FavoritesCapReached,
 )
+
+# Status/outcome column names that must NEVER appear (no application tracking).
+_FORBIDDEN_STATUS_COLS = {
+    "status", "applied", "applied_at", "pursuing", "stage", "outcome",
+    "application_status", "decision", "rejected", "interviewing",
+}
 
 
 @pytest.fixture
@@ -32,12 +41,18 @@ def repo(db_path):
 # ── Schema boundary (forcing function) ────────────────────────────────────────
 
 def test_favorite_jobs_columns_are_exactly_the_bounded_set(db_path):
-    """The boundary, enforced in schema: favorites carry ONLY a job reference, a
-    display snapshot, and a timestamp - never status/applied/pursuing/stage/outcome.
-    Adding such a column fails this test."""
+    """The boundary, enforced in schema (ADR-100): a saved job carries ONLY a job
+    reference, a kind discriminator, a display snapshot, and a timestamp - never
+    status/applied/pursuing/stage/outcome, for ANY kind. Adding such a column fails
+    this test."""
     with get_connection(db_path) as conn:
         cols = {r["name"] for r in conn.execute("PRAGMA table_info(favorite_jobs)").fetchall()}
-    assert cols == {"id", "user_id", "workflow_id", "job_id", "title", "company", "created_at"}
+    assert cols == {
+        "id", "user_id", "workflow_id", "job_id", "kind",
+        "title", "company", "url", "source", "created_at",
+    }
+    # The no-application-tracking boundary holds across the generalization.
+    assert cols.isdisjoint(_FORBIDDEN_STATUS_COLS)
 
 
 def test_favorite_jobs_is_not_in_the_run_purge_cascade():
@@ -128,3 +143,50 @@ def test_remove_all_for_user(repo):
     removed = repo.remove_all_for_user("1")
     assert removed == 2
     assert repo.count_for_user("1") == 0
+
+
+# ── ADR-100: review_later kind shares the store but is an isolated list ──────────
+
+def test_review_later_is_a_separate_list_from_favorites(repo):
+    repo.add("1", "wf", "job-fav", "Fav", "Acme", kind=KIND_FAVORITE)
+    repo.add("1", "wf", "job-later", "Later", "Beta", kind=KIND_REVIEW_LATER,
+             url="https://x/later", source="adzuna")
+    # Each kind lists only its own jobs.
+    assert [f["job_id"] for f in repo.list_for_user("1", kind=KIND_FAVORITE)] == ["job-fav"]
+    later = repo.list_for_user("1", kind=KIND_REVIEW_LATER)
+    assert [f["job_id"] for f in later] == ["job-later"]
+    # The snapshot carries the link + source so the list renders without the run.
+    assert later[0]["url"] == "https://x/later" and later[0]["source"] == "adzuna"
+    # Counts and id-sets are per-kind; favorites stars never see review-later jobs.
+    assert repo.count_for_user("1", kind=KIND_FAVORITE) == 1
+    assert repo.count_for_user("1", kind=KIND_REVIEW_LATER) == 1
+    assert repo.favorited_job_ids("1") == {"job-fav"}
+    assert repo.saved_job_ids("1", kind=KIND_REVIEW_LATER) == {"job-later"}
+
+
+def test_review_later_has_its_own_cap(repo):
+    for i in range(MAX_REVIEW_LATER):
+        repo.add("1", "wf", f"later-{i}", f"R{i}", "Acme", kind=KIND_REVIEW_LATER)
+    assert repo.count_for_user("1", kind=KIND_REVIEW_LATER) == MAX_REVIEW_LATER
+    with pytest.raises(FavoritesCapReached):
+        repo.add("1", "wf", "later-over", "too many", "Acme", kind=KIND_REVIEW_LATER)
+    # A favorite is unaffected by the review-later cap (separate budget).
+    repo.add("1", "wf", "a-fav", "Fav", "Acme", kind=KIND_FAVORITE)
+    assert repo.count_for_user("1", kind=KIND_FAVORITE) == 1
+
+
+def test_remove_scoped_by_kind_does_not_touch_other_bucket(repo):
+    # Distinct jobs in each bucket; a kind-scoped remove only hits its own.
+    repo.add("1", "wf", "j-fav", "Fav", "Acme", kind=KIND_FAVORITE)
+    repo.add("1", "wf", "j-later", "Later", "Beta", kind=KIND_REVIEW_LATER)
+    repo.remove("1", "j-later", kind=KIND_REVIEW_LATER)
+    assert repo.count_for_user("1", kind=KIND_REVIEW_LATER) == 0
+    assert repo.count_for_user("1", kind=KIND_FAVORITE) == 1
+
+
+def test_remove_all_for_user_clears_every_kind(repo):
+    repo.add("1", "wf", "j-fav", "Fav", "Acme", kind=KIND_FAVORITE)
+    repo.add("1", "wf", "j-later", "Later", "Beta", kind=KIND_REVIEW_LATER)
+    assert repo.remove_all_for_user("1") == 2
+    assert repo.count_for_user("1", kind=KIND_FAVORITE) == 0
+    assert repo.count_for_user("1", kind=KIND_REVIEW_LATER) == 0
