@@ -138,6 +138,20 @@ def reload_config() -> dict:
     return r.json()
 
 
+def verify_ats_board(ats: str, slug: str) -> dict:
+    """POST /config/ats/verify - live-check one ATS board slug before adding it to a
+    profile's target-company list (ADR-098 verify-on-add). Returns
+    {ats, slug, ok, job_count, message}."""
+    r = httpx.post(
+        f"{BASE_URL}/config/ats/verify",
+        params=_user_params(),
+        json={"ats": ats, "slug": slug},
+        timeout=_TIMEOUT_POST,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 def get_providers() -> dict:
     """Return registered providers + models + current per-agent assignment (ADR-053)."""
     r = httpx.get(f"{BASE_URL}/config/providers", params=_user_params(), timeout=_TIMEOUT_GET)

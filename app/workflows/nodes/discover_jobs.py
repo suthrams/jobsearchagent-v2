@@ -24,7 +24,7 @@ def make_discover_jobs_node(
     observability: ObservabilityService,
     custom_url_scraper_factory: Callable[[list[str], str], Any] | None = None,
     adzuna_scraper_factory: Callable[[list[str], list[str]], Any] | None = None,
-    ats_scraper_factory: Callable[[list[str]], list] | None = None,
+    ats_scraper_factory: Callable[[list[str], dict], list] | None = None,
 ) -> Callable[[dict], dict]:
     def discover_jobs(state: dict) -> dict:
         workflow_id: str = state.get("workflow_id", "")
@@ -77,12 +77,16 @@ def make_discover_jobs_node(
             except Exception as exc:
                 logger.warning("discover_jobs: failed to build per-run Adzuna scraper: %s", exc)
 
-        # ADR-081: per-run ATS-direct scrapers (Greenhouse/Lever) from the
-        # configured company list, with title relevance derived from the run's
-        # roles. Purely additive: returns [] when no companies are configured.
+        # ADR-081 + ADR-098: per-run ATS-direct scrapers (Greenhouse/Lever) from the
+        # PROFILE's company list, with title relevance derived from the run's roles.
+        # The list is read from THIS run's effective_config (not deps-time system
+        # config), so each profile targets its own companies and a Settings edit
+        # applies on the next run with no /config/reload. Purely additive: returns
+        # [] when no companies are configured.
         if ats_scraper_factory is not None:
+            scrapers_cfg = (state.get("effective_config") or {}).get("scrapers") or {}
             try:
-                extra_scrapers.extend(ats_scraper_factory(roles) or [])
+                extra_scrapers.extend(ats_scraper_factory(roles, scrapers_cfg) or [])
             except Exception as exc:
                 logger.warning("discover_jobs: failed to build ATS scrapers: %s", exc)
 

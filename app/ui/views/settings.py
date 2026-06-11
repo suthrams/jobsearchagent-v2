@@ -156,6 +156,86 @@ def render(ctx: ViewContext) -> None:
     if st.button("Save manual_selection"):
         _save("scoring.manual_selection", bool(manual_selection_default))
 
+    # ── Target companies (ADR-098: per-profile ATS-direct boards) ───────────
+    st.markdown("---")
+    st.subheader("Target companies (ATS-direct)")
+    st.caption(
+        "Greenhouse / Lever boards this profile pulls jobs from, in addition to "
+        "Adzuna. The list is per-profile and applies on your next run (no restart). "
+        "Adding a board verifies it live first, so a dead slug never enters your "
+        "list. Saving a list **replaces** this profile's list for that ATS."
+    )
+
+    def _save_scrapers(key: str, value: object) -> None:
+        """Persist an ATS list/flag override. Unlike _save, this does NOT call
+        /config/reload: the company list is resolved per run from effective_config
+        (ADR-098), so the next run picks it up with no backend rebuild."""
+        try:
+            api.put_config(key, value)
+            st.session_state.config_cache = None
+        except Exception as exc:
+            st.error(f"Save failed for `{key}`: {exc}")
+            return
+        st.success(f"Saved `{key}`. Applies on your next run.")
+
+    scrapers_cfg = (eff.get("scrapers") or {})
+    for ats, label in (("greenhouse", "Greenhouse"), ("lever", "Lever")):
+        ats_cfg = (scrapers_cfg.get(ats) or {})
+        companies = list(ats_cfg.get("companies") or [])
+        enabled = bool(ats_cfg.get("enabled", True))
+        with st.expander(f"{label}  ·  {len(companies)} board(s)"
+                         + ("" if enabled else "  ·  disabled"), expanded=False):
+            new_enabled = st.checkbox(
+                f"Enable {label} sourcing for this profile",
+                value=enabled, key=f"ats_enabled_{ats}",
+            )
+            if new_enabled != enabled:
+                _save_scrapers(f"scrapers.{ats}.enabled", bool(new_enabled))
+
+            if companies:
+                st.write(", ".join(f"`{c}`" for c in companies))
+            else:
+                st.caption("No boards yet — add one below.")
+
+            # Add a board, verified live before it joins the list.
+            new_slug = st.text_input(
+                f"Add a {label} board token/slug",
+                key=f"ats_add_{ats}",
+                placeholder="e.g. stripe",
+            )
+            if st.button(f"Verify & add to {label}", key=f"ats_addbtn_{ats}"):
+                slug = (new_slug or "").strip()
+                if not slug:
+                    st.warning("Enter a board token/slug first.")
+                elif slug in companies:
+                    st.info(f"`{slug}` is already in your {label} list.")
+                else:
+                    try:
+                        with st.spinner(f"Checking {label} board `{slug}`..."):
+                            result = api.verify_ats_board(ats, slug)
+                    except Exception as exc:
+                        st.error(f"Verify failed: {exc}")
+                    else:
+                        if result.get("ok"):
+                            _save_scrapers(f"scrapers.{ats}.companies",
+                                           companies + [slug])
+                            st.success(
+                                f"Added `{slug}` ({result.get('job_count', 0)} open jobs)."
+                            )
+                        else:
+                            st.error(result.get("message", f"`{slug}` is not a live "
+                                                           f"{label} board."))
+
+            # Remove boards.
+            if companies:
+                to_remove = st.multiselect(
+                    "Remove boards", options=companies, key=f"ats_rm_{ats}",
+                )
+                if st.button(f"Remove from {label}", key=f"ats_rmbtn_{ats}",
+                             disabled=not to_remove):
+                    remaining = [c for c in companies if c not in set(to_remove)]
+                    _save_scrapers(f"scrapers.{ats}.companies", remaining)
+
     # ── Agent Models (per ADR-053) ─────────────────────────────────────────
     st.markdown("---")
     st.subheader("Agent Models")

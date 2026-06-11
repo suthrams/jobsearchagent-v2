@@ -41,6 +41,16 @@ class ConfigUpdate(BaseModel):
     value: object
 
 
+class AtsVerifyRequest(BaseModel):
+    """ADR-098 verify-on-add: one ATS board slug to live-check before it enters a
+    profile's target-company list."""
+    ats: str
+    slug: str
+
+
+_KNOWN_ATS = ("greenhouse", "lever")
+
+
 def _load_known_models() -> dict[str, list[str]]:
     """Read the catalog from config.yaml and return the legacy `{provider: [model_id]}` shape.
 
@@ -113,6 +123,47 @@ def put_config(
         ) from exc
 
     return {"key": body.key, "value": body.value, "status": "saved"}
+
+
+@router.post("/ats/verify", status_code=200)
+def verify_ats(
+    body: AtsVerifyRequest,
+    user_id: str = Depends(get_current_user_id),
+) -> dict:
+    """Live-check one ATS board slug before the Settings UI adds it to a profile's
+    target-company list (ADR-098 verify-on-add).
+
+    Reuses `ats_scrapers.verify_ats_board` (the same check `tools/verify_ats_boards.py`
+    uses) so a slug that returns 0 jobs / 404 is rejected with a clear message before
+    it can enter a profile and silently contribute nothing. One bounded GET against a
+    public, unauthenticated ATS API; no secrets, no run context.
+    """
+    ats = (body.ats or "").strip().lower()
+    slug = (body.slug or "").strip()
+    if ats not in _KNOWN_ATS:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "unknown_ats",
+                    "message": f"Unknown ATS {body.ats!r}. Known: {list(_KNOWN_ATS)}."},
+        )
+    if not slug:
+        raise HTTPException(
+            status_code=422,
+            detail={"error": "empty_slug", "message": "A board token/slug is required."},
+        )
+
+    from app.services.ats_scrapers import verify_ats_board
+    count = verify_ats_board(ats, slug)
+    if not count:
+        return {
+            "ats": ats, "slug": slug, "ok": False, "job_count": 0,
+            "message": (f"No live {ats} board for {slug!r} (returned 0 jobs or was "
+                        "unreachable). Double-check the board token/slug."),
+        }
+    return {
+        "ats": ats, "slug": slug, "ok": True, "job_count": count,
+        "message": f"{slug}: {count} open jobs on {ats}.",
+    }
 
 
 @router.post("/reload", status_code=200)

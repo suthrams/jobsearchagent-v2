@@ -495,14 +495,18 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
             logger.warning("adzuna_scraper_factory failed: %s", exc)
             return None
 
-    # ADR-081: per-run ATS-direct scrapers (Greenhouse/Lever) built from the
-    # configured company list. Purely additive alongside Adzuna; returns [] when
-    # no companies are configured, so it is off until a profile lists targets.
+    # ADR-081 + ADR-098: per-run ATS-direct scrapers (Greenhouse/Lever) built from
+    # the company list. ADR-098 moves the list from this deps-time system config to
+    # the RUN's effective config: discover_jobs passes the run's
+    # effective_config["scrapers"] so each profile targets its own companies (the
+    # way search.*/scoring.* already resolve per run). The deps-time _scrapers_cfg
+    # is only a fallback for a run that carries no scrapers config. Purely additive
+    # alongside Adzuna; returns [] when no companies are configured.
     from app.services.ats_scrapers import build_ats_scrapers
     _scrapers_cfg = config_dict.get("scrapers", {})
-    def _ats_factory(roles: list[str]) -> list:
+    def _ats_factory(roles: list[str], scrapers_cfg: dict | None = None) -> list:
         try:
-            return build_ats_scrapers(roles, _scrapers_cfg)
+            return build_ats_scrapers(roles, scrapers_cfg or _scrapers_cfg)
         except Exception as exc:
             logger.warning("ats_scraper_factory failed: %s", exc)
             return []

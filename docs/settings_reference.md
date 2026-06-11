@@ -65,7 +65,13 @@ These govern **how jobs are judged and which ones earn expensive downstream work
 ## 3. Job sources (`scrapers.*`)
 
 Which feeds discovery pulls from. Adzuna is the broad aggregator; Greenhouse/Lever
-are source-of-truth employer feeds (ADR-081).
+are source-of-truth employer feeds (ADR-081). The ATS company list is **per-profile**
+and **managed from the Settings UI** ("Target companies" section): pick an ATS, enter
+a board token/slug, and it is **verified live before it joins your list** (a dead slug
+is rejected). A brand-new profile **inherits the operator-set default batch** (ADR-097);
+saving your own list **replaces** the default for that ATS. Because the list resolves
+per run from your `effective_config`, an edit applies on your **next run with no
+restart/reload** (ADR-098).
 
 | Setting | Purpose | Effect on processing |
 |---|---|---|
@@ -75,8 +81,8 @@ are source-of-truth employer feeds (ADR-081).
 | `scrapers.adzuna.radius_km` | Search radius around each location. | Wider radius = more postings, less geographic precision. |
 | `scrapers.adzuna.results_per_page` | Results pulled per Adzuna call. | Higher = more postings per call (more quota/cost per scrape); bounded by the free-tier max. |
 | `scrapers.adzuna.remote_keywords` | Keywords used for the no-location "remote" search. | Each adds a remote scrape; counts against the daily quota guard. |
-| `scrapers.greenhouse.enabled` / `.companies` | ATS-direct Greenhouse feeds, queried **per company** (board tokens; empty = off). (ADR-081) | Adds live, source-of-truth listings with real employer apply URLs (no dead-link/429 issue). Only the listed companies are queried; title relevance uses the run's roles. |
-| `scrapers.lever.enabled` / `.companies` | ATS-direct Lever feeds, queried per company (slugs; empty = off). (ADR-081) | Same as Greenhouse, for Lever-hosted boards. |
+| `scrapers.greenhouse.enabled` / `.companies` | ATS-direct Greenhouse feeds, queried **per company** (board tokens; empty = off). Per-profile + UI-managed with verify-on-add (ADR-081/097/098). | Adds live, source-of-truth listings with real employer apply URLs (no dead-link/429 issue). Only the listed companies are queried; title relevance uses the run's roles. |
+| `scrapers.lever.enabled` / `.companies` | ATS-direct Lever feeds, queried per company (slugs; empty = off). Per-profile + UI-managed with verify-on-add (ADR-081/097/098). | Same as Greenhouse, for Lever-hosted boards. |
 
 ---
 

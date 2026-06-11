@@ -213,6 +213,39 @@ def _parse_epoch_ms(raw: Any) -> datetime | None:
         return None
 
 
+def verify_ats_board(ats: str, slug: str, timeout_s: float = 8.0) -> int | None:
+    """Live-check a single ATS board slug against its public API (ADR-098).
+
+    Returns the open-job count for a healthy board (HTTP 200 + non-empty array),
+    else `None` (unknown ATS, empty/blank slug, non-200, or unreachable). This is
+    the single source of truth for the Settings verify-on-add flow AND the
+    `tools/verify_ats_boards.py` maintenance check, so both judge a board the same
+    way. No retas / no side effects - one bounded GET.
+    """
+    slug = (slug or "").strip()
+    ats = (ats or "").strip().lower()
+    if not slug:
+        return None
+    if ats == "greenhouse":
+        url = GreenhouseScraper._URL.format(token=slug)
+        is_list = False
+    elif ats == "lever":
+        url = LeverScraper._URL.format(slug=slug)
+        is_list = True
+    else:
+        return None
+    try:
+        resp = httpx.get(url, timeout=timeout_s, follow_redirects=True)
+        if resp.status_code != 200:
+            return None
+        data = resp.json()
+        if is_list:
+            return len(data) if isinstance(data, list) else None
+        return len((data or {}).get("jobs") or [])
+    except Exception:
+        return None
+
+
 def build_ats_scrapers(roles: list[str], scrapers_cfg: dict) -> list[BaseScraper]:
     """Build the configured ATS scrapers for a run (ADR-081).
 

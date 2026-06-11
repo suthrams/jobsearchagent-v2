@@ -39,10 +39,11 @@ Jobs are discovered from multiple sources concurrently on every run. Discovery h
 - Configurable search radius in kilometres
 - Free-tier quota guard: `(titles x locations) + remote_keywords` is kept under 100/day by the config commentary
 
-### ATS-direct — Greenhouse + Lever (opt-in, ADR-081)
+### ATS-direct — Greenhouse + Lever (ADR-081 / 097 / 098)
 - Source-of-truth employer feeds: listings are live by definition and the apply URL is the employer's own ATS page (no dead-link / 429 problem that Adzuna can have)
-- Queried **per company** — list the board tokens/slugs of target companies under `scrapers.greenhouse.companies` / `scrapers.lever.companies` (empty list = off)
-- Built per run by `WorkflowDependencies.ats_scraper_factory`; additive alongside Adzuna
+- Queried **per company** — board tokens/slugs of target companies under `scrapers.greenhouse.companies` / `scrapers.lever.companies` (empty list = off); ships with a curated, live-verified default batch (ADR-097)
+- **Per-profile target companies (ADR-098):** managed from the Settings "Target companies" section with **verify-on-add** (a dead slug is rejected before it joins your list). The list resolves per run from your `effective_config`, so an edit applies on your next run with no restart; a profile override replaces the default, a new profile inherits it
+- Built per run by `WorkflowDependencies.ats_scraper_factory(roles, scrapers_cfg)`; additive alongside Adzuna
 
 ### LinkedIn + custom URLs (manual intake)
 - LinkedIn blocks automated scraping — the built-in `LinkedInScraper` reads job URLs from `data/linkedin_inbox.txt` (one per line) and clears entries it has processed

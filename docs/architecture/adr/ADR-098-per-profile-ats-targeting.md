@@ -2,10 +2,20 @@
 
 ## Status
 
-**Proposed** (2026-06-10) — awaiting approval before implementation. Refines the
-posture of ADR-097 (which shipped the curated ATS batch as a **system-wide**
-default). This ADR makes the company list **per-profile** and **entirely
-UI-managed**.
+**Accepted** (2026-06-11) — implemented. Refines the posture of ADR-097 (which
+shipped the curated ATS batch as a **system-wide** default). This ADR makes the
+company list **per-profile** and **entirely UI-managed**.
+
+**Decisions locked at approval (2026-06-11):**
+1. **Storage — Option 1 (config-backed).** The per-profile list is a `user_config`
+   override under `scrapers.{greenhouse,lever}.{companies,enabled}`, resolved per
+   run from `effective_config` via the existing two-layer merge. No new table.
+2. **New profile — inherits the shared default.** A profile with no override gets
+   the operator-set `config.yaml` batch (the merge already yields this); senior
+   tuning stays the lever via `scoring.min_match_score`.
+3. **List semantics — replace.** A profile override replaces the default list (the
+   deep-merge already treats a non-dict list value as a replace), so a profile that
+   overrides starts from its own list, not "default + mine".
 
 ## Context — the gap ADR-097 left
 

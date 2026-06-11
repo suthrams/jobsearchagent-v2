@@ -22,34 +22,22 @@ import sys
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-import httpx
 import yaml
 
-GH = "https://boards-api.greenhouse.io/v1/boards/{s}/jobs"
-LV = "https://api.lever.co/v0/postings/{s}?mode=json"
+# ADR-098: the live board check is shared with the Settings verify-on-add flow so
+# both judge a board the same way. `app` is importable when run from the repo root.
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from app.services.ats_scrapers import verify_ats_board  # noqa: E402
+
 TIMEOUT = 8.0
 
 
-def _count(url: str, is_list: bool) -> int | None:
-    """Return job count for a 200 response, else None (dead/empty/unreachable)."""
-    try:
-        r = httpx.get(url, timeout=TIMEOUT, follow_redirects=True)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        if is_list:
-            return len(data) if isinstance(data, list) else None
-        return len((data or {}).get("jobs") or [])
-    except Exception:
-        return None
-
-
 def check_greenhouse(token: str) -> int | None:
-    return _count(GH.format(s=token), is_list=False)
+    return verify_ats_board("greenhouse", token, timeout_s=TIMEOUT)
 
 
 def check_lever(slug: str) -> int | None:
-    return _count(LV.format(s=slug), is_list=True)
+    return verify_ats_board("lever", slug, timeout_s=TIMEOUT)
 
 
 def _load_config(example: bool) -> tuple[list[str], list[str]]:

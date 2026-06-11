@@ -4,6 +4,40 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-11
+
+### Added — per-profile ATS targeting, managed in the Settings UI (ADR-098)
+
+ADR-097 shipped the curated ATS batch as a **system-wide** default, resolved at
+deps-build time — so every profile got the same companies, the odd-one-out against
+`search.*`/`scoring.*` which already resolve per run per profile (ADR-062). ADR-098
+moves the company list to the right layer and makes it fully UI-managed.
+
+- **Per-run resolution (the runtime fix).** `discover_jobs` now passes the run's
+  `effective_config["scrapers"]` to `ats_scraper_factory(roles, scrapers_cfg)`, and
+  `build_ats_scrapers(roles, scrapers_cfg)` builds that profile's boards. The list
+  is read per run, so a Settings edit applies on the **next run with no
+  `/config/reload`**. The deps-time system config is now only a fallback.
+- **Storage = config-backed (Option 1).** The list is a `user_config` override under
+  `scrapers.{greenhouse,lever}.{companies,enabled}`, riding the existing two-layer
+  deep-merge. No new table. A profile override **replaces** the default list; a new
+  profile **inherits** the operator-set default batch (ADR-097).
+- **Settings UI — "Target companies" with verify-on-add.** New section in
+  `app/ui/views/settings.py`: enable/disable each ATS, list/add/remove boards. Adding
+  a board is **verified live first** via `POST /config/ats/verify` (reuses
+  `ats_scrapers.verify_ats_board`, the same check `tools/verify_ats_boards.py` runs),
+  so a dead slug / 404 is rejected before it can enter a profile and contribute
+  nothing. The company-list save deliberately skips `/config/reload` (per-run
+  resolution makes it unnecessary).
+- **Tests (+13).** `verify_ats_board` healthy/dead/unknown-ats/network-error;
+  per-run factory replace; node passes `effective_config` scrapers to the factory +
+  non-fatal factory failure; deep-merge replace + new-profile inherit + isolation;
+  verify endpoint accept/reject. Suite: 1035 -> 1048.
+- **De-bundled (separate future ADRs):** expand the batch + add Ashby; company
+  name->slug resolver; a Source column in the discovered/Matches lists.
+
+---
+
 ## 2026-06-10
 
 ### Added — ATS-direct curated board batch, on by default (ADR-097)

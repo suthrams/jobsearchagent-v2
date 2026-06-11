@@ -945,6 +945,38 @@ GET /config/providers
 (e.g. missing `OPENAI_API_KEY`). The UI should disable that provider's
 options and show the reason.
 
+---
+
+### POST /config/ats/verify
+
+Live-check one ATS board token/slug before the Settings UI adds it to a profile's
+target-company list (ADR-098 verify-on-add). One bounded GET against the public,
+unauthenticated Greenhouse/Lever API; reuses the same check as
+`tools/verify_ats_boards.py`. No secrets, no run context.
+
+**Request**
+
+```
+POST /config/ats/verify
+{"ats": "greenhouse", "slug": "stripe"}
+```
+
+`ats` ∈ {`greenhouse`, `lever`} (else `422 unknown_ats`); a blank `slug` is
+`422 empty_slug`.
+
+**Response — 200 OK**
+
+```json
+{"ats": "greenhouse", "slug": "stripe", "ok": true, "job_count": 42,
+ "message": "stripe: 42 open jobs on greenhouse."}
+```
+
+A slug that returns 0 jobs / 404 / is unreachable comes back `200` with
+`"ok": false, "job_count": 0` and a message — the UI rejects the add without
+treating it as a server error.
+
+---
+
 > **Per-profile config (ADR-062).** `GET /config`, `PUT /config`, and
 > `GET /config/providers` all resolve the acting profile via `?user_id=` and
 > operate on that profile's overrides. `PUT /config` keys each row
