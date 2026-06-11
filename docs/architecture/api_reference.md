@@ -55,6 +55,7 @@ GET  /workflows/{id}/report                    → fetch the final report
 POST /workflows/{wf}/jobs/{job}/tailorings     → create a tailoring draft for ANY scored job; deep-reviews on demand first if needed (ADR-061; run tailoring + fidelity, 200)
 POST /workflows/{wf}/jobs/{job}/deep-review    → run the critic+auditor loop for one scored job on demand (ADR-061, 200)
 POST /workflows/{wf}/jobs/{job}/interview-prep → run the interview coach for one scored job on demand (ADR-061, 200)
+POST /workflows/{wf}/jobs/{job}/score          → research + score ONE previously-unscored job on demand; it then joins the regular route (ADR-100 Phase 2). Idempotent (already-scored returns the existing score); 409 resume_profile_missing; 502 scoring_failed
 GET  /workflows/{wf}/tailorings                → list tailoring drafts for a workflow
 GET  /tailorings/{id}                          → fetch a single tailoring draft (top-level: ID is globally unique)
 POST /tailorings/{id}/decisions                → record approve / revise / reject / edit for a draft
@@ -449,6 +450,10 @@ Optional query param `auto_deep_review` (default `true`). No body. The router pu
 ### POST /workflows/{workflow_id}/jobs/{job_id}/deep-review
 
 ADR-061. Run the ResumeCritic + ReviewAuditor reflection loop for one scored job on demand, out-of-graph (same shared loop the `deep_review` node uses). Persists rounds + the final review via `ReviewRepository`. Returns `{workflow_id, job_id, review, rounds, llm_calls, errors}`. 409 if `resume_profile` is missing; 502 if the loop fails.
+
+### POST /workflows/{workflow_id}/jobs/{job_id}/score
+
+ADR-100 Phase 2. Research + score ONE previously-unscored job on demand, out-of-graph, via the shared `scoring_runner.score_one_job` (the same logic the `score_jobs` node fans out). Lets a user send a job from the Review-later list — or any discovered-but-unscored job — through the normal research+scoring path; once scored it surfaces in Matches and is eligible for every on-demand op (deep-review, tailoring, interview-prep). NOT bounded by `scoring.max_scored` (an explicit single-job op). **Idempotent**: a job already scored for the run returns its existing score with no re-spend. Returns `{workflow_id, job_id, already_scored, overall_score, llm_calls?}`. 409 if `resume_profile` is missing; 502 if scoring fails.
 
 ### POST /workflows/{workflow_id}/jobs/{job_id}/interview-prep
 

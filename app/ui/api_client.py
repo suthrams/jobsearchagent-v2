@@ -681,6 +681,17 @@ def remove_review_later(user_id: str, job_id: str) -> None:
     r.raise_for_status()
 
 
+def score_job(workflow_id: str, job_id: str) -> dict:
+    """POST /workflows/{wf}/jobs/{job}/score - research + score one job on demand
+    (ADR-100 Phase 2). Idempotent server-side. Longer timeout: this runs two agents."""
+    r = httpx.post(
+        f"{BASE_URL}/workflows/{workflow_id}/jobs/{job_id}/score",
+        timeout=_TIMEOUT_TAILOR,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
 # ── ADR-070: data-retention purge ────────────────────────────────────────────
 
 def purge_data() -> dict:

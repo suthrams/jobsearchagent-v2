@@ -2,10 +2,12 @@
 
 ## Status
 
-**Accepted** (2026-06-11) — **Phase 1 implemented; Phase 2 (on-demand
-rescue-to-score) pending.** Follows the relevance-filter dropped-job link work
-(BUG-010 follow-on) and the ADR-079 suitability recalibration. Builds on the
-favorites machinery (ADR-090) and the on-demand op pattern (ADR-061).
+**Accepted** (2026-06-11) — **Phases 1 and 2 implemented.** Follows the
+relevance-filter dropped-job link work (BUG-010 follow-on) and the ADR-079
+suitability recalibration. Builds on the favorites machinery (ADR-090) and the
+on-demand op pattern (ADR-061). Phase 2 endpoint: `POST
+/workflows/{wf}/jobs/{job}/score`, backed by the extracted
+`scoring_runner.score_one_job` shared with the `score_jobs` node.
 
 ## Context
 

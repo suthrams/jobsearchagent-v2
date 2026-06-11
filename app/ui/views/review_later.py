@@ -58,6 +58,35 @@ def render(ctx: ViewContext) -> None:
         },
     )
 
+    # ADR-100 Phase 2: send one job through research + scoring on demand. Once
+    # scored it joins the regular route (Matches, deep-review, tailoring, prep).
+    scorable = {
+        (r.get("title") or r.get("job_id")): (r.get("workflow_id"), r.get("job_id"))
+        for r in rows
+        if r.get("job_id") and r.get("workflow_id")
+    }
+    if scorable:
+        st.markdown("**Score a job** (research + score it, then it appears in Matches)")
+        pick = st.selectbox(
+            "Job to score", options=list(scorable.keys()), key="review_later_score_pick",
+        )
+        if st.button("Score this job", key="review_later_score_btn"):
+            wf, jid = scorable[pick]
+            try:
+                with st.spinner("Researching + scoring this job..."):
+                    res = api.score_job(wf, jid)
+                _score = res.get("overall_score")
+                if res.get("already_scored"):
+                    st.info(f"Already scored (overall {_score}). See it in Matches.")
+                else:
+                    st.success(
+                        f"Scored '{pick}' (overall {_score}). It is now in Matches and "
+                        "ready for deep review / tailoring / interview prep."
+                    )
+            except Exception as exc:  # noqa: BLE001 - surface, never crash
+                st.error(f"Could not score '{pick}': {exc}")
+
+    st.markdown("---")
     # Remove jobs you have finished considering.
     label_to_id = {
         (r.get("title") or r.get("job_id")): r.get("job_id") for r in rows if r.get("job_id")

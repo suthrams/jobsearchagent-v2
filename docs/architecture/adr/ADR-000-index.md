@@ -105,4 +105,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-097 | [Curated, Live-Verified ATS-Direct Board Batch (Greenhouse + Lever)](ADR-097-curated-ats-direct-board-batch.md) | Accepted (implemented) |
 | ADR-098 | [Per-Profile ATS Targeting, Managed in the Settings UI](ADR-098-per-profile-ats-targeting.md) | Accepted (implemented) |
 | ADR-099 | [Job Source Visibility in the Discovered + Matches Lists](ADR-099-source-visibility-in-lists.md) | Accepted (implemented) |
-| ADR-100 | ["Review Later" List + On-Demand Rescue-to-Score](ADR-100-review-later-list-and-on-demand-rescue-to-score.md) | Accepted (Phase 1 implemented; Phase 2 pending) |
+| ADR-100 | ["Review Later" List + On-Demand Rescue-to-Score](ADR-100-review-later-list-and-on-demand-rescue-to-score.md) | Accepted (implemented) |

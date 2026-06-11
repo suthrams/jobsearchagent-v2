@@ -37,6 +37,8 @@ from app.services.context_trimmer import (
     trim_score,
 )
 from app.services.deep_review_runner import review_one_job
+from app.services.scoring_runner import score_one_job
+from app.workflows.limits import get_active_tracks
 from app.services.observability_service import (
     fidelity_review_security_description,
     log_artifact_decision,
@@ -432,6 +434,91 @@ def trigger_deep_review(
         "rounds": len(rounds),
         "llm_calls": calls,
         "errors": errs,
+    }
+
+
+# ── On-demand scoring (ADR-100 Phase 2: rescue-to-score) ───────────────────────
+
+@router.post("/workflows/{workflow_id}/jobs/{job_id}/score", status_code=200)
+def trigger_score(
+    workflow_id: str,
+    job_id: str,
+    graph=Depends(get_graph),
+    deps: WorkflowDependencies = Depends(get_deps),
+) -> dict:
+    """Research + score one previously-unscored job on demand (ADR-100 Phase 2).
+
+    Out-of-graph, synchronous (ADR-061 pattern), via the shared `score_one_job`
+    runner — identical logic to the in-graph batch. Lets a user send a job they
+    pulled into the Review-later list (or any discovered-but-unscored job) through
+    the normal research+scoring path; once scored it surfaces in Matches and is
+    eligible for every on-demand op (deep-review, tailoring, interview-prep). NOT
+    bounded by scoring.max_scored (an explicit single-job op). Idempotent: a job
+    already scored for this run returns its existing score with no re-spend.
+    """
+    state = _read_workflow_state(graph, workflow_id)
+    resume_id = state.get("resume_id") or ""
+    resume_profile = state.get("resume_profile") or {}
+    if not resume_profile:
+        raise HTTPException(
+            status_code=409,
+            detail={
+                "error": "resume_profile_missing",
+                "message": (
+                    "Workflow has no parsed resume_profile yet — wait for the run "
+                    "to reach load_resume before requesting a score."
+                ),
+                "workflow_id": workflow_id,
+            },
+        )
+
+    # Idempotency: never double-score (it would create a duplicate row and re-spend).
+    existing = next(
+        (s for s in deps.score_repo.get_by_workflow_run(workflow_id)
+         if s.get("job_id") == job_id),
+        None,
+    )
+    if existing is not None:
+        return {
+            "workflow_id": workflow_id,
+            "job_id": job_id,
+            "already_scored": True,
+            "overall_score": existing.get("overall_score"),
+        }
+
+    job = _find_job(state, job_id, deps)
+    career_track = (state.get("effective_config") or {}).get(
+        "scoring", {}).get("career_track", "all")
+    active_tracks = get_active_tracks(state)
+
+    entry, calls, errs, _ti, _to, _cost = score_one_job(
+        job={**job, "job_id": job_id},
+        workflow_id=workflow_id,
+        resume_id=resume_id,
+        resume_profile=resume_profile,
+        career_track=career_track,
+        active_tracks=active_tracks,
+        research_agent=deps.research_agent,
+        scoring_agent=deps.scoring_agent,
+        score_repo=deps.score_repo,
+    )
+    if entry.get("status") != "scored":
+        raise HTTPException(
+            status_code=502,
+            detail={
+                "error": "scoring_failed",
+                "message": errs[0]["message"] if errs else "Scoring did not complete.",
+                "workflow_id": workflow_id,
+                "job_id": job_id,
+            },
+        )
+
+    return {
+        "workflow_id": workflow_id,
+        "job_id": job_id,
+        "already_scored": False,
+        "overall_score": entry.get("overall_score"),
+        "llm_calls": calls,
     }
 
 

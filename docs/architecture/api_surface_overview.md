@@ -49,6 +49,7 @@ flowchart TB
         d1[POST /workflows/wf/jobs/job/tailorings]
         d2[POST /workflows/wf/jobs/job/deep-review]
         d3[POST /workflows/wf/jobs/job/interview-prep]
+        d4[POST /workflows/wf/jobs/job/score]
     end
 
     subgraph Tailoring_drafts
@@ -129,6 +130,7 @@ same key + body replays the original run instead of starting a second; `retry` a
 | `POST` | `/workflows/{wf}/jobs/{job}/tailorings` | Create a tailoring draft for any scored job. Runs deep review first if not already present. |
 | `POST` | `/workflows/{wf}/jobs/{job}/deep-review` | Run the Resume Critic + Review Auditor reflection loop for one scored job. |
 | `POST` | `/workflows/{wf}/jobs/{job}/interview-prep` | Run the Interview Coach for one scored job. |
+| `POST` | `/workflows/{wf}/jobs/{job}/score` | ADR-100 Phase 2: research + score one previously-unscored job on demand (e.g. from the Review-later list); it then joins the regular route. Idempotent. |
 
 ### Tailoring drafts (ADR-055, ADR-059)
 

@@ -11,27 +11,24 @@ increment the budget counter (failed calls cost 0).
 from __future__ import annotations
 
 import logging
-import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Callable
 
 from app.agents.research_agent import ResearchAgent
 from app.agents.scoring_agent import ScoringAgent
-from app.providers.llm_client import LLMProviderError
 from app.repositories.database import utcnow_iso
 from app.repositories.score_repository import ScoreRepository
-from app.services.context_trimmer import project_resume_for_scoring
 from app.services.observability_service import (
     ObservabilityService,
     budget_cap_security_description,
 )
+from app.services.scoring_runner import score_one_job
 from app.workflows.limits import (
     MAX_LLM_CALLS_PER_RUN,
     add_llm_calls_bulk,
     get_active_tracks,
     get_max_scored,
     get_metrics,
-    safe_agent_usage_typed,
 )
 
 logger = logging.getLogger(__name__)
@@ -88,75 +85,21 @@ def make_score_jobs_node(
             )
 
         def _score_one(job: dict) -> tuple[dict, int, list[dict], int, int, float]:
-            """Research + score one job.
-
-            Returns (entry, successful_llm_calls, errors, tokens_in, tokens_out, cost_usd).
-            Token/cost values accumulate only for successful calls.
-            """
-            job_id = job.get("id", job.get("job_id", ""))
-            entry = {**job, "job_id": job_id}
-            total_ti, total_to, total_cost = 0, 0, 0.0
-
-            # ── Research ──────────────────────────────────────────────────────
-            try:
-                research = research_agent.run(workflow_id, {
-                    "job_id": job_id,
-                    "job_title": job.get("title", ""),
-                    "company": job.get("company", ""),
-                    "source_url": job.get("url", ""),
-                    "job_description": job.get("job_description", ""),
-                })
-                u = safe_agent_usage_typed(research_agent)
-                total_ti += u.tokens_input; total_to += u.tokens_output; total_cost += u.cost_usd
-            except LLMProviderError as exc:
-                logger.warning("score_jobs: research failed for %s: %s", job_id, exc)
-                return {**entry, "status": "research_failed"}, 0, [{
-                    "step": "scoring", "error_type": "research_failed",
-                    "message": str(exc), "recoverable": True,
-                    "occurred_at": utcnow_iso(), "suggested_action": None,
-                }], 0, 0, 0.0
-
-            # ── Scoring ───────────────────────────────────────────────────────
-            try:
-                # resume_profile is identical across every job in a run; pull it
-                # into the cached system block so calls 2..N within the 5-min
-                # window read it back at 10% rate instead of re-paying full
-                # input price. ADR-086: project_resume_for_scoring wraps
-                # trim_resume_profile (raw_text dropped, PII redacted) and further
-                # drops fields the scoring prompt never reads, shrinking the
-                # per-job re-sent payload.
-                score = scoring_agent.run(workflow_id, {
-                    "_cached": {
-                        "resume_profile": project_resume_for_scoring(resume_profile),
-                    },
-                    "job_id": job_id,
-                    "resume_id": resume_id,
-                    "job_title": job.get("title", ""),
-                    "company": job.get("company", ""),
-                    "job_description": job.get("job_description", ""),
-                    "career_track": career_track,
-                    "active_tracks": active_tracks,
-                    "research_context": research.model_dump(),
-                })
-                u = safe_agent_usage_typed(scoring_agent)
-                total_ti += u.tokens_input; total_to += u.tokens_output; total_cost += u.cost_usd
-            except LLMProviderError as exc:
-                logger.warning("score_jobs: scoring failed for %s: %s", job_id, exc)
-                return {**entry, "status": "scoring_failed"}, 1, [{
-                    "step": "scoring", "error_type": "scoring_failed",
-                    "message": str(exc), "recoverable": True,
-                    "occurred_at": utcnow_iso(), "suggested_action": None,
-                }], total_ti, total_to, total_cost
-
-            # ── Persist ───────────────────────────────────────────────────────
-            try:
-                score_repo.create(
-                    str(uuid.uuid4()), workflow_id, job_id, resume_id, score.model_dump()
-                )
-            except Exception as exc:
-                logger.warning("score_jobs: persist failed for %s: %s", job_id, exc)
-
-            return {**entry, **score.model_dump(), "status": "scored"}, 2, [], total_ti, total_to, total_cost
+            """Research + score one job via the shared runner (ADR-100 Phase 2),
+            so the in-graph batch and the on-demand single-job endpoint run identical
+            logic. Returns (entry, successful_llm_calls, errors, tokens_in,
+            tokens_out, cost_usd)."""
+            return score_one_job(
+                job=job,
+                workflow_id=workflow_id,
+                resume_id=resume_id,
+                resume_profile=resume_profile,
+                career_track=career_track,
+                active_tracks=active_tracks,
+                research_agent=research_agent,
+                scoring_agent=scoring_agent,
+                score_repo=score_repo,
+            )
 
         # ── Fan out across _SCORE_WORKERS threads ─────────────────────────────
         scored_jobs: list[dict] = []
