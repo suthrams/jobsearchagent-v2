@@ -67,6 +67,14 @@ add). ADR-099 `source_label` gains `workday -> "🟢 Workday"`.
 
 ## Boundaries / non-goals
 
+- **Known-list only; NO cross-Workday discovery.** Workday's CXS API is per-tenant —
+  each employer is an isolated instance and there is no global "search all Workday
+  jobs" endpoint. The scraper queries ONLY the boards a profile has configured (or
+  inherits from a curated default batch). Coverage == the configured list. The lever
+  to widen coverage is **curation** (a bigger verified board batch, the ADR-097
+  pattern), never discovery. This is the inherent ATS-direct trade: full/fresh data +
+  employer-direct apply for NAMED companies, vs an aggregator's broad-but-lossy search.
+  Workday therefore runs ALONGSIDE Adzuna (breadth), not as a replacement.
 - **Workday only.** iCIMS stays rejected (no clean public JSON API; HTML + anti-bot).
 - **No default batch yet.** Unlike ADR-097's curated Greenhouse/Lever batch, Workday
   ships **off** (empty default list) until we curate + live-verify a batch in a
