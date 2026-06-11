@@ -412,25 +412,14 @@ Out-of-graph tailoring (ADR-055). The same `TailoringAgent` and `FidelityReviewe
 
 The flow:
 
-```
-┌─────────────────────────────────┐
-│ workflow already completed       │
-│ (selected_jobs in checkpoint)    │
-└────────────────┬─────────────────┘
-                 │ user clicks "Tailor for this job"
-                 ▼
-   POST /workflows/{wf}/jobs/{job}/tailorings
-                 │ (synchronous, ~5-15s)
-                 ▼
-   TailoringAgent → FidelityReviewer → tailored_resumes row
-                 │
-                 ▼  returns { tailoring_id, tailored, fidelity_review }
-                 │
-                 ▼  user reviews diffs + evidence
-   POST /tailorings/{tailoring_id}/decisions  { approval: approve|revise|reject|edit }
-                 │
-                 ▼
-   tailored_resumes.decision = ..., approved = (decision == 'approve')
+```mermaid
+flowchart TD
+    A["Workflow already completed<br>(selected_jobs in checkpoint)"]
+    A -->|"user clicks Tailor for this job"| B["POST /workflows/{wf}/jobs/{job}/tailorings<br>synchronous, ~5-15s"]
+    B --> C["TailoringAgent then FidelityReviewer then tailored_resumes row"]
+    C -->|"returns { tailoring_id, tailored, fidelity_review }"| D["User reviews diffs + evidence"]
+    D --> E["POST /tailorings/{tailoring_id}/decisions<br>{ approval: approve, revise, reject, edit }"]
+    E --> F["tailored_resumes.decision set,<br>approved = (decision == approve)"]
 ```
 
 ### POST /workflows/{workflow_id}/jobs/{job_id}/tailorings
