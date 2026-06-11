@@ -1,0 +1,33 @@
+{
+  "id": "adr098_current_vs_target",
+  "outDir": "docs/architecture/images",
+  "width": 1960,
+  "height": 920,
+  "layout": "compare",
+  "title": "ATS company list: {{red:system-wide today}} vs {{green:per-profile}}",
+  "headSub": "The fix: resolve the scrapers config per run from effective_config, the same way search.* and scoring.* already work.",
+  "left": {
+    "head": "Today — system-wide (the gap)",
+    "tone": "bad",
+    "rows": [
+      {"icon": "steps", "label": "config.yaml -> deps-time factory", "sub": "built once at startup"},
+      {"icon": "database", "label": "one global company list"},
+      {"icon": "user", "label": "every profile gets the SAME companies"},
+      {"icon": "alert", "label": "senior batch = noise for an entry-level / cyber profile"},
+      {"icon": "eyeoff", "label": "contradicts multi-user (ADR-062)"}
+    ]
+  },
+  "right": {
+    "head": "Target — per-profile",
+    "tone": "good",
+    "rows": [
+      {"icon": "edit", "label": "managed entirely from the Settings UI (no config edits)"},
+      {"icon": "filter", "label": "shared default + per-profile override, resolved per run"},
+      {"icon": "user", "label": "each profile targets its own companies"},
+      {"icon": "target", "label": "entry-level / cyber profile curates its own boards"},
+      {"icon": "check", "label": "consistent with search.* / scoring.*"}
+    ]
+  },
+  "mid": {"tag": "the fix", "lines": ["read scrapers from", "effective_config,", "not deps-time config"]},
+  "takeaway": {"icon": "check", "accent": "green", "text": "Make the company list a {{green:per-profile}} setting managed entirely from the Settings UI and resolved per run - the curated ADR-097 batch becomes a shared default each profile can override, no config-file edits."}
+}

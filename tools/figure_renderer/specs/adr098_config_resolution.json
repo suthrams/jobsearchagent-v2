@@ -1,0 +1,24 @@
+{
+  "id": "adr098_config_resolution",
+  "outDir": "docs/architecture/images",
+  "width": 2040,
+  "height": 620,
+  "layout": "flow",
+  "title": "How a profile's company list is resolved {{green:per run}} (all UI-managed)",
+  "headSub": "Reuses the two-layer config merge (ADR-062) and the per-run effective_config already used for search.* and scoring.*. The user only ever touches the Settings UI.",
+  "flow": [
+    {"title": "Company list", "accent": "blue", "icon": "edit", "stack": [
+      {"title": "Shared default (starter batch)", "accent": "gray"},
+      {"title": "Profile override via Settings UI", "accent": "green"}
+    ]},
+    {"arrow": "saved per profile"},
+    {"title": "effective_config.scrapers", "meta": ["per run, per profile"], "accent": "amber", "icon": "steps", "focal": true},
+    {"arrow": "kickoff -> state"},
+    {"title": "discover_jobs reads state", "accent": "blue", "icon": "eye"},
+    {"arrow": true},
+    {"title": "ats_factory(roles, scrapers_cfg)", "accent": "green", "icon": "robot"},
+    {"arrow": true},
+    {"title": "Greenhouse / Lever scrapers", "accent": "green", "icon": "globe"}
+  ],
+  "takeaway": {"icon": "edit", "accent": "green", "text": "No config-file edits: the Settings UI writes the per-profile override, which rides the same merge path as every other setting; only the factory's input changes from {{red:deps-time}} to {{green:per-run}}."}
+}

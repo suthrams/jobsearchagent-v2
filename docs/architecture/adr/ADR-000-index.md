@@ -103,3 +103,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-095 | [Best-Effort Dead-Link Filter (Opt-in Discovery Step)](ADR-095-best-effort-dead-link-filter.md) | Accepted (implemented) |
 | ADR-096 | [Durable Run Recovery Across Restarts (Graceful Drain + Checkpointed Auto-Resume)](ADR-096-durable-run-recovery-across-restarts.md) | Accepted (implemented) |
 | ADR-097 | [Curated, Live-Verified ATS-Direct Board Batch (Greenhouse + Lever)](ADR-097-curated-ats-direct-board-batch.md) | Accepted (implemented) |
+| ADR-098 | [Per-Profile ATS Targeting, Managed in the Settings UI](ADR-098-per-profile-ats-targeting.md) | Proposed |

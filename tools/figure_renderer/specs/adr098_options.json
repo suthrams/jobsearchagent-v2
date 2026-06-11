@@ -1,0 +1,32 @@
+{
+  "id": "adr098_options",
+  "outDir": "docs/architecture/images",
+  "width": 2240,
+  "height": 860,
+  "layout": "table",
+  "title": "Storage options for the per-profile company list",
+  "headSub": "FIXED by your constraints: per-profile, fully managed in the Settings UI (verify-on-add), resolved per run from effective_config. The only open decision below is HOW the list is stored.",
+  "head": ["Option", "Storage", "Pros", "Cons", "Verdict"],
+  "gridCols": "0.9fr 1.3fr 1.3fr 1.3fr 0.7fr",
+  "rows": [
+    {"icon": "check", "focal": true, "accent": "green", "label": "1. user_config-backed", "cells": [
+      "per-profile JSON list in user_config (no new table); the Settings widget writes it",
+      "least machinery; reuses config + per-run effective_config; consistent with search.* / scoring.*",
+      "stores slugs (+ light metadata); a profile override replaces the default list",
+      {"text": "RECOMMENDED"}
+    ]},
+    {"icon": "database", "accent": "blue", "label": "2. Dedicated table", "cells": [
+      "new target_companies table (name, ATS, slug, verified, added_at) + repo + endpoints",
+      "first-class model; persists verify status; richest UI surface",
+      "new table/repo/endpoints + migration; a 2nd source of truth alongside config; heavier",
+      "viable, more work"
+    ]},
+    {"icon": "eyeoff", "accent": "red", "label": "x. Raw config / deps-time", "cells": [
+      "edit config.yaml or PUT dotted keys; global startup factory (today)",
+      "smallest code change",
+      "violates 'manage from the Settings UI'; not per-user (global, last-reload-wins)",
+      "rejected"
+    ]}
+  ],
+  "takeaway": {"icon": "check", "accent": "green", "text": "Recommend Option 1: a {{green:UI-managed}} per-profile list in user_config, verified on add, resolved per run - the permanent fix with the least new machinery."}
+}

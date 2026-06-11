@@ -345,7 +345,7 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
 | docs/ top-level | 10 |
 | docs/architecture/ | 34 |
-| docs/architecture/adr/ | 98 (index + 97 ADRs) |
+| docs/architecture/adr/ | 99 (index + 98 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/incidents/ (postmortem log: README + per-incident) | 2 |
 | docs/models/ | 3 |
