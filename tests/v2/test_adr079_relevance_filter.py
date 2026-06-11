@@ -290,4 +290,26 @@ def test_prompt_judges_suitability_and_adjacency_not_keyword_match():
     # ...and target_roles must be explicitly NOT a hard boundary.
     assert "not a hard boundary" in low or "not merely" in low
     # Prompt version was bumped so the change is observable in llm_calls.
-    assert prompt.lstrip().startswith("# version: 2")
+    assert prompt.lstrip().startswith("# version: 3")
+
+
+def test_prompt_is_field_agnostic_not_hardcoded_per_profile():
+    """Forcing function (sustainability): adjacency must be DERIVED from the
+    candidate's own profile, not hardcoded per industry in the shared prompt. The
+    prompt must instruct deriving the field from resume_profile and must NOT assume
+    any particular industry - otherwise it does not scale to a large/enterprise user
+    base. The cybersecurity case may appear ONLY as a labelled example.
+    """
+    from pathlib import Path
+
+    prompt = (Path(__file__).resolve().parents[2]
+              / "app" / "prompts" / "agents" / "relevance_filter.txt").read_text(encoding="utf-8")
+    low = prompt.lower()
+    # Adjacency is derived from the per-profile data, generically.
+    assert "derive" in low and "resume_profile" in low
+    assert "do not assume" in low  # field-agnostic guard, e.g. "do not assume any particular industry"
+    # The generic drop test is "a clearly different profession", not "not cyber".
+    assert "different profession" in low
+    # Cybersecurity, if mentioned, must be flagged as illustrative only.
+    if "cybersecurity" in low:
+        assert "illustrative" in low or "example" in low

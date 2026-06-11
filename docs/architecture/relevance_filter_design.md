@@ -29,19 +29,29 @@ profile. That makes it the LLM counterpart to ADR-065's symmetric deterministic
 pair — `exceeds_cap` (max bound) and `below_floor` (min bound) — in one feature,
 on one checkbox.
 
-**The relevance axis is suitability, not keyword-match (prompt v2).** `unrelated`
-means a role genuinely UNSUITABLE for the candidate — a different profession with no
-transferable overlap (sales, real estate, nursing, finance for a technical
-candidate) — NOT merely a role outside the exact `target_roles`. `target_roles` is
-the candidate's stated interest, not a hard boundary. The verdict is weighted by
-CAREER STAGE: for an early-career profile (entry titles, low/zero years,
-`exclude_senior`, low `max_years_experience`) the agent is generous about
-ADJACENCY, keeping transferable-skill neighbours — e.g. for an entry cybersecurity
-grad it keeps IT/sysadmin, SOC, GRC/audit, cloud, networking, data, and software/QA
-roles. This stops the prefilter stranding a candidate who is open to adjacent entry
-work, while still dropping the genuinely-off roles a noisy keyword search surfaces.
-(It does NOT recommend roles — it widens what counts as suitable; proactive
-role/career-family recommendation is a separate, deliberately deferred capability.)
+**The relevance axis is suitability, not keyword-match (prompt v3).** `unrelated`
+means a role genuinely UNSUITABLE for the candidate — a clearly different profession
+with no transferable overlap — NOT merely a role outside the exact `target_roles`.
+`target_roles` is the candidate's stated interest, not a hard boundary. The verdict
+is weighted by CAREER STAGE: for an early-career profile (entry titles, low/zero
+years, `exclude_senior`, low `max_years_experience`) the agent is generous about
+ADJACENCY, keeping transferable-skill neighbours.
+
+**Field-agnostic by construction (the scaling invariant).** Adjacency is **derived
+from the per-profile data already in the agent's context** — `resume_profile` (the
+candidate's field + skills), `target_roles`, `seniority_signals` — and the prompt is
+forbidden from assuming any particular industry. The cybersecurity case (keep
+IT/SOC/GRC/audit/cloud/data/QA for an entry cyber grad) appears in the prompt **only
+as a labelled example**; the rule the model applies is generic ("keep a role sharing
+substantial transferable skills with THIS candidate's field; reserve `unrelated` for
+a clearly different profession"). This is what lets one shared prompt serve a large,
+heterogeneous user base without per-profile prompt edits — the profile-specific-ness
+lives in the DATA passed in, never in the prompt text. Two forcing-function tests pin
+this: one asserts the suitability calibration, one asserts the prompt stays
+field-agnostic (derives from `resume_profile`, "do not assume any industry",
+cyber only as an example). (It does NOT recommend roles — it widens what counts as
+suitable; proactive role/career-family recommendation is a separate, deferred
+capability.)
 
 ---
 
@@ -229,7 +239,7 @@ flowchart TB
 | Output schema | `RelevanceFilterResult { verdicts: list[RelevanceVerdict] }` |
 | Verdict | `RelevanceVerdict { job_id: str, keep: bool, mismatch: Literal["none","too_senior","too_junior","unrelated"], reason: str }` |
 | Seniority axis | **Bidirectional, profile-relative** — `too_senior` drops roles above an early-career profile's band; `too_junior` drops roles below a senior profile's band. Band inferred from the profile + `search.min/max_years_experience` + `exclude_senior`. |
-| Relevance axis | **Suitability, not keyword-match (prompt v2)** — `unrelated` drops roles genuinely UNSUITABLE for the candidate (a different profession with no transferable overlap), NOT roles merely outside `target_roles`. Weighted by career stage: adjacent transferable-skill roles (IT/SOC/GRC/cloud/data for an entry cyber grad) are KEPT, so the prefilter does not strand a candidate open to adjacent entry work. |
+| Relevance axis | **Suitability, not keyword-match (prompt v3, field-agnostic)** — `unrelated` drops roles in a clearly different profession with no transferable overlap, NOT roles merely outside `target_roles`. Adjacency is DERIVED from the candidate's own `resume_profile` (no hardcoded industry); weighted by career stage so adjacent transferable-skill roles are KEPT. The cyber keep-list is a labelled example only — one shared prompt scales to any field without per-profile edits. |
 | Decision bias | Conservative — drop only on a **clear** mismatch; keep when unsure (recall-biased, mirrors ADR-065) |
 
 ### Reliability — never lose a run to a filter fault
