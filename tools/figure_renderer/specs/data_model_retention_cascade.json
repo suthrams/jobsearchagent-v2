@@ -1,0 +1,24 @@
+{
+  "id": "data_model_retention_cascade",
+  "outDir": "docs/architecture/images",
+  "width": 2000,
+  "height": 900,
+  "layout": "scene",
+  "title": "Retention purge cascade: deleting a {{red:workflow_run}} deletes its children",
+  "headSub": "ADR-070. Purging a run on workflow_runs_days cascade-deletes every run-scoped child row. Observability tables are also swept earlier on observability_days; the run cascade catches any remainder. reports and run_metrics (one per run) go with the run too.",
+  "scene": {
+    "viewBox": [0, 0, 2000, 520],
+    "nodes": [
+      {"id": "root", "x": 60, "y": 180, "w": 520, "h": 150, "accent": "red", "focal": true, "icon": "database", "title": "workflow_runs", "sub": "purged on workflow_runs_days"},
+
+      {"id": "domain", "x": 720, "y": 40, "w": 1220, "h": 200, "accent": "blue", "icon": "doc", "title": "per-(run, job) + per-run rows", "sub": "job_scores - review_rounds - resume_reviews - career_advice - interview_prep - tailored_resumes (+ decision cols) - resume_clinic_reviews - human_decisions - reports - run_metrics"},
+
+      {"id": "obs", "x": 720, "y": 290, "w": 1220, "h": 190, "accent": "gray", "icon": "eye", "title": "observability rows", "sub": "step_executions - agent_events - llm_calls (also swept on observability_days; cascade catches any remainder)"}
+    ],
+    "edges": [
+      {"from": "root:right", "to": "domain:left", "accent": "red", "style": "thick", "label": "cascade delete"},
+      {"from": "root:right", "to": "obs:left", "accent": "red", "style": "thick"}
+    ]
+  },
+  "takeaway": {"icon": "shield", "accent": "red", "text": "One delete, full cleanup: the run is the cascade root, so {{red:purging it}} removes every child row in one transaction - no orphaned scores, reviews, or telemetry left behind."}
+}

@@ -1327,19 +1327,9 @@ When a run is purged, all rows that FK to its `workflow_run_id` are deleted in t
 same transaction, **children first then the parent** (referentially clean at every
 step):
 
-```text
-workflow_runs (purged on workflow_runs_days)
-  ├── job_scores
-  ├── review_rounds
-  ├── resume_reviews
-  ├── career_advice
-  ├── interview_prep
-  ├── tailored_resumes          (+ its decision columns)
-  ├── resume_clinic_reviews     (workflow_type="resume_clinic" correlation rows)
-  ├── human_decisions
-  └── step_executions / agent_events / llm_calls
-        (also swept earlier on observability_days; cascade catches any remainder)
-```
+![Retention purge cascade: deleting a workflow_runs row cascade-deletes its run-scoped children - job_scores, review_rounds, resume_reviews, career_advice, interview_prep, tailored_resumes, resume_clinic_reviews, human_decisions, reports, run_metrics, and the observability rows step_executions, agent_events and llm_calls (also swept earlier on observability_days). One delete, full cleanup.](images/data_model_retention_cascade.png)
+
+<sub>Figure source: `tools/figure_renderer/specs/data_model_retention_cascade.json`.</sub>
 
 `reports` / `run_metrics` (one per run) are deleted with their run as well.
 
