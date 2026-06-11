@@ -398,23 +398,28 @@ cheaper results.
 - Covered in [section 8](#8-start-a-workflow-run): **Min / Max years of
   experience** and **Exclude senior roles** narrow discovery to your career stage.
 
-### ATS-direct sources — Greenhouse & Lever (ADR-081)
+### ATS-direct sources — Greenhouse & Lever (ADR-081 / 097 / 098)
 
 - Source-of-truth employer feeds: listings are live and the apply link is the
   employer's own ATS page (no dead-link / rate-limit issues that aggregators can
-  have).
-- **Configured in `config/config.yaml`** (not the run form), per company:
-
-  ```yaml
-  scrapers:
-    greenhouse:
-      companies: [stripe, figma]   # board tokens from boards.greenhouse.io/<token>
-    lever:
-      companies: [leverdemo]       # slugs from jobs.lever.co/<slug>
-  ```
-
-- An empty list = off. Find a company's token/slug in its careers URL. These run
-  alongside Adzuna on every run; title relevance uses the run's roles.
+  have). They run alongside Adzuna on every run; title relevance uses the run's roles.
+- **The company list is per-profile and managed in the Settings UI** — no
+  `config.yaml` editing (ADR-098). Make sure the right profile is active in the
+  sidebar, then open **Settings -> "Target companies (ATS-direct)"**:
+  1. Expand **Greenhouse** or **Lever** to see the boards in your list. A brand-new
+     profile starts from the operator's curated default batch (ADR-097).
+  2. **Add a board:** type its **token/slug** (e.g. `stripe`) and click
+     **"Verify & add"**. It is checked against the live ATS first — a real board is
+     added with its open-job count; a dead/typo'd slug is rejected with a message,
+     so nothing silently contributes zero. Find the slug in the careers URL:
+     `boards.greenhouse.io/<token>` or `jobs.lever.co/<slug>`.
+  3. **Remove** boards with the multiselect, or untick **Enable ... sourcing for
+     this profile** to switch off that ATS without losing your list.
+- Saving **replaces** this profile's list for that ATS (so to keep the default plus
+  your own, add yours on top of the existing entries). The list resolves per run, so
+  an edit takes effect on your **next run with no restart**.
+- Maintenance: `python tools/verify_ats_boards.py` re-checks the configured boards
+  and flags dead ones to prune.
 
 ---
 
