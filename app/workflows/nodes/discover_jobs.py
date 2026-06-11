@@ -99,6 +99,7 @@ def make_discover_jobs_node(
                 min_years_experience=min_years,
                 max_posting_age_days=max_posting_age_days,
                 drop_dead_links=drop_dead_links,
+                exclude_senior=exclude_senior,
                 user_id=user_id,
             )
             # ADR-060: manual-selection mode casts a wider net (the user triages

@@ -115,6 +115,7 @@ def discovery_funnel_summary(stats) -> str:
     pairs = [
         ("title", "title_filter_dropped"),
         ("experience", "experience_filter_dropped"),
+        ("seniority", "seniority_title_dropped"),
         ("age", "age_filter_dropped"),
         ("relevance", "relevance_dropped"),
         ("dedup", "dedup_total_dropped"),

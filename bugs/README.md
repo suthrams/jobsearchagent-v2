@@ -55,3 +55,4 @@ ASCII only (repo convention).
 | [BUG-007](BUG-007-live-run-autorefresh-lambda-fragment.md) | Live Run Monitor never auto-refreshes (lambda passed to st.fragment) | Medium | Fixed | `tests/v2/test_ui_structure.py::test_live_monitor_autorefresh_uses_stable_fragment` |
 | [BUG-008](BUG-008-profile-reset-recurrence.md) | Profile selector STILL resets on navigation (BUG-006 fix insufficient) | High | Fixed | `tests/v2/test_ui_structure.py::test_profile_switcher_is_single_source_of_truth` |
 | [BUG-009](BUG-009-live-run-unreachable-after-declutter.md) | Live run unreachable from other screens after sidebar declutter | Medium | Fixed | none (runtime reachability; active-run chip jump restored) |
+| [BUG-010](BUG-010-truncated-snippet-defeats-clearance-and-experience-filters.md) | Truncated Adzuna snippet defeats clearance + experience filters (clearance + mid-level job slipped through) | High | Fixed | `tests/v2/test_bug010_title_filters.py` |

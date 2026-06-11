@@ -71,6 +71,7 @@ class JobDiscoveryService:
         min_years_experience: int | None = None,
         max_posting_age_days: int | None = None,
         drop_dead_links: bool = False,
+        exclude_senior: bool = False,
         user_id: str | None = None,
     ) -> list[JobPosting]:
         """Backward-compat wrapper. Returns postings only; discards stats.
@@ -89,6 +90,7 @@ class JobDiscoveryService:
             min_years_experience=min_years_experience,
             max_posting_age_days=max_posting_age_days,
             drop_dead_links=drop_dead_links,
+            exclude_senior=exclude_senior,
             user_id=user_id,
         )
         return postings
@@ -103,6 +105,7 @@ class JobDiscoveryService:
         min_years_experience: int | None = None,
         max_posting_age_days: int | None = None,
         drop_dead_links: bool = False,
+        exclude_senior: bool = False,
         user_id: str | None = None,
     ) -> tuple[list[JobPosting], dict]:
         """Run all scrapers, normalise, filter, dedupe, cap. Returns
@@ -175,6 +178,21 @@ class JobDiscoveryService:
                             min_years_experience, max_years_experience,
                             experience_filter_dropped, before_exp)
 
+        # ADR-065 extension (BUG-010): title-based seniority drop. The body-based
+        # experience filter above misses aggregator snippets truncated past the
+        # "5+ years" line; the TITLE ("... - Mid", "Analyst II", "Tier 3") is never
+        # truncated, so when an entry profile sets exclude_senior we also drop
+        # above-entry TITLES across ALL sources (Adzuna + ATS).
+        seniority_title_dropped = 0
+        if exclude_senior:
+            from app.services.seniority_filter import title_is_above_entry
+            before_sen = len(postings)
+            postings = [p for p in postings if not title_is_above_entry(p.title)]
+            seniority_title_dropped = before_sen - len(postings)
+            if seniority_title_dropped > 0:
+                logger.info("Seniority title filter dropped %d of %d postings (exclude_senior)",
+                            seniority_title_dropped, before_sen)
+
         # ADR-080: per-profile max posting age. Drop postings strictly older than
         # the cap; keep postings with no parseable posted_at (unknown age is not
         # penalized, mirroring the experience filter). Deterministic, no fetch.
@@ -219,6 +237,7 @@ class JobDiscoveryService:
             "scraper_raw_total":         scraper_raw_total,
             "title_filter_dropped":      title_filter_dropped,
             "experience_filter_dropped": experience_filter_dropped,
+            "seniority_title_dropped":   seniority_title_dropped,
             "age_filter_dropped":        age_filter_dropped,
             "dedup_total_dropped":       dedup_total_dropped,
             "dedup_batch_dropped":       dedup_stats["batch"],

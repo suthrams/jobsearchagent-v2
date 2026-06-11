@@ -10,6 +10,14 @@ Detection is keyword/phrase based and tuned for PRECISION over recall: it requir
 qualified phrase ("security clearance", "TS/SCI", "active Secret clearance",
 "polygraph", ...) rather than the bare word "clearance" or "secret", so it does not
 trip on "clearance sale" or "secret sauce" or the CompTIA "Security+" cert.
+
+Aggregator caveat (bugs/BUG-010): Adzuna stores only a ~500-char snippet, so the
+clearance sentence is frequently truncated away and body detection misses it. To
+recover the most common cleared-government-SOC case, a small set of high-precision
+TITLE signals ("watch floor", "watch officer", "SCIF", "cleared") is also matched -
+the title is never truncated. This stays best-effort on aggregators (a generic
+title with the requirement buried in the unseen body can still slip); ATS-direct
+full text is where detection is reliable.
 """
 from __future__ import annotations
 
@@ -30,11 +38,25 @@ _PATTERNS = [
 ]
 _CLEARANCE_RE = re.compile("|".join(_PATTERNS), re.IGNORECASE)
 
+# Title-only signals for cleared government work (BUG-010). High precision: each is
+# near-exclusively used by cleared DoD/IC roles. "watch floor"/"watch officer" are
+# 24/7 cleared SOC operations; "SCIF" is a secure compartmented facility; a bare
+# "cleared" in a title ("Cleared SOC Analyst") states it outright.
+_TITLE_PATTERNS = [
+    r"watch\s+floor", r"watch\s+officer", r"\bscif\b", r"\bcleared\b",
+]
+_CLEARANCE_TITLE_RE = re.compile("|".join(_TITLE_PATTERNS), re.IGNORECASE)
+
 
 def requires_clearance(description: str | None, title: str | None = None) -> bool:
     """True when the posting's title or description signals a required security
-    clearance. Deterministic; safe on None/empty (returns False)."""
+    clearance. Deterministic; safe on None/empty (returns False).
+
+    The body+title blob is matched against the full phrase set; the title is ALSO
+    matched against the gov-SOC title signals (BUG-010) so a truncated aggregator
+    snippet can't hide a cleared watch-floor role.
+    """
     blob = f"{title or ''}\n{description or ''}"
-    if not blob.strip():
-        return False
-    return _CLEARANCE_RE.search(blob) is not None
+    if blob.strip() and _CLEARANCE_RE.search(blob) is not None:
+        return True
+    return bool(title) and _CLEARANCE_TITLE_RE.search(title) is not None
