@@ -65,8 +65,8 @@ All decisions must be based on structured workflow state.
 
 The system supports decisions but does not make them.
 
-* Critical steps require user approval
-* The system must pause for user input when needed
+* Critical, irreversible steps require user approval (see Principle 19)
+* The workflow itself does not pause — the in-graph `interrupt()` was retired in ADR-059; human decisions happen out-of-graph, on demand, validated server-side
 * Avoid authoritative or deterministic language
 
 ---
@@ -170,6 +170,62 @@ The architecture should support future growth.
 * Modular agent design
 * Replaceable UI layer
 * Extensible workflow engine
+
+---
+
+# 16. Fix the Product, Not the Profile
+
+A defect or request surfaced by ONE user is a sample, not the scope.
+
+* Per-profile **configuration** is legitimately specific (`effective_config`, ADR-062)
+* Per-profile **logic, heuristics, and fixes are not** — never hardcode for the reporting profile
+* Extract the general class, fit it to the whole app, and state the boundary in the bug/ADR
+
+*Enforced by:* CLAUDE.md workflow rule; the BUG-010 / BUG-011 RCAs + their forcing-function tests.
+
+---
+
+# 17. Profile-Specificity Lives in Data, Not Shared Assets
+
+Shared assets (prompts, code, config defaults) stay field-agnostic.
+
+* A shared prompt **derives** its per-user behavior from the per-profile context it already receives (`resume_profile`, `target_roles`, `seniority_signals`) — it never hardcodes one profile's domain
+* This is the sharper instance of Principle 16 applied to LLM assets, and it is what lets one shared prompt serve a large, heterogeneous user base
+
+*Enforced by:* the relevance-filter prompt v3 + its field-agnostic forcing test (ADR-079); the two-layer `effective_config` (ADR-062).
+
+---
+
+# 18. Filter-Input, Not Outcome-Tracking
+
+The system accepts signals the user gives it; it never records outcomes about the user.
+
+* In scope: filters, exclusions, favorites, review-later — inputs the user → system
+* Out of scope: Apply / Save-status / applied / stage / outcome fields — the career decision stays human-owned
+
+*Enforced by:* the no-application-tracking rule; the favorites / review-later no-status schema forcing test (ADR-090, ADR-100).
+
+---
+
+# 19. Gate the Irreversible, Not Everything
+
+HITL is reserved for genuinely irreversible actions.
+
+* Repeatable, post-hoc operations run **out-of-graph** with no `interrupt()`, so the workflow never blocks
+* The human owns the decision (refines Principle 6), but the graph does not pause — decisions are validated server-side, on demand
+
+*Enforced by:* ADR-055 / ADR-059 / ADR-061 (the in-graph interrupt path was retired in ADR-059).
+
+---
+
+# 20. Prove Load-Bearing Promises at the Seam
+
+Module-mock tests are not enough for cross-cutting invariants.
+
+* Every load-bearing promise (PII redaction, model pins, no-status, idempotency, the directory-as-source bug index) gets a forcing-function / invariant test that spans the seam and fails the build on drift
+* Validate every LLM output against a Pydantic schema before it is persisted
+
+*Enforced by:* the PII source-scan test (ADR-069), the model-pin test (ADR-058), the no-status tests (ADR-090/100), and the schema-validation contract.
 
 ---
 

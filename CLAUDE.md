@@ -13,6 +13,7 @@ jobsearchagent-v2 is a multi-agent career intelligence system that helps users:
 This is a ground-up v2 refactor. The v1 runtime was retired in ADR-063; a small set of v1 libraries (the Adzuna/LinkedIn scrapers and the shared `models/` job schema + keyword filters) are kept because v2 imports them — see "Shared libraries from v1" below.
 
 For human-readable browseable documentation, see `docs/wiki.md`.
+**The durable design philosophy (the "why" behind the rules below) lives in `docs/architecture/principles.md`** — 20 principles, including the cross-cutting "Fix the product, not the profile", "Profile-specificity lives in data, not shared assets", "Filter-input, not outcome-tracking", and "Gate the irreversible, not everything". The rules and invariants in this file are the enforcement; principles.md is the reasoning. Read it when a decision isn't obviously covered by a rule.
 Cost is a primary operational concern — when API spend surprises happen, see `docs/cost_troubleshooting.md` (diagnosis) and `docs/model_recommendations.md` (per-agent model picks with rationale).
 
 ---
