@@ -225,6 +225,14 @@ class JobDiscoveryService:
                 logger.info("Dead-link filter dropped %d of %d postings",
                             dead_link_dropped, before_dead)
 
+        # ADR-102: source-fair round-robin BEFORE any cap, so the three
+        # order-sensitive truncations downstream (this _max_jobs cap, the
+        # discover_jobs node cap, the score_jobs scoring cap) no longer starve a
+        # later-appended source (Greenhouse/Lever) in favor of the always-first
+        # Adzuna. Reorders only - never drops - so the funnel counts are unchanged.
+        from app.services.source_interleave import interleave_by_source, source_mix
+        postings = interleave_by_source(postings)
+
         before_cap = len(postings)
         max_jobs_truncated = 0
         if len(postings) > self._max_jobs:
@@ -247,6 +255,9 @@ class JobDiscoveryService:
             "dead_link_samples":         dead_link_samples,
             "max_jobs_truncated":        max_jobs_truncated,
             "returned":                  len(postings),
+            # ADR-102: per-source counts of what survived to `returned`, so the
+            # source mix (and any residual cap bias) is observable on Workflow Detail.
+            "source_mix":                source_mix(postings),
             "user_id":                   user_id,
         }
         logger.info(
