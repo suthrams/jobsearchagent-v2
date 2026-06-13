@@ -116,7 +116,8 @@ def test_node_passes_cap_and_exclude_senior_from_effective_config():
     def _discover_with_stats(workflow_id, search_criteria, extra_scrapers=None,
                              skip_builtin_adzuna=False, max_years_experience=None,
                              min_years_experience=None, max_posting_age_days=None,
-                             drop_dead_links=False, exclude_senior=False, user_id=None):
+                             drop_dead_links=False, exclude_senior=False,
+                             restrict_to_profile_locations=True, user_id=None):
         cap["max_years"] = max_years_experience
         cap["exclude_senior"] = exclude_senior  # BUG-010: now threaded to the service
         return [], {}

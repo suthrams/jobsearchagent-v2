@@ -48,6 +48,11 @@ def make_discover_jobs_node(
         max_posting_age_days = _years("max_posting_age_days")  # ADR-080; 0/None = off
         exclude_senior = bool(_search_cfg.get("exclude_senior", False))
         drop_dead_links = bool(_search_cfg.get("drop_dead_links", False))  # ADR-095
+        # ADR-103: drop out-of-country postings (the ATS-direct global-board leak).
+        # Default ON; only ever drops a posting confidently in a country the
+        # profile's own locations did not ask for.
+        restrict_to_profile_locations = bool(
+            _search_cfg.get("restrict_to_profile_locations", True))
 
         # Per-run scrapers: build one CustomUrlScraper if URLs were provided.
         extra_scrapers: list[Any] = []
@@ -100,6 +105,7 @@ def make_discover_jobs_node(
                 max_posting_age_days=max_posting_age_days,
                 drop_dead_links=drop_dead_links,
                 exclude_senior=exclude_senior,
+                restrict_to_profile_locations=restrict_to_profile_locations,
                 user_id=user_id,
             )
             # ADR-060: manual-selection mode casts a wider net (the user triages

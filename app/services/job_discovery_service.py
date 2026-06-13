@@ -106,6 +106,7 @@ class JobDiscoveryService:
         max_posting_age_days: int | None = None,
         drop_dead_links: bool = False,
         exclude_senior: bool = False,
+        restrict_to_profile_locations: bool = True,
         user_id: str | None = None,
     ) -> tuple[list[JobPosting], dict]:
         """Run all scrapers, normalise, filter, dedupe, cap. Returns
@@ -207,6 +208,31 @@ class JobDiscoveryService:
                 logger.info("Posting-age cap (max_days=%s) dropped %d of %d postings",
                             max_posting_age_days, age_filter_dropped, before_age)
 
+        # ADR-103: profile-derived location filter. The ATS-direct scrapers return
+        # a company's entire GLOBAL board with no location gate, so out-of-country
+        # postings leak into an in-country profile. Derive the allowed country set
+        # from THIS profile's own search.locations and drop postings confidently
+        # resolved to a country it did not ask for. Uniform across all sources;
+        # keep-on-ambiguity (never-lose-the-run); empty allowed set = no-op.
+        location_dropped = 0
+        location_samples: list[dict] = []
+        if restrict_to_profile_locations:
+            from app.services.location_filter import (
+                derive_allowed_countries,
+                filter_by_location,
+            )
+            allowed = derive_allowed_countries(search_criteria.get("locations"))
+            if allowed:
+                before_loc = len(postings)
+                postings, location_dropped, location_samples = filter_by_location(
+                    postings, allowed
+                )
+                if location_dropped > 0:
+                    logger.info(
+                        "Location filter (allowed=%s) dropped %d of %d postings",
+                        sorted(allowed), location_dropped, before_loc,
+                    )
+
         before_dedup = len(postings)
         postings, dedup_stats = self._dedup_with_stats(postings, user_id=user_id)
         dedup_total_dropped = before_dedup - len(postings)
@@ -247,6 +273,8 @@ class JobDiscoveryService:
             "experience_filter_dropped": experience_filter_dropped,
             "seniority_title_dropped":   seniority_title_dropped,
             "age_filter_dropped":        age_filter_dropped,
+            "location_dropped":          location_dropped,
+            "location_samples":          location_samples,
             "dedup_total_dropped":       dedup_total_dropped,
             "dedup_batch_dropped":       dedup_stats["batch"],
             "dedup_excluded_dropped":    dedup_stats["excluded"],

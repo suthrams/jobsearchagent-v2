@@ -108,3 +108,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-100 | ["Review Later" List + On-Demand Rescue-to-Score](ADR-100-review-later-list-and-on-demand-rescue-to-score.md) | Accepted (implemented) |
 | ADR-101 | [Workday ATS-Direct Scraper](ADR-101-workday-ats-direct-scraper.md) | Proposed |
 | ADR-102 | [Source-Fair Discovery Ordering (Round-Robin Interleave Before the Caps)](ADR-102-source-fair-discovery-ordering.md) | Proposed |
+| ADR-103 | [Profile-Derived Location Filter (Drop Out-of-Country Postings at Discovery)](ADR-103-profile-location-country-filter.md) | Proposed |

@@ -82,7 +82,8 @@ def _node_with(capture: dict, factory):
     def _discover_with_stats(workflow_id, search_criteria, extra_scrapers=None,
                              skip_builtin_adzuna=False, max_years_experience=None,
                              min_years_experience=None, max_posting_age_days=None,
-                             drop_dead_links=False, exclude_senior=False, user_id=None):
+                             drop_dead_links=False, exclude_senior=False,
+                             restrict_to_profile_locations=True, user_id=None):
         capture["extra"] = list(extra_scrapers or [])
         capture["skip"] = skip_builtin_adzuna
         capture["max_years"] = max_years_experience

@@ -129,6 +129,20 @@ the ADR-079 relevance filter and scoring. The funnel `stats` gains
 `age_filter_dropped`. `posted_at` is persisted on the `jobs` row and surfaced as
 "Posted N days ago" + a stale badge on Job Detail.
 
+ADR-103 adds a default-on profile-derived location filter
+(`search.restrict_to_profile_locations`): a deterministic filter in
+`discover_with_stats` (after the age filter, before dedup) drops postings
+confidently resolved to a country the profile's own `search.locations` did not
+ask for, closing the ATS-direct global-board leak (Greenhouse/Lever return a
+company's worldwide listings with no location gate). Uniform across sources,
+keep-on-ambiguity, no network. The funnel `stats` gains `location_dropped` +
+`location_samples`.
+
+ADR-102 then interleaves the surviving postings round-robin by source
+(`source_interleave.interleave_by_source`) before the `_max_jobs` cap, so the
+three order-sensitive truncations (service cap, node cap, scoring cap) no longer
+starve a later-appended source. `stats` gains `source_mix`.
+
 ADR-081 adds opt-in ATS-direct sources (`GreenhouseScraper`/`LeverScraper`,
 `app/services/ats_scrapers.py`) built per run from `scrapers.{greenhouse,lever}.companies`.
 These are source-of-truth employer feeds (live apply links, full JD, no 429) — the
