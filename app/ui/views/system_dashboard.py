@@ -57,7 +57,7 @@ def _render_system_health() -> None:
 
 
 def render(ctx: ViewContext) -> None:
-    st.header("System Dashboard")
+    st.header("Dashboard")
     st.caption("Spend, security posture, performance, and reliability across all "
                "runs. Stored per run (correlation id), viewed system-level - "
                "scoped to the active profile unless you switch to all profiles.")

@@ -503,7 +503,7 @@ def render(ctx: ViewContext) -> None:
         st.caption(
             f"{agg['calls']} calls · {agg['tokens_input']:,} tokens in · "
             f"{agg['tokens_output']:,} tokens out · ~{int(agg['avg_latency_ms'])} ms avg latency. "
-            "See the **System Dashboard** view for cross-run trends."
+            "See the **Dashboard** view for cross-run trends."
         )
         cost_df = pd.DataFrame(breakdown["rows"])
         # Side-by-side: bar chart and numeric table, so both visual and exact reads work.

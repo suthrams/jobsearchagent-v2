@@ -189,7 +189,11 @@ Apply/Save/status tracking, because the career call stays human-owned.
 **Inside view — the screens and how they connect.** The same journey, expressed as
 the actual screens and navigation:
 
-![The jobseeker journey: the four sidebar groups (FIND, MY OPPORTUNITIES, RESUME, SYSTEM), the four click-through destinations, and how they connect. Matches is the home base; a finished run auto-opens its Search detail; any scored job opens an Opportunity.](images/ui_jobseeker_flow.png)
+![The jobseeker journey: the four sidebar groups (FIND, MY OPPORTUNITIES, JOB SEEKER, SYSTEM), the four click-through destinations, and how they connect. Matches is the home base; a finished run auto-opens its Search detail; any scored job opens an Opportunity.](images/ui_jobseeker_flow.png)
+
+> Note: the rendered diagram above predates the sidebar relabel and still shows the
+> earlier group label `RESUME` (now `JOB SEEKER`) and `System Dashboard` (now
+> `Dashboard`). Internal view names are unchanged; only the user-facing labels moved.
 
 *The jobseeker flows at a glance — sidebar groups are color-coded (green FIND, blue
 MY OPPORTUNITIES, magenta RESUME, gray SYSTEM); the amber band holds the

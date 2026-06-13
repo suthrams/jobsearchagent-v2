@@ -42,7 +42,7 @@ OPERATOR_SECTION = "SYSTEM"
 NAV_GROUPS: dict[str, list[str]] = {
     "FIND": ["Start New Run", "Workflow History"],
     "MY OPPORTUNITIES": ["Matches", "Review Later"],
-    "RESUME": ["Resume Clinic", "Profiles"],
+    "JOB SEEKER": ["Resume Clinic", "Profiles"],
     OPERATOR_SECTION: ["Settings", "System Dashboard"],
 }
 
@@ -70,7 +70,7 @@ DISPLAY_TITLE: dict[str, str] = {
     "Profiles": "Profiles",
     # operator group (below the rule)
     "Settings": "Settings",
-    "System Dashboard": "System Dashboard",
+    "System Dashboard": "Dashboard",
     # destinations (hidden from the sidebar)
     "Workflow Detail": "Search detail",
     "Opportunity": "Opportunity",
