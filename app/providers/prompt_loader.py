@@ -39,6 +39,7 @@ class PromptLoader:
         self._prompts_dir = prompts_dir
         self._file_cache: dict[str, str] = {}    # absolute path → raw file content
         self._versions: dict[str, int] = {}      # agent_name → parsed version int
+        self._guardrails_version: int | None = None  # parsed once on first load
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -109,13 +110,23 @@ class PromptLoader:
         return messages
 
     def get_version(self, agent_name: str) -> str:
-        """Return the version string for this agent, e.g. "scoring_agent:v1".
+        """Return the version string for this agent, e.g. "scoring_agent:v2+g1".
 
-        Triggers a file load if the agent prompt has not been accessed yet.
+        The "+g{N}" suffix is the SHARED guardrails version, prepended to every
+        agent, so a guardrails edit is observable in llm_calls (it changes every
+        agent's recorded prompt_version). Triggers a file load if the agent prompt
+        or guardrails has not been accessed yet. If guardrails is absent (some test
+        fixtures), the suffix is omitted rather than raising.
         """
         if agent_name not in self._versions:
             self._load_agent_prompt(agent_name)
-        return f"{agent_name}:v{self._versions[agent_name]}"
+        if self._guardrails_version is None:
+            try:
+                self._load_guardrails()
+            except FileNotFoundError:
+                pass
+        suffix = "" if self._guardrails_version is None else f"+g{self._guardrails_version}"
+        return f"{agent_name}:v{self._versions[agent_name]}{suffix}"
 
     # ── Message construction ──────────────────────────────────────────────────
 
@@ -137,9 +148,17 @@ class PromptLoader:
     # ── File loading and caching ──────────────────────────────────────────────
 
     def _load_guardrails(self) -> str:
-        """Load shared/guardrails.txt, cached after first read."""
+        """Load shared/guardrails.txt, parse + strip its version line, cache.
+
+        The version line (if present) must NOT leak into the assembled prompt, so
+        it is stripped exactly like an agent prompt's. The parsed integer feeds the
+        "+g{N}" suffix in get_version so guardrails edits are telemetry-visible.
+        """
         path = self._prompts_dir / "shared" / "guardrails.txt"
-        return self._read_file(path)
+        raw = self._read_file(path)
+        if self._guardrails_version is None:
+            self._guardrails_version = self._extract_version(raw)
+        return self._strip_version_line(raw)
 
     def _load_agent_prompt(self, agent_name: str) -> str:
         """Load agents/{agent_name}.txt, strip version tag, cache content."""

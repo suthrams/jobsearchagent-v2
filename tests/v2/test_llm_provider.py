@@ -127,7 +127,9 @@ def test_version_extracted_from_file_header(tmp_path):
     prompts_dir = _write_prompts(tmp_path, version=3)
     loader = PromptLoader(prompts_dir)
     loader.assemble("test_agent", {})  # triggers file load
-    assert loader.get_version("test_agent") == "test_agent:v3"
+    # "+g1" is the shared guardrails version (fixture guardrails has no version line
+    # so it defaults to 1); it makes a guardrails edit observable in prompt_version.
+    assert loader.get_version("test_agent") == "test_agent:v3+g1"
 
 
 def test_version_defaults_to_1_when_header_absent(tmp_path):
@@ -139,7 +141,7 @@ def test_version_defaults_to_1_when_header_absent(tmp_path):
     (prompts_dir / "agents" / "noversion.txt").write_text("# Role\nAgent.", encoding="utf-8")
     loader = PromptLoader(prompts_dir)
     loader.assemble("noversion", {})
-    assert loader.get_version("noversion") == "noversion:v1"
+    assert loader.get_version("noversion") == "noversion:v1+g1"
 
 
 def test_version_line_stripped_from_system_message(tmp_path):

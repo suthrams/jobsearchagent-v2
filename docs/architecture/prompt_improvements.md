@@ -4,7 +4,13 @@ Point-in-time critical review of all 14 prompts (`app/prompts/shared/guardrails.
 + 13 agent prompts), 2026-06-12. Design contract lives in
 [prompt_and_guardrails_model.md](prompt_and_guardrails_model.md); this doc is the
 **why / before / after / how-to-measure** for the improvements that review found.
-Nothing here is implemented yet — it is the backlog and the measurement plan.
+
+> **Status: all groups implemented 2026-06-12.** Group A defects are recorded in
+> `bugs/BUG-014`. Each behavior change bumped its prompt `# version:` (and the
+> shared guardrails is now versioned, surfaced as the `+g{N}` suffix), so the
+> before/after is sliceable in `llm_calls.prompt_version`. Forcing tests:
+> `test_bug014_prompt_schema_alignment.py` (A), `test_prompt_field_agnostic.py` (B).
+> The measurement plan below stands as the way to evaluate impact going forward.
 
 ## How we measure a prompt change at all
 

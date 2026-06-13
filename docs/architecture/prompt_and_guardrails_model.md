@@ -301,14 +301,23 @@ absolute claims
 
 ## 13. Prompt Versioning
 
-Every prompt must have a version.
+Every prompt must have a version — including the shared `guardrails.txt` (added
+2026-06-12). The `PromptLoader` parses the `# version: N` header from both the
+agent prompt and the guardrails file and strips it from the assembled prompt so it
+never reaches the model.
 
 ### Format
 
 ```text id="0m4n6l"
 agent_name:v1
-agent_name:v2
+agent_name:v2+g1     # the "+g{N}" suffix is the shared guardrails version
 ```
+
+Because guardrails is prepended to EVERY agent, its version rides along as the
+`+g{N}` suffix on each agent's recorded `prompt_version`. A guardrails edit
+therefore bumps the recorded version of every agent in the same run, making the
+change observable in `llm_calls.prompt_version` (previously a guardrails edit was
+invisible to telemetry).
 
 ---
 
