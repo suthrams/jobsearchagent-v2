@@ -422,7 +422,9 @@ cheaper results.
      Workday returns the **full job description**, so it is the source of truth for
      cleared-government and most F500 employers whose clearance/experience requirements
      get truncated in aggregator snippets. The URL is parsed + verified live; a
-     non-Workday URL is rejected.
+     non-Workday URL is rejected. **Workday ships with no default boards** (the
+     cleared-gov boards would be noise for non-cleared profiles), so you opt in by
+     pasting from the verified starter set below.
   4. **Remove** boards with the multiselect, or untick **Enable ... sourcing for
      this profile** to switch off that source without losing your list.
 - Saving **replaces** this profile's list for that source (so to keep the default plus
@@ -437,6 +439,21 @@ cheaper results.
   appears as a **Source** column in the **Matches -> Roles** table and the **Workflow
   Detail -> all discovered jobs** table, and on each Matches focus card + the
   Opportunity page. That's how you tell which of your boards actually produced a match.
+
+**Verified Workday starter set** (live-checked 2026-06-13). Workday ships with no
+default boards, so paste the ones relevant to you into the Settings Workday add form —
+the cleared-gov boards are the BUG-010 root-cause fix (full JDs the
+clearance/experience filters can read), the commercial ones are general. Re-check any
+board with `python tools/verify_ats_boards.py <url>`:
+
+| Employer | Career URL to paste | Type |
+|---|---|---|
+| Booz Allen | `https://bah.wd1.myworkdayjobs.com/BAH_Jobs` | cleared-gov |
+| Leidos | `https://leidos.wd5.myworkdayjobs.com/External` | cleared-gov |
+| CACI | `https://caci.wd1.myworkdayjobs.com/External` | cleared-gov |
+| GDIT | `https://gdit.wd5.myworkdayjobs.com/External_Career_Site` | cleared-gov |
+| NVIDIA | `https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite` | commercial |
+| Sony | `https://sonyglobal.wd1.myworkdayjobs.com/SonyGlobalCareers` | commercial |
 
 ---
 

@@ -115,6 +115,10 @@ scrapers:
     # by pasting the career URL in Settings -> "Target companies" (verify-on-add).
     # Ships OFF (empty list) - per-profile opt-in; full job descriptions vs Adzuna's
     # truncated snippet, the root-cause fix for cleared / senior requirement text.
+    # A verified opt-in starter batch (defense + commercial) is documented in
+    # docs/user_guide.md -> "Target companies -> Workday" and ADR-101; it is
+    # DELIBERATELY not enabled here (defense boards would be noise for non-cleared
+    # profiles). To opt a profile in, add boards from the Settings UI.
     enabled: true
     companies: []
 

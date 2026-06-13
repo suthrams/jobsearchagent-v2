@@ -136,8 +136,32 @@ returned triple; existing boards shown as `tenant/site`). ADR-099 `source_label`
   never-lose-the-run + the shared `verify_ats_board` health check), and real-volume
   rate-limiting is unproven (mitigated by the caps; revisit if it bites).
 
+## Curated opt-in starter batch (2026-06-13)
+
+Live-verified after the scraper was proven in a real run. **Deliberately NOT shipped as
+a config default** — unlike the ADR-097 Greenhouse/Lever batch (broadly-relevant
+commercial tech, on by default), the high-value Workday boards are defense contractors
+whose jobs are noise for every non-cleared profile. Shipping them on-by-default would
+hardcode one profile's use-case into a shared asset, violating the "profile-specifics
+live in data, not shared assets / fix the product, not the profile" principle. So the
+config default stays **empty**; this batch is a documented, copy-paste **opt-in** set a
+profile adds via the Settings Workday add form. Canonical list (career URLs to paste)
+lives in `docs/user_guide.md` -> "Target companies -> Workday"; re-verify any one with
+`python tools/verify_ats_boards.py <career-url>`.
+
+| Board | Career URL | Type | Open jobs (2026-06-13) |
+|---|---|---|---|
+| Booz Allen | `https://bah.wd1.myworkdayjobs.com/BAH_Jobs` | defense | 1,976 |
+| Leidos | `https://leidos.wd5.myworkdayjobs.com/External` | defense | 2,000 |
+| CACI | `https://caci.wd1.myworkdayjobs.com/External` | defense | 1,533 |
+| GDIT | `https://gdit.wd5.myworkdayjobs.com/External_Career_Site` | defense | 1,018 |
+| NVIDIA | `https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite` | commercial | 2,000 |
+| Sony | `https://sonyglobal.wd1.myworkdayjobs.com/SonyGlobalCareers` | commercial | 90 |
+
 ## Follow-ups (separate)
 
-- Curate + live-verify a default Workday board batch (the ADR-097 equivalent), once the
-  scraper is proven in a real run.
-- The 3-part-id verify-on-add UX may want a dedicated test (parser + host-validation).
+- Expand the opt-in batch with more cleared-gov + commercial Workday tenants (SAIC,
+  Northrop, RTX, Lockheed, Peraton, ManTech, Parsons, ...), each researched for its real
+  career URL then live-verified. Stays opt-in/documented, not a config default.
+- Consider a CI re-verification hook for the documented batch (it is NOT in config, so
+  `tools/verify_ats_boards.py`'s config path does not cover it today).
