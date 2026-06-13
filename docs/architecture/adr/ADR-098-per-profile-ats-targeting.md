@@ -17,6 +17,16 @@ company list **per-profile** and **entirely UI-managed**.
    deep-merge already treats a non-dict list value as a replace), so a profile that
    overrides starts from its own list, not "default + mine".
 
+**Implementation correction (2026-06-12, BUG-012).** This ADR assumed the kickoff
+resolved the run's `effective_config` via `ConfigService.get_effective_config(user_id)`.
+It did not: `start_workflow` persisted the UI-built partial config (scoring + search
+only) as-is, so the per-profile `scrapers` subtree never reached `discover_jobs` and
+ATS discovery fell back to the **system** curated batch — per-profile targeting was a
+no-op through the UI. Fixed by resolving the full config server-side at kickoff
+(`ConfigService.resolve_run_config`, a deep-merge of the body over the profile's
+effective config). The per-run resolution this ADR depends on is now real. See
+`bugs/BUG-012-kickoff-drops-per-profile-scrapers-subtree.md`.
+
 ## Context — the gap ADR-097 left
 
 ADR-081 built the ATS-direct scrapers; ADR-097 curated a live-verified batch and

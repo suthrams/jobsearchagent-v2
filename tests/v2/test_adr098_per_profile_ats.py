@@ -155,6 +155,59 @@ def test_effective_config_override_replaces_default_list(tmp_path):
         ["aaa", "bbb", "ccc"]
 
 
+# ── kickoff seam (BUG-012): the per-run config must carry the profile's ─────────
+# scrapers subtree even when the caller (Start-run UI) assembles only scoring +
+# search. The node seam above was always correct; the bug was that the kickoff
+# never put scrapers INTO effective_config, so the node read an empty subtree and
+# the factory fell back to the system default. These pin resolve_run_config, the
+# server-side merge that closes that gap.
+
+def _svc_with_profile_scrapers(tmp_path):
+    cfg = tmp_path / "config.yaml"
+    cfg.write_text(
+        "scrapers:\n"
+        "  greenhouse:\n"
+        "    enabled: true\n"
+        "    companies: [sys-default-a, sys-default-b]\n"
+        "search:\n"
+        "  max_discovered: 50\n"
+        "scoring:\n"
+        "  max_scored: 10\n",
+        encoding="utf-8",
+    )
+    db = tmp_path / "v2.db"
+    from app.repositories.database import init_db
+    init_db(db)
+    from app.repositories.config_repository import ConfigRepository
+    ConfigRepository(db).upsert(
+        "user_1__scrapers.greenhouse.companies", "1",
+        "scrapers.greenhouse.companies", ["profile-cyber-board"],
+    )
+    return ConfigService(config_path=cfg, db_path=db)
+
+
+def test_resolve_run_config_preserves_profile_scrapers_when_body_omits_them(tmp_path):
+    """The UI sends only scoring + search; the profile's scrapers subtree must
+    still reach the run (the BUG-012 regression guard)."""
+    svc = _svc_with_profile_scrapers(tmp_path)
+    body = {"scoring": {"max_scored": 6}, "search": {"relevance_filter": True}}
+    resolved = svc.resolve_run_config("1", body)
+    # Profile's per-profile ATS list survives even though body had no scrapers key.
+    assert resolved["scrapers"]["greenhouse"]["companies"] == ["profile-cyber-board"]
+    # Body overrides still win where supplied.
+    assert resolved["scoring"]["max_scored"] == 6
+    assert resolved["search"]["relevance_filter"] is True
+
+
+def test_resolve_run_config_body_scrapers_override_wins(tmp_path):
+    """When the body DOES carry a scrapers override, it replaces the profile list
+    (replace semantics, consistent with the deep-merge contract)."""
+    svc = _svc_with_profile_scrapers(tmp_path)
+    body = {"scrapers": {"greenhouse": {"companies": ["adhoc-board"]}}}
+    resolved = svc.resolve_run_config("1", body)
+    assert resolved["scrapers"]["greenhouse"]["companies"] == ["adhoc-board"]
+
+
 # ── verify-on-add endpoint ─────────────────────────────────────────────────────
 
 def test_verify_endpoint_accepts_live_slug(monkeypatch):

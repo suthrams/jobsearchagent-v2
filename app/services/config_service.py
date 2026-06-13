@@ -59,6 +59,31 @@ class ConfigService:
         merged = self._deep_merge(base, overrides)
         return self._enforce_limits(merged)
 
+    def resolve_run_config(
+        self, user_id: str | None, run_overrides: dict | None
+    ) -> dict:
+        """Resolve the full per-run effective config for a workflow kickoff.
+
+        Starts from the acting profile's complete effective config
+        (get_effective_config) and deep-merges the kickoff's partial
+        `run_overrides` on top (overrides win per key). This guarantees that any
+        subtree the caller did NOT assemble still reaches the run from the
+        profile rather than silently falling back to a system default.
+
+        Motivating bug (BUG-012): the Start-run UI hand-builds `effective_config`
+        with only the `scoring` + `search` subtrees, so the per-profile
+        `scrapers` subtree (ADR-098 ATS company lists) never reached
+        `discover_jobs` and ATS discovery fell back to the system curated batch.
+        Resolving the full config server-side fixes the whole class - any future
+        per-profile subtree the caller omits is preserved, not just scrapers.
+
+        Limits are re-enforced after the merge so a caller-supplied funnel-width
+        knob is clamped consistently with get_effective_config.
+        """
+        base = self.get_effective_config(user_id)
+        merged = self._deep_merge(base, run_overrides or {})
+        return self._enforce_limits(merged)
+
     def _load_yaml(self) -> dict:
         if not self._config_path.exists():
             raise FileNotFoundError(

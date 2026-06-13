@@ -279,7 +279,7 @@ Content-Type: application/json
 | `resume_id` | string | yes | ID of the parsed resume to use |
 | `search_criteria` | object | yes | Passed to `JobDiscoveryService.discover()` |
 | `workflow_type` | string | no | Default: `"full_career_review"` |
-| `effective_config` | object | no | Config overrides; merged with `config.yaml` defaults. Default: `{}`. Use `effective_config.scoring.min_match_score` (default 75) to set the per-run deep-review / interview-prep threshold (any **active** track score ≥ this qualifies). `effective_config.scoring.tracks` (ADR-071) sets the profile's active-track subset; inactive tracks are scored `null`. |
+| `effective_config` | object | no | Per-run config **overrides**. The server deep-merges this over the acting profile's full effective config (`ConfigService.resolve_run_config`, BUG-012), so you only send the subtrees you want to change; un-sent subtrees (e.g. `scrapers`, ADR-098) come from the profile, not a system default. Default: `{}`. Use `effective_config.scoring.min_match_score` (default 75) to set the per-run deep-review / interview-prep threshold (any **active** track score ≥ this qualifies). `effective_config.scoring.tracks` (ADR-071) sets the profile's active-track subset; inactive tracks are scored `null`. |
 | `custom_urls` | string[] | no | Up to 25 absolute URLs (LinkedIn, company career pages, ATS pages, etc.). Each is fetched and parsed via heuristics (JSON-LD, OpenGraph) → Claude (sonnet) fallback. Per-URL failures are logged in `errors[]` and do not abort the run. Default: `[]`. |
 
 **Response — 202 Accepted**

@@ -355,6 +355,14 @@ def start_workflow(
     # writes the full picture to workflow_runs.
     effective_with_agents = dict(body.effective_config or {})
     effective_with_agents["agents"] = snapshot_agents
+    # BUG-012: the kickoff body carries only the subtrees the caller assembled
+    # (the Start-run UI sends scoring + search). Resolve the FULL per-run config by
+    # deep-merging that partial over the acting profile's effective config, so any
+    # un-overridden per-profile subtree - notably `scrapers` (ADR-098 ATS company
+    # lists) - reaches discover_jobs instead of falling back to the system default.
+    effective_with_agents = ConfigService().resolve_run_config(
+        user_id, effective_with_agents
+    )
     body = body.model_copy(update={"effective_config": effective_with_agents})
 
     workflow_id = str(uuid.uuid4())

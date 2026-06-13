@@ -200,11 +200,25 @@ UI must NOT:
 
 ## 10. Injection into Workflow
 
-Effective config is injected into workflow state:
+Effective config is injected into workflow state at kickoff. The kickoff body
+carries only the subtrees the caller assembled (the Start-run UI sends
+`scoring` + `search`), so `start_workflow` resolves the FULL per-run config by
+deep-merging that partial over the profile's complete effective config:
 
 ```python
-state.effective_config = get_effective_config(user_id)
+# app/api/routers/workflows.py::start_workflow
+state.effective_config = ConfigService().resolve_run_config(user_id, body_overrides)
+# == deep_merge(get_effective_config(user_id), body_overrides), overrides win,
+#    limits re-enforced
 ```
+
+This is the authoritative per-run resolution. It guarantees that any
+un-overridden per-profile subtree the caller omits — notably `scrapers`
+(ADR-098 ATS company lists) — still reaches `discover_jobs` from the profile
+instead of falling back to a system default. Before BUG-012 the kickoff persisted
+the UI-built partial config as-is, so the per-profile `scrapers` subtree was
+dropped and ATS discovery silently used the system curated batch
+(`bugs/BUG-012-kickoff-drops-per-profile-scrapers-subtree.md`).
 
 Agents receive only relevant portions.
 
