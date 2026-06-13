@@ -19,6 +19,7 @@ from app.ui.data import (
     _cached_cost_breakdown,
     _cached_review_later,
     _cached_run_metrics,
+    _cached_step_executions,
     _cached_workflow_detail,
     _cached_workflow_jobs,
 )
@@ -66,12 +67,18 @@ def render(ctx: ViewContext) -> None:
     h1.markdown(f"### {icon} `{status}`")
     h2.caption(f"Started: {(record or {}).get('started_at', '—')}")
 
-    # Report is a click-through destination (ADR-088); surface its entry here on the
-    # run page so any run's report is reachable, not just the active one. Run report
-    # reads st.session_state.workflow_id, so adopt this run before navigating.
+    # Report + Live activity are click-through destinations (ADR-088); surface their
+    # entries here so any run's report and live-style activity feed are reachable, not
+    # just the active one. Both read st.session_state.workflow_id, so adopt this run
+    # before navigating. The Live monitor is otherwise only reachable from the active-run
+    # widget, so this is the path back to it once a run has finished.
+    b1, b2 = st.columns(2)
     if status in ("completed", "completed_with_errors"):
-        if st.button("📄 View run report", key=f"open_report_{wf_id}"):
+        if b1.button("📄 View run report", key=f"open_report_{wf_id}"):
             _navigate("Run Report", workflow_id=wf_id, last_status=status)
+    if b2.button("📡 Open live activity view", key=f"open_live_{wf_id}",
+                 help="Step + agent-event activity feed (auto-refreshes while a run is active)."):
+        _navigate("Live Run Monitor", workflow_id=wf_id, last_status=status)
 
     metrics = summary_metrics(state)
     g1, g2, g3, g4 = st.columns(4)
@@ -527,6 +534,38 @@ def render(ctx: ViewContext) -> None:
                     "Cost ($)": st.column_config.NumberColumn(format="$%.4f"),
                     "Avg latency": st.column_config.NumberColumn(format="%d ms"),
                 },
+            )
+
+    # Step timeline (ADR-074 step_executions): per-node started/completed timestamps
+    # + duration for THIS run, the data the Live monitor shows live. Surfaced here so a
+    # finished run's per-step timing is inspectable from its detail page, not only the
+    # live feed. Read-only; from GET /workflows/{id}/steps.
+    steps_df = _cached_step_executions(wf_id)
+    with st.expander(
+        "Step timeline" + (f" — {len(steps_df)} step(s)" if not steps_df.empty else ""),
+        expanded=False,
+    ):
+        if steps_df.empty:
+            st.caption("No step executions recorded for this run "
+                       "(likely a pre-instrumentation legacy run).")
+        else:
+            _STATUS_ICON = {"completed": "✅", "failed": "❌", "started": "🔄"}
+            tl = steps_df.copy()
+            tl[""] = tl["status"].map(_STATUS_ICON).fillna("⚪")
+            # Show wall-clock times (HH:MM:SS); the full date is in started_at if needed.
+            tl["Started"] = tl["started_at"].astype(str).str.slice(11, 19)
+            tl["Completed"] = (tl["completed_at"].astype(str).str.slice(11, 19)
+                               if "completed_at" in tl else "")
+            tl["Duration"] = tl["duration_ms"].apply(
+                lambda x: f"{int(x):,} ms" if pd.notna(x) and x else "—"
+            )
+            total_ms = tl["duration_ms"].dropna().sum() if "duration_ms" in tl else 0
+            st.caption(f"{len(tl)} steps · {total_ms / 1000:.1f}s total node time "
+                       "(node boundaries; excludes between-node overhead).")
+            st.dataframe(
+                tl[["", "step", "status", "Started", "Completed", "Duration"]]
+                .rename(columns={"step": "Step", "status": "Status"}),
+                hide_index=True, use_container_width=True,
             )
 
     # Limits & Constraints — keep open when something fired so the user notices
