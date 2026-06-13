@@ -290,7 +290,28 @@ def test_prompt_judges_suitability_and_adjacency_not_keyword_match():
     # ...and target_roles must be explicitly NOT a hard boundary.
     assert "not a hard boundary" in low or "not merely" in low
     # Prompt version was bumped so the change is observable in llm_calls.
-    assert prompt.lstrip().startswith("# version: 3")
+    assert prompt.lstrip().startswith("# version: 4")
+
+
+def test_prompt_strict_seniority_on_truncated_text_for_early_career():
+    """Forcing function (ADR-104): the relevance prompt must (a) allow world-knowledge
+    of a role's TYPICAL seniority on the SENIORITY axis when the text is truncated/
+    silent, and (b) prefer PRECISION (drop too_senior on ambiguity) for an
+    early-career candidate. Guards the over-experienced-jobs leak (Adzuna 500-char
+    snippets hide the years requirement). Must stay field-agnostic.
+    """
+    from pathlib import Path
+
+    prompt = (Path(__file__).resolve().parents[2]
+              / "app" / "prompts" / "agents" / "relevance_filter.txt").read_text(encoding="utf-8")
+    low = prompt.lower()
+    # (a) truncated-text world-knowledge on the seniority axis.
+    assert "truncat" in low
+    assert "typical" in low
+    # (b) precision over recall for early-career seniority.
+    assert "precision" in low and "early-career" in low
+    # Still field-agnostic (no industry assumption baked into the new rule).
+    assert "do not assume any particular industry" in low
 
 
 def test_prompt_is_field_agnostic_not_hardcoded_per_profile():

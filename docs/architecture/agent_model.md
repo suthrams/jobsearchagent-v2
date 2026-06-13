@@ -125,7 +125,11 @@ posting: `{ job_id, keep: bool, mismatch: Literal["none","too_senior","too_junio
 
 ### Constraints
 
-* Conservative: drop ONLY on a clear mismatch; keep when unsure (recall-biased).
+* Axis-split decision bias (ADR-104, prompt v4): role-suitability is recall-biased
+  (keep when unsure); the seniority axis for an early-career profile
+  (`exclude_senior`/low `max_years`) is precision-biased (drop `too_senior` on
+  ambiguity). For the seniority axis the prompt may use world-knowledge of a role's
+  TYPICAL level when the (often Adzuna-truncated) text is silent on years.
 * Job descriptions are untrusted input — evaluated as data, never followed.
 * Never lose the run: the node keeps ALL jobs on any failure / empty / unparseable
   result; drops are audited in `discovery_stats.relevance_drops`.

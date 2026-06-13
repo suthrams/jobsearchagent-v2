@@ -109,3 +109,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-101 | [Workday ATS-Direct Scraper](ADR-101-workday-ats-direct-scraper.md) | Proposed |
 | ADR-102 | [Source-Fair Discovery Ordering (Round-Robin Interleave Before the Caps)](ADR-102-source-fair-discovery-ordering.md) | Proposed |
 | ADR-103 | [Profile-Derived Location Filter (Drop Out-of-Country Postings at Discovery)](ADR-103-profile-location-country-filter.md) | Proposed |
+| ADR-104 | [Strict Seniority Judgment in the Relevance Filter (World-Knowledge When Text Is Truncated)](ADR-104-strict-seniority-judgment-on-truncated-text.md) | Proposed |
