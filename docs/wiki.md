@@ -174,6 +174,7 @@ isolated memory, history, and config overrides.
 |---|---|
 | [architecture/config_model.md](architecture/config_model.md) | Three-layer hybrid config — YAML defaults + DB overrides + locked limits; ConfigService; user-configurable vs locked settings; UI integration |
 | [architecture/prompt_and_guardrails_model.md](architecture/prompt_and_guardrails_model.md) | Prompt design philosophy (prompts are architecture); shared guardrails injection into every agent; agent role/task/constraint/schema template; prompt versioning; injection defense |
+| [architecture/prompt_improvements.md](architecture/prompt_improvements.md) | Point-in-time critical review of all 14 prompts (2026-06-12): the why / before / after / how-to-measure for each improvement; how to measure a prompt change via existing telemetry (schema-repair rate, output tokens, version tags, before/after validation runs); rollout grouping |
 
 **Config layers:**
 

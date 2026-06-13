@@ -2,6 +2,10 @@
 
 ---
 
+> Improvement backlog: a point-in-time critical review of all 14 prompts (why /
+> before / after / how-to-measure) lives in
+> [prompt_improvements.md](prompt_improvements.md).
+
 ## 1. Purpose
 
 This document defines how prompts and guardrails are designed, structured, and enforced in **jobsearchagent-v2**.
