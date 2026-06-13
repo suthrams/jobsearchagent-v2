@@ -59,3 +59,4 @@ ASCII only (repo convention).
 | [BUG-011](BUG-011-settings-locations-comma-split-corrupts-city-state.md) | Settings locations field comma-splits, corrupting "City, State" | High | Fixed | `tests/v2/test_bug011_locations_input.py` |
 | [BUG-012](BUG-012-kickoff-drops-per-profile-scrapers-subtree.md) | Workflow kickoff drops the per-profile scrapers subtree (ATS targeting reverts to system default) | High | Fixed | `tests/v2/test_adr098_per_profile_ats.py::test_resolve_run_config_preserves_profile_scrapers_when_body_omits_them` |
 | [BUG-013](BUG-013-roles-input-comma-split-corrupts-titles.md) | Roles/titles input comma-splits, corrupting titles that contain a comma | Medium | Fixed | `tests/v2/test_bug013_roles_input.py` |
+| [BUG-014](BUG-014-prompt-output-fields-drifted-from-schema.md) | Prompt output instructions named fields absent from the agent's schema | Medium | Fixed | `tests/v2/test_bug014_prompt_schema_alignment.py` |
