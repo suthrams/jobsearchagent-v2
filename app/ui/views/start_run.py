@@ -10,7 +10,7 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.ui.data import _cached_user_resumes, _get_config_cached
-from app.ui.formatting import locations_to_text, parse_locations_input
+from app.ui.formatting import lines_to_text, parse_lines_input
 from app.ui.nav import ViewContext, _navigate
 
 
@@ -22,11 +22,12 @@ def render(ctx: ViewContext) -> None:
     search_cfg = eff.get("search", {}) or {}
     scoring_cfg = eff.get("scoring", {}) or {}
 
-    _default_roles = ", ".join(search_cfg.get("titles", []))
-    # ADR-064/BUG-011: locations are one-per-line so "City, State" survives (a comma
-    # split would shatter "Atlanta, GA" into "Atlanta" + "GA"). Shared seam with the
-    # Settings page via parse_locations_input / locations_to_text.
-    _default_locations = locations_to_text(search_cfg.get("locations", []))
+    # BUG-011/013: list-style fields (roles, locations) are one-per-line, never
+    # comma-split, so a comma INSIDE an item survives ("Atlanta, GA";
+    # "Director, Engineering"). Shared seam with the Settings page via
+    # parse_lines_input / lines_to_text.
+    _default_roles = lines_to_text(search_cfg.get("titles", []))
+    _default_locations = lines_to_text(search_cfg.get("locations", []))
 
     with st.expander("📋 Settings in play for this run", expanded=True):
         st.caption(
@@ -61,9 +62,12 @@ def render(ctx: ViewContext) -> None:
                     help="This profile has no stored resume yet. Enter 'resume.pdf' "
                          "to parse a file in the project root, or add one via Profiles.",
                 )
-            roles = st.text_input(
-                "Roles (comma-separated)",
-                value=_default_roles or "Staff Engineer, Principal Engineer",
+            roles = st.text_area(
+                "Roles (one per line)",
+                value=_default_roles or "Staff Engineer\nPrincipal Engineer",
+                height=90,
+                help="One role title per line, e.g. 'Director, Engineering' on its "
+                     "own line. Commas inside a title are preserved.",
             )
             locations = st.text_area(
                 "Locations (one per line)",
@@ -202,9 +206,10 @@ def render(ctx: ViewContext) -> None:
         custom_urls = [u.strip() for u in custom_urls_raw.splitlines() if u.strip()]
 
         search_criteria = {
-            "roles": [r.strip() for r in roles.split(",") if r.strip()],
-            # BUG-011/ADR-064: one-per-line so "Atlanta, GA" survives (shared seam).
-            "locations": parse_locations_input(locations),
+            # BUG-011/013/ADR-064: one-per-line so a comma inside an item survives
+            # ("Atlanta, GA"; "Director, Engineering"). Shared seam, both fields.
+            "roles": parse_lines_input(roles),
+            "locations": parse_lines_input(locations),
         }
         # ADR-071: the run inherits the profile's active scoring tracks. Validate
         # against the three known names; an empty/invalid set is omitted so the

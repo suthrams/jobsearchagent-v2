@@ -13,8 +13,8 @@ from app.ui.data import _cached_get_providers, _get_config_cached
 from app.ui.formatting import (
     _get_nested,
     _label_with_cost,
-    locations_to_text,
-    parse_locations_input,
+    lines_to_text,
+    parse_lines_input,
 )
 from app.ui.nav import ViewContext
 
@@ -74,24 +74,25 @@ def render(ctx: ViewContext) -> None:
     search = (eff.get("search") or {}).copy()
 
     titles_str = st.text_area(
-        "search.titles (comma-separated)",
-        value=", ".join(search.get("titles", [])),
+        "search.titles (one per line)",
+        value=lines_to_text(search.get("titles", [])),
         height=80,
+        help="One role title per line, e.g. 'Director, Engineering' on its own line. "
+             "A comma is part of the title, not a separator (BUG-011/013).",
     )
     if st.button("Save titles"):
-        _save("search.titles",
-              [t.strip() for t in titles_str.split(",") if t.strip()])
+        _save("search.titles", parse_lines_input(titles_str))
 
     locations_str = st.text_area(
         "search.locations (one per line)",
-        value=locations_to_text(search.get("locations", [])),
+        value=lines_to_text(search.get("locations", [])),
         height=80,
         help="One location per line, e.g. 'Atlanta, GA' on its own line. A comma is "
              "part of the location (City, State), not a separator (BUG-011/ADR-064). "
              "'Remote' triggers the remote search.",
     )
     if st.button("Save locations"):
-        _save("search.locations", parse_locations_input(locations_str))
+        _save("search.locations", parse_lines_input(locations_str))
 
     max_discovered = st.number_input(
         "search.max_discovered (manual-mode discovery net width)",

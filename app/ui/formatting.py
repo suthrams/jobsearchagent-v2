@@ -10,22 +10,30 @@ from __future__ import annotations
 import pandas as pd
 
 
-def parse_locations_input(text: str | None) -> list[str]:
-    """Split a locations text box into a clean list, ONE PER LINE (ADR-064, BUG-011).
+def parse_lines_input(text: str | None) -> list[str]:
+    """Split a multi-line text box into a clean list, ONE ITEM PER LINE (BUG-011/013).
 
-    Locations are newline-delimited, NEVER comma-split: a comma is part of the
-    location itself ("Atlanta, GA"), so splitting on commas would shatter
-    "City, State" into two bogus entries. Each line is stripped; blank lines are
-    dropped. This is the single seam both the Start-Run form and the Settings page
-    use, so the two surfaces cannot drift back to comma-splitting.
+    Newline-delimited, NEVER comma-split: a comma is frequently part of the item
+    itself -- a location ("Atlanta, GA") or a role title ("Director, Engineering")
+    -- so splitting on commas would shatter one entry into bogus pieces. Each line
+    is stripped; blank lines are dropped. This is the single shared seam every
+    list-style field (locations, role titles) uses on BOTH the Start-Run form and
+    the Settings page, so the surfaces cannot drift back to comma-splitting.
     """
     return [ln.strip() for ln in (text or "").splitlines() if ln.strip()]
 
 
-def locations_to_text(locations) -> str:
-    """Render a locations list back into a one-per-line text-box value -- the exact
-    inverse of parse_locations_input."""
-    return "\n".join(locations or [])
+def lines_to_text(items) -> str:
+    """Render a list back into a one-per-line text-box value -- the exact inverse
+    of parse_lines_input."""
+    return "\n".join(items or [])
+
+
+# Locations were the first field on this seam (ADR-064, BUG-011); the names are
+# kept as aliases so existing call sites/tests keep working now that the parser is
+# generalized to any list-style field (BUG-013: role titles).
+parse_locations_input = parse_lines_input
+locations_to_text = lines_to_text
 
 
 def _fmt_ts(raw) -> str:
