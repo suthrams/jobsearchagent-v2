@@ -7,8 +7,8 @@ Point-in-time critical review of all 14 prompts (`app/prompts/shared/guardrails.
 
 > **Status: all groups implemented 2026-06-12.** Group A defects are recorded in
 > `bugs/BUG-014`. Each behavior change bumped its prompt `# version:` (and the
-> shared guardrails is now versioned, surfaced as the `+g{N}` suffix), so the
-> before/after is sliceable in `llm_calls.prompt_version`. Forcing tests:
+> shared guardrails is now versioned, surfaced as the `+g{N}` suffix in the logged
+> `prompt_version` (log-only today — see the caveat below). Forcing tests:
 > `test_bug014_prompt_schema_alignment.py` (A), `test_prompt_field_agnostic.py` (B).
 > The measurement plan below stands as the way to evaluate impact going forward.
 
@@ -23,9 +23,14 @@ instrumentation needed:
   should drop this toward 0 for that agent. **The primary correctness signal.**
 - **Output tokens + cost** (`llm_calls.tokens_output`, `estimated_cost`) — brevity
   / structure changes move output tokens; read per-agent from `llm_calls`.
-- **Prompt version tag** (`# version: N`, recorded on each `llm_calls` row) — bump
-  on every behavior change so before/after is sliceable by version in the same
-  table. (Guardrails is currently unversioned — see Improvement 4.)
+- **Prompt version tag** (`# version: N`, surfaced by `PromptLoader.get_version`
+  as e.g. `scoring_agent:v3+g1`) — bump on every behavior change to mark the
+  before/after boundary. **CAVEAT (verified 2026-06-12):** the version is emitted
+  to the application LOG only (`provider ... prompt_version=...`); it is NOT a
+  column on `llm_calls` or `agent_events` today, despite the aspirational note in
+  observability.md / data_model.md. So version-slicing means grepping the run
+  logs, not a SQL query. Persisting `prompt_version` to `llm_calls` is a small,
+  worthwhile follow-up if DB-level slicing is wanted.
 - **Verdict / behavior mix** (`discovery_stats.relevance_drops`,
   `scored_jobs` scores) — for filter/scoring changes, compare the distribution
   before/after (e.g. `too_senior` count, source mix).
@@ -159,7 +164,7 @@ and read schema-repairs + output tokens for the affected agent.
 | B. Field-agnostic | 3 | principle application | non-tech validation run; forcing tests |
 | C. Hardening | 4, 5, 6, 7 | small quality | schema-repair rate (6), score gap (5), version coverage (4) |
 
-Each behavior change bumps the prompt's `# version:` (model-pin / version-pin tests
-enforce this) so the `llm_calls` history is sliceable before vs after. Defect fixes
-(group A) also warrant a `bugs/` RCA since they reached runtime via the schema
-mismatch.
+Each behavior change bumps the prompt's `# version:` so the before/after boundary
+is marked in the logged `prompt_version` (log-only today; see the caveat above).
+Defect fixes (group A) also warrant a `bugs/` RCA since they reached runtime via
+the schema mismatch.

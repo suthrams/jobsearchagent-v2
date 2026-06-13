@@ -476,6 +476,9 @@ None.
 * Must detect if a gap was incorrectly converted into a rewrite
 * Must recommend another round only when improvement is likely
 * Must support stagnation detection
+* Annotates, never edits: a gap the critic MISSED is reported in
+  `missing_analysis_points`, never by altering the critic's gap lists or scores
+  (BUG-014 resolved the prompt's earlier find-vs-don't-introduce contradiction)
 
 ---
 
