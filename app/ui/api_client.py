@@ -139,9 +139,11 @@ def reload_config() -> dict:
 
 
 def verify_ats_board(ats: str, slug: str) -> dict:
-    """POST /config/ats/verify - live-check one ATS board slug before adding it to a
-    profile's target-company list (ADR-098 verify-on-add). Returns
-    {ats, slug, ok, job_count, message}."""
+    """POST /config/ats/verify - live-check one ATS board before adding it to a
+    profile's target-company list (ADR-098 verify-on-add). For greenhouse/lever `slug`
+    is the board token; for workday it is the career URL and the response also carries
+    a `parsed` {tenant, dc, site} triple (ADR-101). Returns
+    {ats, slug, ok, job_count, message[, parsed]}."""
     r = httpx.post(
         f"{BASE_URL}/config/ats/verify",
         params=_user_params(),

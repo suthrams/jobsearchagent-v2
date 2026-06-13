@@ -23,7 +23,7 @@ import streamlit as st
 
 # Employer-direct ATS feeds (source of truth, ADR-081) vs aggregators (redirect
 # snippets that expire). Anything else (a user's custom URL) is "custom".
-_DIRECT = {"greenhouse", "lever"}
+_DIRECT = {"greenhouse", "lever", "workday"}  # workday: ADR-101
 _AGGREGATOR = {"adzuna", "indeed", "linkedin"}
 
 

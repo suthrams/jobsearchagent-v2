@@ -26,6 +26,7 @@ class JobSource(str, Enum):
     - ADZUNA     : scraped from Adzuna job search API
     - GREENHOUSE : ATS-direct public board (ADR-081)
     - LEVER      : ATS-direct public board (ADR-081)
+    - WORKDAY    : ATS-direct public board via the CXS API (ADR-101)
     """
 
     LINKEDIN = "linkedin"
@@ -33,6 +34,7 @@ class JobSource(str, Enum):
     ADZUNA = "adzuna"
     GREENHOUSE = "greenhouse"   # ADR-081: ATS-direct source-of-truth
     LEVER = "lever"             # ADR-081: ATS-direct source-of-truth
+    WORKDAY = "workday"         # ADR-101: ATS-direct source-of-truth (CXS API)
 
 
 class WorkMode(str, Enum):

@@ -11,6 +11,7 @@ class JobSource(str, Enum):
     MANUAL = "manual"
     GREENHOUSE = "greenhouse"   # ADR-081: ATS-direct source-of-truth
     LEVER = "lever"             # ADR-081: ATS-direct source-of-truth
+    WORKDAY = "workday"         # ADR-101: ATS-direct source-of-truth (CXS API)
 
 
 class WorkMode(str, Enum):

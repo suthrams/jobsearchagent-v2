@@ -51,6 +51,18 @@ returning jobs on 2026-06-10 — and turned it on by default in `config.yaml` +
 Re-verify / prune with `python tools/verify_ats_boards.py` (boards rename or close
 over time; per-board failures are non-fatal at runtime).
 
+### 3b. Workday extension (ADR-101, 2026-06-13)
+
+The Greenhouse/Lever pattern was extended to **Workday** — the source-of-truth for
+the cleared-government employers BUG-010 cares about — de-risked first in
+`spike_workday_ats.md` (6/6 boards, full 5-8k-char JDs, zero blocking) and shipped as
+ADR-101. Implementation lives in its own module `app/services/workday_scraper.py`
+(the two-phase list+detail fetch and the 3-part-id URL parsing/host-guard are too much
+to fold into `ats_scrapers.py`); the shared seam (`build_ats_scrapers`,
+`verify_ats_board`) lazy-imports it. Ships **off** (empty default list) — per-profile
+opt-in via the Settings Workday add form. iCIMS stays rejected (no clean public JSON
+API).
+
 ### 3b. Rejected source — jobright.ai (2026-06-10)
 
 Investigated on request; **rejected**. jobright.ai is a consumer "AI job-search

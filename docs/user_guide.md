@@ -401,7 +401,7 @@ cheaper results.
 - Covered in [section 8](#8-start-a-workflow-run): **Min / Max years of
   experience** and **Exclude senior roles** narrow discovery to your career stage.
 
-### ATS-direct sources — Greenhouse & Lever (ADR-081 / 097 / 098)
+### ATS-direct sources — Greenhouse, Lever & Workday (ADR-081 / 097 / 098 / 101)
 
 - Source-of-truth employer feeds: listings are live and the apply link is the
   employer's own ATS page (no dead-link / rate-limit issues that aggregators can
@@ -409,23 +409,31 @@ cheaper results.
 - **The company list is per-profile and managed in the Settings UI** — no
   `config.yaml` editing (ADR-098). Make sure the right profile is active in the
   sidebar, then open **Settings -> "Target companies (ATS-direct)"**:
-  1. Expand **Greenhouse** or **Lever** to see the boards in your list. A brand-new
-     profile starts from the operator's curated default batch (ADR-097).
-  2. **Add a board:** type its **token/slug** (e.g. `stripe`) and click
-     **"Verify & add"**. It is checked against the live ATS first — a real board is
-     added with its open-job count; a dead/typo'd slug is rejected with a message,
+  1. Expand **Greenhouse**, **Lever**, or **Workday** to see the boards in your list.
+     A brand-new profile starts from the operator's curated default batch for
+     Greenhouse/Lever (ADR-097); **Workday ships empty** (opt-in).
+  2. **Add a Greenhouse/Lever board:** type its **token/slug** (e.g. `stripe`) and
+     click **"Verify & add"**. It is checked against the live ATS first — a real board
+     is added with its open-job count; a dead/typo'd slug is rejected with a message,
      so nothing silently contributes zero. Find the slug in the careers URL:
      `boards.greenhouse.io/<token>` or `jobs.lever.co/<slug>`.
-  3. **Remove** boards with the multiselect, or untick **Enable ... sourcing for
-     this profile** to switch off that ATS without losing your list.
-- Saving **replaces** this profile's list for that ATS (so to keep the default plus
+  3. **Add a Workday board (ADR-101):** **paste the career URL** (e.g.
+     `https://leidos.wd5.myworkdayjobs.com/External`) and click **"Verify & add"**.
+     Workday returns the **full job description**, so it is the source of truth for
+     cleared-government and most F500 employers whose clearance/experience requirements
+     get truncated in aggregator snippets. The URL is parsed + verified live; a
+     non-Workday URL is rejected.
+  4. **Remove** boards with the multiselect, or untick **Enable ... sourcing for
+     this profile** to switch off that source without losing your list.
+- Saving **replaces** this profile's list for that source (so to keep the default plus
   your own, add yours on top of the existing entries). The list resolves per run, so
   an edit takes effect on your **next run with no restart**.
 - Maintenance: `python tools/verify_ats_boards.py` re-checks the configured boards
-  and flags dead ones to prune.
+  (Greenhouse/Lever/Workday) and flags dead ones to prune.
 - **Seeing where a job came from (ADR-099):** every discovered/matched job shows its
-  exact source with a reliability colour — 🟢 Greenhouse / 🟢 Lever (employer-direct,
-  source of truth), 🟡 Adzuna / 🟡 LinkedIn (aggregator), 🔗 your custom URL. It
+  exact source with a reliability colour — 🟢 Greenhouse / 🟢 Lever / 🟢 Workday
+  (employer-direct, source of truth), 🟡 Adzuna / 🟡 LinkedIn (aggregator), 🔗 your
+  custom URL. It
   appears as a **Source** column in the **Matches -> Roles** table and the **Workflow
   Detail -> all discovered jobs** table, and on each Matches focus card + the
   Opportunity page. That's how you tell which of your boards actually produced a match.

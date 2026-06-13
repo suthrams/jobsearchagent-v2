@@ -110,6 +110,13 @@ scrapers:
   lever:
     enabled: true
     companies: [gopuff, palantir, spotify]
+  workday:
+    # ADR-101: ATS-direct Workday feeds. Boards are {tenant, dc, site} triples added
+    # by pasting the career URL in Settings -> "Target companies" (verify-on-add).
+    # Ships OFF (empty list) - per-profile opt-in; full job descriptions vs Adzuna's
+    # truncated snippet, the root-cause fix for cleared / senior requirement text.
+    enabled: true
+    companies: []
 
 # ═══════════════════════════════════════════════════════════════════════════════
 # v2 Configuration (ADR-053 + ADR-058)

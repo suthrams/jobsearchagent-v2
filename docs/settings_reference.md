@@ -64,14 +64,15 @@ These govern **how jobs are judged and which ones earn expensive downstream work
 
 ## 3. Job sources (`scrapers.*`)
 
-Which feeds discovery pulls from. Adzuna is the broad aggregator; Greenhouse/Lever
-are source-of-truth employer feeds (ADR-081). The ATS company list is **per-profile**
+Which feeds discovery pulls from. Adzuna is the broad aggregator; Greenhouse/Lever/Workday
+are source-of-truth employer feeds (ADR-081/101). The ATS company list is **per-profile**
 and **managed from the Settings UI** ("Target companies" section): pick an ATS, enter
-a board token/slug, and it is **verified live before it joins your list** (a dead slug
-is rejected). A brand-new profile **inherits the operator-set default batch** (ADR-097);
-saving your own list **replaces** the default for that ATS. Because the list resolves
-per run from your `effective_config`, an edit applies on your **next run with no
-restart/reload** (ADR-098).
+a board token/slug (or, for Workday, **paste the career URL**), and it is **verified
+live before it joins your list** (a dead board is rejected). A brand-new profile
+**inherits the operator-set default batch** (ADR-097; Workday ships **off** with an
+empty list); saving your own list **replaces** the default for that ATS. Because the
+list resolves per run from your `effective_config`, an edit applies on your **next run
+with no restart/reload** (ADR-098).
 
 | Setting | Purpose | Effect on processing |
 |---|---|---|
@@ -83,6 +84,7 @@ restart/reload** (ADR-098).
 | `scrapers.adzuna.remote_keywords` | Keywords used for the no-location "remote" search. | Each adds a remote scrape; counts against the daily quota guard. |
 | `scrapers.greenhouse.enabled` / `.companies` | ATS-direct Greenhouse feeds, queried **per company** (board tokens; empty = off). Per-profile + UI-managed with verify-on-add (ADR-081/097/098). | Adds live, source-of-truth listings with real employer apply URLs (no dead-link/429 issue). Only the listed companies are queried; title relevance uses the run's roles. |
 | `scrapers.lever.enabled` / `.companies` | ATS-direct Lever feeds, queried per company (slugs; empty = off). Per-profile + UI-managed with verify-on-add (ADR-081/097/098). | Same as Greenhouse, for Lever-hosted boards. |
+| `scrapers.workday.enabled` / `.companies` | ATS-direct Workday feeds, queried per company. `companies` is a list of structured `{tenant, dc, site}` triples (added by pasting the career URL; empty = off). Per-profile + UI-managed with verify-on-add (ADR-101). Ships off by default. | Returns the **full job description** (not Adzuna's ~500-char snippet), so the clearance/experience filters see the real requirement text; employer-direct apply URLs. Volume is bounded by a list-then-title-filter-then-capped-detail fetch. |
 
 ---
 
@@ -161,7 +163,8 @@ knob.
 | Cut noise / mismatches | `search.relevance_filter`, `search.exclude_senior`, `search.{min,max}_years_experience`, `search.max_posting_age_days` |
 | Curate before paying to score | `scoring.manual_selection` |
 | Get higher-quality (costlier) reasoning | upgrade `agents.<name>.model` (within the cost-cap allowlist for high-volume agents) |
-| Add reliable, real apply links | `scrapers.{greenhouse,lever}.companies` |
+| Add reliable, real apply links | `scrapers.{greenhouse,lever,workday}.companies` |
+| Get full JDs for cleared / senior roles (vs truncated snippets) | `scrapers.workday.companies` (ADR-101) |
 | Keep less / more history | `retention.*` (system-wide, manual purge) |
 
 ---

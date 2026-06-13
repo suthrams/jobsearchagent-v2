@@ -27,6 +27,7 @@ a job is listed. One small, deterministic, pure helper drives every surface.
 - **`formatting.source_label(source)`** — a pure function (lives in the already-pure
   `app/ui/formatting.py`, no Streamlit import) mapping a stored source string to a
   display label: `greenhouse -> "🟢 Greenhouse"`, `lever -> "🟢 Lever"`,
+  `workday -> "🟢 Workday"` (ADR-101, employer-direct),
   `adzuna -> "🟡 Adzuna"`, `indeed -> "🟡 Indeed"`, `linkedin -> "🟡 LinkedIn"`,
   `manual -> "🔗 Custom URL"`, empty/unknown -> `""` (or a neutral `•` + titlecased
   raw). The 🟢/🟡 carry the same employer-direct-vs-aggregator reliability meaning as

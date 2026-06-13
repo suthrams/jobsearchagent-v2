@@ -17,8 +17,8 @@ counts live in exactly one place instead of drifting across the repo.
 
 | Metric | Value | As of |
 |---|---:|---|
-| Tests passing | ~1049 | 2026-06-11 |
-| Skipped | 1 | 2026-06-11 |
+| Tests passing | ~1148 | 2026-06-13 |
+| Skipped | 1 | 2026-06-13 |
 | Test files (`tests/v2/`) | ~86 | 2026-06-11 |
 | Real API calls in CI | 0 (mock mode) | — |
 

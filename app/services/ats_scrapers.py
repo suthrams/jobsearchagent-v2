@@ -226,6 +226,12 @@ def verify_ats_board(ats: str, slug: str, timeout_s: float = 8.0) -> int | None:
     ats = (ats or "").strip().lower()
     if not slug:
         return None
+    if ats == "workday":
+        # Workday's board id is a 3-part career URL, not a flat slug, and the check is
+        # a POST to the CXS list endpoint - delegate to the dedicated module (ADR-101),
+        # lazy-imported so ats_scrapers <-> workday_scraper stays a one-way dependency.
+        from app.services.workday_scraper import verify_workday_board
+        return verify_workday_board(slug, timeout_s=timeout_s)
     if ats == "greenhouse":
         url = GreenhouseScraper._URL.format(token=slug)
         is_list = False
@@ -249,10 +255,11 @@ def verify_ats_board(ats: str, slug: str, timeout_s: float = 8.0) -> int | None:
 def build_ats_scrapers(roles: list[str], scrapers_cfg: dict) -> list[BaseScraper]:
     """Build the configured ATS scrapers for a run (ADR-081).
 
-    Reads `scrapers.greenhouse.companies` and `scrapers.lever.companies` from the
-    config; title relevance derives from the run's `roles` (falls back to no gate
-    when roles are absent). Returns [] when nothing is configured, so ATS discovery
-    is purely additive and off until a profile lists target companies.
+    Reads `scrapers.greenhouse.companies`, `scrapers.lever.companies`, and
+    `scrapers.workday.companies` (ADR-101; structured triples) from the config; title
+    relevance derives from the run's `roles` (falls back to no gate when roles are
+    absent). Returns [] when nothing is configured, so ATS discovery is purely additive
+    and off until a profile lists target companies.
     """
     from app.services.concurrent_adzuna_scraper import relevance_tokens
 
@@ -269,5 +276,14 @@ def build_ats_scrapers(roles: list[str], scrapers_cfg: dict) -> list[BaseScraper
     lv_companies = list(lv.get("companies") or [])
     if lv.get("enabled", True) and lv_companies:
         out.append(LeverScraper(lv_companies, relevant_tokens=relevant))
+
+    # Workday (ADR-101): companies are structured {tenant, dc, site} triples, not flat
+    # slugs, and the scraper lives in its own module (lazy import -> one-way dep). Roles
+    # are passed through so the bounded listing uses them as server-side searchText.
+    wd = cfg.get("workday") or {}
+    wd_companies = list(wd.get("companies") or [])
+    if wd.get("enabled", True) and wd_companies:
+        from app.services.workday_scraper import WorkdayScraper
+        out.append(WorkdayScraper(wd_companies, roles=roles or [], relevant_tokens=relevant))
 
     return out

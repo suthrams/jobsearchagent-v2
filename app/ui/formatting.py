@@ -81,6 +81,7 @@ def format_posting_age_short(posted_at, *, now=None) -> str:
 _SOURCE_DISPLAY = {
     "greenhouse": "🟢 Greenhouse",
     "lever": "🟢 Lever",
+    "workday": "🟢 Workday",
     "adzuna": "🟡 Adzuna",
     "indeed": "🟡 Indeed",
     "linkedin": "🟡 LinkedIn",

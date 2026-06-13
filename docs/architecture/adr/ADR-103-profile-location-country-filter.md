@@ -2,7 +2,7 @@
 
 ## Status
 
-- **Proposed** (2026-06-12). Surfaced by live validation run `db64041b` (profile 1).
+- **Accepted (implemented)** (2026-06-12). Surfaced by live validation run `db64041b` (profile 1).
 - Companion to ADR-102 (ordering); same discovery-filter family as ADR-079/080/095.
 
 ## Context

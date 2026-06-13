@@ -39,12 +39,13 @@ Jobs are discovered from multiple sources concurrently on every run. Discovery h
 - Configurable search radius in kilometres
 - Free-tier quota guard: `(titles x locations) + remote_keywords` is kept under 100/day by the config commentary
 
-### ATS-direct — Greenhouse + Lever (ADR-081 / 097 / 098)
+### ATS-direct — Greenhouse + Lever + Workday (ADR-081 / 097 / 098 / 101)
 - Source-of-truth employer feeds: listings are live by definition and the apply URL is the employer's own ATS page (no dead-link / 429 problem that Adzuna can have)
 - Queried **per company** — board tokens/slugs of target companies under `scrapers.greenhouse.companies` / `scrapers.lever.companies` (empty list = off); ships with a curated, live-verified default batch (ADR-097)
-- **Per-profile target companies (ADR-098):** managed from the Settings "Target companies" section with **verify-on-add** (a dead slug is rejected before it joins your list). The list resolves per run from your `effective_config`, so an edit applies on your next run with no restart; a profile override replaces the default, a new profile inherits it
+- **Workday (ADR-101):** the source-of-truth for cleared-government and most F500 employers (Booz Allen, Leidos, CACI, GDIT, ...). Returns the **full job description** (5-8k chars) over the undocumented CXS API, so the deterministic clearance/experience filters finally see the real requirement text instead of Adzuna's truncated ~500-char snippet. A board is a 3-part id (`tenant`/`dc`/`site`) added by pasting the career URL; volume is bounded by a list -> title-filter -> capped detail fetch. Ships **off** (empty list) — per-profile opt-in
+- **Per-profile target companies (ADR-098):** managed from the Settings "Target companies" section with **verify-on-add** (a dead board is rejected before it joins your list). The list resolves per run from your `effective_config`, so an edit applies on your next run with no restart; a profile override replaces the default, a new profile inherits it
 - Built per run by `WorkflowDependencies.ats_scraper_factory(roles, scrapers_cfg)`; additive alongside Adzuna
-- **Source visibility (ADR-099):** each job shows its exact origin with a reliability colour (🟢 Greenhouse/Lever employer-direct, 🟡 Adzuna/Indeed/LinkedIn aggregator, 🔗 custom URL) as a Source column in the Matches and discovered-jobs tables and on the focus cards / Opportunity page
+- **Source visibility (ADR-099):** each job shows its exact origin with a reliability colour (🟢 Greenhouse/Lever/Workday employer-direct, 🟡 Adzuna/Indeed/LinkedIn aggregator, 🔗 custom URL) as a Source column in the Matches and discovered-jobs tables and on the focus cards / Opportunity page
 
 ### LinkedIn + custom URLs (manual intake)
 - LinkedIn blocks automated scraping — the built-in `LinkedInScraper` reads job URLs from `data/linkedin_inbox.txt` (one per line) and clears entries it has processed
@@ -303,6 +304,7 @@ scrapers:
   adzuna: {enabled: true, country: us, radius_km: 80, results_per_page: 25, ...}
   greenhouse: {enabled: true, companies: []}   # ADR-081, per-company opt-in
   lever:      {enabled: true, companies: []}
+  workday:    {enabled: true, companies: []}   # ADR-101; {tenant,dc,site} triples, off by default
 
 retention: {workflow_runs_days: 90, observability_days: 30, security_events_days: 180, ...}
 
@@ -389,7 +391,7 @@ Every endpoint (except the health probes) accepts an optional `?user_id=` (defau
 
 | Capability | Status |
 |---|---|
-| Multi-source discovery (Adzuna, LinkedIn, custom URLs, ATS-direct Greenhouse/Lever) | ✅ |
+| Multi-source discovery (Adzuna, LinkedIn, custom URLs, ATS-direct Greenhouse/Lever/Workday) | ✅ |
 | Concurrent Adzuna scraping (5 workers) + per-run search criteria | ✅ |
 | Deterministic keyword gates (title + description) | ✅ |
 | Posting-age + experience-targeting filters (opt-in) | ✅ |

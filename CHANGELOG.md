@@ -4,6 +4,42 @@ All notable changes are documented here, grouped by date.
 
 ---
 
+## 2026-06-13
+
+### Added — Workday ATS-direct scraper (ADR-101)
+
+Extends the ATS-direct pattern (ADR-081 Greenhouse/Lever, ADR-097 batch, ADR-098
+per-profile) to **Workday** — the source-of-truth feed for cleared-government and most
+F500 employers. This is the durable, root-cause fix for BUG-010's truncated-snippet
+class: Workday's undocumented CXS API returns the **full job description** (5-8k chars)
+instead of Adzuna's ~500-char snippet, so the deterministic clearance/experience
+filters finally see the real requirement text.
+
+- **`app/services/workday_scraper.py` (new, modular):** `WorkdayScraper` (a
+  `BaseScraper`), `parse_workday_url` (career URL -> `(tenant, dc, site)` + the
+  `*.myworkdayjobs.com` SSRF host guard — the single parsing source of truth), and
+  `verify_workday_board`. Its own module because the two-phase list+detail fetch and
+  the 3-part-id parsing are too much to fold into `ats_scrapers.py`; the shared seam
+  lazy-imports it (one-way dep, reuses `_strip_html`/`_title_ok`).
+- **Two-phase fetch with bounded volume:** list (capped pages, the run's roles as
+  server-side `searchText`) -> title-filter BEFORE any detail fetch -> capped per-board
+  detail fetch for the full JD. Never-lose-the-run: any board/detail failure is logged
+  + skipped, never raised.
+- **Seam wiring:** `verify_ats_board` + `build_ats_scrapers` gain a `workday` branch;
+  `_KNOWN_ATS += "workday"`; the `POST /config/ats/verify` response carries the parsed
+  `{tenant, dc, site}` triple so the UI stores it without re-parsing;
+  `tools/verify_ats_boards.py` checks Workday boards. `JobSource.WORKDAY` added;
+  `source_label`/`source_kind` mark it 🟢 employer-direct.
+- **Settings "Target companies":** a Workday add form (paste career URL -> verify ->
+  add the triple). Stored under `scrapers.workday.companies` as triples (not flat
+  slugs). Ships **off** (empty default list) — per-profile opt-in.
+- Docs swept (ADR-101 -> Accepted; ADR index, wiki, config_model, api_reference,
+  data_model, features, settings_reference, user_guide, spike_job_data_sources, job
+  model). Also flipped ADR-102/103/104 status to Accepted (implemented) — a status
+  drift left from the 2026-06-12 session. Full suite: 1148 tests pass.
+
+---
+
 ## 2026-06-11
 
 ### Added — job source visibility in the discovered + Matches lists (ADR-099)

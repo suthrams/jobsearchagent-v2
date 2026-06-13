@@ -82,7 +82,7 @@ def make_discover_jobs_node(
             except Exception as exc:
                 logger.warning("discover_jobs: failed to build per-run Adzuna scraper: %s", exc)
 
-        # ADR-081 + ADR-098: per-run ATS-direct scrapers (Greenhouse/Lever) from the
+        # ADR-081 + ADR-098 + ADR-101: per-run ATS-direct scrapers (Greenhouse/Lever/Workday) from the
         # PROFILE's company list, with title relevance derived from the run's roles.
         # The list is read from THIS run's effective_config (not deps-time system
         # config), so each profile targets its own companies and a Settings edit

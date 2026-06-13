@@ -107,7 +107,7 @@ class WorkflowDependencies:
     adzuna_scraper_factory: Callable[[list[str], list[str], bool], Any] | None = None
     # ADR-081 + ADR-098: optional per-run ATS-direct scraper factory; receives the
     # run's roles and the run's effective scrapers config, and returns a list of
-    # BaseScraper-compatible objects (Greenhouse + Lever) built from that profile's
+    # BaseScraper-compatible objects (Greenhouse + Lever + Workday) built from that profile's
     # company list. Resolving the list per run (not at deps time) is what makes the
     # target companies per-profile. None / [] disables ATS discovery (purely
     # additive alongside Adzuna).

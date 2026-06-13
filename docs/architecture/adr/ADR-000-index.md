@@ -106,7 +106,7 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-098 | [Per-Profile ATS Targeting, Managed in the Settings UI](ADR-098-per-profile-ats-targeting.md) | Accepted (implemented) |
 | ADR-099 | [Job Source Visibility in the Discovered + Matches Lists](ADR-099-source-visibility-in-lists.md) | Accepted (implemented) |
 | ADR-100 | ["Review Later" List + On-Demand Rescue-to-Score](ADR-100-review-later-list-and-on-demand-rescue-to-score.md) | Accepted (implemented) |
-| ADR-101 | [Workday ATS-Direct Scraper](ADR-101-workday-ats-direct-scraper.md) | Proposed |
-| ADR-102 | [Source-Fair Discovery Ordering (Round-Robin Interleave Before the Caps)](ADR-102-source-fair-discovery-ordering.md) | Proposed |
-| ADR-103 | [Profile-Derived Location Filter (Drop Out-of-Country Postings at Discovery)](ADR-103-profile-location-country-filter.md) | Proposed |
-| ADR-104 | [Strict Seniority Judgment in the Relevance Filter (World-Knowledge When Text Is Truncated)](ADR-104-strict-seniority-judgment-on-truncated-text.md) | Proposed |
+| ADR-101 | [Workday ATS-Direct Scraper](ADR-101-workday-ats-direct-scraper.md) | Accepted (implemented) |
+| ADR-102 | [Source-Fair Discovery Ordering (Round-Robin Interleave Before the Caps)](ADR-102-source-fair-discovery-ordering.md) | Accepted (implemented) |
+| ADR-103 | [Profile-Derived Location Filter (Drop Out-of-Country Postings at Discovery)](ADR-103-profile-location-country-filter.md) | Accepted (implemented) |
+| ADR-104 | [Strict Seniority Judgment in the Relevance Filter (World-Knowledge When Text Is Truncated)](ADR-104-strict-seniority-judgment-on-truncated-text.md) | Accepted (implemented) |

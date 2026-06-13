@@ -8,10 +8,12 @@ Usage:
     python tools/verify_ats_boards.py                 # check config/config.yaml
     python tools/verify_ats_boards.py --example       # check config/config.example.yaml
     python tools/verify_ats_boards.py stripe figma    # check ad-hoc slugs (both ATSs)
+    python tools/verify_ats_boards.py https://leidos.wd5.myworkdayjobs.com/External
 
 A board is healthy if the API returns HTTP 200 and a non-empty job array:
-    Greenhouse  GET https://boards-api.greenhouse.io/v1/boards/{token}/jobs
-    Lever       GET https://api.lever.co/v0/postings/{slug}?mode=json
+    Greenhouse  GET  https://boards-api.greenhouse.io/v1/boards/{token}/jobs
+    Lever       GET  https://api.lever.co/v0/postings/{slug}?mode=json
+    Workday     POST https://{tenant}.{dc}.myworkdayjobs.com/wday/cxs/.../jobs (ADR-101)
 
 Exit code is non-zero if any configured board is dead/empty, so this can gate a
 maintenance check in CI.
@@ -40,36 +42,57 @@ def check_lever(slug: str) -> int | None:
     return verify_ats_board("lever", slug, timeout_s=TIMEOUT)
 
 
-def _load_config(example: bool) -> tuple[list[str], list[str]]:
+def _workday_url(board) -> str:
+    """Reconstruct a career URL from a stored {tenant, dc, site} triple so the shared
+    verify check can re-parse + probe it (ADR-101)."""
+    if isinstance(board, dict):
+        return f"https://{board.get('tenant')}.{board.get('dc')}.myworkdayjobs.com/{board.get('site')}"
+    return str(board)  # already a URL (ad-hoc arg)
+
+
+def check_workday(board) -> int | None:
+    return verify_ats_board("workday", _workday_url(board), timeout_s=TIMEOUT)
+
+
+def _wd_label(board) -> str:
+    if isinstance(board, dict):
+        return f"{board.get('tenant')}/{board.get('site')}"
+    return str(board)
+
+
+def _load_config(example: bool) -> tuple[list[str], list[str], list]:
     name = "config.example.yaml" if example else "config.yaml"
     path = Path(__file__).resolve().parents[1] / "config" / name
     cfg = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     scr = (cfg.get("scrapers") or {})
     gh = list((scr.get("greenhouse") or {}).get("companies") or [])
     lv = list((scr.get("lever") or {}).get("companies") or [])
-    print(f"Loaded {len(gh)} greenhouse + {len(lv)} lever boards from {name}\n")
-    return gh, lv
+    wd = list((scr.get("workday") or {}).get("companies") or [])
+    print(f"Loaded {len(gh)} greenhouse + {len(lv)} lever + {len(wd)} workday boards from {name}\n")
+    return gh, lv, wd
 
 
 def main(argv: list[str]) -> int:
     args = [a for a in argv if not a.startswith("--")]
     example = "--example" in argv
 
-    if args:  # ad-hoc slugs: try both ATSs
-        with ThreadPoolExecutor(max_workers=12) as ex:
-            gh_counts = dict(zip(args, ex.map(check_greenhouse, args)))
-            lv_counts = dict(zip(args, ex.map(check_lever, args)))
+    if args:  # ad-hoc: a myworkdayjobs.com URL checks Workday; else try both slugs ATSs
         for s in args:
-            g, l = gh_counts[s], lv_counts[s]
+            if "myworkdayjobs.com" in s:
+                n = check_workday(s)
+                print(f"  {s}: {'workday:' + str(n) if n else 'NO BOARD / EMPTY on workday'}")
+                continue
+            g, l = check_greenhouse(s), check_lever(s)
             where = (f"greenhouse:{g}" if g else "") + (f" lever:{l}" if l else "")
             print(f"  {s}: {where or 'NO BOARD / EMPTY on either ATS'}")
         return 0
 
-    gh, lv = _load_config(example)
+    gh, lv, wd = _load_config(example)
     dead: list[str] = []
     with ThreadPoolExecutor(max_workers=12) as ex:
         gh_counts = dict(zip(gh, ex.map(check_greenhouse, gh)))
         lv_counts = dict(zip(lv, ex.map(check_lever, lv)))
+        wd_counts = list(ex.map(check_workday, wd))
 
     print("GREENHOUSE:")
     for s in gh:
@@ -83,11 +106,17 @@ def main(argv: list[str]) -> int:
         print(f"  {'OK ' if n else 'DEAD'} {s}: {n if n else 0} postings")
         if not n:
             dead.append(f"lever:{s}")
+    print("\nWORKDAY:")
+    for board, n in zip(wd, wd_counts):
+        label = _wd_label(board)
+        print(f"  {'OK ' if n else 'DEAD'} {label}: {n if n else 0} jobs")
+        if not n:
+            dead.append(f"workday:{label}")
 
     if dead:
         print(f"\n{len(dead)} dead/empty board(s) to prune: {', '.join(dead)}")
         return 1
-    print(f"\nAll {len(gh) + len(lv)} configured boards healthy.")
+    print(f"\nAll {len(gh) + len(lv) + len(wd)} configured boards healthy.")
     return 0
 
 

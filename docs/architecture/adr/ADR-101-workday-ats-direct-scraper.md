@@ -2,10 +2,11 @@
 
 ## Status
 
-**Proposed** (2026-06-11). Extends the ATS-direct pattern (ADR-081 Greenhouse/Lever,
-ADR-097 curated batch, ADR-098 per-profile targeting) to **Workday**, the missing
-source-of-truth for the cleared-government employers BUG-010 cares about. The
-feasibility is de-risked in `spike_workday_ats.md` (6/6 boards, full JDs, zero blocks).
+**Accepted** (2026-06-13; proposed 2026-06-11). Extends the ATS-direct pattern
+(ADR-081 Greenhouse/Lever, ADR-097 curated batch, ADR-098 per-profile targeting) to
+**Workday**, the missing source-of-truth for the cleared-government employers BUG-010
+cares about. The feasibility is de-risked in `spike_workday_ats.md` (6/6 boards, full
+JDs, zero blocks).
 
 ## Context
 
@@ -20,9 +21,27 @@ scraper seam without inheriting Adzuna's failure modes or Workday's volume risk.
 ## Decision
 
 Add a `WorkdayScraper` (implements `scrapers/base.py::BaseScraper`, returns
-`list[Job]`) in `app/services/ats_scrapers.py`, alongside `GreenhouseScraper` /
-`LeverScraper`. It is **additive, opt-in, per-profile**, and off until a profile lists
+`list[Job]`). It is **additive, opt-in, per-profile**, and off until a profile lists
 Workday boards — identical lifecycle to the other ATS sources (ADR-098).
+
+### Module boundary (modular — own file, not folded into ats_scrapers.py)
+
+Unlike Greenhouse/Lever (one slug, one GET, ~30 lines each), Workday carries genuinely
+new, self-contained complexity: a 3-part-id **URL parser**, an **SSRF host guard**, the
+**two-phase list+detail fetch**, and a **relative-date parser**. That complexity lives
+in a dedicated `app/services/workday_scraper.py` module (`WorkdayScraper`,
+`parse_workday_url`, `verify_workday_board`, the date parser, the Workday caps).
+`ats_scrapers.py` keeps ONLY the shared seam — `build_ats_scrapers` and
+`verify_ats_board` gain a `workday` branch that **lazy-imports** the module (the same
+in-function-import pattern already used for `relevance_tokens`, so there is no import
+cycle even though the Workday module reuses `_strip_html` / `_title_ok` from
+`ats_scrapers`). The factory (`ats_scraper_factory` in `app/api/dependencies.py`) is
+unchanged — it already delegates to `build_ats_scrapers`.
+
+**Parsing is single-source.** `parse_workday_url` is the ONLY place that turns a career
+URL into `(tenant, dc, site)` and the only place that enforces the host guard. The
+verify endpoint returns the parsed triple alongside the job count so the Settings UI
+stores exactly what the backend parsed — the UI never re-parses the URL.
 
 ### The two-phase fetch (the one genuinely new shape)
 
@@ -56,14 +75,21 @@ a date, else `None` (ADR-080 keeps unknown-age postings).
 A Workday board is `tenant` + datacenter (`wd1`/`wd5`/...) + `site` — three parts, not
 the one slug Greenhouse/Lever use. Decision: the user **pastes the Workday career URL**
 (e.g. `https://leidos.wd5.myworkdayjobs.com/External`); a parser extracts
-`(tenant, dc, site)`. Stored under `scrapers.workday.companies` as that structured
-triple (per-profile, ADR-098 resolution from `state["effective_config"]`).
-`verify_ats_board` gains a `workday` branch that parses the URL and probes the list
-endpoint (returns the open-job count for a healthy board, else `None`) — the same
-single source of truth the Settings verify-on-add and `tools/verify_ats_boards.py`
-already share. `build_ats_scrapers` / `ats_scraper_factory` gain a `workday` branch.
-The Settings "Target companies" UI gains a Workday add form (paste URL -> verify ->
-add). ADR-099 `source_label` gains `workday -> "🟢 Workday"`.
+`(tenant, dc, site)`. Stored under `scrapers.workday.companies` as a LIST of those
+structured triples (`{tenant, dc, site}`), per-profile (ADR-098 resolution from
+`state["effective_config"]`) — NOT the flat slug strings Greenhouse/Lever use.
+`verify_ats_board("workday", url)` carries the pasted URL in the existing `slug`
+argument (no signature change), lazy-imports `verify_workday_board`, which parses the
+URL and probes the list endpoint (returns the open-job count for a healthy board, else
+`None`) — the same single source of truth the Settings verify-on-add and
+`tools/verify_ats_boards.py` already share. The `POST /config/ats/verify` response for
+`workday` ALSO returns the `parsed` triple (`_KNOWN_ATS += "workday"`) so the UI stores
+the backend-parsed triple without re-parsing the URL client-side. `build_ats_scrapers`
+gains a `workday` branch that builds a `WorkdayScraper` from the stored triples (the
+factory in `dependencies.py` is unchanged — it delegates to `build_ats_scrapers`). The
+Settings "Target companies" UI gains a Workday add form (paste URL -> verify -> add the
+returned triple; existing boards shown as `tenant/site`). ADR-099 `source_label` gains
+`workday -> "🟢 Workday"`.
 
 ## Boundaries / non-goals
 

@@ -495,7 +495,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
             logger.warning("adzuna_scraper_factory failed: %s", exc)
             return None
 
-    # ADR-081 + ADR-098: per-run ATS-direct scrapers (Greenhouse/Lever) built from
+    # ADR-081 + ADR-098 + ADR-101: per-run ATS-direct scrapers (Greenhouse/Lever/Workday) built from
     # the company list. ADR-098 moves the list from this deps-time system config to
     # the RUN's effective config: discover_jobs passes the run's
     # effective_config["scrapers"] so each profile targets its own companies (the

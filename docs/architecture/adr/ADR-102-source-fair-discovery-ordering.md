@@ -2,7 +2,7 @@
 
 ## Status
 
-- **Proposed** (2026-06-12). Surfaced by live validation run `db64041b` (profile 1) after BUG-012 made per-profile ATS targeting reach discovery.
+- **Accepted (implemented)** (2026-06-12). Surfaced by live validation run `db64041b` (profile 1) after BUG-012 made per-profile ATS targeting reach discovery.
 - Builds on ADR-081/097/098 (ATS sources); orthogonal to ADR-079 (relevance) and ADR-061 (funnel width).
 
 ## Context

@@ -943,7 +943,7 @@ options and show the reason.
 
 Live-check one ATS board token/slug before the Settings UI adds it to a profile's
 target-company list (ADR-098 verify-on-add). One bounded GET against the public,
-unauthenticated Greenhouse/Lever API; reuses the same check as
+unauthenticated Greenhouse/Lever/Workday API; reuses the same check as
 `tools/verify_ats_boards.py`. No secrets, no run context.
 
 **Request**
@@ -953,8 +953,10 @@ POST /config/ats/verify
 {"ats": "greenhouse", "slug": "stripe"}
 ```
 
-`ats` ∈ {`greenhouse`, `lever`} (else `422 unknown_ats`); a blank `slug` is
-`422 empty_slug`.
+`ats` ∈ {`greenhouse`, `lever`, `workday`} (else `422 unknown_ats`); a blank `slug`
+is `422 empty_slug`. For `workday`, `slug` is the **career URL**
+(`https://{tenant}.{dc}.myworkdayjobs.com/{site}`) — a 3-part board id — not a flat
+slug (ADR-101); the backend parses + host-validates it against `*.myworkdayjobs.com`.
 
 **Response — 200 OK**
 
@@ -963,9 +965,18 @@ POST /config/ats/verify
  "message": "stripe: 42 open jobs on greenhouse."}
 ```
 
-A slug that returns 0 jobs / 404 / is unreachable comes back `200` with
-`"ok": false, "job_count": 0` and a message — the UI rejects the add without
-treating it as a server error.
+For `workday`, a successful response ALSO carries the backend-parsed triple so the UI
+stores it without re-parsing:
+
+```json
+{"ats": "workday", "slug": "https://leidos.wd5.myworkdayjobs.com/External",
+ "ok": true, "job_count": 2000, "parsed": {"tenant": "leidos", "dc": "wd5", "site": "External"},
+ "message": "leidos/External: 2000 open jobs on workday."}
+```
+
+A slug that returns 0 jobs / 404 / is unreachable (or a Workday URL that fails the
+host guard or parse) comes back `200` with `"ok": false, "job_count": 0` and a
+message — the UI rejects the add without treating it as a server error.
 
 ---
 

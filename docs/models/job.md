@@ -31,6 +31,7 @@ This makes it trivial to query "which jobs need scoring?" (`get_by_status(NEW)`)
 | `adzuna` | Adzuna API result |
 | `greenhouse` | ATS-direct, source-of-truth employer board (ADR-081) |
 | `lever` | ATS-direct, source-of-truth employer board (ADR-081) |
+| `workday` | ATS-direct, source-of-truth employer board via the undocumented CXS API (ADR-101) |
 
 ### `WorkMode`
 | Value | Meaning |

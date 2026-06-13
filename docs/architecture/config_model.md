@@ -81,6 +81,7 @@ Used for:
 * scoring preferences (`scoring.min_match_score` — the per-profile lever for non-senior personas)
 * active scoring tracks (ADR-071): `scoring.tracks` — the subset of `["ic","architect","management"]` a profile pursues. Default all three (Primary unchanged). Inactive tracks are not scored, do not gate deep review, and are hidden in the UI. Read via `get_active_tracks(state)`; distinct from `scoring.career_track` (weighting emphasis)
 * ATS target companies (ADR-098): `scrapers.{greenhouse,lever}.{companies,enabled}` — the per-profile list of ATS-direct boards to pull from, managed in the Settings "Target companies" section with verify-on-add. Resolved per run from `effective_config` (an edit applies next run with no reload); a profile override **replaces** the default list (the deep-merge replaces a non-dict list value), a new profile inherits the operator-set default batch (ADR-097)
+* Workday ATS boards (ADR-101): `scrapers.workday.{companies,enabled}` — same per-profile lifecycle, but `companies` is a list of structured triples `{tenant, dc, site}` (parsed from the pasted career URL), NOT flat slug strings, because a Workday board is a 3-part id. Ships **off** (empty default list) — a profile opts in by pasting a `*.myworkdayjobs.com` URL into the Settings Workday add form (verify-on-add parses + probes the board). Resolved per run from `effective_config` like the other ATS sources
 * tailoring style
 
 ---

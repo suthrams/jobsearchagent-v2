@@ -168,10 +168,10 @@ def render(ctx: ViewContext) -> None:
     st.markdown("---")
     st.subheader("Target companies (ATS-direct)")
     st.caption(
-        "Greenhouse / Lever boards this profile pulls jobs from, in addition to "
-        "Adzuna. The list is per-profile and applies on your next run (no restart). "
+        "Greenhouse / Lever / Workday boards this profile pulls jobs from, in addition "
+        "to Adzuna. The list is per-profile and applies on your next run (no restart). "
         "Adding a board verifies it live first, so a dead slug never enters your "
-        "list. Saving a list **replaces** this profile's list for that ATS."
+        "list. Saving a list **replaces** this profile's list for that source."
     )
 
     def _save_scrapers(key: str, value: object) -> None:
@@ -243,6 +243,70 @@ def render(ctx: ViewContext) -> None:
                              disabled=not to_remove):
                     remaining = [c for c in companies if c not in set(to_remove)]
                     _save_scrapers(f"scrapers.{ats}.companies", remaining)
+
+    # ── Workday (ADR-101): companies are {tenant, dc, site} triples, added by pasting
+    # the career URL (the 3-part board id), not a flat slug. Off by default.
+    wd_cfg = (scrapers_cfg.get("workday") or {})
+    wd_boards = list(wd_cfg.get("companies") or [])
+    wd_enabled = bool(wd_cfg.get("enabled", True))
+
+    def _wd_label(b: dict) -> str:
+        return f"{b.get('tenant')}/{b.get('site')}" if isinstance(b, dict) else str(b)
+
+    with st.expander(f"Workday  ·  {len(wd_boards)} board(s)"
+                     + ("" if wd_enabled else "  ·  disabled"), expanded=False):
+        new_wd_enabled = st.checkbox(
+            "Enable Workday sourcing for this profile",
+            value=wd_enabled, key="ats_enabled_workday",
+        )
+        if new_wd_enabled != wd_enabled:
+            _save_scrapers("scrapers.workday.enabled", bool(new_wd_enabled))
+
+        if wd_boards:
+            st.write(", ".join(f"`{_wd_label(b)}`" for b in wd_boards))
+        else:
+            st.caption("No boards yet — paste a Workday career URL below.")
+
+        # Add a board by pasting its career URL; the backend parses + verifies it and
+        # returns the {tenant, dc, site} triple we store (single parsing source, ADR-101).
+        new_url = st.text_input(
+            "Add a Workday board by career URL",
+            key="ats_add_workday",
+            placeholder="e.g. https://leidos.wd5.myworkdayjobs.com/External",
+        )
+        if st.button("Verify & add to Workday", key="ats_addbtn_workday"):
+            url = (new_url or "").strip()
+            if not url:
+                st.warning("Paste a Workday career URL first.")
+            else:
+                try:
+                    with st.spinner("Checking Workday board..."):
+                        result = api.verify_ats_board("workday", url)
+                except Exception as exc:
+                    st.error(f"Verify failed: {exc}")
+                else:
+                    parsed = result.get("parsed") if result.get("ok") else None
+                    if parsed and parsed in wd_boards:
+                        st.info(f"`{_wd_label(parsed)}` is already in your Workday list.")
+                    elif parsed:
+                        _save_scrapers("scrapers.workday.companies", wd_boards + [parsed])
+                        st.success(
+                            f"Added `{_wd_label(parsed)}` "
+                            f"({result.get('job_count', 0)} open jobs)."
+                        )
+                    else:
+                        st.error(result.get("message", "Not a live Workday board."))
+
+        if wd_boards:
+            labels = [_wd_label(b) for b in wd_boards]
+            to_remove = st.multiselect(
+                "Remove boards", options=labels, key="ats_rm_workday",
+            )
+            if st.button("Remove from Workday", key="ats_rmbtn_workday",
+                         disabled=not to_remove):
+                rm = set(to_remove)
+                remaining = [b for b in wd_boards if _wd_label(b) not in rm]
+                _save_scrapers("scrapers.workday.companies", remaining)
 
     # ── Agent Models (per ADR-053) ─────────────────────────────────────────
     st.markdown("---")

@@ -48,7 +48,7 @@ class AtsVerifyRequest(BaseModel):
     slug: str
 
 
-_KNOWN_ATS = ("greenhouse", "lever")
+_KNOWN_ATS = ("greenhouse", "lever", "workday")
 
 
 def _load_known_models() -> dict[str, list[str]]:
@@ -154,16 +154,37 @@ def verify_ats(
 
     from app.services.ats_scrapers import verify_ats_board
     count = verify_ats_board(ats, slug)
+
+    # ADR-101: for Workday the `slug` is the pasted career URL. Parse it once here (the
+    # single parsing source of truth) so the UI stores the backend-parsed triple
+    # without re-parsing; the parser's host guard also rejects a bad URL pre-network.
+    parsed = None
+    label = slug
+    if ats == "workday":
+        from app.services.workday_scraper import parse_workday_url
+        triple = parse_workday_url(slug)
+        if triple is None:
+            return {
+                "ats": ats, "slug": slug, "ok": False, "job_count": 0,
+                "message": ("Not a valid Workday career URL. Paste the board URL, e.g. "
+                            "https://leidos.wd5.myworkdayjobs.com/External"),
+            }
+        parsed = {"tenant": triple[0], "dc": triple[1], "site": triple[2]}
+        label = f"{triple[0]}/{triple[2]}"
+
     if not count:
         return {
             "ats": ats, "slug": slug, "ok": False, "job_count": 0,
-            "message": (f"No live {ats} board for {slug!r} (returned 0 jobs or was "
-                        "unreachable). Double-check the board token/slug."),
+            "message": (f"No live {ats} board for {label!r} (returned 0 jobs or was "
+                        "unreachable). Double-check the board URL/slug."),
         }
-    return {
+    resp = {
         "ats": ats, "slug": slug, "ok": True, "job_count": count,
-        "message": f"{slug}: {count} open jobs on {ats}.",
+        "message": f"{label}: {count} open jobs on {ats}.",
     }
+    if parsed is not None:
+        resp["parsed"] = parsed
+    return resp
 
 
 @router.post("/reload", status_code=200)

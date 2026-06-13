@@ -48,12 +48,18 @@ def test_verify_ats_board_dead_returns_none(monkeypatch):
 
 
 def test_verify_ats_board_unknown_ats_and_blank_slug(monkeypatch):
-    # No network call should be needed for these early rejections.
+    # No network call should be needed for these early rejections. Patch both verbs:
+    # greenhouse/lever use GET, workday (ADR-101) uses POST.
     def _boom(*a, **k):  # pragma: no cover - must not be reached
         raise AssertionError("verify_ats_board should not hit the network here")
     monkeypatch.setattr(httpx, "get", _boom)
+    monkeypatch.setattr(httpx, "post", _boom)
+    assert verify_ats_board("icims", "acme") is None        # genuinely unknown ATS
+    assert verify_ats_board("greenhouse", "  ") is None      # blank slug
+    # workday is KNOWN now, but a non-myworkdayjobs.com "slug" fails the host guard in
+    # parse_workday_url before any request (SSRF guard, ADR-101).
     assert verify_ats_board("workday", "acme") is None
-    assert verify_ats_board("greenhouse", "  ") is None
+    assert verify_ats_board("workday", "https://evil.com/External") is None
 
 
 def test_verify_ats_board_network_error_is_none(monkeypatch):
@@ -232,9 +238,22 @@ def test_verify_endpoint_rejects_dead_slug(monkeypatch):
 
 def test_verify_endpoint_rejects_unknown_ats():
     client = TestClient(app)
-    r = client.post("/config/ats/verify", json={"ats": "workday", "slug": "acme"})
+    # workday is a known ATS now (ADR-101); use a genuinely-unsupported one.
+    r = client.post("/config/ats/verify", json={"ats": "icims", "slug": "acme"})
     assert r.status_code == 422
     assert r.json()["detail"]["error"] == "unknown_ats"
+
+
+def test_verify_endpoint_rejects_bad_workday_url():
+    """ADR-101: a non-myworkdayjobs.com URL fails the host guard -> ok:false (not a
+    server error), with no `parsed` triple for the UI to store."""
+    client = TestClient(app)
+    r = client.post("/config/ats/verify",
+                    json={"ats": "workday", "slug": "https://evil.com/External"})
+    assert r.status_code == 200
+    body = r.json()
+    assert body["ok"] is False
+    assert "parsed" not in body
 
 
 def test_verify_endpoint_rejects_empty_slug():

@@ -2,7 +2,7 @@
 
 ## Status
 
-- **Proposed** (2026-06-12). Surfaced by live validation run `db64041b` (profile 1): senior cleared roles scored for a fresh-grad profile.
+- **Accepted (implemented)** (2026-06-12). Surfaced by live validation run `db64041b` (profile 1): senior cleared roles scored for a fresh-grad profile.
 - Refines ADR-079 (relevance pre-filter); same family as ADR-094 (clearance-in-filter).
 
 ## Context
