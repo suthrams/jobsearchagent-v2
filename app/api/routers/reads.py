@@ -44,6 +44,13 @@ def interview_prep(workflow_id: str) -> DictList:
     return DictList(**wr.list_interview_prep(workflow_id))
 
 
+@router.get("/{workflow_id}/research", response_model=DictList)
+def research(workflow_id: str) -> DictList:
+    """Per-job Research Agent output for a run (ADR-105) — powers the Search-detail
+    research panel."""
+    return DictList(**wr.list_research_contexts(workflow_id))
+
+
 @router.get("/{workflow_id}/steps", response_model=DictList)
 def steps(workflow_id: str) -> DictList:
     return DictList(**wr.list_step_executions(workflow_id))

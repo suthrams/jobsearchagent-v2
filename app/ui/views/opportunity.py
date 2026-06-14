@@ -28,6 +28,7 @@ import app.ui.api_client as api
 from app.ui.components.bullets import _bullets, _para
 from app.ui.components.favorites import render_favorite_toggle
 from app.ui.components.posting_link import render_posting_links
+from app.ui.components.research_panel import render_research
 from app.ui.components.tailoring_panel import render_job_tailoring
 from app.ui.data import (
     _cached_job_pipeline,
@@ -65,6 +66,7 @@ def render(ctx: ViewContext) -> None:
 
     _header(wf_id, job_id, job, state)
     _why_and_gaps(pipeline, state)
+    _research(pipeline)
     _deep_review(wf_id, job_id, pipeline)
     _next_steps(wf_id, job_id, state)
     _interview_prep_read(pipeline)
@@ -164,6 +166,18 @@ def _why_and_gaps(pipeline: dict, state: dict) -> None:
             _bullets("Career gaps (must not fabricate)", adv.get("career_gaps"))
         else:
             _bullets("Gaps", sd.get("gaps"))
+
+
+# ── What the research agent found (ADR-105) ───────────────────────────────────
+
+def _research(pipeline: dict) -> None:
+    research = pipeline.get("research")
+    if not research:
+        return  # nothing persisted (pre-ADR-105 run, or job not scored)
+    with st.expander("🔎 What the research agent found", expanded=False):
+        st.caption("Company/role signals the research agent gathered before scoring "
+                   "(these shaped the score above).")
+        render_research((research or {}).get("data"))
 
 
 # ── Deep review: run on demand, or show the rounds ────────────────────────────

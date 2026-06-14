@@ -310,21 +310,29 @@ CREATE TABLE resumes (
 
 ### Purpose
 
-The Scoring Agent's per-job output. One row per `(workflow_run_id, job_id)`.
+The Scoring Agent's per-job output. One row per `(workflow_run_id, job_id)`. Also
+carries the Research Agent's per-job output that INFORMED the score (ADR-105) — they are
+1:1, written in the same persist step, so the research is no longer discarded.
 
 ### Schema
 
 ```sql
 CREATE TABLE job_scores (
-    id              TEXT PRIMARY KEY,
-    workflow_run_id TEXT NOT NULL,
-    job_id          TEXT NOT NULL,
-    resume_id       TEXT NOT NULL,
-    score_json      TEXT NOT NULL,
-    overall_score   INTEGER,
-    created_at      TEXT NOT NULL
+    id                    TEXT PRIMARY KEY,
+    workflow_run_id       TEXT NOT NULL,
+    job_id                TEXT NOT NULL,
+    resume_id             TEXT NOT NULL,
+    score_json            TEXT NOT NULL,
+    overall_score         INTEGER,
+    research_context_json TEXT,          -- ADR-105: the Research Agent's ResearchContext
+    created_at            TEXT NOT NULL
 );
 ```
+
+`research_context_json` is nullable: scores written before ADR-105 (and any future
+score written without research) read back as "no research". **Read by** the per-job
+pipeline read (`get_job_pipeline` → Opportunity) and the per-run
+`list_research_contexts` (→ Search detail research panel); see `GET /workflows/{id}/research`.
 
 ### Column dictionary
 
@@ -336,6 +344,7 @@ CREATE TABLE job_scores (
 | `resume_id`       | TEXT        | FK → `resumes.id`. Captures which resume was scored against. |
 | `score_json`      | TEXT (JSON) | Full `JobScore` Pydantic dict — `technical_score`, `architecture_score`, `leadership_score` (each `int` or `null` when that track is inactive for the profile, ADR-071), `domain_score`, `match_summary`, `strengths[]`, `gaps[]`, `recommended_next_action`. The run's active-track set is recoverable from `workflow_runs.state_json.effective_config.scoring.tracks`. |
 | `overall_score`   | INT         | Mirror of `score_json.overall_score` for indexed sort/filter. |
+| `research_context_json` | TEXT (JSON) | ADR-105: the `ResearchContext` the Research Agent produced for this job (`company_summary`, `role_context`, `technology/leadership/domain_signals`, `risk_flags`, `research_steps[]`, `confidence`) — the evidence that shaped the score. Nullable (NULL for pre-ADR-105 rows / when no research was stored). PII-safe by construction (signals + summaries, not resume content). |
 | `created_at`      | TEXT        | ISO 8601 UTC. |
 
 ### Workflow usage

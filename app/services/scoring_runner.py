@@ -98,7 +98,8 @@ def score_one_job(
     # ── Persist ───────────────────────────────────────────────────────────────
     try:
         score_repo.create(
-            str(uuid.uuid4()), workflow_id, job_id, resume_id, score.model_dump()
+            str(uuid.uuid4()), workflow_id, job_id, resume_id, score.model_dump(),
+            research_context=research.model_dump(),  # ADR-105: keep the research, don't discard it
         )
     except Exception as exc:
         logger.warning("score_one_job: persist failed for %s: %s", job_id, exc)

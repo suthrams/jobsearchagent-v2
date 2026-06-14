@@ -317,6 +317,11 @@ def list_interview_prep(workflow_id: str) -> dict:
     return _get_json(f"/workflows/{workflow_id}/interview-prep")
 
 
+def list_research_contexts(workflow_id: str) -> dict:
+    """ADR-105: per-job Research Agent output for a run (Search-detail research panel)."""
+    return _get_json(f"/workflows/{workflow_id}/research")
+
+
 def list_step_executions(workflow_id: str) -> dict:
     return _get_json(f"/workflows/{workflow_id}/steps")
 

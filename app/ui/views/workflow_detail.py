@@ -15,8 +15,10 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.services.constraint_analyzer import analyze, summary_metrics
+from app.ui.components.research_panel import render_research
 from app.ui.data import (
     _cached_cost_breakdown,
+    _cached_research_contexts,
     _cached_review_later,
     _cached_run_metrics,
     _cached_step_executions,
@@ -567,6 +569,19 @@ def render(ctx: ViewContext) -> None:
                 .rename(columns={"step": "Step", "status": "Status"}),
                 hide_index=True, use_container_width=True,
             )
+
+    # Research findings (ADR-105): what the Research Agent gathered per scored job
+    # before scoring - persisted now instead of discarded. Run-level list; the full
+    # per-job panel also lives on each job's Opportunity page.
+    research_items = _cached_research_contexts(wf_id)
+    if research_items:
+        with st.expander(f"🔎 Research findings — {len(research_items)} job(s)", expanded=False):
+            st.caption("Company/role signals the research agent gathered before scoring "
+                       "each job (these shaped the scores).")
+            for item in research_items:
+                st.markdown(f"**{item.get('title', '?')}** · {item.get('company', '?')}")
+                render_research(item.get("research"))
+                st.divider()
 
     # Limits & Constraints — keep open when something fired so the user notices
     _has_findings = bool(findings)

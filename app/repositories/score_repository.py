@@ -12,13 +12,18 @@ class ScoreRepository:
         self.db_path = db_path
 
     def create(self, score_id: str, workflow_run_id: str, job_id: str,
-               resume_id: str, score: dict) -> None:
+               resume_id: str, score: dict,
+               research_context: dict | None = None) -> None:
+        """Persist a score. ADR-105: the Research Agent's per-job output that INFORMED
+        this score is stored alongside it (1:1) so it is no longer discarded. The param
+        defaults to None for back-compat with old call sites + old rows."""
         now = utcnow_iso()
         with get_connection(self.db_path) as conn:
             conn.execute(
                 """INSERT INTO job_scores
-                   (id, workflow_run_id, job_id, resume_id, score_json, overall_score, created_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                   (id, workflow_run_id, job_id, resume_id, score_json, overall_score,
+                    research_context_json, created_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     score_id,
                     workflow_run_id,
@@ -26,6 +31,7 @@ class ScoreRepository:
                     resume_id,
                     json.dumps(score),
                     score.get("overall_score"),
+                    json.dumps(research_context) if research_context is not None else None,
                     now,
                 ),
             )

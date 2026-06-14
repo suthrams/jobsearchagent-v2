@@ -127,6 +127,32 @@ def list_workflow_jobs(workflow_id: str, include_excluded: bool = True,
     return page(items, len(items), len(items), 0)
 
 
+def list_research_contexts(workflow_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
+    """Per-job Research Agent output for a run (ADR-105). One row per scored job that
+    has a persisted research_context, with the parsed blob. Parallel to
+    list_deep_review_results / list_interview_prep; powers the Search-detail research
+    panel. Empty list when no run stored research (e.g. pre-ADR-105 runs)."""
+    import json as _json
+    raw = _rows(db_path, """
+        SELECT j.id AS job_id, j.title, j.company,
+               js.research_context_json, js.created_at AS researched_at
+        FROM jobs j
+        JOIN job_scores js ON j.id = js.job_id AND js.workflow_run_id = ?
+        WHERE js.research_context_json IS NOT NULL
+        ORDER BY js.overall_score DESC
+    """, (workflow_id,))
+    items = []
+    for r in raw:
+        try:
+            research = _json.loads(r.get("research_context_json") or "{}")
+        except Exception:
+            research = {}
+        items.append({"job_id": r["job_id"], "title": r["title"],
+                      "company": r["company"], "researched_at": r["researched_at"],
+                      "research": research})
+    return page(items, len(items), len(items), 0)
+
+
 def list_deep_review_results(workflow_id: str, db_path: Path = DEFAULT_DB_PATH) -> dict:
     """Resume reviews + career advice for a run (ADR-075 Phase 6; from
     db_reader.load_deep_review_results)."""
@@ -237,7 +263,7 @@ def get_job_pipeline(workflow_id: str, job_id: str,
     renders (job/score/review_rounds/final_review/advice/prep)."""
     import json as _json
     out: dict = {"job": None, "score": None, "review_rounds": [],
-                 "final_review": None, "advice": None, "prep": None}
+                 "final_review": None, "advice": None, "prep": None, "research": None}
     if not Path(db_path).exists():
         return out
 
@@ -256,12 +282,17 @@ def get_job_pipeline(workflow_id: str, job_id: str,
                               "location": r["location"], "url": r["url"], "source": r["source"],
                               "posted_at": r["posted_at"],  # ADR-080
                               "found_at": r["created_at"]}
-            r = conn.execute("SELECT score_json, overall_score, created_at FROM job_scores "
-                             "WHERE workflow_run_id = ? AND job_id = ?", (workflow_id, job_id)).fetchone()
+            r = conn.execute("SELECT score_json, overall_score, research_context_json, created_at "
+                             "FROM job_scores WHERE workflow_run_id = ? AND job_id = ?",
+                             (workflow_id, job_id)).fetchone()
             if r:
                 payload = _blob(r["score_json"])
                 payload["overall_score"] = r["overall_score"]
                 out["score"] = {"data": payload, "created_at": r["created_at"]}
+                # ADR-105: the Research Agent output that informed this score, if persisted.
+                if r["research_context_json"]:
+                    out["research"] = {"data": _blob(r["research_context_json"]),
+                                       "created_at": r["created_at"]}
             for rr in conn.execute(
                 "SELECT round_number, critic_output_json, audit_output_json, audit_score, "
                 "stop_reason, created_at FROM review_rounds WHERE workflow_run_id = ? AND job_id = ? "

@@ -110,3 +110,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-102 | [Source-Fair Discovery Ordering (Round-Robin Interleave Before the Caps)](ADR-102-source-fair-discovery-ordering.md) | Accepted (implemented) |
 | ADR-103 | [Profile-Derived Location Filter (Drop Out-of-Country Postings at Discovery)](ADR-103-profile-location-country-filter.md) | Accepted (implemented) |
 | ADR-104 | [Strict Seniority Judgment in the Relevance Filter (World-Knowledge When Text Is Truncated)](ADR-104-strict-seniority-judgment-on-truncated-text.md) | Accepted (implemented) |
+| ADR-105 | [Persist and Surface the Research Agent's Output](ADR-105-persist-and-surface-research-context.md) | Accepted (implemented) |

@@ -189,6 +189,12 @@ research_steps
 confidence
 ```
 
+**Persistence + visibility (ADR-105):** this output is fed to the Scoring Agent (it
+shapes the score) AND persisted 1:1 with the score on `job_scores.research_context_json`
+— it is no longer discarded after scoring. It is surfaced in the UI on the per-job
+Opportunity page ("What the research agent found") and the run-level Search detail page
+("Research findings"), read via `get_job_pipeline` / `list_research_contexts`.
+
 ---
 
 ### Allowed Tools

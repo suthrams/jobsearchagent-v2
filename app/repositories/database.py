@@ -84,6 +84,7 @@ CREATE TABLE IF NOT EXISTS job_scores (
     resume_id TEXT NOT NULL,
     score_json TEXT NOT NULL,
     overall_score INTEGER,
+    research_context_json TEXT,
     created_at TEXT NOT NULL
 );
 
@@ -394,6 +395,12 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
                 conn.execute(col_ddl)
             except Exception:
                 pass  # column already exists
+        # Migration (ADR-105): persist the Research Agent's per-job output alongside
+        # the score it informed, so it is no longer thrown away. Same idempotent pattern.
+        try:
+            conn.execute("ALTER TABLE job_scores ADD COLUMN research_context_json TEXT")
+        except Exception:
+            pass  # column already exists
         # Migration (ADR-100): generalize favorite_jobs into a kind-discriminated
         # saved-job store (favorites + review-later) with a snapshot link/source.
         # Same idempotent ADD COLUMN pattern; safe on existing DBs.

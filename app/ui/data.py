@@ -132,6 +132,16 @@ def _cached_interview_prep(workflow_id: str) -> pd.DataFrame:
     return _df(api.list_interview_prep, workflow_id)
 
 
+@st.cache_data(ttl=30)
+def _cached_research_contexts(workflow_id: str) -> list:
+    """ADR-105: raw per-job research items (nested dicts, not tabular) for the
+    Search-detail research panel. Returns [] on any error."""
+    try:
+        return api.list_research_contexts(workflow_id).get("items") or []
+    except Exception:
+        return []
+
+
 @st.cache_data(ttl=5)
 def _cached_step_executions(workflow_id: str) -> pd.DataFrame:
     return _df(api.list_step_executions, workflow_id)

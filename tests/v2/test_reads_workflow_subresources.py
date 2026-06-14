@@ -67,6 +67,55 @@ def test_endpoints_shape_via_stub(monkeypatch):
     assert client.get("/workflows/missing/detail").status_code == 404
 
 
+def test_adr105_research_persists_and_reads(db_path):
+    """ScoreRepository stores the research the score used; both reads surface it, and
+    a score written without research stays None (back-compat)."""
+    import sqlite3
+    from app.repositories.score_repository import ScoreRepository
+
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("INSERT INTO jobs (id, title, company, created_at) VALUES ('j1','Eng','Acme',?)",
+                 (utcnow_iso(),))
+    conn.execute("INSERT INTO jobs (id, title, company, created_at) VALUES ('j2','Arch','Globex',?)",
+                 (utcnow_iso(),))
+    conn.commit()
+    conn.close()
+
+    repo = ScoreRepository(db_path)
+    research = {
+        "job_id": "j1", "company_summary": "Acme builds X", "role_context": "Senior IC",
+        "technology_signals": ["Python", "K8s"], "risk_flags": ["clearance required"],
+        "research_steps": [{"step_number": 1, "tool_used": "web_search",
+                            "observation_summary": "found careers page"}],
+        "confidence": 80,
+    }
+    repo.create("s1", "wf", "j1", "r", {"overall_score": 88, "technical_score": 88},
+                research_context=research)
+    repo.create("s2", "wf", "j2", "r", {"overall_score": 70})  # no research (back-compat)
+
+    pipe = wr.get_job_pipeline("wf", "j1", db_path=db_path)
+    assert pipe["research"]["data"]["company_summary"] == "Acme builds X"
+    assert pipe["research"]["data"]["technology_signals"] == ["Python", "K8s"]
+
+    assert wr.get_job_pipeline("wf", "j2", db_path=db_path)["research"] is None
+
+    items = wr.list_research_contexts("wf", db_path=db_path)["items"]
+    assert len(items) == 1  # only j1 stored research
+    assert items[0]["job_id"] == "j1"
+    assert items[0]["research"]["confidence"] == 80
+
+
+def test_adr105_research_endpoint_shape(monkeypatch):
+    import app.api.routers.reads as reads
+    monkeypatch.setattr(reads.wr, "list_research_contexts",
+                        lambda *a, **k: {"items": [{"job_id": "j1", "research": {"confidence": 80}}],
+                                         "total": 1, "limit": 1, "offset": 0})
+    client = TestClient(app)
+    r = client.get("/workflows/wf/research")
+    assert r.status_code == 200 and set(r.json()) == {"items", "total", "limit", "offset"}
+    assert r.json()["items"][0]["research"]["confidence"] == 80
+
+
 def test_recent_route_does_not_collide_with_workflow_id(monkeypatch):
     """GET /workflows/recent must hit the recent handler, not /{workflow_id}."""
     import app.api.routers.reads as reads
