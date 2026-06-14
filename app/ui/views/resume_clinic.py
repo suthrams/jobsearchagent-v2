@@ -30,11 +30,19 @@ def render(ctx: ViewContext) -> None:
     # A focus turns the session into a job-specific tailoring (the existing
     # evidence-bound engine), output = a tailored resume. No focus -> the standard
     # job-agnostic clinic below.
+    # A job arriving from the Run Report / Matches "Analyze in clinic" jump (ADR-090):
+    # preselect it in the focus picker below. One-shot hint (popped, not sticky).
+    _focus_hint = st.session_state.pop("clinic_focus_job_id", None)
     _favs = _cached_favorites(user_id)
     if _favs:
         _focus_opts: dict[str, dict | None] = {"— No focus (improve my resume generally) —": None}
         for _f in _favs:
             _focus_opts[f"{_f.get('title') or 'Untitled'} @ {_f.get('company') or '?'}"] = _f
+        if _focus_hint:
+            for _lbl, _f in _focus_opts.items():
+                if _f and str(_f.get("job_id")) == str(_focus_hint):
+                    st.session_state.rc_focus_job = _lbl  # preselect the arrived-with job
+                    break
         _focus_label = st.selectbox(
             "Focus a job (optional — from My favorite jobs)",
             list(_focus_opts.keys()), key="rc_focus_job",
