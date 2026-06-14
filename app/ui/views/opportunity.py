@@ -26,7 +26,10 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.ui.components.bullets import _bullets, _para
-from app.ui.components.favorites import render_favorite_toggle
+from app.ui.components.favorites import (
+    render_analyze_in_clinic_button,
+    render_favorite_toggle,
+)
 from app.ui.components.posting_link import render_posting_links
 from app.ui.components.research_panel import render_research
 from app.ui.components.tailoring_panel import render_job_tailoring
@@ -76,12 +79,15 @@ def render(ctx: ViewContext) -> None:
 # ── Header: back / exclude / title / best-track context ───────────────────────
 
 def _header(wf_id: str, job_id: str, job: dict, state: dict) -> None:
-    top_l, top_fav, top_r = st.columns([3, 1, 1])
+    top_l, top_fav, top_clinic, top_r = st.columns([3, 1, 1.4, 1])
     with top_l:
         back_button("Matches")
     with top_fav:
         # ADR-090: favorite this job for the Resume Clinic (a tailoring target).
         render_favorite_toggle(job_id=job_id, workflow_id=wf_id, key="opp_favorite")
+    with top_clinic:
+        # ADR-090 bridge: open a Resume Clinic session focused on this job.
+        render_analyze_in_clinic_button(job_id=job_id, workflow_id=wf_id, key="opp_clinic")
     with top_r:
         _exclude_control(wf_id, job_id, job)
 

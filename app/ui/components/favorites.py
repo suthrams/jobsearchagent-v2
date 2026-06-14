@@ -21,6 +21,35 @@ def favorited_ids(user_id: str | None) -> set[str]:
     return {f.get("job_id") for f in (_cached_favorites(user_id) or []) if f.get("job_id")}
 
 
+def render_analyze_in_clinic_button(*, job_id: str, workflow_id: str, key: str,
+                                    label: str = "🩺 Analyze in clinic",
+                                    use_container_width: bool = True) -> None:
+    """One-click favorite-then-open-in-Resume-Clinic (ADR-090 favorite->clinic bridge).
+
+    Favorites the job (if not already) so it joins the clinic's focus list, then
+    navigates to the Resume Clinic with a one-shot `clinic_focus_job_id` hint so the
+    session opens already focused on this job. Shared by Run report, Opportunity, and
+    Matches so the bridge behaves identically everywhere."""
+    from app.ui.nav import _navigate  # local import: keep nav a one-way dep of components
+
+    user_id = st.session_state.current_user_id
+    if not st.button(label, key=key, use_container_width=use_container_width,
+                     help="Favorite this job and open a Resume Clinic session focused on it."):
+        return
+    if job_id not in favorited_ids(user_id):
+        try:
+            api.add_favorite(user_id, workflow_id, job_id)
+            _cached_favorites.clear()
+        except api.FavoritesCapError:
+            st.warning(f"You already have {_CAP} favorite jobs (the limit). "
+                       "Un-favorite one to add another.")
+            return
+        except Exception as exc:  # noqa: BLE001
+            st.error(f"Could not flag this job: {exc}")
+            return
+    _navigate("Resume Clinic", clinic_focus_job_id=job_id)
+
+
 def render_favorite_toggle(*, job_id: str, workflow_id: str, key: str,
                            use_container_width: bool = True) -> None:
     """Render the star toggle for one job. Adds to / removes from My favorite jobs

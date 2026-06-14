@@ -9,9 +9,12 @@ from __future__ import annotations
 import streamlit as st
 
 import app.ui.api_client as api
-from app.ui.components.favorites import favorited_ids, render_favorite_toggle
-from app.ui.data import _cached_favorites, _cached_workflow_jobs
-from app.ui.nav import ViewContext, _navigate, back_button
+from app.ui.components.favorites import (
+    render_analyze_in_clinic_button,
+    render_favorite_toggle,
+)
+from app.ui.data import _cached_workflow_jobs
+from app.ui.nav import ViewContext, back_button
 
 
 def render(ctx: ViewContext) -> None:
@@ -59,7 +62,6 @@ def _flag_for_clinic(wf_id: str) -> None:
         st.caption("No scored jobs in this run to flag.")
         return
 
-    fav_ids = favorited_ids(st.session_state.current_user_id)
     for _, row in jobs.iterrows():
         job_id = str(row.get("job_id"))
         title = row.get("title") or "(untitled)"
@@ -75,25 +77,5 @@ def _flag_for_clinic(wf_id: str) -> None:
             render_favorite_toggle(job_id=job_id, workflow_id=wf_id,
                                    key=f"rr_fav_{job_id}")
         with c_go:
-            if st.button("🩺 Analyze in clinic", key=f"rr_clinic_{job_id}",
-                         use_container_width=True,
-                         help="Favorite this job and open a Resume Clinic session focused on it."):
-                _open_in_clinic(wf_id, job_id, job_id in fav_ids)
-
-
-def _open_in_clinic(wf_id: str, job_id: str, already_fav: bool) -> None:
-    """Favorite the job if needed, then navigate to the Resume Clinic with this job
-    pre-focused (honored by resume_clinic via the clinic_focus_job_id hint)."""
-    user_id = st.session_state.current_user_id
-    if not already_fav:
-        try:
-            api.add_favorite(user_id, wf_id, job_id)
-            _cached_favorites.clear()
-        except api.FavoritesCapError:
-            st.warning("You are at the favorite-jobs limit. Un-favorite one first, "
-                       "then try again.")
-            return
-        except Exception as exc:  # noqa: BLE001
-            st.error(f"Could not flag this job: {exc}")
-            return
-    _navigate("Resume Clinic", clinic_focus_job_id=job_id)
+            render_analyze_in_clinic_button(job_id=job_id, workflow_id=wf_id,
+                                            key=f"rr_clinic_{job_id}")

@@ -23,7 +23,11 @@ import streamlit as st
 
 import app.ui.api_client as api
 from app.services.posting_age_filter import is_stale
-from app.ui.components.favorites import favorited_ids, render_favorite_toggle
+from app.ui.components.favorites import (
+    favorited_ids,
+    render_analyze_in_clinic_button,
+    render_favorite_toggle,
+)
 from app.ui.components.run_status import render_run_status
 from app.ui.data import _cached_scored_jobs, _cached_user_resumes, _get_config_cached
 from app.ui.formatting import format_posting_age_short, source_label
@@ -327,7 +331,7 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
         return
     job = shown.iloc[rows[0]]
     st.markdown(f"**Selected:** {job.get('title', '?')} - {job.get('company', '?')}")
-    b1, b2, b3, _ = st.columns([1, 1, 1, 2])
+    b1, b2, b3, b4 = st.columns([1, 1, 1.3, 1])
     if b1.button("Open opportunity", type="primary", key="matches_open"):
         _navigate(
             "Opportunity",
@@ -340,7 +344,13 @@ def _render_roles(ctx: ViewContext, df: pd.DataFrame) -> None:
             job_id=str(job.get("job_id")), workflow_id=str(job.get("workflow_id")),
             key="matches_favorite",
         )
-    if b3.button("Exclude", key="matches_exclude"):
+    with b3:
+        # ADR-090 bridge: favorite + open a Resume Clinic session focused on this job.
+        render_analyze_in_clinic_button(
+            job_id=str(job.get("job_id")), workflow_id=str(job.get("workflow_id")),
+            key="matches_clinic",
+        )
+    if b4.button("Exclude", key="matches_exclude"):
         try:
             api.exclude_job(str(job.get("job_id")))
             st.cache_data.clear()
