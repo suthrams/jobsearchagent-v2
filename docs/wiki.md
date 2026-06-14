@@ -332,6 +332,22 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 
 ## 13. Project Maintenance
 
+**Maintainer Handbook** — the operator/maintainer on-ramp for an engineer inheriting the
+codebase cold (distinct from the end-user [user_guide.md](user_guide.md)). A
+[Diataxis](https://diataxis.fr/)-structured hub + spokes: the hub gives the mental model,
+the three load-bearing assumptions (single-process / cooperative-trust /
+best-effort-persistence), a phased onboarding reading path, and the open roadmap; each spoke
+serves one need.
+
+| Document | What it covers |
+|---|---|
+| [maintenance.md](maintenance.md) | **Hub.** Mental model, the three load-bearing assumptions and their guardrails, the Day-1->Week-2 onboarding reading path, the open roadmap (review items 4-7), and a glossary. Links every spoke + the complementary user/cost/settings docs |
+| [maintenance/running_and_operating.md](maintenance/running_and_operating.md) | How-to + reference: env vars, starting backend + UI, the live/mock Phase-7 gate, health/readiness, the ADR-096 startup-recover/shutdown-drain lifecycle, and how each class of config change applies (next run / `POST /config/reload` / restart) |
+| [maintenance/code_organization.md](maintenance/code_organization.md) | Explanation + reference: the one-directional layer stack, the load-bearing seams (UI-reads-through-API, orchestrator-only-mutates-state, `LLMClient` abstraction, guardrails + PII-redaction seams, single identity seam), a directory map, a key-modules tour, and a "where to make common changes" index |
+| [maintenance/persistence_and_concurrency.md](maintenance/persistence_and_concurrency.md) | Explanation + reference: the two state stores (domain vs checkpointer), SQLite WAL + busy_timeout, the single-process in-process executor + run-control registries, where paid output can be lost and how it was hardened (review fixes 1-3), the soft cost cap, and at-rest PII |
+| [maintenance/schema_and_migrations.md](maintenance/schema_and_migrations.md) | How-to + reference: the databases, the idempotent `ALTER` migration discipline and its `schema_version` gap (roadmap item 5), the step-by-step recipe to add/change a column safely, constraint/backfill migrations, and retention/purge |
+| [maintenance/backup_restore_and_troubleshooting.md](maintenance/backup_restore_and_troubleshooting.md) | How-to: WAL-aware backup + restore of `data/v2.db`, and symptom->fix recipes (stale-code orphan uvicorn on Windows, stuck `running` rows, lost/re-spent results, `/readyz` 503/degraded, config-didn't-apply, cost surprises) |
+
 | Document | What it covers |
 |---|---|
 | [../CHANGELOG.md](../CHANGELOG.md) | All notable changes by date — the observability arc (security events + System Dashboard ADR-073, gap-closing + `api_requests` ADR-074, UI read funnel ADR-075, budget-cap/failed-call/drift ADR-076/077/078), Resume Clinic (ADR-066), PII redaction (ADR-069), multi-user profiles (ADR-062), multi-provider (ADR-053), back through Phase 7/8 live agents and performance |
@@ -349,7 +365,8 @@ the UI read funnel, and the observability gap-closing) are all complete. See Sec
 |---|---|
 | Project root (README, CHANGELOG, CLAUDE) | 3 |
 | bugs/ (RCA log: README + template + per-bug RCAs) | 3 |
-| docs/ top-level | 10 |
+| docs/ top-level | 11 |
+| docs/maintenance/ (Maintainer Handbook spokes) | 5 |
 | docs/architecture/ | 34 |
 | docs/architecture/adr/ | 99 (index + 98 ADRs) |
 | docs/architecture/phases/ | 8 |
