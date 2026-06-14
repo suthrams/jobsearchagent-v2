@@ -59,6 +59,26 @@ def test_score_one_job_researches_scores_and_persists():
     score_repo.create.assert_called_once()  # the JobScore was persisted
 
 
+def test_score_one_job_surfaces_persist_failure():
+    """Fix 1 (architecture review): a failed persist of a PAID score must surface in
+    errs[] (not be silently swallowed). The score is still returned in-memory."""
+    research_agent = MagicMock(); research_agent.run.return_value = _research_obj()
+    scoring_agent = MagicMock(); scoring_agent.run.return_value = _score_obj(overall_score=77)
+    score_repo = MagicMock()
+    score_repo.create.side_effect = RuntimeError("database is locked")
+
+    entry, calls, errs, *_ = score_one_job(
+        job={"id": "job-x", "title": "SOC Analyst", "company": "Acme",
+             "job_description": "x", "url": "http://x"},
+        workflow_id="wf-1", resume_id="r1", resume_profile={"name": "Cand"},
+        career_track="all", active_tracks=["ic"],
+        research_agent=research_agent, scoring_agent=scoring_agent, score_repo=score_repo,
+    )
+    assert entry["status"] == "scored"            # score computed + returned in-memory
+    assert errs and errs[0]["error_type"] == "persist_failed"
+    assert "NOT saved" in errs[0]["message"]      # the loss is visible, not silent
+
+
 # ── Endpoint ─────────────────────────────────────────────────────────────────
 
 def _state(**over):

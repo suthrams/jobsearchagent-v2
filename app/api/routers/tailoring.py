@@ -513,13 +513,20 @@ def trigger_score(
             },
         )
 
-    return {
+    resp = {
         "workflow_id": workflow_id,
         "job_id": job_id,
         "already_scored": False,
         "overall_score": entry.get("overall_score"),
         "llm_calls": calls,
+        "persisted": True,
     }
+    # Fix 1: the score computed but a persist error was surfaced (e.g. a DB lock) -
+    # tell the caller it was NOT durably saved rather than reporting a clean success.
+    if errs:
+        resp["persisted"] = False
+        resp["warnings"] = [e.get("message") for e in errs]
+    return resp
 
 
 # ── On-demand interview prep (ADR-061) ─────────────────────────────────────────
@@ -599,14 +606,18 @@ def trigger_interview_prep(
         ) from exc
 
     prep_dict = prep.model_dump() if hasattr(prep, "model_dump") else dict(prep)
+    resp: dict = {
+        "workflow_id": workflow_id,
+        "job_id": job_id,
+        "prep": prep_dict,
+        "persisted": True,
+    }
     try:
         deps.advice_repo.create_prep(str(_uuid.uuid4()), workflow_id, job_id, prep_dict)
     except Exception as exc:
         logger.warning("trigger_interview_prep: persist failed for %s/%s: %s",
                        workflow_id, job_id, exc)
-
-    return {
-        "workflow_id": workflow_id,
-        "job_id": job_id,
-        "prep": prep_dict,
-    }
+        # Fix 1: don't report a clean success when the prep was not durably saved.
+        resp["persisted"] = False
+        resp["warning"] = f"interview prep computed but NOT saved: {exc}"
+    return resp

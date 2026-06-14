@@ -126,6 +126,12 @@ def review_one_job(
             )
         except Exception as exc:
             logger.warning("review_one_job: persist round failed: %s", exc)
+            local_errors.append({  # fix 1: surface the lost round, don't swallow it
+                "step": "deep_review", "error_type": "persist_failed",
+                "message": f"review round {round_num} for {job_id} computed but NOT saved: {exc}",
+                "recoverable": True, "occurred_at": utcnow_iso(),
+                "suggested_action": "retry deep review",
+            })
 
         local_rounds.append({
             "round_number": round_num,
@@ -168,6 +174,12 @@ def review_one_job(
             )
         except Exception as exc:
             logger.warning("review_one_job: persist final review failed: %s", exc)
+            local_errors.append({  # fix 1: surface the lost final review, don't swallow it
+                "step": "deep_review", "error_type": "persist_failed",
+                "message": f"final review for {job_id} computed but NOT saved: {exc}",
+                "recoverable": True, "occurred_at": utcnow_iso(),
+                "suggested_action": "retry deep review",
+            })
 
     return (job_id, local_rounds, best_review, local_errors,
             llm_calls, tokens_in, tokens_out, cost_usd)

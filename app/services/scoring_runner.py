@@ -96,6 +96,11 @@ def score_one_job(
         }], total_ti, total_to, total_cost
 
     # ── Persist ───────────────────────────────────────────────────────────────
+    # Fix 1 (architecture review): a failure here means a PAID score was computed but
+    # not durably saved (next run re-discovers + re-spends). Surface it in the run's
+    # errors[] instead of swallowing it - the score is still returned in-memory so the
+    # caller can use it this turn, but the failure is now visible (never silent loss).
+    persist_errors: list[dict] = []
     try:
         score_repo.create(
             str(uuid.uuid4()), workflow_id, job_id, resume_id, score.model_dump(),
@@ -103,5 +108,12 @@ def score_one_job(
         )
     except Exception as exc:
         logger.warning("score_one_job: persist failed for %s: %s", job_id, exc)
+        persist_errors.append({
+            "step": "scoring", "error_type": "persist_failed",
+            "message": f"score for {job_id} computed but NOT saved: {exc}",
+            "recoverable": True, "occurred_at": utcnow_iso(),
+            "suggested_action": "retry scoring this job",
+        })
 
-    return {**entry, **score.model_dump(), "status": "scored"}, 2, [], total_ti, total_to, total_cost
+    return ({**entry, **score.model_dump(), "status": "scored"}, 2, persist_errors,
+            total_ti, total_to, total_cost)

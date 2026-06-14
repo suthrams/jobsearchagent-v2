@@ -19,8 +19,10 @@ class ScoreRepository:
         defaults to None for back-compat with old call sites + old rows."""
         now = utcnow_iso()
         with get_connection(self.db_path) as conn:
+            # OR IGNORE + the UNIQUE(workflow_run_id, job_id) index (fix 2) make a
+            # concurrent double-submit a no-op instead of a duplicate score row.
             conn.execute(
-                """INSERT INTO job_scores
+                """INSERT OR IGNORE INTO job_scores
                    (id, workflow_run_id, job_id, resume_id, score_json, overall_score,
                     research_context_json, created_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",

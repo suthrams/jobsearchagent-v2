@@ -34,11 +34,13 @@ def _run(db_path, wf_id, user_id, started_at, *, state=None):
 
 
 def _score(db_path, wf_id, score, created_at=None):
+    # Distinct job_id per score: job_scores now has UNIQUE(workflow_run_id, job_id)
+    # (architecture-review fix 2), so two scores in one run must be two jobs.
     conn = sqlite3.connect(str(db_path))
     conn.execute(
         "INSERT INTO job_scores (id, workflow_run_id, job_id, resume_id, "
-        "score_json, overall_score, created_at) VALUES (?, ?, 'j', 'r', '{}', ?, ?)",
-        (f"{wf_id}-{score}", wf_id, score, created_at or utcnow_iso()),
+        "score_json, overall_score, created_at) VALUES (?, ?, ?, 'r', '{}', ?, ?)",
+        (f"{wf_id}-{score}", wf_id, f"j{score}", score, created_at or utcnow_iso()),
     )
     conn.commit()
     conn.close()

@@ -351,7 +351,10 @@ pipeline read (`get_job_pipeline` → Opportunity) and the per-run
 
 - **Written by**: `score_jobs` node — runs `ScoringAgent` concurrently
   across all discovered jobs (ADR-050 wrapper), persists each result
-  via `ScoreRepository.create`.
+  via `ScoreRepository.create` (`INSERT OR IGNORE`).
+- **Uniqueness**: `UNIQUE INDEX idx_job_scores_run_job (workflow_run_id, job_id)`
+  (architecture review 2026-06-13, fix 2) — one score per run+job; the index +
+  `INSERT OR IGNORE` make a concurrent double-submit a no-op instead of a duplicate row.
 - **Read by**: `await_job_selection` router for auto-select decision
   (ADR-054 — qualifies on the best track score, not overall);
   `app/services/reads/workflow_reads.list_workflow_jobs` (Find & Score, via

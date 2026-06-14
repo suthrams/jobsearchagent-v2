@@ -210,6 +210,15 @@ Items 1-5 are small, well-contained, and improve the system *in its current cont
 Item 6 is the strategic investment. Item 7 is a gate that must precede any exposed or
 multi-tenant deployment.
 
+**Implementation status (2026-06-13):** roadmap items **1-3 are implemented** the same
+day. Item 1 — paid-output persist failures now surface to `errors[]` / a `persisted:false`
+API flag (scoring, career advice, deep review, interview prep). Item 2 —
+`UNIQUE(workflow_run_id, job_id)` on `job_scores` + `INSERT OR IGNORE` (with a dedupe-safe
+migration). Item 3 — `PRAGMA journal_mode=WAL` + a 15s `busy_timeout` in `get_connection`.
+Note: item 6's tailoring-create finding (review draft §2.1 list) was **validated and
+dropped** — `tailoring_repo.create` is not wrapped in a swallowing try/except, so a
+persist failure raises (500) rather than being silently lost. Items 4-7 remain open.
+
 ---
 
 ## Appendix — evidence index

@@ -6,6 +6,30 @@ All notable changes are documented here, grouped by date.
 
 ## 2026-06-13
 
+### Fixed — architecture review remediation, items 1-3 (`docs/architecture/architecture_review_2026-06-13.md`)
+
+The whole-app architecture & design review surfaced three small, high-value fixes that
+bite in the intended single-user context; all shipped the same day.
+
+- **Fix 1 — stop swallowing paid-output persist failures.** A failed write of a paid
+  agent result (score, career advice, deep-review round/final, interview prep) was
+  logged and the caller still reported success — silent data loss + LLM re-spend next
+  run. Now surfaced to the run's `errors[]` (in-graph) or a `persisted: false` + warning
+  on the API response (out-of-graph). `scoring_runner`, `career_advice`,
+  `deep_review_runner`, the on-demand score + interview-prep endpoints.
+- **Fix 2 — one score per (run, job).** `job_scores` gains
+  `UNIQUE(workflow_run_id, job_id)` (dedupe-safe migration) and `ScoreRepository.create`
+  uses `INSERT OR IGNORE`, so the on-demand score endpoint's check-then-act race can no
+  longer create a duplicate score row.
+- **Fix 3 — SQLite concurrency hardening.** `get_connection` enables
+  `PRAGMA journal_mode=WAL` + a 15s `busy_timeout`, so the 5-thread scoring fan-out's
+  concurrent writers wait for a lock instead of raising `SQLITE_BUSY` (which fix 1 would
+  otherwise have surfaced as an error).
+
+Validated-and-dropped: the review's tailoring-create "silent loss" candidate — that path
+raises (500) on a persist failure rather than swallowing it, so no change. New tests for
+all three; full suite 1152.
+
 ### Added — Workday ATS-direct scraper (ADR-101)
 
 Extends the ATS-direct pattern (ADR-081 Greenhouse/Lever, ADR-097 batch, ADR-098

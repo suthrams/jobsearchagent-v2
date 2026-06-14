@@ -89,6 +89,10 @@ def make_career_advice_node(
             advice_repo.create_advice(str(uuid.uuid4()), workflow_id, job_id, advice_dict)
         except Exception as exc:
             logger.warning("career_advice: persist failed: %s", exc)
+            # Fix 1: surface the lost paid output instead of swallowing it.
+            errors = append_error({"errors": errors}, "career_advice", "persist_failed",
+                                  f"advice for {job_id} computed but NOT saved: {exc}",
+                                  recoverable=True)
 
         return {
             "career_advice": advice_dict,

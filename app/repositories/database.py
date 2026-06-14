@@ -5,12 +5,22 @@ here. No repository or service may generate timestamps by any other means —
 this is the only way to guarantee consistent ISO 8601 UTC format across all
 18 tables, which is required for correct string-sort ordering and purge queries.
 """
+import logging
 import sqlite3
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
+logger = logging.getLogger(__name__)
+
 DEFAULT_DB_PATH = Path("data/v2.db")
+
+# Concurrency hardening (architecture review 2026-06-13, fix 3). The scoring node fans
+# out across a ThreadPoolExecutor, so multiple connections write concurrently. WAL lets
+# readers run alongside a single writer (no reader/writer blocking), and a generous busy
+# timeout makes a contended writer WAIT for the lock instead of raising SQLITE_BUSY
+# immediately (which, before fix 1, was swallowed and lost the write).
+_BUSY_TIMEOUT_S = 15.0
 
 # ADR-062: the profile that owns all pre-existing (single-user) data. Also the
 # fallback the identity seam resolves to when no user is supplied. Centralized
@@ -351,8 +361,13 @@ def utcnow_iso() -> str:
 @contextmanager
 def get_connection(db_path: Path = DEFAULT_DB_PATH):
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(str(db_path))
+    conn = sqlite3.connect(str(db_path), timeout=_BUSY_TIMEOUT_S)
     conn.row_factory = sqlite3.Row
+    # WAL + busy_timeout (fix 3). PRAGMAs run before any transaction begins, so the
+    # journal_mode switch is legal here. WAL is a persistent per-DB property; re-issuing
+    # it each connect is an idempotent no-op. busy_timeout is per-connection.
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute(f"PRAGMA busy_timeout={int(_BUSY_TIMEOUT_S * 1000)}")
     try:
         yield conn
         conn.commit()
@@ -475,6 +490,30 @@ def init_db(db_path: Path = DEFAULT_DB_PATH) -> None:
             "UPDATE user_config "
             "SET id = 'user_0__' || substr(id, length('user_None__') + 1) "
             "WHERE id LIKE 'user_None__%'"
+        )
+        # Fix 2 (architecture review 2026-06-13): one score per (run, job). The
+        # on-demand score endpoint's check-then-act could create duplicate score rows
+        # under a concurrent double-submit; the paired INSERT OR IGNORE in
+        # ScoreRepository.create is a no-op without this unique index. De-dupe any
+        # pre-existing duplicates first (keep the most recent per pair) so the index
+        # can be created, and LOG the cleanup rather than silently skipping it.
+        dupes = conn.execute(
+            "SELECT COUNT(*) FROM (SELECT 1 FROM job_scores "
+            "GROUP BY workflow_run_id, job_id HAVING COUNT(*) > 1)"
+        ).fetchone()[0]
+        if dupes:
+            removed = conn.execute(
+                "DELETE FROM job_scores WHERE rowid NOT IN "
+                "(SELECT MAX(rowid) FROM job_scores GROUP BY workflow_run_id, job_id)"
+            ).rowcount
+            logger.warning(
+                "fix-2 migration: removed %d duplicate job_scores row(s) across %d "
+                "(run, job) pair(s), keeping the most recent, before adding the unique index",
+                removed, dupes,
+            )
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_job_scores_run_job "
+            "ON job_scores(workflow_run_id, job_id)"
         )
 
 

@@ -116,6 +116,35 @@ def test_adr105_research_endpoint_shape(monkeypatch):
     assert r.json()["items"][0]["research"]["confidence"] == 80
 
 
+def test_wal_enabled_and_one_score_per_run_job(db_path):
+    """Fix 2 + 3 (architecture review): WAL is on, and the UNIQUE(workflow_run_id,
+    job_id) index + INSERT OR IGNORE collapse a duplicate score into a single row."""
+    import sqlite3
+    from app.repositories.database import get_connection
+    from app.repositories.score_repository import ScoreRepository
+
+    with get_connection(db_path) as conn:
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0].lower() == "wal"
+        assert conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name='idx_job_scores_run_job'").fetchone() is not None
+        conn.execute("INSERT INTO jobs (id, title, company, created_at) "
+                     "VALUES ('j','T','Co',?)", (utcnow_iso(),))
+
+    repo = ScoreRepository(db_path)
+    repo.create("s1", "wf", "j", "r", {"overall_score": 80})
+    repo.create("s2", "wf", "j", "r", {"overall_score": 90})  # duplicate (run, job) -> ignored
+
+    conn = sqlite3.connect(str(db_path))
+    n = conn.execute("SELECT COUNT(*) FROM job_scores WHERE workflow_run_id='wf' "
+                     "AND job_id='j'").fetchone()[0]
+    kept = conn.execute("SELECT overall_score FROM job_scores WHERE workflow_run_id='wf' "
+                        "AND job_id='j'").fetchone()[0]
+    conn.close()
+    assert n == 1            # no duplicate row
+    assert kept == 80        # first write wins under OR IGNORE
+
+
 def test_recent_route_does_not_collide_with_workflow_id(monkeypatch):
     """GET /workflows/recent must hit the recent handler, not /{workflow_id}."""
     import app.api.routers.reads as reads
