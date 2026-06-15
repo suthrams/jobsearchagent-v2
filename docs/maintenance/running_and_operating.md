@@ -24,7 +24,8 @@
 | `ADZUNA_APP_ID` + `ADZUNA_APP_KEY` | For Adzuna discovery | Enables the Adzuna scraper. Absent -> Adzuna is skipped, other sources still run. |
 | `OPENAI_API_KEY` | Optional | Enables OpenAI models in the `ModelRegistry`. Absent -> OpenAI models are unregistered and hidden in Settings; workflows continue on Claude. |
 | `WORKFLOW_SHUTDOWN_DRAIN_SECONDS` | Optional (default `30`) | How long graceful shutdown waits for in-flight runs to drain before exiting (ADR-096). |
-| `WEB_CONCURRENCY` / `--workers` | **Leave at 1** | More than one worker silently breaks the single-process invariants. See [persistence_and_concurrency.md](persistence_and_concurrency.md). |
+| `WEB_CONCURRENCY` / `--workers` | **Leave at 1** | More than one worker breaks the single-process invariants. As of ADR-106 the startup guard **refuses to boot** if it detects `>1` (or a non-loopback `--host`). See [persistence_and_concurrency.md](persistence_and_concurrency.md). |
+| `ALLOW_UNSAFE_DEPLOYMENT` | Optional (default off) | Escape hatch for the ADR-106 guard: truthy (`1/true/yes/on`) downgrades the hard refusal to a logged warning so an operator who accepts the double-spend / cross-tenant risk can proceed. Leave unset for the normal single-user run. |
 
 Secret hygiene: never commit a real key. Run the secret audit before every commit
 (`tools/check_no_secrets.sh`).
@@ -88,8 +89,16 @@ probe individual routes to check health — most mutate.
 
 ## Startup and shutdown lifecycle (ADR-096 durable run recovery)
 
-The FastAPI `lifespan` (`app/api/main.py`) wires three layers so a process death mid-run
-does not silently freeze a run at `running`:
+**First, the deployment guard (ADR-106).** The lifespan calls
+`enforce_deployment_safety()` (`app/api/deployment_guard.py`) *before* any wiring. It
+detects a multi-worker (`WEB_CONCURRENCY>1` / `--workers N`) or non-loopback (`--host`)
+launch from `sys.argv` + env and **refuses to start** (raising `UnsafeDeploymentError`),
+unless `ALLOW_UNSAFE_DEPLOYMENT` is truthy (then it logs a prominent warning and
+continues). It is skipped under the test seam (`dependency_overrides`). Best-effort: it
+will not catch a programmatic `uvicorn.run(host=...)` or a gunicorn config-file launch.
+
+The FastAPI `lifespan` (`app/api/main.py`) then wires three layers so a process death
+mid-run does not silently freeze a run at `running`:
 
 - **On startup:** `_recover_orphaned_runs_on_startup()` -> `recover_orphaned_runs(...)`
   re-submits checkpointed-but-unfinished runs via the graph (`graph.invoke(None, config)`),

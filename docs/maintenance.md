@@ -70,9 +70,11 @@ run-control registries, and run-recovery are all **in-memory in one process**
 (`app/workflows/run_control.py:1-9`, `app/api/routers/workflows.py`). They are
 *authoritative only because there is exactly one process.*
 
-> **Do not run `--workers 2` / set `WEB_CONCURRENCY>1`.** It silently breaks idempotency,
-> cancellation, the single-flight guard, and run recovery — with no error. A second worker
-> double-runs jobs and double-spends. See
+> **Do not run `--workers 2` / set `WEB_CONCURRENCY>1`.** It breaks idempotency,
+> cancellation, the single-flight guard, and run recovery — a second worker double-runs
+> jobs and double-spends. As of ADR-106 the startup guard (`app/api/deployment_guard.py`)
+> **refuses to boot** on this and on a non-loopback bind, so the failure is now loud rather
+> than silent (override: `ALLOW_UNSAFE_DEPLOYMENT=1`). See
 > [maintenance/persistence_and_concurrency.md](maintenance/persistence_and_concurrency.md).
 
 ### 2. Cooperative-trust (no auth)
@@ -84,7 +86,9 @@ table but **not authenticated**, and there are **no ownership checks**. This is 
 every profile-scoped endpoint into a cross-tenant read/write/delete.
 
 > **Do not bind to a non-loopback host or expose the port** without first doing the
-> pre-exposure work (auth + ownership + at-rest encryption — roadmap item 7 below).
+> pre-exposure work (auth + ownership + at-rest encryption — roadmap item 7 below). The
+> ADR-106 startup guard refuses to boot on a `--host` non-loopback bind as a tripwire, but
+> it is *not* a substitute for that work — it only makes the misconfiguration loud.
 
 ### 3. Best-effort persistence
 
@@ -137,12 +141,13 @@ previous one.
 
 ## The open roadmap (what is deliberately not done)
 
-From the 2026-06-13 review. Items 1-3 shipped that day; **4-7 are open.** Treat this as
-the backlog of known ceilings, each one a documented scope cut rather than a bug.
+From the 2026-06-13 review. Items 1-3 shipped that day and **item 4 shipped 2026-06-14
+(ADR-106)**; **5-7 are open.** Treat this as the backlog of known ceilings, each one a
+documented scope cut rather than a bug.
 
-| # | Open item | Why it matters | Cost |
+| # | Item | Why it matters | Cost |
 |---|---|---|---|
-| 4 | **Startup guard: fail loud on multi-worker / non-loopback bind** | Makes the single-process + cooperative-trust cliff *non-silent* — the cheapest highest-value remaining fix | Low |
+| 4 | **Startup guard: fail loud on multi-worker / non-loopback bind** — *done (ADR-106)* | Makes the single-process + cooperative-trust cliff *non-silent* (`app/api/deployment_guard.py`; override `ALLOW_UNSAFE_DEPLOYMENT`). Best-effort tripwire, not a sandbox | Low |
 | 5 | **`schema_version` table** before the migration list grows further | Today migrations are an accumulating list of idempotent `ALTER`s with no version audit (see schema doc) | Low |
 | 6 | **Offline agent-output eval set** | The app cannot measure its own success (no outcome tracking, by design). Model/prompt *judgment* drift has **no signal** today — only schema drift is caught (model-pin tests). This is the deepest gap | High |
 | 7 | **(Pre-exposure track) auth + ownership checks; PII at-rest encryption** | The gate that must precede ANY exposed or multi-tenant deployment. PII (`resumes.raw_text`, `parsed_profile_json`, `workflow_runs.state_json`) is plaintext at rest (ADR-070 Phase 2 pending) | High |

@@ -155,6 +155,14 @@ environment violates the assumption — detect `WEB_CONCURRENCY`/`--workers > 1`
 non-loopback bind host and refuse to start (or log a prominent warning). Today the cliff
 is silent.
 
+> **Implemented 2026-06-14 (ADR-106, roadmap item 4).** `app/api/deployment_guard.py`
+> detects multi-worker (`WEB_CONCURRENCY>1` / `--workers N`) and non-loopback (`--host`)
+> launches from `sys.argv` + env and **refuses to start** by default; the lifespan calls
+> it before any wiring. `ALLOW_UNSAFE_DEPLOYMENT=1` downgrades to a prominent warning.
+> Best-effort tripwire (does not catch programmatic `uvicorn.run` / gunicorn config-file
+> launches); it makes the cliff loud, it does not make the app multi-worker/exposure-safe
+> (that is still items 6-7 + a shared store).
+
 ---
 
 ## 4. Behavioral weaknesses
@@ -201,7 +209,7 @@ The expensive-to-retrofit parts are correct:
 | 1 | Stop swallowing **paid-output** persist failures — surface to `errors[]`/status | §2.1 | Low | High |
 | 2 | `UNIQUE(workflow_run_id, job_id)` on `job_scores` + `INSERT OR IGNORE` | §2.2 | Low | High |
 | 3 | `PRAGMA journal_mode=WAL` + explicit `busy_timeout` in `get_connection` | §2.1 chain | Low | Medium |
-| 4 | Startup guard: fail loud on multi-worker / non-loopback bind | §3 | Low | High |
+| 4 | Startup guard: fail loud on multi-worker / non-loopback bind (**done**, ADR-106) | §3 | Low | High |
 | 5 | `schema_version` table before the migration list grows further | §2.4 | Low | Medium |
 | 6 | Offline agent-output eval set (the only quality signal available) | §4 | High | High |
 | 7 | (Pre-exposure, separate track) auth + ownership checks; at-rest encryption | §3 | High | Critical-if-deployed |
@@ -217,7 +225,11 @@ API flag (scoring, career advice, deep review, interview prep). Item 2 —
 migration). Item 3 — `PRAGMA journal_mode=WAL` + a 15s `busy_timeout` in `get_connection`.
 Note: item 6's tailoring-create finding (review draft §2.1 list) was **validated and
 dropped** — `tailoring_repo.create` is not wrapped in a swallowing try/except, so a
-persist failure raises (500) rather than being silently lost. Items 4-7 remain open.
+persist failure raises (500) rather than being silently lost. Items 5-7 remain open.
+
+**Update (2026-06-14):** item **4 is implemented** — ADR-106 adds
+`app/api/deployment_guard.py`, a fail-loud startup tripwire for multi-worker /
+non-loopback launches (override via `ALLOW_UNSAFE_DEPLOYMENT`). Items 5-7 remain open.
 
 ---
 

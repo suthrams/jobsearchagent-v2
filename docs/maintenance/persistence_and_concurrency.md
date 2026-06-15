@@ -80,12 +80,14 @@ All four of the above are **authoritative only because one process holds them.**
 FastAPI handlers and the workflow threads share the same memory, so they see the same
 registries.
 
-> **Running `--workers 2` / `WEB_CONCURRENCY>1` silently breaks all of it:** two workers
-> have separate registries, so the single-flight guard, cancellation, idempotency, and
-> recovery all bypass across workers -> double-runs and double-spend, with **no error**.
-> A multi-worker rollout needs a shared store (a Redis or DB advisory lock). Making the app
-> **fail loud** when it detects multiple workers or a non-loopback bind is open roadmap
-> item 4. Until then: keep it at one worker, bound to loopback.
+> **Running `--workers 2` / `WEB_CONCURRENCY>1` breaks all of it:** two workers have
+> separate registries, so the single-flight guard, cancellation, idempotency, and recovery
+> all bypass across workers -> double-runs and double-spend. As of **ADR-106** the startup
+> guard (`app/api/deployment_guard.py`, called first in the lifespan) **detects this and
+> refuses to boot** — so the failure is loud, not silent (override with
+> `ALLOW_UNSAFE_DEPLOYMENT=1` if you accept the risk). The guard is a best-effort tripwire
+> for the common launch commands, **not** a fix: a real multi-worker rollout still needs a
+> shared store (a Redis or DB advisory lock). Keep it at one worker, bound to loopback.
 
 ---
 

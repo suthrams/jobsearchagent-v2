@@ -21,6 +21,7 @@ from fastapi.responses import JSONResponse
 load_dotenv()  # load .env before any os.environ reads (e.g. ANTHROPIC_API_KEY)
 
 from app.api.dependencies import build_and_cache_graph, cleanup_graph, get_graph
+from app.api.deployment_guard import enforce_deployment_safety
 from app.api.routers.admin import router as admin_router
 from app.api.routers.config import router as config_router
 from app.api.routers.favorites import router as favorites_router
@@ -42,6 +43,9 @@ from app.services.observability_service import record_api_request_safe
 async def lifespan(app: FastAPI):
     # Skip if a test has already injected a graph via dependency_overrides
     if get_graph not in app.dependency_overrides:
+        # ADR-106: fail loud BEFORE any wiring if the deployment topology violates the
+        # single-process / loopback-only assumptions (multi-worker / non-loopback bind).
+        enforce_deployment_safety()
         build_and_cache_graph()
         _recover_orphaned_runs_on_startup()
     yield

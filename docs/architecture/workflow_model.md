@@ -764,7 +764,10 @@ running. Two layers make a restart **pause** a run instead of **kill** it:
 
 Single-process assumption (one-worker uvicorn / `--reload`); a multi-worker deploy
 would need a shared run registry first. Complements the in-flight guard and
-cooperative cancel (ADR-082/083), which only cover a *live* process.
+cooperative cancel (ADR-082/083), which only cover a *live* process. The ADR-106 startup
+guard now refuses to boot a multi-worker / non-loopback launch, so this assumption fails
+loud instead of silently (it does not lift the assumption — a shared registry still must
+precede any real multi-worker rollout).
 
 ---
 

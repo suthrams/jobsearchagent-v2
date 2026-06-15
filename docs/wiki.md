@@ -368,7 +368,7 @@ serves one need.
 | docs/ top-level | 11 |
 | docs/maintenance/ (Maintainer Handbook spokes) | 5 |
 | docs/architecture/ | 34 |
-| docs/architecture/adr/ | 99 (index + 98 ADRs) |
+| docs/architecture/adr/ | 107 (index + 106 ADRs) |
 | docs/architecture/phases/ | 8 |
 | docs/incidents/ (postmortem log: README + per-incident) | 2 |
 | docs/models/ | 3 |
