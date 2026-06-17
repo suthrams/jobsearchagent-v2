@@ -132,7 +132,8 @@ class ConcurrentAdzunaScraper:
     def __init__(self, v1_scraper, max_workers: int = _DEFAULT_WORKERS,
                  max_calls_per_minute: int = _DEFAULT_MAX_CALLS_PER_MINUTE,
                  max_calls_per_run: int = _DEFAULT_MAX_CALLS_PER_RUN,
-                 time_budget_s: float = _SCRAPE_TIME_BUDGET_S) -> None:
+                 time_budget_s: float = _SCRAPE_TIME_BUDGET_S,
+                 rotation_seed: int = 0) -> None:
         self._scraper = v1_scraper
         self._max_workers = max_workers
         # ADR-107: process-global limiter shared by every Adzuna scraper instance, so the
@@ -141,6 +142,10 @@ class ConcurrentAdzunaScraper:
         # ADR-108: bound calls per run + a wall-clock budget for partial results.
         self._max_calls_per_run = max_calls_per_run
         self._time_budget_s = time_budget_s
+        # ADR-108 addendum: per-run rotation of the capped window so dropped title/location
+        # combos are picked up on later runs. A monotonic per-profile run counter; rotates
+        # the kept slice by (seed * cap) so consecutive runs walk consecutive slices.
+        self._rotation_seed = max(0, int(rotation_seed))
         # Patch _resolve_url on the instance so _fetch_jobs skips HEAD requests
         self._scraper._resolve_url = lambda client, url: url
 
@@ -161,12 +166,17 @@ class ConcurrentAdzunaScraper:
         total_tasks = len(tasks)
         cap = self._max_calls_per_run
         if cap and cap > 0 and total_tasks > cap:
+            # ADR-108 addendum: rotate the kept window by (seed * cap) so successive runs
+            # query different slices of the grid (eventually-complete coverage of the tail).
+            offset = (self._rotation_seed * cap) % total_tasks
+            rotated = tasks[offset:] + tasks[:offset]
+            tasks = rotated[:cap]
             logger.warning(
-                "ConcurrentAdzunaScraper: capping %d tasks to %d calls/run (ADR-108); "
-                "%d title/location combinations dropped this run.",
-                total_tasks, cap, total_tasks - cap,
+                "ConcurrentAdzunaScraper: capping %d tasks to %d calls/run (ADR-108, "
+                "rotation_seed=%d offset=%d); %d title/location combinations deferred to a "
+                "later run.",
+                total_tasks, cap, self._rotation_seed, offset, total_tasks - cap,
             )
-            tasks = tasks[:cap]
 
         logger.info(
             "ConcurrentAdzunaScraper: %d tasks (of %d), %d workers, budget %.0fs "
@@ -240,7 +250,8 @@ class ConcurrentAdzunaScraper:
              excluded_keywords: list[str] | None = None,
              what_exclude: list[str] | None = None,
              max_calls_per_minute: int = _DEFAULT_MAX_CALLS_PER_MINUTE,
-             max_calls_per_run: int = _DEFAULT_MAX_CALLS_PER_RUN):
+             max_calls_per_run: int = _DEFAULT_MAX_CALLS_PER_RUN,
+             rotation_seed: int = 0):
         """Instantiate the v1 AdzunaScraper and wrap it. Returns None on failure.
 
         ADR-064: relevant_keywords/excluded_keywords flow through to the v1
@@ -249,7 +260,8 @@ class ConcurrentAdzunaScraper:
         ADR-065: what_exclude is passed to Adzuna's query so senior terms are
         dropped at the source.
         ADR-107/108: max_calls_per_minute paces calls under the per-minute cap;
-        max_calls_per_run bounds total calls (one per title x location + remote).
+        max_calls_per_run bounds total calls (one per title x location + remote);
+        rotation_seed rotates the capped window per run for tail coverage.
         """
         try:
             from scrapers.adzuna import AdzunaScraper
@@ -259,7 +271,8 @@ class ConcurrentAdzunaScraper:
                                what_exclude=what_exclude)
             return cls(v1, max_workers=max_workers,
                        max_calls_per_minute=max_calls_per_minute,
-                       max_calls_per_run=max_calls_per_run)
+                       max_calls_per_run=max_calls_per_run,
+                       rotation_seed=rotation_seed)
         except Exception as exc:
             logger.warning("ConcurrentAdzunaScraper.make failed: %s", exc)
             return None

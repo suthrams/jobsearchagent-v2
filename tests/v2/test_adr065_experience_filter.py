@@ -124,7 +124,7 @@ def test_node_passes_cap_and_exclude_senior_from_effective_config():
     svc.discover_with_stats.side_effect = _discover_with_stats
 
     factory_calls = []
-    factory = lambda roles, locations, exclude_senior=False: (
+    factory = lambda roles, locations, exclude_senior=False, user_id="0": (
         factory_calls.append(exclude_senior) or object())
 
     node = make_discover_jobs_node(svc, MagicMock(), MagicMock(),

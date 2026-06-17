@@ -98,7 +98,7 @@ def _node_with(capture: dict, factory):
 def test_node_builds_per_run_adzuna_when_roles_present():
     sentinel = object()
     calls = []
-    factory = lambda roles, locations, exclude_senior=False: (calls.append((roles, locations)) or sentinel)
+    factory = lambda roles, locations, exclude_senior=False, user_id="0": (calls.append((roles, locations)) or sentinel)
     cap: dict = {}
     node = _node_with(cap, factory)
     node({"workflow_id": "wf",
@@ -119,7 +119,7 @@ def test_node_falls_back_when_no_roles():
 
 def test_node_honors_titles_alias_for_roles():
     sentinel = object()
-    factory = lambda roles, locations, exclude_senior=False: sentinel
+    factory = lambda roles, locations, exclude_senior=False, user_id="0": sentinel
     cap: dict = {}
     node = _node_with(cap, factory)
     node({"workflow_id": "wf", "search_criteria": {"titles": ["Principal Engineer"]}})

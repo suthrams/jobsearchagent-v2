@@ -104,7 +104,7 @@ class WorkflowDependencies:
     # (roles, locations, exclude_senior) from the run's search_criteria/effective
     # config and returns a scraper (or None) so a profile's own roles drive
     # auto-discovery. None falls back to the built-in startup Adzuna.
-    adzuna_scraper_factory: Callable[[list[str], list[str], bool], Any] | None = None
+    adzuna_scraper_factory: Callable[[list[str], list[str], bool, str], Any] | None = None
     # ADR-081 + ADR-098: optional per-run ATS-direct scraper factory; receives the
     # run's roles and the run's effective scrapers config, and returns a list of
     # BaseScraper-compatible objects (Greenhouse + Lever + Workday) built from that profile's

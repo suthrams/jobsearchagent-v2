@@ -176,3 +176,17 @@ class WorkflowRepository:
                 (limit,),
             ).fetchall()
         return [dict(r) for r in rows]
+
+    def count_for_user(self, user_id: str) -> int:
+        """Total runs recorded for a profile. Used as a monotonic per-profile seed for
+        the Adzuna interleave rotation (ADR-108 addendum); survives process restarts.
+        Best-effort: returns 0 on any error so discovery never fails on a count."""
+        try:
+            with get_connection(self.db_path) as conn:
+                row = conn.execute(
+                    "SELECT COUNT(*) FROM workflow_runs WHERE user_id = ?",
+                    (str(user_id),),
+                ).fetchone()
+            return int(row[0]) if row else 0
+        except Exception:  # noqa: BLE001 - a count must never break discovery
+            return 0

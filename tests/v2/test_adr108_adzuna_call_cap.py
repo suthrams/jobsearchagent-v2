@@ -24,7 +24,7 @@ def _job(url):
 
 
 def _scraper(titles, locations, remote=None, *, max_calls_per_run=50,
-             time_budget_s=150.0, fetch=None):
+             time_budget_s=150.0, fetch=None, rotation_seed=0):
     rl._reset_adzuna_limiter_for_tests()
     v1 = MagicMock()
     v1.config.enabled = True
@@ -40,7 +40,21 @@ def _scraper(titles, locations, remote=None, *, max_calls_per_run=50,
     return ConcurrentAdzunaScraper(
         v1, max_workers=5, max_calls_per_minute=0,
         max_calls_per_run=max_calls_per_run, time_budget_s=time_budget_s,
+        rotation_seed=rotation_seed,
     )
+
+
+def _queried_combos(titles, locations, remote=None, *, cap, rotation_seed):
+    """Return the set of (title, location) pairs a run with this seed actually queries."""
+    seen = set()
+
+    def fetch(kw, loc):
+        seen.add((kw, loc))
+        return []
+
+    _scraper(titles, locations, remote=remote, max_calls_per_run=cap,
+             fetch=fetch, rotation_seed=rotation_seed).scrape()
+    return seen
 
 
 # ── interleave ──────────────────────────────────────────────────────────────────
@@ -106,3 +120,39 @@ def test_partial_results_on_time_budget():
     urls = {j.url for j in jobs}
     assert "fast|x" in urls
     assert "slow|x" not in urls
+
+
+# ── per-run rotation (addendum) ──────────────────────────────────────────────────
+
+def test_rotation_advances_to_a_different_slice():
+    titles = [f"t{i}" for i in range(10)]
+    locations = [f"l{j}" for j in range(10)]  # 100 combos, cap 30
+    run0 = _queried_combos(titles, locations, cap=30, rotation_seed=0)
+    run1 = _queried_combos(titles, locations, cap=30, rotation_seed=1)
+    assert len(run0) == 30 and len(run1) == 30
+    # Consecutive seeds query a DIFFERENT (advanced) window.
+    assert run0 != run1
+    # offset = (1 * 30) % 100 = 30, so run1 is the next contiguous slice -> disjoint here.
+    assert run0.isdisjoint(run1)
+
+
+def test_rotation_eventually_covers_full_grid():
+    titles = [f"t{i}" for i in range(10)]
+    locations = [f"l{j}" for j in range(10)]  # 100 combos
+    cap = 30
+    total = 100
+    import math
+    runs_needed = math.ceil(total / cap)  # 4
+    covered = set()
+    for seed in range(runs_needed):
+        covered |= _queried_combos(titles, locations, cap=cap, rotation_seed=seed)
+    full = {(t, loc) for t in titles for loc in locations}
+    assert covered == full
+
+
+def test_rotation_seed_zero_is_base_behavior():
+    titles = [f"t{i}" for i in range(10)]
+    locations = [f"l{j}" for j in range(10)]
+    a = _queried_combos(titles, locations, cap=30, rotation_seed=0)
+    b = _queried_combos(titles, locations, cap=30, rotation_seed=0)
+    assert a == b  # deterministic, same slice

@@ -460,12 +460,20 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
     _adzuna_raw = config_dict.get("scrapers", {}).get("adzuna", {})
 
     def _adzuna_factory(roles: list[str], locations: list[str],
-                        exclude_senior: bool = False):
+                        exclude_senior: bool = False, user_id: str = "0"):
         if not roles:
             return None
         if not (os.getenv("ADZUNA_APP_ID") and os.getenv("ADZUNA_APP_KEY")):
             return None
         try:
+            # ADR-108 addendum: per-profile run counter seeds the interleave rotation so a
+            # capped grid's dropped combos are picked up on later runs. -1 so the first run
+            # starts at slice 0 (register_run already wrote this run's row). Survives
+            # restarts (read from the DB). Best-effort: any failure -> no rotation (seed 0).
+            try:
+                rotation_seed = max(0, workflow_repo.count_for_user(str(user_id)) - 1)
+            except Exception:
+                rotation_seed = 0
             base = _AdzunaConfig(**_adzuna_raw)
             locs = locations or list(base.locations)
             physical = [l for l in locs if l.strip().lower() != "remote"]
@@ -492,6 +500,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
                 what_exclude=what_exclude,
                 max_calls_per_minute=cfg.max_calls_per_minute,  # ADR-107
                 max_calls_per_run=cfg.max_calls_per_run,        # ADR-108
+                rotation_seed=rotation_seed,                    # ADR-108 addendum
             )
         except Exception as exc:
             logger.warning("adzuna_scraper_factory failed: %s", exc)

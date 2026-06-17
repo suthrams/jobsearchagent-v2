@@ -121,8 +121,45 @@ Two coupled changes at the `ConcurrentAdzunaScraper` seam (no v1 modification).
 - Partial results: with a slow fake `_fetch_jobs` and a tiny time budget, `scrape()` returns
   the jobs collected within budget and does not block on the remaining tasks.
 
+## Addendum (2026-06-16): per-run rotation for tail coverage
+
+**Problem the base ADR left open.** The call cap is *deterministic* — `_interleave_tasks`
+produces the same order every run and `scrape()` takes the same `tasks[:cap]` prefix. So
+the dropped title x location combinations (the ~159 beyond the cap) are dropped **every**
+run, never queried. The interleave guarantees every *title* and every *location* appears in
+the kept prefix, but specific *pairings* in the tail stay permanently dark.
+
+**Decision.** Rotate the kept window per run so successive runs query *different* slices of
+the grid, giving **eventually-complete coverage** across runs.
+
+- `ConcurrentAdzunaScraper` gains a `rotation_seed` (default 0). When `tasks > cap`, it
+  rotates the interleaved list by `offset = (rotation_seed * cap) % total` before taking the
+  `cap` prefix. Consecutive seeds therefore walk consecutive slices; after
+  `ceil(total / cap)` runs the whole grid is covered, then it wraps.
+- The seed is a **monotonic per-profile run counter**: `WorkflowRepository.count_for_user`
+  (minus the current run). The Adzuna factory (`dependencies.py`), which closes over
+  `workflow_repo`, computes it from the run's `user_id` (threaded in from `discover_jobs`),
+  so it **survives process restarts** (the user restarts between runs) — an in-memory
+  counter would reset to 0 and never rotate.
+- Rotation only engages when `total > cap`; otherwise all tasks run and the seed is moot.
+  `rotation_seed=0` reproduces the base ADR-108 behavior (slice from 0).
+
+**Honest limits (best-effort, not strict round-robin).**
+- The seed counts **all** of a profile's runs, so non-search runs advance it too — slices
+  can be skipped within a cycle but are caught on the wrap. Coverage is "eventually
+  complete," not "complete in exactly `ceil(total/cap)` runs."
+- If the title/location grid changes between runs (config edit), `total` changes and the
+  slice math reshuffles — still rotating, still broadly covering.
+- Adzuna sorts by date, so each slice returns *fresh* postings regardless; rotation's value
+  is reaching tail *pairings* a fixed prefix never would.
+
+**Tests added:** consecutive seeds select disjoint, advancing windows; the union over
+`ceil(total/cap)` seeds covers the full grid; `rotation_seed=0` == base behavior.
+
 ## References
 
 - ADR-107 (rate limiter), `app/services/concurrent_adzuna_scraper.py`,
   `app/services/job_discovery_service.py` (`_SCRAPER_TIMEOUT_S`), `models/config_schema.py`
-  (`AdzunaConfig`), `app/api/dependencies.py`, run analysis `57626487` (2026-06-17).
+  (`AdzunaConfig`), `app/api/dependencies.py`, `app/workflows/nodes/discover_jobs.py`,
+  `app/repositories/workflow_repository.py` (`count_for_user`), run analysis `57626487`
+  (2026-06-17).

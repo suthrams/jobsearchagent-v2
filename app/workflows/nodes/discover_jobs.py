@@ -23,7 +23,7 @@ def make_discover_jobs_node(
     job_repo: JobRepository,
     observability: ObservabilityService,
     custom_url_scraper_factory: Callable[[list[str], str], Any] | None = None,
-    adzuna_scraper_factory: Callable[[list[str], list[str]], Any] | None = None,
+    adzuna_scraper_factory: Callable[[list[str], list[str], bool, str], Any] | None = None,
     ats_scraper_factory: Callable[[list[str], dict], list] | None = None,
 ) -> Callable[[dict], dict]:
     def discover_jobs(state: dict) -> dict:
@@ -75,7 +75,10 @@ def make_discover_jobs_node(
         skip_builtin_adzuna = False
         if roles and adzuna_scraper_factory is not None:
             try:
-                adzuna_scraper = adzuna_scraper_factory(roles, locations, exclude_senior)
+                # ADR-108 addendum: pass user_id so the factory can seed the per-run
+                # interleave rotation from the profile's prior-run count.
+                adzuna_scraper = adzuna_scraper_factory(
+                    roles, locations, exclude_senior, user_id)
                 if adzuna_scraper is not None:
                     extra_scrapers.append(adzuna_scraper)
                     skip_builtin_adzuna = True
