@@ -122,6 +122,20 @@ Match the change to its apply path (see the table in
 run; agent model assignment needs `POST /config/reload`; **prompt file** changes and **code**
 changes need a restart (the `PromptLoader` caches prompts at first read).
 
+### Symptom: an Adzuna "hits per minute" alert (e.g. 20/25 >= 80%)
+
+Discovery makes one Adzuna call per task (`locations × titles + remote_keywords`) fanned
+across 5 threads, so a run bursts toward Adzuna's per-minute cap. **ADR-107** added a
+client-side limiter that paces calls under the cap.
+
+- Confirm `scrapers.adzuna.max_calls_per_minute` is set (default `20`, under the 25/min
+  cap). It applies next run (per-run config; no reload needed).
+- Still alerting? Lower it (e.g. `15`) for more margin, or reduce the task count (fewer
+  `titles` / `locations`). The limiter is process-global, so it already accounts for
+  concurrent runs.
+- A genuine `429` makes the limiter back off automatically (best-effort `Retry-After`);
+  timed-out fetches keep whatever completed (never-lose-the-run).
+
 ### Symptom: a cost surprise
 
 Go straight to [cost_troubleshooting.md](../cost_troubleshooting.md) — per-agent cost

@@ -80,9 +80,12 @@ Each `_fetch_jobs()` call is decorated with `@retry` from `tenacity`:
 
 ## Rate Limit Awareness
 
-Free tier: 100 calls/day. Budget formula: `(len(locations) × len(keywords)) + len(remote_keywords)`.
+There are **two** Adzuna limits to respect:
 
-Default config: 4 locations × 6 keywords + 6 remote = **30 calls/run** → ~3 full runs per day before hitting the limit.
+- **Daily quota** — free tier ~100 calls/day. Budget formula: `(len(locations) × len(keywords)) + len(remote_keywords)`. Bounded by the task count.
+- **Per-minute hits cap** — typically **25/min**. The v2 `ConcurrentAdzunaScraper` fans the per-task calls across 5 threads, so a normal run bursts ~20 calls in seconds and can trip this cap (the "20/25 hits per minute" alert). **ADR-107** adds a client-side limiter (`app/services/rate_limiter.py`, `scrapers.adzuna.max_calls_per_minute`, default 20) that paces call starts under the cap; it is process-global so concurrent runs share one budget, and it backs off on an observed `429` (best-effort `Retry-After`). Set `max_calls_per_minute: 0` to disable.
+
+Default config: 4 locations × 6 keywords + 6 remote = **30 calls/run** → ~3 full runs per day before hitting the daily limit.
 
 `results_per_page` defaults to 10. Raise toward 50 (the free-tier max) if you need more results per search. Halving `results_per_page` doesn't reduce call count but does reduce the number of noisy jobs ingested.
 

@@ -13,9 +13,44 @@ from __future__ import annotations
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+from app.services.rate_limiter import get_adzuna_limiter
+
 logger = logging.getLogger(__name__)
 
 _DEFAULT_WORKERS = 5
+
+# ADR-107: default per-minute call budget, kept under Adzuna's 25/min cap with margin.
+_DEFAULT_MAX_CALLS_PER_MINUTE = 20
+
+
+def _extract_429_retry_after(exc: BaseException) -> float | None:
+    """If ``exc`` (possibly a tenacity RetryError wrapper) is an HTTP 429, return its
+    ``Retry-After`` seconds (or a default), else None. Best-effort + never raises."""
+    seen: set[int] = set()
+    stack = [exc]
+    while stack:
+        e = stack.pop()
+        if e is None or id(e) in seen:
+            continue
+        seen.add(id(e))
+        # Unwrap a tenacity RetryError to its last underlying attempt.
+        last = getattr(e, "last_attempt", None)
+        if last is not None:
+            try:
+                stack.append(last.exception())
+            except Exception:  # noqa: BLE001
+                pass
+        resp = getattr(e, "response", None)
+        status = getattr(resp, "status_code", None)
+        if status == 429:
+            try:
+                ra = resp.headers.get("retry-after")
+                return float(ra) if ra is not None else 30.0
+            except (TypeError, ValueError, AttributeError):
+                return 30.0
+        stack.append(getattr(e, "__cause__", None))
+        stack.append(getattr(e, "__context__", None))
+    return None
 
 # ADR-064: stopwords dropped when deriving title-relevance tokens from a profile's
 # role list, so a per-run search keeps titles matching the searched roles.
@@ -64,9 +99,13 @@ def relevance_tokens(roles: list[str]) -> list[str]:
 class ConcurrentAdzunaScraper:
     """Wraps AdzunaScraper with concurrent fetching and no URL resolution overhead."""
 
-    def __init__(self, v1_scraper, max_workers: int = _DEFAULT_WORKERS) -> None:
+    def __init__(self, v1_scraper, max_workers: int = _DEFAULT_WORKERS,
+                 max_calls_per_minute: int = _DEFAULT_MAX_CALLS_PER_MINUTE) -> None:
         self._scraper = v1_scraper
         self._max_workers = max_workers
+        # ADR-107: process-global limiter shared by every Adzuna scraper instance, so the
+        # provider's per-minute cap is respected even across concurrent runs. None = off.
+        self._limiter = get_adzuna_limiter(max_calls_per_minute)
         # Patch _resolve_url on the instance so _fetch_jobs skips HEAD requests
         self._scraper._resolve_url = lambda client, url: url
 
@@ -91,9 +130,17 @@ class ConcurrentAdzunaScraper:
         seen_urls: set[str] = set()
         jobs = []
 
+        def _throttled_fetch(keyword: str, location: str):
+            # ADR-107: pace the actual call START to the shared per-minute budget. Run
+            # in the worker thread so the 5 workers' starts are serialized by the limiter
+            # while their HTTP response waits still overlap.
+            if self._limiter is not None:
+                self._limiter.acquire()
+            return s._fetch_jobs(keyword, location)
+
         with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
             futures = {
-                executor.submit(s._fetch_jobs, keyword, location): (keyword, location)
+                executor.submit(_throttled_fetch, keyword, location): (keyword, location)
                 for keyword, location in tasks
             }
             for future in as_completed(futures):
@@ -105,6 +152,16 @@ class ConcurrentAdzunaScraper:
                             seen_urls.add(job.url)
                             jobs.append(job)
                 except Exception as exc:
+                    # ADR-107: if Adzuna rate-limited us, back the shared limiter off so
+                    # the remaining tasks slow down (best-effort honor-Retry-After).
+                    if self._limiter is not None:
+                        retry_after = _extract_429_retry_after(exc)
+                        if retry_after is not None:
+                            self._limiter.penalize(retry_after)
+                            logger.warning(
+                                "Adzuna 429 for '%s' / '%s'; backing off %.0fs",
+                                keyword, location, retry_after,
+                            )
                     logger.warning(
                         "Adzuna fetch failed for '%s' / '%s': %s",
                         keyword, location, exc,
@@ -117,7 +174,8 @@ class ConcurrentAdzunaScraper:
     def make(cls, adzuna_config, titles: list[str], max_workers: int = _DEFAULT_WORKERS,
              relevant_keywords: list[str] | None = None,
              excluded_keywords: list[str] | None = None,
-             what_exclude: list[str] | None = None):
+             what_exclude: list[str] | None = None,
+             max_calls_per_minute: int = _DEFAULT_MAX_CALLS_PER_MINUTE):
         """Instantiate the v1 AdzunaScraper and wrap it. Returns None on failure.
 
         ADR-064: relevant_keywords/excluded_keywords flow through to the v1
@@ -132,7 +190,8 @@ class ConcurrentAdzunaScraper:
                                relevant_keywords=relevant_keywords,
                                excluded_keywords=excluded_keywords,
                                what_exclude=what_exclude)
-            return cls(v1, max_workers=max_workers)
+            return cls(v1, max_workers=max_workers,
+                       max_calls_per_minute=max_calls_per_minute)
         except Exception as exc:
             logger.warning("ConcurrentAdzunaScraper.make failed: %s", exc)
             return None

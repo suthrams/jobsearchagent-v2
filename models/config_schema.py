@@ -145,6 +145,10 @@ class AdzunaConfig(BaseModel):
     radius_km: int = Field(80, description="Search radius in kilometres")
     results_per_page: int = Field(10, description="Results per keyword per call (max 50)")
     remote_keywords: list[str] = Field(default_factory=list, description="Subset of titles for US-wide remote search. Kept separate for quota control — remote adds one call per entry.")
+    # ADR-107: client-side per-minute rate limiter so a burst of concurrent calls does not
+    # trip Adzuna's per-minute hits cap (the "20/25 hits per minute" alert). Default 20,
+    # safely under the 25/min free-tier cap. 0 disables the limiter.
+    max_calls_per_minute: int = Field(20, description="Max Adzuna API calls per minute (client-side limiter, ADR-107). 0 = off.")
 
 
 class ScrapersConfig(BaseModel):

@@ -112,3 +112,4 @@ This folder tracks architecture decisions for jobsearchagent-v2.
 | ADR-104 | [Strict Seniority Judgment in the Relevance Filter (World-Knowledge When Text Is Truncated)](ADR-104-strict-seniority-judgment-on-truncated-text.md) | Accepted (implemented) |
 | ADR-105 | [Persist and Surface the Research Agent's Output](ADR-105-persist-and-surface-research-context.md) | Accepted (implemented) |
 | ADR-106 | [Fail-Loud Startup Guard for Unsafe Deployment (Multi-Worker / Non-Loopback)](ADR-106-fail-loud-deployment-safety-guard.md) | Accepted (implemented) |
+| ADR-107 | [Client-Side Rate Limiter for Adzuna (Stay Under the Per-Minute Cap)](ADR-107-adzuna-client-side-rate-limiter.md) | Accepted (implemented) |

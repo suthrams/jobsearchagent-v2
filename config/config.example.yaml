@@ -86,6 +86,12 @@ scrapers:
     radius_km: 80
     results_per_page: 25   # 25/call. Adzuna free tier maxes at 50; 25 is the
                            # post-2026-05-29 default after the senior-exclude tuning.
+    # ADR-107: client-side per-minute rate limiter. Discovery makes one Adzuna call per
+    # task (titles x locations + remote_keywords) fanned across 5 threads, so a burst can
+    # trip Adzuna's per-minute hits cap (the "20/25 hits per minute" alert). This paces
+    # call starts to stay under the cap; process-global so concurrent runs share it.
+    # Default 20 (under the 25/min free-tier cap). Set 0 to disable.
+    max_calls_per_minute: 20
     # Remote search — no location filter, "remote" appended to each keyword.
     remote_keywords:
       - software architect

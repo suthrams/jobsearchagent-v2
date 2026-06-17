@@ -490,6 +490,7 @@ def _build_real_deps(checkpointer) -> WorkflowDependencies:
                 relevant_keywords=relevance_tokens(roles),
                 excluded_keywords=excluded_kw,
                 what_exclude=what_exclude,
+                max_calls_per_minute=cfg.max_calls_per_minute,  # ADR-107
             )
         except Exception as exc:
             logger.warning("adzuna_scraper_factory failed: %s", exc)
@@ -568,7 +569,10 @@ def _build_scrapers(config_dict: dict) -> list:
             adzuna_raw = config_dict.get("scrapers", {}).get("adzuna", {})
             adzuna_cfg = AdzunaConfig(**adzuna_raw)
             titles = config_dict.get("search", {}).get("titles", [])
-            scraper = ConcurrentAdzunaScraper.make(adzuna_cfg, titles)
+            scraper = ConcurrentAdzunaScraper.make(
+                adzuna_cfg, titles,
+                max_calls_per_minute=adzuna_cfg.max_calls_per_minute,  # ADR-107
+            )
             if scraper:
                 scrapers.append(scraper)
                 logger.info("ConcurrentAdzunaScraper registered (%d titles, 5 workers)", len(titles))
