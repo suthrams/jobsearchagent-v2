@@ -149,6 +149,11 @@ class AdzunaConfig(BaseModel):
     # trip Adzuna's per-minute hits cap (the "20/25 hits per minute" alert). Default 20,
     # safely under the 25/min free-tier cap. 0 disables the limiter.
     max_calls_per_minute: int = Field(20, description="Max Adzuna API calls per minute (client-side limiter, ADR-107). 0 = off.")
+    # ADR-108: cap on Adzuna API calls per run (one call per title x location + remote).
+    # An unbounded role/location grid (e.g. 19 roles x 10 locations = ~209 calls) blows the
+    # per-minute AND daily quotas and exceeds the 180s discovery timeout. 50 calls at 20/min
+    # ~= 150s (fits the timeout) and over-feeds the 50-job funnel. 0 = uncapped (legacy).
+    max_calls_per_run: int = Field(50, description="Max Adzuna API calls per run (ADR-108). Tasks beyond this are dropped (interleaved sampling). 0 = uncapped.")
 
 
 class ScrapersConfig(BaseModel):

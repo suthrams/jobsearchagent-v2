@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 
 from app.services.rate_limiter import get_adzuna_limiter
 
@@ -21,6 +22,35 @@ _DEFAULT_WORKERS = 5
 
 # ADR-107: default per-minute call budget, kept under Adzuna's 25/min cap with margin.
 _DEFAULT_MAX_CALLS_PER_MINUTE = 20
+
+# ADR-108: default cap on Adzuna calls per run. ~50 calls at 20/min ~= 150s (inside the
+# discovery timeout below) and over-feeds the 50-job funnel. 0 = uncapped.
+_DEFAULT_MAX_CALLS_PER_RUN = 50
+
+# ADR-108: wall-clock budget for one Adzuna scrape, set BELOW JobDiscoveryService's
+# _SCRAPER_TIMEOUT_S (180s) so scrape() returns PARTIAL results on its own deadline instead
+# of being hard-killed by the outer timeout (which would discard everything collected).
+_SCRAPE_TIME_BUDGET_S = 150.0
+
+
+def _interleave_tasks(titles: list[str], locations: list[str]) -> list[tuple[str, str]]:
+    """Latin-square interleave of the title x location grid (ADR-108).
+
+    Ordered so a truncated prefix samples across MANY titles AND MANY locations, rather
+    than exhausting all titles for the first location (which a naive nested loop does).
+    Each diagonal pass pairs ``location = (title + shift) % L``, so the first L*T pairs
+    cover every (title, location) once and the first ~T pairs already span all titles and
+    cycle all locations. Returns [] when there are no locations or no titles.
+    """
+    n_titles, n_locs = len(titles), len(locations)
+    if n_titles == 0 or n_locs == 0:
+        return []
+    out: list[tuple[str, str]] = []
+    for shift in range(n_locs):
+        for ti in range(n_titles):
+            li = (ti + shift) % n_locs
+            out.append((titles[ti], locations[li]))
+    return out
 
 
 def _extract_429_retry_after(exc: BaseException) -> float | None:
@@ -100,12 +130,17 @@ class ConcurrentAdzunaScraper:
     """Wraps AdzunaScraper with concurrent fetching and no URL resolution overhead."""
 
     def __init__(self, v1_scraper, max_workers: int = _DEFAULT_WORKERS,
-                 max_calls_per_minute: int = _DEFAULT_MAX_CALLS_PER_MINUTE) -> None:
+                 max_calls_per_minute: int = _DEFAULT_MAX_CALLS_PER_MINUTE,
+                 max_calls_per_run: int = _DEFAULT_MAX_CALLS_PER_RUN,
+                 time_budget_s: float = _SCRAPE_TIME_BUDGET_S) -> None:
         self._scraper = v1_scraper
         self._max_workers = max_workers
         # ADR-107: process-global limiter shared by every Adzuna scraper instance, so the
         # provider's per-minute cap is respected even across concurrent runs. None = off.
         self._limiter = get_adzuna_limiter(max_calls_per_minute)
+        # ADR-108: bound calls per run + a wall-clock budget for partial results.
+        self._max_calls_per_run = max_calls_per_run
+        self._time_budget_s = time_budget_s
         # Patch _resolve_url on the instance so _fetch_jobs skips HEAD requests
         self._scraper._resolve_url = lambda client, url: url
 
@@ -115,16 +150,28 @@ class ConcurrentAdzunaScraper:
             logger.info("Adzuna scraper is disabled in config")
             return []
 
-        tasks: list[tuple[str, str]] = []
-        for location in s.config.locations:
-            for keyword in s.titles:
-                tasks.append((keyword, location))
+        # ADR-108: diagonal-interleave the local grid so a truncated harvest samples
+        # across many titles AND locations; remote tasks (US-wide, no location) appended.
+        tasks: list[tuple[str, str]] = _interleave_tasks(s.titles, list(s.config.locations))
         for keyword in s.config.remote_keywords:
             tasks.append((f"{keyword} remote", ""))
 
+        # ADR-108: cap calls per run (one call per task) so an unbounded role/location grid
+        # cannot blow the per-minute/daily quotas or the discovery timeout. Log the drop.
+        total_tasks = len(tasks)
+        cap = self._max_calls_per_run
+        if cap and cap > 0 and total_tasks > cap:
+            logger.warning(
+                "ConcurrentAdzunaScraper: capping %d tasks to %d calls/run (ADR-108); "
+                "%d title/location combinations dropped this run.",
+                total_tasks, cap, total_tasks - cap,
+            )
+            tasks = tasks[:cap]
+
         logger.info(
-            "ConcurrentAdzunaScraper: %d tasks, %d workers (URL resolution skipped)",
-            len(tasks), self._max_workers,
+            "ConcurrentAdzunaScraper: %d tasks (of %d), %d workers, budget %.0fs "
+            "(URL resolution skipped)",
+            len(tasks), total_tasks, self._max_workers, self._time_budget_s,
         )
 
         seen_urls: set[str] = set()
@@ -138,34 +185,51 @@ class ConcurrentAdzunaScraper:
                 self._limiter.acquire()
             return s._fetch_jobs(keyword, location)
 
-        with ThreadPoolExecutor(max_workers=self._max_workers) as executor:
+        # ADR-108: do NOT use a `with` block — its __exit__ waits for ALL tasks. We bound
+        # the collection to a time budget and cancel the rest, returning partial results.
+        executor = ThreadPoolExecutor(max_workers=self._max_workers)
+        try:
             futures = {
                 executor.submit(_throttled_fetch, keyword, location): (keyword, location)
                 for keyword, location in tasks
             }
-            for future in as_completed(futures):
-                keyword, location = futures[future]
-                try:
-                    new_jobs = future.result()
-                    for job in new_jobs:
-                        if job.url not in seen_urls:
-                            seen_urls.add(job.url)
-                            jobs.append(job)
-                except Exception as exc:
-                    # ADR-107: if Adzuna rate-limited us, back the shared limiter off so
-                    # the remaining tasks slow down (best-effort honor-Retry-After).
-                    if self._limiter is not None:
-                        retry_after = _extract_429_retry_after(exc)
-                        if retry_after is not None:
-                            self._limiter.penalize(retry_after)
-                            logger.warning(
-                                "Adzuna 429 for '%s' / '%s'; backing off %.0fs",
-                                keyword, location, retry_after,
-                            )
-                    logger.warning(
-                        "Adzuna fetch failed for '%s' / '%s': %s",
-                        keyword, location, exc,
-                    )
+            done = 0
+            try:
+                for future in as_completed(futures, timeout=self._time_budget_s):
+                    keyword, location = futures[future]
+                    done += 1
+                    try:
+                        new_jobs = future.result()
+                        for job in new_jobs:
+                            if job.url not in seen_urls:
+                                seen_urls.add(job.url)
+                                jobs.append(job)
+                    except Exception as exc:
+                        # ADR-107: if Adzuna rate-limited us, back the shared limiter off
+                        # so the remaining tasks slow down (best-effort honor-Retry-After).
+                        if self._limiter is not None:
+                            retry_after = _extract_429_retry_after(exc)
+                            if retry_after is not None:
+                                self._limiter.penalize(retry_after)
+                                logger.warning(
+                                    "Adzuna 429 for '%s' / '%s'; backing off %.0fs",
+                                    keyword, location, retry_after,
+                                )
+                        logger.warning(
+                            "Adzuna fetch failed for '%s' / '%s': %s",
+                            keyword, location, exc,
+                        )
+            except FuturesTimeoutError:
+                # ADR-108: budget hit before all tasks finished — keep what we have.
+                logger.warning(
+                    "ConcurrentAdzunaScraper: %.0fs budget reached; returning %d partial "
+                    "jobs from %d/%d completed tasks (remaining cancelled).",
+                    self._time_budget_s, len(jobs), done, len(tasks),
+                )
+        finally:
+            # Cancel queued-but-unstarted tasks (stop spending calls); don't block on the
+            # <=max_workers already in flight — they finish harmlessly in the background.
+            executor.shutdown(wait=False, cancel_futures=True)
 
         s.log_result(jobs)
         return jobs
@@ -175,7 +239,8 @@ class ConcurrentAdzunaScraper:
              relevant_keywords: list[str] | None = None,
              excluded_keywords: list[str] | None = None,
              what_exclude: list[str] | None = None,
-             max_calls_per_minute: int = _DEFAULT_MAX_CALLS_PER_MINUTE):
+             max_calls_per_minute: int = _DEFAULT_MAX_CALLS_PER_MINUTE,
+             max_calls_per_run: int = _DEFAULT_MAX_CALLS_PER_RUN):
         """Instantiate the v1 AdzunaScraper and wrap it. Returns None on failure.
 
         ADR-064: relevant_keywords/excluded_keywords flow through to the v1
@@ -183,6 +248,8 @@ class ConcurrentAdzunaScraper:
         senior defaults (e.g. role-derived tokens for an entry-level profile).
         ADR-065: what_exclude is passed to Adzuna's query so senior terms are
         dropped at the source.
+        ADR-107/108: max_calls_per_minute paces calls under the per-minute cap;
+        max_calls_per_run bounds total calls (one per title x location + remote).
         """
         try:
             from scrapers.adzuna import AdzunaScraper
@@ -191,7 +258,8 @@ class ConcurrentAdzunaScraper:
                                excluded_keywords=excluded_keywords,
                                what_exclude=what_exclude)
             return cls(v1, max_workers=max_workers,
-                       max_calls_per_minute=max_calls_per_minute)
+                       max_calls_per_minute=max_calls_per_minute,
+                       max_calls_per_run=max_calls_per_run)
         except Exception as exc:
             logger.warning("ConcurrentAdzunaScraper.make failed: %s", exc)
             return None

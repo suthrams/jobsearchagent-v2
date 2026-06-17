@@ -126,15 +126,22 @@ changes need a restart (the `PromptLoader` caches prompts at first read).
 
 Discovery makes one Adzuna call per task (`locations × titles + remote_keywords`) fanned
 across 5 threads, so a run bursts toward Adzuna's per-minute cap. **ADR-107** added a
-client-side limiter that paces calls under the cap.
+client-side limiter that paces calls under the cap; **ADR-108** caps calls per run and
+returns partial results on the discovery timeout.
 
-- Confirm `scrapers.adzuna.max_calls_per_minute` is set (default `20`, under the 25/min
-  cap). It applies next run (per-run config; no reload needed).
-- Still alerting? Lower it (e.g. `15`) for more margin, or reduce the task count (fewer
-  `titles` / `locations`). The limiter is process-global, so it already accounts for
-  concurrent runs.
+- Confirm `scrapers.adzuna.max_calls_per_minute` (default `20`, under the 25/min cap) and
+  `scrapers.adzuna.max_calls_per_run` (default `50`) are set. Both apply next run (per-run
+  config; no reload needed).
+- **Adzuna returning 0 with `error: "timeout"` in `discovery_stats`?** The role/location
+  grid is too large for the paced calls to finish in the 180s window. ADR-108 fixes this:
+  `max_calls_per_run` bounds the grid (diagonal-interleaved sampling) and a timed-out scrape
+  now returns partial results. If you still see it, lower `max_calls_per_run` (so the paced
+  calls fit the 150s budget) or trim `titles`/`locations`. Diagnose the grid size from the
+  run's `search_criteria` (roles x locations + remote = call count).
+- Still per-minute alerting? Lower `max_calls_per_minute` (e.g. `15`) for more margin. The
+  limiter is process-global, so it already accounts for concurrent runs.
 - A genuine `429` makes the limiter back off automatically (best-effort `Retry-After`);
-  timed-out fetches keep whatever completed (never-lose-the-run).
+  partial/timed-out scrapes keep whatever completed (never-lose-the-run).
 
 ### Symptom: a cost surprise
 

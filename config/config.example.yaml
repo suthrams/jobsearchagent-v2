@@ -92,6 +92,13 @@ scrapers:
     # call starts to stay under the cap; process-global so concurrent runs share it.
     # Default 20 (under the 25/min free-tier cap). Set 0 to disable.
     max_calls_per_minute: 20
+    # ADR-108: cap on Adzuna calls per RUN (one call per title x location + remote). An
+    # unbounded grid (e.g. 19 roles x 10 locations = ~209 calls) blows the per-minute AND
+    # daily quotas and exceeds the 180s discovery timeout. The kept subset is sampled by a
+    # diagonal interleave (broad title + location coverage); a timed-out scrape returns
+    # partial results instead of zero. Default 50 (~150s at 20/min; over-feeds the 50-job
+    # funnel). Set 0 to uncap.
+    max_calls_per_run: 50
     # Remote search — no location filter, "remote" appended to each keyword.
     remote_keywords:
       - software architect

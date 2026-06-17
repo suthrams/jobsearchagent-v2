@@ -91,8 +91,9 @@ Controls which career tracks are scored. Disabling a track saves API tokens.
 | `results_per_page` | `10` | Results per keyword per call (max 50 on free tier) |
 | `remote_keywords` | `[]` | Keywords for US-wide remote search (no location filter, one call per keyword) |
 | `max_calls_per_minute` | `20` | Client-side per-minute rate limiter on Adzuna calls (ADR-107). `0` disables. Keeps a burst of concurrent calls under Adzuna's per-minute hits cap. |
+| `max_calls_per_run` | `50` | Cap on Adzuna calls per run (ADR-108). `0` uncaps. Tasks beyond the cap are dropped via diagonal-interleaved sampling; a timed-out scrape returns partial results. |
 
-> **Quota planning:** Total calls per run = `(len(locations) × len(keywords)) + len(remote_keywords)`. Keep below 100 (free tier daily limit). The **per-minute** cap (typically 25/min) is governed separately by the `max_calls_per_minute` client-side limiter (ADR-107).
+> **Quota planning:** Total calls per run = `(len(locations) × len(keywords)) + len(remote_keywords)`, **bounded by `max_calls_per_run`** (ADR-108, default 50). Keep below the free-tier daily limit. The **per-minute** cap (typically 25/min) is governed separately by the `max_calls_per_minute` client-side limiter (ADR-107).
 
 ### `StorageConfig`
 | Field | Default | Meaning |
